@@ -10,6 +10,7 @@ export class AccountsService {
 
   async findAll(): Promise<Account[]> {
     return this.prisma.account.findMany({
+      include: { category: true },
       orderBy: { createdAt: 'asc' },
     });
   }

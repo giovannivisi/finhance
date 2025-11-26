@@ -17,7 +17,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@prisma/*": ["./src/prisma/*"],
-      "@accounts/*": ["./src/accounts/*"]
+      "@accounts/*": ["./src/accounts/*"],
+      "@categories/*": ["./src/categories/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

@@ -7,6 +7,7 @@ import { api } from "@lib/api";
 export default async function Home() {
   const accounts = await api<any[]>("/accounts");
   const summary = await api<{ assets: number; liabilities: number; netWorth: number }>("/accounts/summary");
+  const categories = await api<any[]>("/categories");
 
   return (
     <>
@@ -29,7 +30,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <CreateAccountForm />
+        <CreateAccountForm categories={categories} />
 
         <h2 className="text-2xl font-semibold">Accounts</h2>
         <ul className="space-y-2">
@@ -40,7 +41,10 @@ export default async function Home() {
             >
               <div>
                 <p className="font-medium">{acc.name}</p>
-                <p className="text-sm text-gray-500">{acc.type} — {acc.balance}</p>
+                <p className="text-sm text-gray-500">
+                  {acc.type} — {acc.balance}
+                  {acc.category?.name ? ` — ${acc.category.name}` : ""}
+                </p>
               </div>
 
               <div className="flex items-center gap-3">

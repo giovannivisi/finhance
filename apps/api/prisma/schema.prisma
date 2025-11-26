@@ -14,17 +14,25 @@ datasource db {
 }
 
 model Account {
-  id        String      @id @default(cuid())
-  userId    String?
-  name      String
-  type      AccountType
-  balance   Decimal     @db.Decimal(14, 2)
-  currency  String      @default("EUR")
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id         String     @id @default(cuid())
+  userId     String?
+  name       String
+  type       AccountType
+  balance    Decimal    @db.Decimal(14, 2)
+  currency   String     @default("EUR")
+  categoryId String?
+  category   Category?  @relation(fields: [categoryId], references: [id])
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 }
 
 enum AccountType {
   ASSET
   LIABILITY
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  accounts  Account[]
 }

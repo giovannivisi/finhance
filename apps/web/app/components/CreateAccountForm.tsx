@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 
-export default function CreateAccountForm() {
+export default function CreateAccountForm({ categories }: { categories: any[] }) {
   const [name, setName] = useState("");
   const [type, setType] = useState("ASSET");
   const [balance, setBalance] = useState("");
   const [currency, setCurrency] = useState("EUR");
+  const [categoryId, setCategoryId] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -19,6 +20,7 @@ export default function CreateAccountForm() {
         type,
         balance: Number(balance),
         currency,
+        categoryId: categoryId || null,
       }),
     });
 
@@ -55,6 +57,23 @@ export default function CreateAccountForm() {
         >
           <option value="ASSET">ASSET</option>
           <option value="LIABILITY">LIABILITY</option>
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-600">Category</label>
+        <select
+          className="border rounded px-2 py-1"
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+          required
+        >
+          <option value="">No category</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
         </select>
       </div>
 
