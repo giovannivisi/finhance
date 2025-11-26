@@ -32,12 +32,13 @@ export default function CreateAccountForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ marginBottom: 40 }}>
+    <form onSubmit={handleSubmit} className="bg-white shadow p-4 rounded space-y-4">
       <h2>Create Account</h2>
 
       <div>
-        <label>Name: </label>
+        <label className="text-sm text-gray-600">Name: </label>
         <input
+          className="border rounded px-2 py-1"
           value={name}
           onChange={e => setName(e.target.value)}
           required
@@ -45,16 +46,22 @@ export default function CreateAccountForm() {
       </div>
 
       <div>
-        <label>Type: </label>
-        <select value={type} onChange={e => setType(e.target.value)}>
+        <label className="text-sm text-gray-600">Type: </label>
+        <select
+          className="border rounded px-2 py-1"
+          value={type}
+          onChange={e => setType(e.target.value)}
+          required
+        >
           <option value="ASSET">ASSET</option>
           <option value="LIABILITY">LIABILITY</option>
         </select>
       </div>
 
       <div>
-        <label>Balance: </label>
+        <label className="text-sm text-gray-600">Balance: </label>
         <input
+          className="border rounded px-2 py-1"
           type="number"
           step="0.01"
           value={balance}
@@ -64,14 +71,20 @@ export default function CreateAccountForm() {
       </div>
 
       <div>
-        <label>Currency: </label>
+        <label className="text-sm text-gray-600">Currency: </label>
         <input
+          className="border rounded px-2 py-1"
           value={currency}
           onChange={e => setCurrency(e.target.value)}
         />
       </div>
 
-      <button type="submit">Create</button>
+      <button
+        type="submit"
+        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+      >
+        Create Account
+      </button>
     </form>
   );
 }

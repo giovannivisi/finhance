@@ -1,3 +1,5 @@
+import "./globals.css";
+
 export const metadata = {
   title: "Finhance",
   description: "Finance dashboard",
@@ -10,7 +12,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-gray-50 text-gray-900">
+        {children}
+      </body>
     </html>
   );
 }
