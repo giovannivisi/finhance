@@ -1,8 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { Patch } from '@nestjs/common/decorators';
-import { AccountsService } from './accounts.service';
-import { CreateAccountDto } from './dto/create-account.dto';
-import { UpdateAccountDto } from './dto/update-account.dto';
+import { AccountsService } from '@accounts/accounts.service';
+import { CreateAccountDto } from '@accounts/dto/create-account.dto';
+import { UpdateAccountDto } from '@accounts/dto/update-account.dto';
 import { Account } from '@prisma/client';
 
 @Controller('accounts')

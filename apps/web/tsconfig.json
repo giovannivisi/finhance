@@ -20,8 +20,9 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@finhance/shared/*": ["../../packages/shared/src/*"]
+      "@/*": ["./app/*"],
+      "@components/*": ["./app/components/*"],
+      "@lib/*": ["./lib/*"]
     }
   },
   "include": [

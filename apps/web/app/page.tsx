@@ -1,4 +1,6 @@
-import { api } from "../lib/api";
+import { api } from "@lib/api";
+import CreateAccountForm from "@components/CreateAccountForm";
+import DeleteAccountButton from "@components/DeleteAccountButton";
 
 export default async function Home() {
   const accounts = await api<any[]>("/accounts");
@@ -7,6 +9,8 @@ export default async function Home() {
   return (
     <div style={{ padding: 20 }}>
       <h1>Finhance Dashboard</h1>
+
+      <CreateAccountForm />
 
       <h2>Summary</h2>
       <p>Assets: {summary.assets}</p>
@@ -18,6 +22,13 @@ export default async function Home() {
         {accounts.map(acc => (
           <li key={acc.id}>
             {acc.name} — {acc.type} — {acc.balance}
+
+            {" "}
+            <a href={`/accounts/${acc.id}/edit`} style={{ marginLeft: 10 }}>
+              ✎ Edit
+            </a>
+
+            <DeleteAccountButton id={acc.id} />
           </li>
         ))}
       </ul>
