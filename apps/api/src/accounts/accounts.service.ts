@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAccountDto } from './dto/create-account.dto';
+import { UpdateAccountDto } from './dto/update-account.dto';
 import { Account, AccountType } from '@prisma/client';
 
 @Injectable()
@@ -30,4 +31,40 @@ export class AccountsService {
   async remove(id: string): Promise<void> {
     await this.prisma.account.delete({ where: { id } });
   }
+
+  async getSummary() {
+    const accounts = await this.prisma.account.findMany();
+
+    let assets = 0;
+    let liabilities = 0;
+
+    for (const acc of accounts) {
+      if (acc.type === 'ASSET') {
+        assets += Number(acc.balance);
+      } else if (acc.type === 'LIABILITY') {
+        liabilities += Number(acc.balance);
+      }
+    }
+
+    const netWorth = assets - liabilities;
+
+    return {
+      assets,
+      liabilities,
+      netWorth,
+    };
+  }
+
+async findOne(id: string) {
+  return this.prisma.account.findUnique({
+    where: { id },
+  });
+}
+
+async update(id: string, dto: UpdateAccountDto) {
+  return this.prisma.account.update({
+    where: { id },
+    data: dto,
+  });
+}
 }
