@@ -48,21 +48,21 @@ export default function EditAccountForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ marginTop: 20 }}>
-      <div>
-        <label className="text-sm text-gray-600">Name: </label>
+    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl space-y-6">
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-600">Name</label>
         <input
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           value={name}
           onChange={e => setName(e.target.value)}
           required
         />
       </div>
 
-      <div>
-        <label className="text-sm text-gray-600">Type: </label>
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-600">Type</label>
         <select
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           value={type}
           onChange={e => setType(e.target.value)}
           required
@@ -75,7 +75,7 @@ export default function EditAccountForm({
       <div className="flex flex-col gap-1">
         <label className="text-sm text-gray-600">Category</label>
         <select
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
         >
@@ -88,10 +88,10 @@ export default function EditAccountForm({
         </select>
       </div>
 
-      <div>
-        <label className="text-sm text-gray-600">Balance: </label>
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-600">Balance</label>
         <input
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           type="number"
           step="0.01"
           value={balance}
@@ -100,20 +100,16 @@ export default function EditAccountForm({
         />
       </div>
 
-      <div>
-        <label className="text-sm text-gray-600">Currency: </label>
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-600">Currency</label>
         <input
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           value={currency}
           onChange={e => setCurrency(e.target.value)}
         />
       </div>
 
-      <button
-        type="submit"
-        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        style={{ marginTop: 20 }}
-      > 
+      <button type="submit" className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
         Save Changes
       </button>
     </form>

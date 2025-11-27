@@ -35,23 +35,23 @@ export default function CreateAccountForm({ categories, onSuccess }: { categorie
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white shadow p-4 rounded space-y-4">
+    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl space-y-6">
       <h2>Create Account</h2>
 
-      <div>
-        <label className="text-sm text-gray-600">Name: </label>
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-600">Name</label>
         <input
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           value={name}
           onChange={e => setName(e.target.value)}
           required
         />
       </div>
 
-      <div>
-        <label className="text-sm text-gray-600">Type: </label>
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-600">Type</label>
         <select
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           value={type}
           onChange={e => setType(e.target.value)}
           required
@@ -64,7 +64,7 @@ export default function CreateAccountForm({ categories, onSuccess }: { categorie
       <div className="flex flex-col gap-1">
         <label className="text-sm text-gray-600">Category</label>
         <select
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
         >
@@ -77,10 +77,10 @@ export default function CreateAccountForm({ categories, onSuccess }: { categorie
         </select>
       </div>
 
-      <div>
-        <label className="text-sm text-gray-600">Balance: </label>
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-600">Balance</label>
         <input
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           type="number"
           step="0.01"
           value={balance}
@@ -89,10 +89,10 @@ export default function CreateAccountForm({ categories, onSuccess }: { categorie
         />
       </div>
 
-      <div>
-        <label className="text-sm text-gray-600">Currency: </label>
+      <div className="flex flex-col gap-1">
+        <label className="text-sm text-gray-600">Currency</label>
         <input
-          className="border rounded px-2 py-1"
+          className="border rounded-lg px-3 py-2"
           value={currency}
           onChange={e => setCurrency(e.target.value)}
         />
@@ -100,7 +100,7 @@ export default function CreateAccountForm({ categories, onSuccess }: { categorie
 
       <button
         type="submit"
-        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
       >
         Create Account
       </button>

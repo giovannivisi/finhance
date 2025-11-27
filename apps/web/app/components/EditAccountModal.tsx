@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Modal from "./Modal";
-import EditAccountForm from "./EditAccountForm";
+import EditAccountForm from "@components/EditAccountForm";
 
 export default function EditAccountModal({
   accountId,

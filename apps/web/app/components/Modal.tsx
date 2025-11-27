@@ -13,10 +13,10 @@ export default function Modal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded shadow-lg p-6 w-full max-w-md relative">
+      <div className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-md relative">
         <button
           onClick={onClose}
-          className="absolute top-2 right-2 text-gray-500 hover:text-black"
+          className="absolute top-2 right-2 text-gray-500 hover:text-black rounded-full p-1"
         >
           ✕
         </button>

@@ -4,8 +4,7 @@ import { useState } from "react";
 import CreateAccountModal from "@components/CreateAccountModal";
 import EditAccountModal from "@components/EditAccountModal";
 import DeleteAccountButton from "@components/DeleteAccountButton";
-import AddAccountButton from "@components/AddAccountButton";
-import Header from "@components/Header";
+import { formatCurrency } from "@lib/format";
 import HeaderAddButton from "./HeaderAddButton";
 import SectionHeader from "@components/SectionHeader";
 
@@ -20,9 +19,11 @@ type Account = {
 export default function DashboardClient({
   grouped,
   categories,
+  categoryTotals,
 }: {
   grouped: Record<string, Account[]>;
   categories: any[];
+  categoryTotals: { category: string; total: number }[];
 }) {
   const [editAccountId, setEditAccountId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -31,6 +32,25 @@ export default function DashboardClient({
 
   return (
     <>
+    <SectionHeader title="Category Totals" />
+
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {categoryTotals.map(({ category, total }) => (
+        <div
+          key={category}
+          className="bg-white shadow rounded-2xl p-4 text-center border border-gray-100"
+        >
+          <p className="text-sm text-gray-600 font-medium">{category}</p>
+          <p
+            className={`text-xl font-semibold ${
+              total < 0 ? "text-red-600" : "text-green-600"
+            }`}
+          >
+            {formatCurrency(total)}
+          </p>
+        </div>
+      ))}
+    </div>
     <SectionHeader
         title="Accounts"
         action={<HeaderAddButton onClick={() => setCreateOpen(true)} />}
@@ -45,12 +65,12 @@ export default function DashboardClient({
               {grouped[category].map((acc) => (
                 <li
                   key={acc.id}
-                  className="bg-white shadow rounded p-4 flex items-center justify-between"
+                  className="bg-white shadow rounded-2xl p-4 flex items-center justify-between border border-gray-100"
                 >
                   <div>
                     <p className="font-medium">{acc.name}</p>
                     <p className="text-sm text-gray-500">
-                      {acc.type} — {acc.balance}
+                      {acc.type} — {formatCurrency(acc.balance)}
                     </p>
                   </div>
 
