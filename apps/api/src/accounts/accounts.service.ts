@@ -25,6 +25,7 @@ export class AccountsService {
         type,
         balance,
         currency: currency ?? 'EUR',
+        categoryId: dto.categoryId ?? null,
       },
     });
   }

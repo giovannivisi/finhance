@@ -19,4 +19,8 @@ export class CreateAccountDto {
   @IsOptional()
   @IsString()
   currency?: string; // default handled by Prisma as "EUR"
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
 }

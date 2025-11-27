@@ -70,7 +70,6 @@ export default function EditAccountForm({ account, categories }: { account: any;
           className="border rounded px-2 py-1"
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
-          required
         >
           <option value="">No category</option>
           {categories.map((c) => (
