@@ -1,23 +1,23 @@
 "use client";
 
-interface DeleteAccountButtonProps {
+interface DeleteAssetButtonProps {
   id: string;
 }
 
-export default function DeleteAccountButton({ id }: DeleteAccountButtonProps) {
+export default function DeleteAssetButton({ id }: DeleteAssetButtonProps) {
   async function handleDelete() {
-    const confirmed = confirm("Are you sure you want to delete this account?");
+    const confirmed = confirm("Are you sure you want to delete this asset?");
     if (!confirmed) return;
 
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/accounts/${id}`,
+      `${process.env.NEXT_PUBLIC_API_URL}/assets/${id}`,
       {
         method: "DELETE",
       }
     );
 
     if (!res.ok) {
-      alert("Error deleting account");
+      alert("Error deleting asset");
       return;
     }
 

@@ -5,8 +5,8 @@ import DashboardClient from "@components/DashboardClient";
 import { formatCurrency } from "@lib/format";
 
 export default async function Home() {
-  const accounts = await api<any[]>("/accounts");
-  type Account = {
+  const assets = await api<any[]>("/assets");
+  type Asset = {
     id: string;
     name: string;
     type: string;
@@ -14,11 +14,11 @@ export default async function Home() {
     category?: { name: string } | null;
     // You can add more fields if needed
   };
-  const grouped: Record<string, Account[]> = accounts.reduce(
-    (acc: Record<string, Account[]>, account: Account) => {
-      const categoryName = account.category?.name || "Unassigned";
+  const grouped: Record<string, Asset[]> = assets.reduce(
+    (acc: Record<string, Asset[]>, asset: Asset) => {
+      const categoryName = asset.category?.name || "Unassigned";
       if (!acc[categoryName]) acc[categoryName] = [];
-      acc[categoryName].push(account);
+      acc[categoryName].push(asset);
       return acc;
     },
     {}
@@ -33,7 +33,7 @@ export default async function Home() {
   return { category, total };
 });
   categoryTotals.sort((a, b) => b.total - a.total);
-  const summary = await api<{ assets: number; liabilities: number; netWorth: number }>("/accounts/summary");
+  const summary = await api<{ assets: number; liabilities: number; netWorth: number }>("/assets/summary");
   const categories = await api<any[]>("/categories");
 
   return (

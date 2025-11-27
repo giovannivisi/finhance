@@ -1,54 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
-export default function EditAccountForm({
-  account,
-  categories,
-  onSuccess,
-}: {
-  account: any;
-  categories: any[];
-  onSuccess?: () => void;
-}) {
-  const router = useRouter();
-
-  const [name, setName] = useState(account.name);
-  const [type, setType] = useState(account.type);
-  const [balance, setBalance] = useState(account.balance);
-  const [currency, setCurrency] = useState(account.currency);
-  const [categoryId, setCategoryId] = useState(account.categoryId || "");
+export default function CreateAssetForm({ categories, onSuccess }: { categories: any[], onSuccess?: () => void }) {
+  const [name, setName] = useState("");
+  const [type, setType] = useState("ASSET");
+  const [balance, setBalance] = useState("");
+  const [currency, setCurrency] = useState("EUR");
+  const [categoryId, setCategoryId] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/accounts/${account.id}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          type,
-          balance: Number(balance),
-          currency,
-          categoryId: categoryId || null,
-        }), 
-      }
-    );
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/assets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        type,
+        balance: Number(balance),
+        currency,
+        categoryId: categoryId || null,
+      }),
+    });
 
     if (!res.ok) {
-      alert("Error updating account");
+      alert("Error creating asset");
       return;
     }
 
+    // Refresh the page so new asset shows up
     if (onSuccess) onSuccess();
     window.location.reload();
   }
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl space-y-6">
+      <h2>Create Asset</h2>
+
       <div className="flex flex-col gap-1">
         <label className="text-sm text-gray-600">Name</label>
         <input
@@ -109,8 +98,11 @@ export default function EditAccountForm({
         />
       </div>
 
-      <button type="submit" className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-        Save Changes
+      <button
+        type="submit"
+        className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+      >
+        Create Asset
       </button>
     </form>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-export default function AddAccountButton({ onClick }: { onClick: () => void }) {
+export default function AddAssetButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}

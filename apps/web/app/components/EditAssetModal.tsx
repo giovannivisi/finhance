@@ -2,43 +2,43 @@
 
 import { useEffect, useState } from "react";
 import Modal from "./Modal";
-import EditAccountForm from "@components/EditAccountForm";
+import EditAssetForm from "@components/EditAssetForm";
 
-export default function EditAccountModal({
-  accountId,
+export default function EditAssetModal({
+  assetId,
   open,
   onClose,
 }: {
-  accountId: string | null;
+  assetId: string | null;
   open: boolean;
   onClose: () => void;
 }) {
-  const [account, setAccount] = useState<any>(null);
+  const [asset, setAsset] = useState<any>(null);
   const [categories, setCategories] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!open || !accountId) return;
+    if (!open || !assetId) return;
 
     async function fetchData() {
       const base = process.env.NEXT_PUBLIC_API_URL;
-      const accRes = await fetch(`${base}/accounts/${accountId}`);
+      const accRes = await fetch(`${base}/assets/${assetId}`);
       const catRes = await fetch(`${base}/categories`);
-      setAccount(await accRes.json());
+      setAsset(await accRes.json());
       setCategories(await catRes.json());
     }
 
     fetchData();
-  }, [open, accountId]);
+  }, [open, assetId]);
 
   if (!open) return null;
 
   return (
     <Modal open={open} onClose={onClose}>
-      {!account ? (
+      {!asset ? (
         <p>Loading…</p>
       ) : (
-        <EditAccountForm
-          account={account}
+        <EditAssetForm
+          asset={asset}
           categories={categories}
           onSuccess={onClose}
         />

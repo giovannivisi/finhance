@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import CreateAccountModal from "@components/CreateAccountModal";
-import EditAccountModal from "@components/EditAccountModal";
-import DeleteAccountButton from "@components/DeleteAccountButton";
+import CreateAssetModal from "@/components/CreateAssetModal";
+import EditAssetModal from "@components/EditAssetModal";
+import DeleteAssetButton from "@components/DeleteAssetButton";
 import { formatCurrency } from "@lib/format";
 import HeaderAddButton from "@components/HeaderAddButton";
 import SectionHeader from "@components/SectionHeader";
 import DisclosureIcon from "@components/DisclosureIcon";
 import AllocationChart from "@components/AllocationChart";
 
-type Account = {
+type Asset = {
   id: string;
   name: string;
   balance: number;
@@ -23,12 +23,12 @@ export default function DashboardClient({
   categories,
   categoryTotals,
 }: {
-  grouped: Record<string, Account[]>;
+  grouped: Record<string, Asset[]>;
   categories: any[];
   categoryTotals: { category: string; total: number }[];
   
 }) {
-  const [editAccountId, setEditAccountId] = useState<string | null>(null);
+  const [editAssetId, setEditAssetId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
   const sortedCategories = Object.keys(grouped).sort();
@@ -80,10 +80,10 @@ function toggleCategory(category: string) {
       </div>
     </div>
     <SectionHeader
-        title="Accounts"
+        title="Assets"
         action={<HeaderAddButton onClick={() => setCreateOpen(true)} />}
      />
-      {/* Render grouped accounts */}
+      {/* Render grouped assets */}
       <div className="space-y-6">
         {sortedCategories.map((category) => (
           <div key={category}>
@@ -110,13 +110,13 @@ function toggleCategory(category: string) {
 
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setEditAccountId(acc.id)}
+                      onClick={() => setEditAssetId(acc.id)}
                       className="text-blue-600 hover:underline"
                     >
                       Edit
                     </button>
 
-                    <DeleteAccountButton id={acc.id} />
+                    <DeleteAssetButton id={acc.id} />
                   </div>
                 </li>
               ))}
@@ -126,13 +126,13 @@ function toggleCategory(category: string) {
         ))}
       </div>
 
-      <EditAccountModal
-        accountId={editAccountId}
-        open={Boolean(editAccountId)}
-        onClose={() => setEditAccountId(null)}
+      <EditAssetModal
+        assetId={editAssetId}
+        open={Boolean(editAssetId)}
+        onClose={() => setEditAssetId(null)}
       />
 
-      <CreateAccountModal
+      <CreateAssetModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         categories={categories}

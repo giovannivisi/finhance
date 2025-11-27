@@ -1,43 +1,53 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-export default function CreateAccountForm({ categories, onSuccess }: { categories: any[], onSuccess?: () => void }) {
-  const [name, setName] = useState("");
-  const [type, setType] = useState("ASSET");
-  const [balance, setBalance] = useState("");
-  const [currency, setCurrency] = useState("EUR");
-  const [categoryId, setCategoryId] = useState("");
+export default function EditAssetForm({
+  asset,
+  categories,
+  onSuccess,
+}: {
+  asset: any;
+  categories: any[];
+  onSuccess?: () => void;
+}) {
+  const router = useRouter();
 
+  const [name, setName] = useState(asset.name);
+  const [type, setType] = useState(asset.type);
+  const [balance, setBalance] = useState(asset.balance);
+  const [currency, setCurrency] = useState(asset.currency);
+  const [categoryId, setCategoryId] = useState(asset.categoryId || "");
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/accounts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        type,
-        balance: Number(balance),
-        currency,
-        categoryId: categoryId || null,
-      }),
-    });
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/assets/${asset.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          type,
+          balance: Number(balance),
+          currency,
+          categoryId: categoryId || null,
+        }), 
+      }
+    );
 
     if (!res.ok) {
-      alert("Error creating account");
+      alert("Error updating asset");
       return;
     }
 
-    // Refresh the page so new account shows up
     if (onSuccess) onSuccess();
     window.location.reload();
   }
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl space-y-6">
-      <h2>Create Account</h2>
-
       <div className="flex flex-col gap-1">
         <label className="text-sm text-gray-600">Name</label>
         <input
@@ -98,11 +108,8 @@ export default function CreateAccountForm({ categories, onSuccess }: { categorie
         />
       </div>
 
-      <button
-        type="submit"
-        className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-      >
-        Create Account
+      <button type="submit" className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+        Save Changes
       </button>
     </form>
   );

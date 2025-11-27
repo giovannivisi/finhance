@@ -1,5 +1,5 @@
 import { api } from "@lib/api";
-import EditAccountForm from "@components/EditAccountForm";
+import EditAccountForm from "@/components/EditAssetForm";
 
 export default async function EditAccountPage(props: {
   params: Promise<{ id: string }>

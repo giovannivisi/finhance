@@ -1,9 +1,9 @@
 "use client";
 
 import Modal from "./Modal";
-import CreateAccountForm from "./CreateAccountForm";
+import CreateAssetForm from "./CreateAssetForm";
 
-export default function CreateAccountModal({
+export default function CreateAssetModal({
   open,
   onClose,
   categories,
@@ -14,7 +14,7 @@ export default function CreateAccountModal({
 }) {
   return (
     <Modal open={open} onClose={onClose}>
-      <CreateAccountForm categories={categories} onSuccess={onClose} />
+      <CreateAssetForm categories={categories} onSuccess={onClose} />
     </Modal>
   );
 }
