@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import CreateAccountModal from "@components/CreateAccountModal";
 import EditAccountModal from "@components/EditAccountModal";
 import DeleteAccountButton from "@components/DeleteAccountButton";
 import { formatCurrency } from "@lib/format";
-import HeaderAddButton from "./HeaderAddButton";
+import HeaderAddButton from "@components/HeaderAddButton";
 import SectionHeader from "@components/SectionHeader";
+import DisclosureIcon from "@components/DisclosureIcon";
+import AllocationChart from "@components/AllocationChart";
 
 type Account = {
   id: string;
@@ -24,32 +26,58 @@ export default function DashboardClient({
   grouped: Record<string, Account[]>;
   categories: any[];
   categoryTotals: { category: string; total: number }[];
+  
 }) {
   const [editAccountId, setEditAccountId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
   const sortedCategories = Object.keys(grouped).sort();
+
+  useEffect(() => {
+  const initialState: Record<string, boolean> = {};
+  Object.keys(grouped).forEach((cat) => {
+    initialState[cat] = true;
+  });
+  setOpenCategories(initialState);
+}, [grouped]);
+
+function toggleCategory(category: string) {
+  setOpenCategories((prev) => ({
+    ...prev,
+    [category]: !prev[category],
+  }));
+}
+  
 
   return (
     <>
-    <SectionHeader title="Category Totals" />
+    <SectionHeader title="Allocation" />
 
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      {categoryTotals.map(({ category, total }) => (
-        <div
-          key={category}
-          className="bg-white shadow rounded-2xl p-4 text-center border border-gray-100"
-        >
-          <p className="text-sm text-gray-600 font-medium">{category}</p>
-          <p
-            className={`text-xl font-semibold ${
-              total < 0 ? "text-red-600" : "text-green-600"
-            }`}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      
+      {/* Pie Chart */}
+      <div className="bg-white shadow rounded-2xl p-4">
+        <AllocationChart data={categoryTotals} />
+      </div>
+
+      {/* Category Totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {categoryTotals.map(({ category, total }) => (
+          <div
+            key={category}
+            className="bg-white shadow rounded-2xl p-4 text-center"
           >
-            {formatCurrency(total)}
-          </p>
-        </div>
-      ))}
+            <p className="text-sm text-gray-600 font-medium">{category}</p>
+            <p
+              className={`text-xl font-semibold ${
+                total < 0 ? "text-red-600" : "text-green-600"
+              }`}
+            >
+              {formatCurrency(total)}
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
     <SectionHeader
         title="Accounts"
@@ -59,9 +87,15 @@ export default function DashboardClient({
       <div className="space-y-6">
         {sortedCategories.map((category) => (
           <div key={category}>
-            <h3 className="text-lg font-semibold mb-2">{category}</h3>
-
-            <ul className="space-y-2">
+            <button
+              onClick={() => toggleCategory(category)}
+              className="flex items-center justify-between w-full text-left"
+            >
+              <span className="text-lg font-semibold">{category}</span>
+              <DisclosureIcon open={openCategories[category]} />
+            </button>
+            {openCategories[category] && (
+              <ul className="space-y-2 mt-2 transition-all duration-200 ease-in-out">
               {grouped[category].map((acc) => (
                 <li
                   key={acc.id}
@@ -86,7 +120,8 @@ export default function DashboardClient({
                   </div>
                 </li>
               ))}
-            </ul>
+             </ul>
+            )}
           </div>
         ))}
       </div>
