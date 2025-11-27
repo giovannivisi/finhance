@@ -13,11 +13,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Account {
+model Asset {
   id         String     @id @default(cuid())
   userId     String?
   name       String
-  type       AccountType
+  type       AssetType
   balance    Decimal    @db.Decimal(14, 2)
   currency   String     @default("EUR")
   categoryId String?
@@ -26,7 +26,7 @@ model Account {
   updatedAt  DateTime   @updatedAt
 }
 
-enum AccountType {
+enum AssetType {
   ASSET
   LIABILITY
 }
@@ -34,5 +34,5 @@ enum AccountType {
 model Category {
   id        String    @id @default(cuid())
   name      String    @unique
-  accounts  Account[]
+  assets    Asset[]
 }

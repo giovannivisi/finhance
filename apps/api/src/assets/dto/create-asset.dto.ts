@@ -1,7 +1,7 @@
 import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
-import { AccountType } from '@prisma/client';
+import { AssetType } from '@prisma/client';
 
-export class CreateAccountDto {
+export class CreateAssetDto {
   @IsOptional()
   @IsString()
   userId?: string;
@@ -10,8 +10,8 @@ export class CreateAccountDto {
   @IsNotEmpty()
   name!: string;
 
-  @IsEnum(AccountType)
-  type!: AccountType; // "ASSET" | "LIABILITY"
+  @IsEnum(AssetType)
+  type!: AssetType; // "ASSET" | "LIABILITY"
 
   @IsNumber()
   balance!: number;
