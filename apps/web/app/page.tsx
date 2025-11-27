@@ -3,6 +3,7 @@ import Header from "@components/Header";
 import CreateAccountForm from "@components/CreateAccountForm";
 import DeleteAccountButton from "@components/DeleteAccountButton";
 import { api } from "@lib/api";
+import DashboardClient from "@components/DashboardClient";
 
 export default async function Home() {
   const accounts = await api<any[]>("/accounts");
@@ -52,39 +53,8 @@ export default async function Home() {
 
         <h2 className="text-2xl font-semibold mt-6">Accounts</h2>
 
-        <div className="space-y-6">
-          {Object.entries(grouped).map(([category, items]) => (
-            <div key={category}>
-              <h3 className="text-lg font-semibold mb-2">{category}</h3>
+        <DashboardClient grouped={grouped} categories={categories} />
 
-              <ul className="space-y-2">
-                {items.map((acc) => (
-                  <li
-                    key={acc.id}
-                    className="bg-white shadow rounded p-4 flex items-center justify-between"
-                  >
-                    <div>
-                      <p className="font-medium">{acc.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {acc.type} — {acc.balance}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <a
-                        href={`/accounts/${acc.id}/edit`}
-                        className="text-blue-600 hover:underline"
-                      >
-                        Edit
-                      </a>
-                      <DeleteAccountButton id={acc.id} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
       </Container>
     </>
   );

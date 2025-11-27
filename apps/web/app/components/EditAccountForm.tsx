@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function EditAccountForm({ account, categories }: { account: any; categories: any[] }) {
+export default function EditAccountForm({
+  account,
+  categories,
+  onSuccess,
+}: {
+  account: any;
+  categories: any[];
+  onSuccess?: () => void;
+}) {
   const router = useRouter();
 
   const [name, setName] = useState(account.name);
@@ -35,8 +43,8 @@ export default function EditAccountForm({ account, categories }: { account: any;
       return;
     }
 
-    router.push("/");
-    router.refresh();
+    if (onSuccess) onSuccess();
+    window.location.reload();
   }
 
   return (
