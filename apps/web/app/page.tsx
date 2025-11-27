@@ -1,7 +1,5 @@
 import Container from "@components/Container";
 import Header from "@components/Header";
-import CreateAccountForm from "@components/CreateAccountForm";
-import DeleteAccountButton from "@components/DeleteAccountButton";
 import { api } from "@lib/api";
 import DashboardClient from "@components/DashboardClient";
 
@@ -26,7 +24,6 @@ export default async function Home() {
   );
   const summary = await api<{ assets: number; liabilities: number; netWorth: number }>("/accounts/summary");
   const categories = await api<any[]>("/categories");
-  const sortedCategories = Object.keys(grouped).sort();
 
   return (
     <>
@@ -48,10 +45,6 @@ export default async function Home() {
             <p className="text-xl font-bold">{summary.netWorth}</p>
           </div>
         </div>
-
-        <CreateAccountForm categories={categories} />
-
-        <h2 className="text-2xl font-semibold mt-6">Accounts</h2>
 
         <DashboardClient grouped={grouped} categories={categories} />
 

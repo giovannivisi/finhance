@@ -1,8 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import EditAccountModal from "./EditAccountModal";
-import DeleteAccountButton from "./DeleteAccountButton";
+import CreateAccountModal from "@components/CreateAccountModal";
+import EditAccountModal from "@components/EditAccountModal";
+import DeleteAccountButton from "@components/DeleteAccountButton";
+import AddAccountButton from "@components/AddAccountButton";
+import Header from "@components/Header";
+import HeaderAddButton from "./HeaderAddButton";
+import SectionHeader from "@components/SectionHeader";
 
 type Account = {
   id: string;
@@ -20,11 +25,16 @@ export default function DashboardClient({
   categories: any[];
 }) {
   const [editAccountId, setEditAccountId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const sortedCategories = Object.keys(grouped).sort();
 
   return (
     <>
+    <SectionHeader
+        title="Accounts"
+        action={<HeaderAddButton onClick={() => setCreateOpen(true)} />}
+     />
       {/* Render grouped accounts */}
       <div className="space-y-6">
         {sortedCategories.map((category) => (
@@ -66,6 +76,13 @@ export default function DashboardClient({
         open={Boolean(editAccountId)}
         onClose={() => setEditAccountId(null)}
       />
+
+      <CreateAccountModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        categories={categories}
+      />
+    
     </>
   );
 }

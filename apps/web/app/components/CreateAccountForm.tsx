@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export default function CreateAccountForm({ categories }: { categories: any[] }) {
+export default function CreateAccountForm({ categories, onSuccess }: { categories: any[], onSuccess?: () => void }) {
   const [name, setName] = useState("");
   const [type, setType] = useState("ASSET");
   const [balance, setBalance] = useState("");
@@ -30,6 +30,7 @@ export default function CreateAccountForm({ categories }: { categories: any[] })
     }
 
     // Refresh the page so new account shows up
+    if (onSuccess) onSuccess();
     window.location.reload();
   }
 
