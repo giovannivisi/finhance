@@ -3,38 +3,43 @@ import Header from "@components/Header";
 import { api } from "@lib/api";
 import DashboardClient from "@components/DashboardClient";
 import { formatCurrency } from "@lib/format";
+import { ApiAsset } from "@lib/api-types";
 
 export default async function Home() {
-  const assets = await api<any[]>("/assets");
-  type Asset = {
-    id: string;
-    name: string;
-    type: string;
-    balance: number;
-    category?: { name: string } | null;
-    // You can add more fields if needed
-  };
-  const grouped: Record<string, Asset[]> = assets.reduce(
-    (acc: Record<string, Asset[]>, asset: Asset) => {
-      const categoryName = asset.category?.name || "Unassigned";
-      if (!acc[categoryName]) acc[categoryName] = [];
-      acc[categoryName].push(asset);
+  const assets = await api<ApiAsset[]>("/assets");
+  const assetList = assets.filter(a => a.type === "ASSET");
+  const liabilityList = assets.filter(a => a.type === "LIABILITY");
+
+  const grouped: Record<string, ApiAsset[]> = assets.reduce(
+    (acc, asset) => {
+      const groupKey = asset.type === "ASSET"
+        ? asset.kind || "Unassigned"
+        : asset.liabilityKind || "Unassigned";
+      if (!acc[groupKey]) acc[groupKey] = [];
+      acc[groupKey].push(asset);
       return acc;
     },
-    {}
+    {} as Record<string, ApiAsset[]>
   );
-  const categoryTotals = Object.entries(grouped).map(([category, items]) => {
-    const total = items.reduce(
-      (sum, acc) =>
-        sum +
-        (acc.type === "LIABILITY" ? -Number(acc.balance) : Number(acc.balance)),
-      0
-    );
-  return { category, total };
-});
-  categoryTotals.sort((a, b) => b.total - a.total);
+
   const summary = await api<{ assets: number; liabilities: number; netWorth: number }>("/assets/summary");
   const categories = await api<any[]>("/categories");
+
+  const kindTotals = assetList.reduce((acc, asset) => {
+    const value =
+      asset.quantity && asset.unitPrice
+        ? asset.quantity * asset.unitPrice
+        : Number(asset.balance);
+
+    const kind = asset.kind ?? "Unassigned";
+    acc[kind] = (acc[kind] || 0) + value;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  const kindTotalsArray = Object.entries(kindTotals).map(([kind, total]) => ({
+    kind,
+    total,
+  }));
 
   return (
     <>
@@ -59,8 +64,8 @@ export default async function Home() {
 
         <DashboardClient
           grouped={grouped}
-          categories={categories}
-          categoryTotals={categoryTotals}
+          kindTotalsArray={kindTotalsArray}
+          liabilities={liabilityList}
         />
 
       </Container>

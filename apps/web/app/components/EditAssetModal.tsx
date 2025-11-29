@@ -14,7 +14,6 @@ export default function EditAssetModal({
   onClose: () => void;
 }) {
   const [asset, setAsset] = useState<any>(null);
-  const [categories, setCategories] = useState<any[]>([]);
 
   useEffect(() => {
     if (!open || !assetId) return;
@@ -22,9 +21,7 @@ export default function EditAssetModal({
     async function fetchData() {
       const base = process.env.NEXT_PUBLIC_API_URL;
       const accRes = await fetch(`${base}/assets/${assetId}`);
-      const catRes = await fetch(`${base}/categories`);
       setAsset(await accRes.json());
-      setCategories(await catRes.json());
     }
 
     fetchData();
@@ -39,7 +36,6 @@ export default function EditAssetModal({
       ) : (
         <EditAssetForm
           asset={asset}
-          categories={categories}
           onSuccess={onClose}
         />
       )}

@@ -3,16 +3,8 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import type { PieLabelRenderProps } from "recharts";
 import { formatCurrency } from "@lib/format";
+import { COLORS } from "@lib/api-types";
 
-const COLORS = [
-  "#4F46E5", // Indigo
-  "#16A34A", // Green
-  "#DC2626", // Red
-  "#F59E0B", // Amber
-  "#0EA5E9", // Sky
-  "#EC4899", // Pink
-  "#7C3AED", // Violet
-];
 const renderLabel = (props: PieLabelRenderProps) => {
   const { name, percent, x, y } = props;
   if (!percent || percent === 0) return null;
@@ -32,21 +24,24 @@ const renderLabel = (props: PieLabelRenderProps) => {
 
 export default function AllocationChart({
   data,
+  size = 400,
 }: {
-  data: { category: string; total: number }[];
+  data: { label: string; total: number }[];
+  size?: number;
 }) {
   const cleaned = data.filter((d) => d.total > 0);
   const isSingle = cleaned.length === 1;
   const single = isSingle ? cleaned[0] : null;
 
-  return (
-    <div className="w-full h-64">
-      <ResponsiveContainer>
-        <PieChart>
+return (
+  <div className="flex items-center justify-center w-full">
+    <ResponsiveContainer width={size} height={size}>
+      <PieChart>
+        ...
           <Pie
             data={cleaned}
             dataKey="total"
-            nameKey="category"
+            nameKey="label"
             cx="50%"
             cy="50%"
             innerRadius={50}
@@ -55,7 +50,10 @@ export default function AllocationChart({
             strokeWidth={2}
           >
             {cleaned.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              <Cell
+                key={`cell-${index}`}
+                fill={COLORS[entry.label as keyof typeof COLORS] || "#6B7280"}
+              />
             ))}
           </Pie>
 
@@ -67,7 +65,7 @@ export default function AllocationChart({
               dominantBaseline="middle"
               style={{ fontSize: "16px", fontWeight: 600, fill: "#111827" }}
             >
-              {single.category} {" "}
+              {single.label} {" "}
               {((single.total / cleaned.reduce((s, d) => s + d.total, 0)) * 100).toFixed(0)}%
             </text>
           )}

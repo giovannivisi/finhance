@@ -1,16 +1,16 @@
 import { api } from "@lib/api";
-import EditAccountForm from "@/components/EditAssetForm";
+import EditAssettForm from "@components/EditAssetForm";
 
-export default async function EditAccountPage(props: {
+export default async function EditAssettPage(props: {
   params: Promise<{ id: string }>
 }) {
   const { id } = await props.params; // Important!
-  const account = await api(`/accounts/${id}`);
-  const categories = await api<any[]>("/categories");
+  const asset = await api(`/assets/${id}`);
+
 
   return (
     <div>
-      <EditAccountForm account={account} categories={categories} />
+      <EditAssettForm asset={asset}  />
     </div>
   );
 }
