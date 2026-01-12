@@ -18,7 +18,6 @@
       "@/*": ["./src/*"],
       "@prisma/*": ["./src/prisma/*"],
       "@assets/*": ["src/assets/*"],
-      "@categories/*": ["./src/categories/*"],
       "@prices/*": ["./src/prices/*"],
     },
     "incremental": true,
