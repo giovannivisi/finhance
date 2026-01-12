@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ASSET_KIND_CONFIG, LIABILITY_CONFIG } from "@lib/api-types";
+import { ASSET_KIND_CONFIG, EXCHANGE_SUFFIXES, LIABILITY_CONFIG } from "@lib/api-types";
 
 
 export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void }) {
@@ -16,6 +16,7 @@ export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void
   const [unitPrice, setUnitPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [order, setOrder] = useState("");
+  const [exchange, setExchange] = useState("");
 
 
   const isAsset = type === "ASSET";
@@ -36,7 +37,8 @@ export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void
         type,
         currency,
         categoryId: categoryId || null,
-        ticker: isLiability ? null : (config.showTicker ? ticker || null : null),
+        ticker: isLiability ? null : (config.showTicker ? ticker : null),
+        exchange: isLiability ? null : (config.showTicker ? exchange : null),
         quantity: isLiability ? null : (config.showQuantity && quantity ? Number(quantity) : null),
         unitPrice: isLiability ? null : (config.showUnitPrice && unitPrice ? Number(unitPrice) : null),
         balance: isLiability
@@ -173,6 +175,23 @@ export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void
             value={ticker}
             onChange={(e) => setTicker(e.target.value)}
           />
+        </div>
+      )}
+
+      {config.showTicker && (
+        <div className="flex flex-col gap-1">
+          <label className="text-sm text-gray-600">Exchange</label>
+          <select
+            className="border rounded-lg px-3 py-2"
+            value={exchange}
+            onChange={e => setExchange(e.target.value)}
+          >
+            {EXCHANGE_SUFFIXES.map(ex => (
+              <option key={ex.value} value={ex.value}>
+                {ex.label}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

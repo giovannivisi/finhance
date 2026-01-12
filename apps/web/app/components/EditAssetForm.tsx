@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { ASSET_KIND_CONFIG, LIABILITY_CONFIG } from "@lib/api-types";
+import { ASSET_KIND_CONFIG, EXCHANGE_SUFFIXES, LIABILITY_CONFIG } from "@lib/api-types";
 
 export default function EditAssetForm({
   asset,
@@ -11,24 +10,40 @@ export default function EditAssetForm({
   asset: any;
   onSuccess?: () => void;
 }) {
-  const router = useRouter();
+  const toInputString = (v: any) => {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "string" || typeof v === "number") return String(v);
+    // Prisma Decimal or similar objects often implement toString()
+    try {
+      const s = v.toString?.();
+      return typeof s === "string" && s !== "[object Object]" ? s : "";
+    } catch {
+      return "";
+    }
+  };
 
   const [name, setName] = useState(asset.name);
   const [type, setType] = useState(asset.type);
   const [currency, setCurrency] = useState(asset.currency);
   const [categoryId, setCategoryId] = useState(asset.categoryId || "");
-  const [kind, setKind] = useState(asset.kind);
-  const [ticker, setTicker] = useState(asset.ticker || "");
-  const [quantity, setQuantity] = useState(asset.quantity || "");
-  const [unitPrice, setUnitPrice] = useState(asset.unitPrice || "");
-  const [notes, setNotes] = useState(asset.notes || "");
-  const [order, setOrder] = useState(asset.order || "");
+  const [kind, setKind] = useState(asset.type === "LIABILITY"
+                                      ? asset.liabilityKind ?? ""
+                                      : asset.kind ?? ""
+                                  );
+  const [ticker, setTicker] = useState(asset.ticker ?? "");
+  const [quantity, setQuantity] = useState(toInputString(asset.quantity));
+  const [unitPrice, setUnitPrice] = useState(toInputString(asset.unitPrice));
+  const [notes, setNotes] = useState(asset.notes ?? "");
+  const [order, setOrder] = useState(asset.order != null ? String(asset.order) : "");
+  const [exchange, setExchange] = useState(asset.exchange ?? "");
+
+
   const isAsset = type === "ASSET";
   const isLiability = type === "LIABILITY";
   const config = isAsset
     ? ASSET_KIND_CONFIG[kind as keyof typeof ASSET_KIND_CONFIG] ?? ASSET_KIND_CONFIG["CASH"]
     : LIABILITY_CONFIG[kind as keyof typeof LIABILITY_CONFIG] ?? LIABILITY_CONFIG["TAX"];
-  const [balance, setBalance] = useState(asset.balance || "");
+  const [balance, setBalance] = useState(toInputString(asset.balance));
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -45,11 +60,22 @@ export default function EditAssetForm({
           kind: isLiability ? null : kind,
           liabilityKind: isLiability ? kind : null,
           ticker: isLiability ? null : (config.showTicker ? ticker || null : null),
-          quantity: isLiability ? null : (config.showQuantity && quantity ? Number(quantity) : null),
-          unitPrice: isLiability ? null : (config.showUnitPrice && unitPrice ? Number(unitPrice) : null),
+          exchange: isLiability ? null : (config.showTicker ? exchange : null),
+          quantity: isLiability
+            ? null
+            : (config.showQuantity && quantity !== "" && Number.isFinite(parseFloat(quantity))
+                ? parseFloat(quantity)
+                : null),
+          unitPrice: isLiability
+            ? null
+            : (config.showUnitPrice && unitPrice !== "" && Number.isFinite(parseFloat(unitPrice))
+                ? parseFloat(unitPrice)
+                : null),
           balance: isLiability
-            ? Number(balance)
-            : (config.showBalance ? (balance ? Number(balance) : null) : null),
+            ? (balance !== "" && Number.isFinite(parseFloat(balance)) ? parseFloat(balance) : null)
+            : (config.showBalance
+                ? (balance !== "" && Number.isFinite(parseFloat(balance)) ? parseFloat(balance) : null)
+                : null),
           notes: notes || null,
           order: order ? Number(order) : null,
         }),
@@ -82,7 +108,7 @@ export default function EditAssetForm({
           <label className="text-sm text-gray-600">Kind</label>
           <select
             className="border rounded-lg px-3 py-2"
-            value={kind}
+            value={kind || ""}
             onChange={(e) => setKind(e.target.value)}
           >
             <option value="TAX">TAX</option>
@@ -97,7 +123,7 @@ export default function EditAssetForm({
           <label className="text-sm text-gray-600">Kind</label>
           <select
             className="border rounded-lg px-3 py-2"
-            value={kind}
+            value={kind || ""}
             onChange={(e) => setKind(e.target.value)}
           >
             <option value="CASH">CASH</option>
@@ -133,6 +159,23 @@ export default function EditAssetForm({
             value={ticker}
             onChange={(e) => setTicker(e.target.value)}
           />
+        </div>
+      )}
+
+      {config.showTicker && (
+        <div className="flex flex-col gap-1">
+          <label className="text-sm text-gray-600">Exchange</label>
+          <select
+            className="border rounded-lg px-3 py-2"
+            value={exchange}
+            onChange={e => setExchange(e.target.value)}
+          >
+            {EXCHANGE_SUFFIXES.map(ex => (
+              <option key={ex.value} value={ex.value}>
+                {ex.label}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

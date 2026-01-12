@@ -50,6 +50,10 @@ export class CreateAssetDto {
   @IsString()
   ticker?: string;
 
+  @ValidateIf(a => a.type === "ASSET" && ["STOCK","BOND","CRYPTO"].includes(a.kind))
+  @IsString()
+  exchange?: string;
+
   @ValidateIf(a => a.type === "ASSET" && ["STOCK", "BOND", "CRYPTO"].includes(a.kind))
   @IsNumber()
   @IsPositive()

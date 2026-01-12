@@ -14,6 +14,7 @@ model Asset {
   kind         AssetKind?
   liabilityKind LiabilityKind?
   ticker      String?
+  exchange    String?
   quantity    Decimal?   @db.Decimal(20, 10)
   unitPrice   Decimal?   @db.Decimal(20, 10)
   notes       String?

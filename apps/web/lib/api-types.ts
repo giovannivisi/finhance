@@ -24,6 +24,16 @@ export const COLORS = {
   OTHER: "#4B5563"
 } as const;
 
+export const EXCHANGE_SUFFIXES = [
+  { label: "🇺🇸 United States", value: "" },
+  { label: "🇮🇹 Milan (BIT)", value: ".MI" },
+  { label: "🇬🇧 London (LSE)", value: ".L" },
+  { label: "🇩🇪 Xetra (DE)", value: ".DE" },
+  { label: "🇫🇷 Paris (EPA)", value: ".PA" },
+  { label: "🇪🇸 Madrid (BME)", value: ".MC" },
+  { label: "Crypto", value: "_CRYPTO_" }
+];
+
 export const ASSET_KIND_CONFIG = {
   CASH: {
     showBalance: true,

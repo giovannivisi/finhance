@@ -3,15 +3,62 @@ import { PrismaService } from '@prisma/prisma.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
 import { Asset, AssetType, Prisma } from '@prisma/client';
+import { PricesService } from '@prices/prices.service';
 
 @Injectable()
 export class AssetsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pricesService: PricesService
+  ) {}
+
+  private async computeCurrentValue(asset: Asset): Promise<number> {
+    const storedBalance = Number(asset.balance);
+
+    const isMarketAsset =
+      asset.type === 'ASSET' &&
+      ['STOCK', 'BOND', 'CRYPTO'].includes(asset.kind ?? '');
+
+    if (!isMarketAsset || !asset.ticker || !asset.quantity) {
+      return storedBalance;
+    }
+
+    const yahooTicker = asset.exchange === "_CRYPTO_"
+                          ? asset.ticker
+                          : `${asset.ticker}${asset.exchange ?? ''}`;
+
+    const livePrice = await this.pricesService.getLivePrice(yahooTicker);
+
+    if (livePrice != null) {
+      return Number(asset.quantity) * livePrice;
+    }
+
+    // fallback: stored unitPrice if Yahoo fails
+    if (asset.unitPrice) {
+      return Number(asset.quantity) * Number(asset.unitPrice);
+    }
+
+    return storedBalance;
+  }
 
   async findAll(): Promise<Asset[]> {
     return this.prisma.asset.findMany({
       orderBy: { createdAt: 'asc' },
     });
+  }
+  async findAllWithCurrentValue(): Promise<(Asset & { currentValue: number })[]> {
+    const assets = await this.prisma.asset.findMany({
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const values = await Promise.all(
+      assets.map(a => this.computeCurrentValue(a))
+    );
+
+    return assets.map((asset, idx) => ({
+      ...asset,
+      currentValue: values[idx],
+    }));
   }
 
   async create(dto: CreateAssetDto): Promise<Asset> {
@@ -31,6 +78,7 @@ export class AssetsService {
           // Null-out asset-only fields
           kind: null,
           ticker: null,
+          exchange: null,
           quantity: null,
           unitPrice: null,
 
@@ -58,6 +106,7 @@ export class AssetsService {
         kind: dto.kind!,
         liabilityKind: null,
         ticker: dto.ticker ?? null,
+        exchange: dto.exchange ?? null,
         quantity: dto.quantity ? new Prisma.Decimal(dto.quantity) : null,
         unitPrice: dto.unitPrice ? new Prisma.Decimal(dto.unitPrice) : null,
         balance: new Prisma.Decimal(computedBalance),
@@ -75,31 +124,37 @@ export class AssetsService {
 
   async getSummary() {
     const assets = await this.prisma.asset.findMany();
-    let ass = 0;
-    let liabilities = 0;
 
-    for (const asset of assets) {
+    // compute all values in parallel
+    const values = await Promise.all(
+      assets.map(a => this.computeCurrentValue(a))
+    );
+
+    let assetsTotal = 0;
+    let liabilitiesTotal = 0;
+
+    assets.forEach((asset, idx) => {
+      const value = values[idx];
+
       if (asset.type === 'ASSET') {
-        ass += Number(asset.balance);
-      } else if (asset.type === 'LIABILITY') {
-        liabilities += Number(asset.balance);
+        assetsTotal += value;
+      } else {
+        liabilitiesTotal += Number(asset.balance);
       }
-    }
-
-    const netWorth = ass - liabilities;
+    });
 
     return {
-      assets: ass,
-      liabilities,
-      netWorth,
+      assets: assetsTotal,
+      liabilities: liabilitiesTotal,
+      netWorth: assetsTotal - liabilitiesTotal,
     };
   }
 
-async findOne(id: string) {
-  return this.prisma.asset.findUnique({
-    where: { id },
-  });
-}
+  async findOne(id: string) {
+    return this.prisma.asset.findUnique({
+      where: { id },
+    });
+  }
 
   async update(id: string, dto: UpdateAssetDto) {
     const isLiability = dto.type === AssetType.LIABILITY;
@@ -111,11 +166,12 @@ async findOne(id: string) {
           name: dto.name,
           type: AssetType.LIABILITY,
           liabilityKind: dto.liabilityKind,
-          balance: dto.balance!,
+          balance: new Prisma.Decimal(dto.balance!),
 
           // Null-out asset fields
           kind: null,
           ticker: null,
+          exchange: null,
           quantity: null,
           unitPrice: null,
 
@@ -144,9 +200,10 @@ async findOne(id: string) {
         kind: dto.kind!,
         liabilityKind: null,
         ticker: dto.ticker ?? null,
-        quantity: dto.quantity ? dto.quantity : null,
-        unitPrice: dto.unitPrice ? dto.unitPrice : null,
-        balance: computedBalance,
+        exchange: dto.exchange ?? null,
+        quantity: dto.quantity ? new Prisma.Decimal(dto.quantity) : null,
+        unitPrice: dto.unitPrice ? new Prisma.Decimal(dto.unitPrice) : null,
+        balance: new Prisma.Decimal(computedBalance),
         notes: dto.notes ?? null,
         order: dto.order ?? 0,
         currency: dto.currency ?? 'EUR',
