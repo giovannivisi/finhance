@@ -14,6 +14,11 @@ export class AssetsController {
     return this.assetsService.findAll();
   }
 
+  @Get("with-values")
+  findAllWithValues() {
+    return this.assetsService.findAllWithCurrentValue();
+  }
+
   @Post()
   async create(@Body() dto: CreateAssetDto): Promise<Asset> {
     return this.assetsService.create(dto);

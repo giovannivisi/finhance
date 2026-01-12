@@ -11,6 +11,7 @@ export type ApiAsset = {
   notes?: string | null;
   order?: number | null;
   liabilityKind?: string | null;
+  currentValue?: number | null;
 };
 
 export const COLORS = {

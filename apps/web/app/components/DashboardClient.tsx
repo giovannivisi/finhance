@@ -146,9 +146,16 @@ function toggleCategory(category: string) {
                           </div>
 
                           <div className="flex items-center gap-4">
-                            <p className="text-lg font-semibold text-gray-900">
-                              {formatCurrency(asset.balance)}
-                            </p>
+                            <div className="flex flex-col items-end">
+                              <p className="text-lg font-semibold text-gray-900">
+                                {formatCurrency(asset.currentValue ?? asset.balance)}
+                              </p>
+                              {/* {asset.currentValue != null && asset.currentValue !== asset.balance && (
+                                <p className="text-xs text-gray-500">
+                                  Ref: {formatCurrency(asset.balance)}
+                                </p>
+                              )} */}
+                            </div>
 
                             <button
                               onClick={() => setEditAssetId(asset.id)}

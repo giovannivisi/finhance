@@ -6,7 +6,7 @@ import { formatCurrency } from "@lib/format";
 import { ApiAsset } from "@lib/api-types";
 
 export default async function Home() {
-  const assets = await api<ApiAsset[]>("/assets");
+  const assets = await api<ApiAsset[]>("/assets/with-values");
   const assetList = assets.filter(a => a.type === "ASSET");
   const liabilityList = assets.filter(a => a.type === "LIABILITY");
 
@@ -23,13 +23,9 @@ export default async function Home() {
   );
 
   const summary = await api<{ assets: number; liabilities: number; netWorth: number }>("/assets/summary");
-  const categories = await api<any[]>("/categories");
 
   const kindTotals = assetList.reduce((acc, asset) => {
-    const value =
-      asset.quantity && asset.unitPrice
-        ? asset.quantity * asset.unitPrice
-        : Number(asset.balance);
+    const value = Number(asset.currentValue ?? asset.balance ?? 0);
 
     const kind = asset.kind ?? "Unassigned";
     acc[kind] = (acc[kind] || 0) + value;
