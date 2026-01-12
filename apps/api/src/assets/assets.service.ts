@@ -84,7 +84,6 @@ export class AssetsService {
 
           notes: dto.notes ?? null,
           order: dto.order ?? 0,
-          categoryId: dto.categoryId ?? null,
         }
       });
     }
@@ -111,7 +110,6 @@ export class AssetsService {
         unitPrice: dto.unitPrice ? new Prisma.Decimal(dto.unitPrice) : null,
         balance: new Prisma.Decimal(computedBalance),
         currency: dto.currency ?? 'EUR',
-        categoryId: dto.categoryId ?? null,
         notes: dto.notes ?? null,
         order: dto.order ?? 0,
       }
@@ -178,7 +176,6 @@ export class AssetsService {
           notes: dto.notes ?? null,
           order: dto.order ?? 0,
           currency: dto.currency ?? 'EUR',
-          categoryId: dto.categoryId ?? null,
         }
       });
     }
@@ -207,7 +204,6 @@ export class AssetsService {
         notes: dto.notes ?? null,
         order: dto.order ?? 0,
         currency: dto.currency ?? 'EUR',
-        categoryId: dto.categoryId ?? null,
       }
     });
   }

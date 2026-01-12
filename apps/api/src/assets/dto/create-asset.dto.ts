@@ -42,10 +42,6 @@ export class CreateAssetDto {
   @IsString()
   currency?: string;
 
-  @IsOptional()
-  @IsString()
-  categoryId?: string;
-
   @ValidateIf(a => a.type === "ASSET" && ["STOCK","BOND","CRYPTO"].includes(a.kind))
   @IsString()
   ticker?: string;
