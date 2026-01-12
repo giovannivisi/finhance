@@ -25,7 +25,6 @@ export default function EditAssetForm({
   const [name, setName] = useState(asset.name);
   const [type, setType] = useState(asset.type);
   const [currency, setCurrency] = useState(asset.currency);
-  const [categoryId, setCategoryId] = useState(asset.categoryId || "");
   const [kind, setKind] = useState(asset.type === "LIABILITY"
                                       ? asset.liabilityKind ?? ""
                                       : asset.kind ?? ""
@@ -47,6 +46,32 @@ export default function EditAssetForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
+    const trimmedTicker = ticker.trim();
+
+    if (isLiability && balance.trim() === "") {
+      alert("Please enter an amount for the liability.");
+      return;
+    }
+
+    if (!isLiability) {
+      if (config.showTicker && trimmedTicker === "") {
+        alert("Please enter a ticker.");
+        return;
+      }
+      if (config.showQuantity && quantity.trim() === "") {
+        alert("Please enter a quantity.");
+        return;
+      }
+      if (config.showUnitPrice && unitPrice.trim() === "") {
+        alert("Please enter an average buy-in price.");
+        return;
+      }
+      if (config.showBalance && balance.trim() === "") {
+        alert("Please enter an amount.");
+        return;
+      }
+    }
+
     const res = await fetch(
       `${process.env.NEXT_PUBLIC_API_URL}/assets/${asset.id}`,
       {
@@ -56,7 +81,6 @@ export default function EditAssetForm({
           name,
           type: isLiability ? "LIABILITY" : "ASSET",
           currency,
-          categoryId: categoryId || null,
           kind: isLiability ? null : kind,
           liabilityKind: isLiability ? kind : null,
           ticker: isLiability ? null : (config.showTicker ? ticker || null : null),
@@ -72,10 +96,12 @@ export default function EditAssetForm({
                 ? parseFloat(unitPrice)
                 : null),
           balance: isLiability
-            ? (balance !== "" && Number.isFinite(parseFloat(balance)) ? parseFloat(balance) : null)
+            ? (balance !== "" && Number.isFinite(parseFloat(balance)) ? parseFloat(balance) : 0)
             : (config.showBalance
-                ? (balance !== "" && Number.isFinite(parseFloat(balance)) ? parseFloat(balance) : null)
-                : null),
+                ? (balance !== "" && Number.isFinite(parseFloat(balance)) ? parseFloat(balance) : 0)
+                : (quantity !== "" && unitPrice !== ""
+                    ? parseFloat(quantity) * parseFloat(unitPrice)
+                    : 0)),
           notes: notes || null,
           order: order ? Number(order) : null,
         }),
@@ -83,7 +109,8 @@ export default function EditAssetForm({
     );
 
     if (!res.ok) {
-      alert("Error updating asset");
+      const text = await res.text();
+      alert(text || "Error updating asset");
       return;
     }
 

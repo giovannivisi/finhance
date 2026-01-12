@@ -14,37 +14,66 @@ import { ApiAsset } from "@lib/api-types";
 export default function DashboardClient({
   grouped,
   kindTotalsArray,
-  liabilities
+  liabilities,
+  lastUpdatedMs,
 }: {
   grouped: Record<string, ApiAsset[]>;
   kindTotalsArray: { kind: string; total: number }[];
   liabilities: ApiAsset[];
+  lastUpdatedMs?: number | null;
 }) {
   const [editAssetId, setEditAssetId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
   const sortedCategories = Object.keys(grouped).sort();
 
-  useEffect(() => {
-  const initialState: Record<string, boolean> = {};
-  Object.keys(grouped).forEach((cat) => {
-    initialState[cat] = true;
-  });
-  setOpenCategories(initialState);
-}, [grouped]);
+  const [nowMs, setNowMs] = useState(Date.now());
 
-function toggleCategory(category: string) {
-  setOpenCategories((prev) => ({
-    ...prev,
-    [category]: !prev[category],
-  }));
-}
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const updatedMinutesAgo =
+    lastUpdatedMs != null && lastUpdatedMs > 0
+      ? Math.max(0, Math.floor((nowMs - lastUpdatedMs) / 60000))
+      : null;
+
+  useEffect(() => {
+    const initialState: Record<string, boolean> = {};
+    Object.keys(grouped).forEach((cat) => {
+      initialState[cat] = true;
+    });
+    setOpenCategories(initialState);
+  }, [grouped]);
+
+  function toggleCategory(category: string) {
+    setOpenCategories((prev) => ({
+      ...prev,
+      [category]: !prev[category],
+    }));
+  }
   
 
   return (
     <>
     {/* ASSET ALLOCATION HEADER */}
     <SectionHeader title="Asset Allocation" />
+
+    <div className="mt-6 flex items-center justify-between">
+      <p className="text-sm text-gray-500">
+        {updatedMinutesAgo == null
+          ? "Prices not fetched yet"
+          : `Updated ${updatedMinutesAgo} min ago`}
+      </p>
+
+      <a
+        href="?refresh=1"
+        className="text-sm px-3 py-1.5 rounded-lg bg-white shadow hover:bg-gray-50"
+      >
+        Refresh
+      </a>
+    </div>
 
     {/* FULL-WIDTH CHART */}
     <div className="bg-white shadow rounded-2xl p-10 flex items-center justify-center mx-auto my-6">
@@ -131,9 +160,10 @@ function toggleCategory(category: string) {
                                 {asset.kind}
                               </span>
 
-                              {asset.quantity && asset.unitPrice && (
+                              {asset.quantity && (asset.lastPrice || asset.unitPrice) && (
                                 <span className="text-xs text-gray-600">
-                                  {asset.quantity} × {formatCurrency(asset.unitPrice)}
+                                 {asset.quantity} × {formatCurrency(Number(asset.lastPrice ?? asset.unitPrice ?? 0))}
+                                  {""}
                                 </span>
                               )}
 

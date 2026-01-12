@@ -9,14 +9,13 @@ export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void
   const [type, setType] = useState("ASSET");
   const [balance, setBalance] = useState("");
   const [currency, setCurrency] = useState("EUR");
-  const [categoryId, setCategoryId] = useState("");
   const [kind, setKind] = useState("CASH");
   const [ticker, setTicker] = useState("");
   const [quantity, setQuantity] = useState("");
   const [unitPrice, setUnitPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [order, setOrder] = useState("");
-  const [exchange, setExchange] = useState("");
+  const [exchange, setExchange] = useState(EXCHANGE_SUFFIXES[0]?.value ?? "");
 
 
   const isAsset = type === "ASSET";
@@ -29,30 +28,66 @@ export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
+    const trimmedTicker = ticker.trim();
+
+    // Required fields depending on config/type
+    if (isLiability && balance.trim() === "") {
+      alert("Please enter an amount for the liability.");
+      return;
+    }
+
+    if (!isLiability) {
+      if (config.showTicker && trimmedTicker === "") {
+        alert("Please enter a ticker.");
+        return;
+      }
+      if (config.showQuantity && quantity.trim() === "") {
+        alert("Please enter a quantity.");
+        return;
+      }
+      if (config.showUnitPrice && unitPrice.trim() === "") {
+        alert("Please enter a unit price (buy-in).");
+        return;
+      }
+      if (config.showBalance && balance.trim() === "") {
+        alert("Please enter an amount.");
+        return;
+      }
+    }
+
+    // Build a non-null balance payload for Prisma
+    const qtyNum = quantity.trim() !== "" ? Number(quantity) : null;
+    const unitPriceNum = unitPrice.trim() !== "" ? Number(unitPrice) : null;
+
+    const computedAssetBalance =
+      config.showBalance
+        ? Number(balance)
+        : (qtyNum != null && unitPriceNum != null ? qtyNum * unitPriceNum : 0);
+
+    const payload = {
+      name,
+      type,
+      currency,
+      ticker: isLiability ? null : (config.showTicker ? trimmedTicker : null),
+      exchange: isLiability ? null : (config.showTicker ? exchange : null),
+      quantity: isLiability ? null : (config.showQuantity && qtyNum != null ? qtyNum : null),
+      unitPrice: isLiability ? null : (config.showUnitPrice && unitPriceNum != null ? unitPriceNum : null),
+      balance: isLiability ? Number(balance) : computedAssetBalance,
+      kind: isLiability ? null : kind,
+      liabilityKind: isLiability ? kind : null,
+      notes: notes || null,
+      order: order ? Number(order) : null,
+    };
+
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/assets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        type,
-        currency,
-        categoryId: categoryId || null,
-        ticker: isLiability ? null : (config.showTicker ? ticker : null),
-        exchange: isLiability ? null : (config.showTicker ? exchange : null),
-        quantity: isLiability ? null : (config.showQuantity && quantity ? Number(quantity) : null),
-        unitPrice: isLiability ? null : (config.showUnitPrice && unitPrice ? Number(unitPrice) : null),
-        balance: isLiability
-          ? Number(balance) // required
-          : (config.showBalance ? (balance ? Number(balance) : null) : null),
-        kind: isLiability ? null : kind,
-        liabilityKind: isLiability ? kind : null,
-        notes: notes || null,
-        order: order ? Number(order) : null,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
-      alert("Error creating asset");
+      const text = await res.text();
+      alert(text || "Error creating asset");
       return;
     }
 
@@ -137,6 +172,7 @@ export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void
             step="0.01"
             value={balance}
             onChange={(e) => setBalance(e.target.value)}
+            required
           />
         </div>
       )}
@@ -150,6 +186,7 @@ export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void
             step="0.0000001"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
+            required
           />
         </div>
       )}
@@ -163,6 +200,7 @@ export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void
             step="0.0001"
             value={unitPrice}
             onChange={(e) => setUnitPrice(e.target.value)}
+            required
           />
         </div>
       )}
@@ -174,6 +212,7 @@ export default function CreateAssetForm({ onSuccess }: {  onSuccess?: () => void
             className="border rounded-lg px-3 py-2"
             value={ticker}
             onChange={(e) => setTicker(e.target.value)}
+            required
           />
         </div>
       )}

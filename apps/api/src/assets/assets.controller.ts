@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
-import { Patch } from '@nestjs/common/decorators';
+import { Patch, Query } from '@nestjs/common/decorators';
 import { AssetsService } from '@assets/assets.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
@@ -14,9 +14,10 @@ export class AssetsController {
     return this.assetsService.findAll();
   }
 
-  @Get("with-values")
-  findAllWithValues() {
-    return this.assetsService.findAllWithCurrentValue();
+  @Get('with-values')
+  findAllWithValues(@Query('refresh') refresh?: string) {
+    const force = refresh === '1' || refresh === 'true';
+    return this.assetsService.findAllWithCurrentValue(force);
   }
 
   @Post()
@@ -30,8 +31,9 @@ export class AssetsController {
   }
 
   @Get('summary')
-  async getSummary() {
-    return this.assetsService.getSummary();
+  getSummary(@Query('refresh') refresh?: string) {
+    const force = refresh === '1' || refresh === 'true';
+    return this.assetsService.getSummary(force);
   }
 
   @Get(':id')

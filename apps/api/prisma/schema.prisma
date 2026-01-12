@@ -24,6 +24,8 @@ model Asset {
   currency   String     @default("EUR")
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
+  lastPrice    Decimal?  @db.Decimal(14, 6)
+  lastPriceAt  DateTime?
 }
 
 enum AssetType {

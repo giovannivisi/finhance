@@ -3,15 +3,16 @@ export type ApiAsset = {
   name: string;
   balance: number;
   type: string;
-  category?: { name: string } | null;
   kind?: string | null;
   ticker?: string | null;
-  quantity?: number | null;
-  unitPrice?: number | null;
+  quantity?: number | string | null;
+  unitPrice?: number | string | null;
   notes?: string | null;
   order?: number | null;
   liabilityKind?: string | null;
   currentValue?: number | null;
+  lastPrice?: number | string | null;
+  lastPriceAt?: string | null;
 };
 
 export const COLORS = {

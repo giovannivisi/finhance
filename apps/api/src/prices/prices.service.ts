@@ -11,13 +11,13 @@ export class PricesService {
   private readonly cache = new Map<string, CachedPrice>();
   private readonly CACHE_TTL = 1000 * 60 * 5; // 5 min
 
-  async getLivePrice(ticker: string): Promise<number | null> {
+  async getLivePrice(ticker: string, opts?: { forceRefresh?: boolean }): Promise<number | null> {
     if (!ticker) return null;
 
     const now = Date.now();
     const cached = this.cache.get(ticker);
 
-    if (cached && now - cached.ts < this.CACHE_TTL) {
+    if (!opts?.forceRefresh && cached && now - cached.ts < this.CACHE_TTL) {
       return cached.price;
     }
 

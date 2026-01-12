@@ -5,10 +5,19 @@ import DashboardClient from "@components/DashboardClient";
 import { formatCurrency } from "@lib/format";
 import { ApiAsset } from "@lib/api-types";
 
-export default async function Home() {
-  const assets = await api<ApiAsset[]>("/assets/with-values");
+export default async function Home({searchParams,}: { searchParams?: { refresh?: string }; }) {
+  const force = searchParams?.refresh === "1" || searchParams?.refresh === "true";
+  const assets = await api<ApiAsset[]>(`/assets/with-values${force ? "?refresh=1" : ""}`);
+  const summary = await api<{ assets: number; liabilities: number; netWorth: number }>(
+    `/assets/summary${force ? "?refresh=1" : ""}`
+  );
   const assetList = assets.filter(a => a.type === "ASSET");
   const liabilityList = assets.filter(a => a.type === "LIABILITY");
+
+  const lastUpdatedMs = assets
+    .map(a => (a.lastPriceAt ? Date.parse(a.lastPriceAt) : NaN))
+    .filter(ms => Number.isFinite(ms))
+    .reduce((max, ms) => Math.max(max, ms), 0);
 
   const grouped: Record<string, ApiAsset[]> = assets.reduce(
     (acc, asset) => {
@@ -21,8 +30,6 @@ export default async function Home() {
     },
     {} as Record<string, ApiAsset[]>
   );
-
-  const summary = await api<{ assets: number; liabilities: number; netWorth: number }>("/assets/summary");
 
   const kindTotals = assetList.reduce((acc, asset) => {
     const value = Number(asset.currentValue ?? asset.balance ?? 0);
@@ -62,6 +69,7 @@ export default async function Home() {
           grouped={grouped}
           kindTotalsArray={kindTotalsArray}
           liabilities={liabilityList}
+          lastUpdatedMs={lastUpdatedMs || null}
         />
 
       </Container>

@@ -12,33 +12,60 @@ export class AssetsService {
     private readonly pricesService: PricesService
   ) {}
 
-  private async computeCurrentValue(asset: Asset): Promise<number> {
-    const storedBalance = Number(asset.balance);
-
-    const isMarketAsset =
-      asset.type === 'ASSET' &&
-      ['STOCK', 'BOND', 'CRYPTO'].includes(asset.kind ?? '');
-
-    if (!isMarketAsset || !asset.ticker || !asset.quantity) {
-      return storedBalance;
+  private async computeCurrentValue(asset: Asset, opts?: { forceRefresh?: boolean }): Promise<number> {
+    // liabilities & cash-like assets
+    if (asset.type === "LIABILITY" || !asset.kind) {
+      return Number(asset.balance ?? 0);
     }
 
-    const yahooTicker = asset.exchange === "_CRYPTO_"
-                          ? asset.ticker
-                          : `${asset.ticker}${asset.exchange ?? ''}`;
+    const isMarket =
+      ["STOCK", "BOND", "CRYPTO"].includes(asset.kind);
 
-    const livePrice = await this.pricesService.getLivePrice(yahooTicker);
-
-    if (livePrice != null) {
-      return Number(asset.quantity) * livePrice;
+    if (!isMarket || !asset.quantity) {
+      return Number(asset.balance ?? 0);
     }
 
-    // fallback: stored unitPrice if Yahoo fails
+    const qty = Number(asset.quantity);
+
+    if (!asset.ticker) {
+      return Number(asset.balance ?? 0);
+    }
+
+    // build Yahoo symbol
+    const yahooTicker =
+      asset.exchange === "_CRYPTO_"
+        ? asset.ticker
+        : `${asset.ticker}${asset.exchange ?? ""}`;
+
+    // 1️⃣ Live price fetch
+    const livePrice = await this.pricesService.getLivePrice(yahooTicker, {
+      forceRefresh: opts?.forceRefresh,
+    });
+
+    if (typeof livePrice === "number") {
+      // cache it
+      await this.prisma.asset.update({
+        where: { id: asset.id },
+        data: {
+          lastPrice: livePrice,
+          lastPriceAt: new Date(),
+        },
+      });
+
+      return qty * livePrice;
+    }
+
+    // 2️⃣ Cached price fallback
+    if (asset.lastPrice) {
+      return qty * Number(asset.lastPrice);
+    }
+
+    // 3️⃣ Avg buy-in fallback
     if (asset.unitPrice) {
-      return Number(asset.quantity) * Number(asset.unitPrice);
+      return qty * Number(asset.unitPrice);
     }
 
-    return storedBalance;
+    return 0;
   }
 
   async findAll(): Promise<Asset[]> {
@@ -46,7 +73,7 @@ export class AssetsService {
       orderBy: { createdAt: 'asc' },
     });
   }
-  async findAllWithCurrentValue(): Promise<(Asset & { currentValue: number })[]> {
+  async findAllWithCurrentValue(forceRefresh?: boolean): Promise<(Asset & { currentValue: number | null })[]> {
     const assets = await this.prisma.asset.findMany({
       orderBy: { createdAt: 'asc' },
     });
@@ -89,9 +116,53 @@ export class AssetsService {
     }
 
     // ASSET LOGIC
-    let computedBalance: number;
+    const isMarket = ["STOCK", "BOND", "CRYPTO"].includes(dto.kind!);
 
-    if (["STOCK", "BOND", "CRYPTO"].includes(dto.kind!)) {
+    // Merge-on-create for market positions (single row per ticker+exchange)
+    if (
+      isMarket &&
+      dto.ticker &&
+      dto.quantity != null &&
+      dto.unitPrice != null
+    ) {
+      const existing = await this.prisma.asset.findFirst({
+        where: {
+          type: AssetType.ASSET,
+          kind: dto.kind!,
+          ticker: dto.ticker,
+          exchange: dto.exchange ?? null,
+          userId: dto.userId ?? null,
+        },
+      });
+
+      if (existing) {
+        const oldQty = Number(existing.quantity ?? 0);
+        const oldAvg = Number(existing.unitPrice ?? 0);
+        const buyQty = Number(dto.quantity);
+        const buyPrice = Number(dto.unitPrice);
+
+        const newQty = oldQty + buyQty;
+        const newAvg = newQty > 0 ? (oldQty * oldAvg + buyQty * buyPrice) / newQty : buyPrice;
+        const newBalance = newQty * newAvg; // reference fallback (avg cost)
+
+        return this.prisma.asset.update({
+          where: { id: existing.id },
+          data: {
+            // Keep existing name if user is just adding more; otherwise allow updating it via dto
+            name: dto.name ?? existing.name,
+            quantity: new Prisma.Decimal(newQty),
+            unitPrice: new Prisma.Decimal(newAvg),
+            balance: new Prisma.Decimal(newBalance),
+            currency: dto.currency ?? existing.currency,
+            notes: dto.notes ?? existing.notes,
+            order: dto.order ?? existing.order,
+          },
+        });
+      }
+    }
+
+    let computedBalance
+    if (isMarket) {
       computedBalance = Number(dto.quantity) * Number(dto.unitPrice);
     } else {
       computedBalance = Number(dto.balance);
@@ -120,12 +191,12 @@ export class AssetsService {
     await this.prisma.asset.delete({ where: { id } });
   }
 
-  async getSummary() {
+  async getSummary(forceRefresh?: boolean) {
     const assets = await this.prisma.asset.findMany();
 
     // compute all values in parallel
     const values = await Promise.all(
-      assets.map(a => this.computeCurrentValue(a))
+      assets.map(a => this.computeCurrentValue(a, { forceRefresh }))
     );
 
     let assetsTotal = 0;
@@ -183,7 +254,26 @@ export class AssetsService {
     // ASSET UPDATE LOGIC
     let computedBalance: number;
 
-    if (["STOCK", "BOND", "CRYPTO"].includes(dto.kind!)) {
+    const isMarketUpdate = ["STOCK", "BOND", "CRYPTO"].includes(dto.kind!);
+    if (isMarketUpdate && dto.ticker) {
+      const dup = await this.prisma.asset.findFirst({
+        where: {
+          id: { not: id },
+          type: AssetType.ASSET,
+          kind: dto.kind!,
+          ticker: dto.ticker,
+          exchange: dto.exchange ?? null,
+          userId: (dto as any).userId ?? null,
+        },
+      });
+      if (dup) {
+        throw new Error(
+          `Duplicate position: an asset with ${dto.ticker}${dto.exchange ?? ""} already exists.`
+        );
+      }
+    }
+
+    if (isMarketUpdate) {
       computedBalance = Number(dto.quantity) * Number(dto.unitPrice);
     } else {
       computedBalance = Number(dto.balance);
