@@ -7,6 +7,7 @@ export const MARKET_KINDS = new Set<AssetKind>([
   AssetKind.CRYPTO,
 ]);
 export const VALUATION_STALE_MS = 1000 * 60 * 15;
+export const REFRESH_COOLDOWN_MS = 1000 * 60;
 
 export type ValuationSource =
   | 'LIVE'
