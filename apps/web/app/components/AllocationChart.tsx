@@ -37,44 +37,45 @@ return (
   <div className="flex items-center justify-center w-full">
     <ResponsiveContainer width={size} height={size}>
       <PieChart>
-        ...
-          <Pie
-            data={cleaned}
-            dataKey="total"
-            nameKey="label"
-            cx="50%"
-            cy="50%"
-            innerRadius={50}
-            outerRadius={90}
-            stroke="#fff"
-            strokeWidth={2}
+        <Pie
+          data={cleaned}
+          dataKey="total"
+          nameKey="label"
+          cx="50%"
+          cy="50%"
+          innerRadius={50}
+          outerRadius={90}
+          stroke="#fff"
+          strokeWidth={2}
+          labelLine={false}
+          label={isSingle ? false : renderLabel}
+        >
+          {cleaned.map((entry, index) => (
+            <Cell
+              key={`cell-${index}`}
+              fill={COLORS[entry.label as keyof typeof COLORS] || "#6B7280"}
+            />
+          ))}
+        </Pie>
+
+        {isSingle && single ? (
+          <text
+            x="50%"
+            y="50%"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ fontSize: "16px", fontWeight: 600, fill: "#111827" }}
           >
-            {cleaned.map((entry, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={COLORS[entry.label as keyof typeof COLORS] || "#6B7280"}
-              />
-            ))}
-          </Pie>
+            {single.label}{" "}
+            {((single.total / cleaned.reduce((sum, item) => sum + item.total, 0)) * 100).toFixed(0)}%
+          </text>
+        ) : null}
 
-          {isSingle && single && (
-            <text
-              x="50%"
-              y="50%"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              style={{ fontSize: "16px", fontWeight: 600, fill: "#111827" }}
-            >
-              {single.label} {" "}
-              {((single.total / cleaned.reduce((s, d) => s + d.total, 0)) * 100).toFixed(0)}%
-            </text>
-          )}
-
-          {!isSingle && (
-            <Tooltip formatter={(value: number) => formatCurrency(value)} />
-          )}
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-  );
+        {!isSingle ? (
+          <Tooltip formatter={(value: number) => formatCurrency(value)} />
+        ) : null}
+      </PieChart>
+    </ResponsiveContainer>
+  </div>
+);
 }

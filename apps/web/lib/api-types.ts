@@ -1,18 +1,70 @@
+export type AssetType = "ASSET" | "LIABILITY";
+export type AssetKind =
+  | "CASH"
+  | "STOCK"
+  | "BOND"
+  | "CRYPTO"
+  | "REAL_ESTATE"
+  | "PENSION"
+  | "COMMODITY"
+  | "OTHER";
+export type LiabilityKind = "TAX" | "DEBT" | "OTHER";
+export type ValuationSource =
+  | "LIVE"
+  | "LAST_QUOTE"
+  | "AVG_COST"
+  | "DIRECT_BALANCE"
+  | "UNAVAILABLE";
+
 export type ApiAsset = {
   id: string;
   name: string;
-  balance: number;
-  type: string;
-  kind?: string | null;
+  balance: number | string;
+  type: AssetType;
+  kind?: AssetKind | null;
   ticker?: string | null;
+  exchange?: string | null;
   quantity?: number | string | null;
   unitPrice?: number | string | null;
   notes?: string | null;
   order?: number | null;
-  liabilityKind?: string | null;
+  liabilityKind?: LiabilityKind | null;
+  currency?: string;
   currentValue?: number | null;
-  lastPrice?: number | string | null;
+  referenceValue?: number | null;
+  valuationSource?: ValuationSource;
+  valuationAsOf?: string | null;
+  isStale?: boolean;
+  lastPrice?: number | null;
   lastPriceAt?: string | null;
+  lastFxRate?: number | null;
+  lastFxRateAt?: string | null;
+};
+
+export type DashboardResponse = {
+  baseCurrency: string;
+  assets: ApiAsset[];
+  summary: {
+    assets: number;
+    liabilities: number;
+    netWorth: number;
+  };
+  lastRefreshAt: string | null;
+};
+
+export type AssetPayload = {
+  name: string;
+  type: AssetType;
+  currency: string;
+  ticker: string | null;
+  exchange: string | null;
+  quantity: number | null;
+  unitPrice: number | null;
+  balance: number;
+  kind: string | null;
+  liabilityKind: string | null;
+  notes: string | null;
+  order: number | null;
 };
 
 export const COLORS = {

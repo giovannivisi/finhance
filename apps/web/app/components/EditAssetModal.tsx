@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Modal from "./Modal";
 import EditAssetForm from "@components/EditAssetForm";
+import { getApiUrl, readApiError } from "@lib/api";
+import { ApiAsset } from "@lib/api-types";
 
 export default function EditAssetModal({
   assetId,
@@ -13,25 +15,50 @@ export default function EditAssetModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const [asset, setAsset] = useState<any>(null);
+  const [asset, setAsset] = useState<ApiAsset | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || !assetId) return;
-
-    async function fetchData() {
-      const base = process.env.NEXT_PUBLIC_API_URL;
-      const accRes = await fetch(`${base}/assets/${assetId}`);
-      setAsset(await accRes.json());
+    if (!open || !assetId) {
+      setAsset(null);
+      setError(null);
+      return;
     }
 
-    fetchData();
+    async function fetchData() {
+      setError(null);
+      setAsset(null);
+
+      try {
+        const assetResponse = await fetch(getApiUrl(`/assets/${assetId}`), {
+          cache: "no-store",
+        });
+
+        if (!assetResponse.ok) {
+          setError(await readApiError(assetResponse));
+          return;
+        }
+
+        setAsset(await assetResponse.json());
+      } catch (fetchError) {
+        setError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Unable to load this asset.",
+        );
+      }
+    }
+
+    void fetchData();
   }, [open, assetId]);
 
   if (!open) return null;
 
   return (
     <Modal open={open} onClose={onClose}>
-      {!asset ? (
+      {error ? (
+        <p className="text-sm text-red-600">{error}</p>
+      ) : !asset ? (
         <p>Loading…</p>
       ) : (
         <EditAssetForm

@@ -1,8 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
-import { Patch, Query } from '@nestjs/common/decorators';
+import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
+import { DashboardAssetView, DashboardSummary, RefreshAssetsResponse } from '@assets/assets.types';
 import { Asset } from '@prisma/client';
 
 @Controller('assets')
@@ -15,9 +15,18 @@ export class AssetsController {
   }
 
   @Get('with-values')
-  findAllWithValues(@Query('refresh') refresh?: string) {
-    const force = refresh === '1' || refresh === 'true';
-    return this.assetsService.findAllWithCurrentValue(force);
+  async findAllWithValues(): Promise<DashboardAssetView[]> {
+    return this.assetsService.findAllWithCurrentValue();
+  }
+
+  @Get('summary')
+  async getSummary(): Promise<DashboardSummary> {
+    return this.assetsService.getSummary();
+  }
+
+  @Post('refresh')
+  async refreshAssets(): Promise<RefreshAssetsResponse> {
+    return this.assetsService.refreshAssets();
   }
 
   @Post()
@@ -25,24 +34,18 @@ export class AssetsController {
     return this.assetsService.create(dto);
   }
 
-  @Delete(':id')
-  async remove(@Param('id') id: string): Promise<void> {
-    return this.assetsService.remove(id);
-  }
-
-  @Get('summary')
-  getSummary(@Query('refresh') refresh?: string) {
-    const force = refresh === '1' || refresh === 'true';
-    return this.assetsService.getSummary(force);
-  }
-
   @Get(':id')
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string): Promise<Asset> {
     return this.assetsService.findOne(id);
   }
 
-  @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdateAssetDto) {
+  @Put(':id')
+  async update(@Param('id') id: string, @Body() dto: UpdateAssetDto): Promise<Asset> {
     return this.assetsService.update(id, dto);
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string): Promise<void> {
+    return this.assetsService.remove(id);
   }
 }

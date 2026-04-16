@@ -3,22 +3,40 @@ import Header from "@components/Header";
 import { api } from "@lib/api";
 import DashboardClient from "@components/DashboardClient";
 import { formatCurrency } from "@lib/format";
-import { ApiAsset } from "@lib/api-types";
+import { ApiAsset, DashboardResponse } from "@lib/api-types";
 
-export default async function Home({searchParams,}: { searchParams?: { refresh?: string }; }) {
-  const force = searchParams?.refresh === "1" || searchParams?.refresh === "true";
-  const assets = await api<ApiAsset[]>(`/assets/with-values${force ? "?refresh=1" : ""}`);
-  const summary = await api<{ assets: number; liabilities: number; netWorth: number }>(
-    `/assets/summary${force ? "?refresh=1" : ""}`
-  );
-  const assetList = assets.filter(a => a.type === "ASSET");
-  const liabilityList = assets.filter(a => a.type === "LIABILITY");
+export const dynamic = "force-dynamic";
 
-  const lastUpdatedMs = assets
-    .map(a => (a.lastPriceAt ? Date.parse(a.lastPriceAt) : NaN))
-    .filter(ms => Number.isFinite(ms))
-    .reduce((max, ms) => Math.max(max, ms), 0);
+export default async function Home() {
+  let dashboard: DashboardResponse | null = null;
+  let errorMessage: string | null = null;
 
+  try {
+    dashboard = await api<DashboardResponse>("/dashboard");
+  } catch (error) {
+    errorMessage =
+      error instanceof Error ? error.message : "Dashboard data is currently unavailable.";
+  }
+
+  if (!dashboard) {
+    return (
+      <>
+        <Header />
+        <Container>
+          <h2 className="text-2xl font-semibold">Dashboard unavailable</h2>
+          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
+            <p className="font-medium">The web app could not reach the API.</p>
+            <p className="mt-2 text-sm text-amber-900/80">
+              {errorMessage ?? "Start the API and refresh the page."}
+            </p>
+          </div>
+        </Container>
+      </>
+    );
+  }
+
+  const assets = dashboard.assets;
+  const assetList = assets.filter((asset) => asset.type === "ASSET");
   const grouped: Record<string, ApiAsset[]> = assets.reduce(
     (acc, asset) => {
       const groupKey = asset.type === "ASSET"
@@ -32,17 +50,21 @@ export default async function Home({searchParams,}: { searchParams?: { refresh?:
   );
 
   const kindTotals = assetList.reduce((acc, asset) => {
-    const value = Number(asset.currentValue ?? asset.balance ?? 0);
+    const value = asset.currentValue ?? asset.referenceValue ?? null;
 
-    const kind = asset.kind ?? "Unassigned";
-    acc[kind] = (acc[kind] || 0) + value;
+    if (value !== null) {
+      const kind = asset.kind ?? "Unassigned";
+      acc[kind] = (acc[kind] || 0) + value;
+    }
     return acc;
   }, {} as Record<string, number>);
   
-  const kindTotalsArray = Object.entries(kindTotals).map(([kind, total]) => ({
-    kind,
-    total,
-  }));
+  const kindTotalsArray = Object.entries(kindTotals)
+    .map(([kind, total]) => ({
+      kind,
+      total,
+    }))
+    .sort((left, right) => right.total - left.total);
 
   return (
     <>
@@ -53,23 +75,29 @@ export default async function Home({searchParams,}: { searchParams?: { refresh?:
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-white shadow rounded-2xl p-4 text-center">
             <p className="text-sm text-gray-500">Assets</p>
-            <p className="text-green-600 text-xl font-bold">{formatCurrency(summary.assets)}</p>
+            <p className="text-green-600 text-xl font-bold">
+              {formatCurrency(dashboard.summary.assets, dashboard.baseCurrency)}
+            </p>
           </div>
           <div className="bg-white shadow rounded-2xl p-4 text-center">
             <p className="text-sm text-gray-500">Liabilities</p>
-            <p className="text-red-600 text-xl font-bold">{formatCurrency(summary.liabilities)}</p>
+            <p className="text-red-600 text-xl font-bold">
+              {formatCurrency(dashboard.summary.liabilities, dashboard.baseCurrency)}
+            </p>
           </div>
           <div className="bg-white shadow rounded-2xl p-4 text-center">
             <p className="text-sm text-gray-500">Net Worth</p>
-            <p className="text-black text-xl font-bold">{formatCurrency(summary.netWorth)}</p>
+            <p className="text-black text-xl font-bold">
+              {formatCurrency(dashboard.summary.netWorth, dashboard.baseCurrency)}
+            </p>
           </div>
         </div>
 
         <DashboardClient
           grouped={grouped}
           kindTotalsArray={kindTotalsArray}
-          liabilities={liabilityList}
-          lastUpdatedMs={lastUpdatedMs || null}
+          baseCurrency={dashboard.baseCurrency}
+          lastRefreshAt={dashboard.lastRefreshAt}
         />
 
       </Container>
