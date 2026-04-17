@@ -11,6 +11,7 @@ export interface AssetFormValues {
   name: string;
   type: AssetType;
   kind: AssetKind | LiabilityKind;
+  accountId: string;
   balance: string;
   currency: string;
   ticker: string;
@@ -110,6 +111,7 @@ export function buildAssetPayload(values: AssetFormValues): {
       payload: {
         name: values.name.trim(),
         type,
+        accountId: values.accountId.trim() || null,
         currency,
         ticker: null,
         exchange: null,
@@ -159,6 +161,7 @@ export function buildAssetPayload(values: AssetFormValues): {
     payload: {
       name: values.name.trim(),
       type,
+      accountId: values.accountId.trim() || null,
       currency,
       ticker: config.showTicker ? ticker : null,
       exchange: config.showTicker ? exchange : null,
@@ -181,6 +184,7 @@ export function assetToFormValues(asset: AssetResponse): AssetFormValues {
       asset.type === "LIABILITY"
         ? (asset.liabilityKind ?? DEFAULT_LIABILITY_KIND)
         : (asset.kind ?? DEFAULT_ASSET_KIND),
+    accountId: asset.accountId ?? "",
     balance: toInputString(asset.balance),
     currency: asset.currency ?? "EUR",
     ticker: asset.ticker ?? "",
@@ -197,6 +201,7 @@ export function createEmptyAssetFormValues(): AssetFormValues {
     name: "",
     type: "ASSET",
     kind: DEFAULT_ASSET_KIND,
+    accountId: "",
     balance: "",
     currency: "EUR",
     ticker: "",

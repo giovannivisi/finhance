@@ -10,6 +10,7 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 export interface BootstrapRuntimeConfig {
   host: string;
   allowedOrigins: string[];
+  trustProxy: boolean | number;
 }
 
 export function normalizeHost(rawHost?: string): string {
@@ -46,6 +47,32 @@ export function parseAllowedOrigins(rawOrigins?: string): string[] {
   }
 
   return Array.from(new Set(origins));
+}
+
+export function parseTrustProxy(rawTrustProxy?: string): boolean | number {
+  if (!rawTrustProxy || !rawTrustProxy.trim()) {
+    return false;
+  }
+
+  const normalized = rawTrustProxy.trim().toLowerCase();
+
+  if (normalized === 'true') {
+    return true;
+  }
+
+  if (normalized === 'false') {
+    return false;
+  }
+
+  const proxyCount = Number(normalized);
+
+  if (Number.isInteger(proxyCount) && proxyCount >= 1) {
+    return proxyCount;
+  }
+
+  throw new Error(
+    'API_TRUST_PROXY must be "true", "false", or a positive integer.',
+  );
 }
 
 export function isAllowedCorsOrigin(
@@ -93,5 +120,6 @@ export function resolveBootstrapRuntimeConfig(
   return {
     host,
     allowedOrigins: parseAllowedOrigins(env.API_ALLOWED_ORIGINS),
+    trustProxy: parseTrustProxy(env.API_TRUST_PROXY),
   };
 }

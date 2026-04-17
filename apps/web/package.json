@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --port 3001",
     "lint": "eslint",
-    "test": "node --experimental-default-type=module --test lib/api.test.mts"
+    "test": "node --experimental-default-type=module --test lib/*.test.mts"
   },
   "dependencies": {
     "@finhance/shared": "workspace:^",

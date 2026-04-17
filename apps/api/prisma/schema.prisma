@@ -10,6 +10,7 @@ datasource db {
 model Asset {
   id            String         @id @default(cuid())
   userId        String
+  accountId     String?
   name          String
   kind          AssetKind?
   liabilityKind LiabilityKind?
@@ -28,9 +29,45 @@ model Asset {
   lastPriceAt   DateTime?
   lastFxRate    Decimal?       @db.Decimal(20, 10)
   lastFxRateAt  DateTime?
+  account       Account?       @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
 
   @@unique([userId, type, kind, ticker, exchange])
   @@index([userId])
+  @@index([userId, accountId])
+}
+
+model Account {
+  id           String        @id @default(cuid())
+  userId       String
+  name         String
+  type         AccountType
+  currency     String        @default("EUR")
+  institution  String?
+  notes        String?
+  order        Int           @default(0)
+  archivedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  assets       Asset[]
+  transactions Transaction[]
+
+  @@unique([id, userId])
+  @@index([userId, archivedAt, order, createdAt])
+}
+
+model Category {
+  id           String        @id @default(cuid())
+  userId       String
+  name         String
+  type         CategoryType
+  order        Int           @default(0)
+  archivedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  transactions Transaction[]
+
+  @@unique([id, userId])
+  @@index([userId, type, archivedAt, order, createdAt])
 }
 
 model PortfolioState {
@@ -39,6 +76,50 @@ model PortfolioState {
   refreshStartedAt       DateTime?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+}
+
+model NetWorthSnapshot {
+  id               String   @id @default(cuid())
+  userId           String
+  snapshotDate     DateTime @db.Date
+  capturedAt       DateTime
+  baseCurrency     String   @default("EUR")
+  assetsTotal      Decimal  @db.Decimal(20, 10)
+  liabilitiesTotal Decimal  @db.Decimal(20, 10)
+  netWorthTotal    Decimal  @db.Decimal(20, 10)
+  unavailableCount Int      @default(0)
+  isPartial        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, snapshotDate, baseCurrency])
+  @@index([userId, snapshotDate])
+}
+
+model Transaction {
+  id              String               @id @default(cuid())
+  userId          String
+  postedAt        DateTime
+  accountId       String
+  categoryId      String?
+  amount          Decimal              @db.Decimal(20, 10)
+  currency        String
+  direction       TransactionDirection
+  kind            TransactionKind
+  description     String
+  notes           String?
+  counterparty    String?
+  transferGroupId String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  account         Account              @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
+  category        Category?            @relation(fields: [categoryId, userId], references: [id, userId], onUpdate: Cascade)
+
+  @@index([userId, postedAt])
+  @@index([userId, kind, postedAt])
+  @@index([userId, accountId, postedAt])
+  @@index([userId, categoryId, postedAt])
+  @@index([userId, transferGroupId])
 }
 
 enum AssetType {
@@ -61,4 +142,30 @@ enum LiabilityKind {
   TAX
   DEBT
   OTHER
+}
+
+enum AccountType {
+  BANK
+  BROKER
+  CARD
+  CASH
+  LOAN
+  OTHER
+}
+
+enum CategoryType {
+  EXPENSE
+  INCOME
+}
+
+enum TransactionKind {
+  EXPENSE
+  INCOME
+  TRANSFER
+  ADJUSTMENT
+}
+
+enum TransactionDirection {
+  INFLOW
+  OUTFLOW
 }

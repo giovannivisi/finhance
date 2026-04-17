@@ -1,6 +1,7 @@
 import {
   IsEnum,
   IsNotEmpty,
+  MaxLength,
   IsNumber,
   IsOptional,
   Matches,
@@ -41,11 +42,23 @@ function uppercaseStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim().toUpperCase() : value;
 }
 
+const ASSET_NAME_MAX_LENGTH = 120;
+const ASSET_TICKER_MAX_LENGTH = 32;
+const ASSET_EXCHANGE_MAX_LENGTH = 24;
+const ASSET_NOTES_MAX_LENGTH = 2_000;
+
 export class CreateAssetDto implements UpsertAssetRequest {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(ASSET_NAME_MAX_LENGTH)
   @Transform(trimStringValue)
   name!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @Transform(trimOptionalStringValue)
+  accountId?: string | null;
 
   @IsEnum(PrismaAssetType)
   type!: AssetType;
@@ -79,6 +92,7 @@ export class CreateAssetDto implements UpsertAssetRequest {
   )
   @IsString()
   @IsNotEmpty()
+  @MaxLength(ASSET_TICKER_MAX_LENGTH)
   @Transform(uppercaseStringValue)
   ticker?: string | null;
 
@@ -87,6 +101,7 @@ export class CreateAssetDto implements UpsertAssetRequest {
       asset.type === 'ASSET' && isMarketKind(asset.kind),
   )
   @IsString()
+  @MaxLength(ASSET_EXCHANGE_MAX_LENGTH)
   @Transform(uppercaseStringValue)
   exchange?: string | null;
 
@@ -108,6 +123,7 @@ export class CreateAssetDto implements UpsertAssetRequest {
 
   @IsOptional()
   @IsString()
+  @MaxLength(ASSET_NOTES_MAX_LENGTH)
   @Transform(trimOptionalStringValue)
   notes?: string | null;
 

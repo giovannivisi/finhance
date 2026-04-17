@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '@/app.module';
 import { ValidationPipe } from '@nestjs/common/pipes/validation.pipe';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import {
   createCorsOptions,
@@ -8,9 +9,10 @@ import {
 } from '@/config/bootstrap.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = resolveBootstrapRuntimeConfig();
 
+  app.set('trust proxy', config.trustProxy);
   app.use(helmet());
   app.enableCors(createCorsOptions(config.allowedOrigins));
   app.useGlobalPipes(
