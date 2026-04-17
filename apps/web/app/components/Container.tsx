@@ -1,5 +1,7 @@
 export default function Container({ children }: { children: React.ReactNode }) {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">{children}</div>
+    <div className="w-full max-w-5xl mx-auto space-y-12 pb-24 lg:pb-12">
+      {children}
+    </div>
   );
 }

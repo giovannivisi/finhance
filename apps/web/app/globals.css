@@ -1,3 +1,105 @@
 @import "tailwindcss/base";
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
+
+@layer base {
+  :root {
+    --background: #F7F9FB;
+    --surface: #F7F9FB;
+    --surface-container-lowest: #FFFFFF;
+    --surface-container-low: #F2F4F6;
+    --surface-container: #EAECEF;
+    --surface-container-high: #E4E7E9;
+    --surface-container-highest: #E0E3E5;
+
+    --primary: #0049DB;
+    --primary-container: #2962FF;
+    --on-primary: #FFFFFF;
+
+    --on-surface: #191C1E;
+    --on-surface-variant: #434656;
+
+    --outline-variant: #C3C5D8;
+
+    --secondary: #7DFFA2;
+    --tertiary: #FF7D8C;
+  }
+
+  .dark {
+    --background: #11131C;
+    --surface: #11131C;
+    --surface-container-lowest: #141620;
+    --surface-container-low: #191B24;
+    --surface-container: #1D1F29;
+    --surface-container-high: #282933;
+    --surface-container-highest: #323440;
+
+    --primary: #B0C6FF;
+    --primary-container: #0069EF;
+    --on-primary: #191C1E;
+
+    --on-surface: #F7F9FB;
+    --on-surface-variant: #C3C5D8;
+
+    --outline-variant: #434656;
+  }
+}
+
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--on-surface);
+    font-family: var(--font-inter), sans-serif;
+  }
+}
+
+@layer base {
+  :root {
+    --background: #F7F9FB;
+    --surface: #F7F9FB;
+    --surface-container-lowest: #FFFFFF;
+    --surface-container-low: #F2F4F6;
+    --surface-container: #EAECEF;
+    --surface-container-high: #E4E7E9;
+    --surface-container-highest: #E0E3E5;
+
+    --primary: #0049DB;
+    --primary-container: #2962FF;
+    --on-primary: #FFFFFF;
+
+    --on-surface: #191C1E;
+    --on-surface-variant: #434656;
+
+    --outline-variant: #C3C5D8;
+
+    --secondary: #7DFFA2;
+    --tertiary: #FF7D8C;
+  }
+
+  .dark {
+    --background: #11131C;
+    --surface: #11131C;
+    --surface-container-lowest: #141620;
+    --surface-container-low: #191B24;
+    --surface-container: #1D1F29;
+    --surface-container-high: #282933;
+    --surface-container-highest: #323440;
+
+    --primary: #B0C6FF;
+    --primary-container: #0069EF;
+    --on-primary: #191C1E;
+
+    --on-surface: #F7F9FB;
+    --on-surface-variant: #C3C5D8;
+
+    --outline-variant: #434656;
+  }
+}
+
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--on-surface);
+    font-family: var(--font-inter), sans-serif;
+  }
+}

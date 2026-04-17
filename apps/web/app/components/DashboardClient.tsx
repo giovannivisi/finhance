@@ -123,9 +123,9 @@ export default function DashboardClient({
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-gray-500">{refreshStatus}</p>
+          <p className="text-sm text-onSurfaceVariant">{refreshStatus}</p>
           {refreshError ? (
-            <p className="mt-1 text-sm text-red-600">{refreshError}</p>
+            <p className="mt-1 text-sm text-tertiary">{refreshError}</p>
           ) : null}
         </div>
 
@@ -133,13 +133,13 @@ export default function DashboardClient({
           type="button"
           onClick={handleRefresh}
           disabled={isRefreshing}
-          className="text-sm px-3 py-1.5 rounded-lg bg-white shadow hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="text-sm px-3 py-1.5 rounded-lg bg-surfaceContainerLowest shadow hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isRefreshing ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
-      <div className="bg-white shadow rounded-2xl p-10 flex items-center justify-center mx-auto my-6">
+      <div className="bg-surfaceContainerLowest shadow-ambient rounded-xl md:rounded-[3rem] p-10 flex items-center justify-center mx-auto my-6">
         <div className="w-[520px] h-[520px]">
           <AllocationChart
             size={520}
@@ -155,10 +155,10 @@ export default function DashboardClient({
         {kindTotalsArray.map(({ kind, total }) => (
           <div
             key={kind}
-            className="bg-white shadow rounded-2xl p-6 text-center"
+            className="bg-surfaceContainerLowest shadow-ambient rounded-xl md:rounded-[3rem] p-6 text-center"
           >
-            <p className="text-md font-medium text-gray-700">{kind}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">
+            <p className="text-md font-medium text-onSurface">{kind}</p>
+            <p className="text-2xl font-bold text-onSurface mt-1">
               {formatCurrency(total, baseCurrency)}
             </p>
           </div>
@@ -172,9 +172,9 @@ export default function DashboardClient({
 
       <div className="space-y-10 mt-6">
         <div className="flex items-center gap-4">
-          <div className="flex-1 h-px bg-gray-300"></div>
-          <span className="text-lg font-semibold text-gray-700">Assets</span>
-          <div className="flex-1 h-px bg-gray-300"></div>
+          <div className="flex-1 h-px bg-outlineVariant/30"></div>
+          <span className="text-lg font-semibold text-onSurface">Assets</span>
+          <div className="flex-1 h-px bg-outlineVariant/30"></div>
         </div>
 
         <div className="space-y-6">
@@ -189,7 +189,7 @@ export default function DashboardClient({
                   onClick={() => toggleCategory(category)}
                   className="flex items-center justify-between w-full text-left"
                 >
-                  <span className="text-lg font-medium text-gray-900">
+                  <span className="text-lg font-medium text-onSurface">
                     {category}
                   </span>
                   <DisclosureIcon open={openCategories[category]} />
@@ -211,15 +211,15 @@ export default function DashboardClient({
                         return (
                           <li
                             key={asset.id}
-                            className="bg-white shadow rounded-2xl p-4 flex items-center justify-between"
+                            className="bg-surfaceContainerLowest shadow-ambient rounded-xl md:rounded-[3rem] p-4 flex items-center justify-between"
                           >
                             <div className="flex flex-col">
                               <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900">
+                                <p className="font-semibold text-onSurface">
                                   {asset.name}
                                 </p>
                                 {asset.ticker ? (
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-xs text-onSurfaceVariant">
                                     ({asset.ticker})
                                   </span>
                                 ) : null}
@@ -262,16 +262,16 @@ export default function DashboardClient({
 
                             <div className="flex items-center gap-4">
                               <div className="flex flex-col items-end">
-                                <p className="text-lg font-semibold text-gray-900">
+                                <p className="text-lg font-semibold text-onSurface">
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable in ${baseCurrency}`}
                                 </p>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-onSurfaceVariant">
                                   {getValuationLabel(asset)}
                                 </p>
                                 {referenceDiffers ? (
-                                  <p className="text-xs text-gray-500">
+                                  <p className="text-xs text-onSurfaceVariant">
                                     Ref:{" "}
                                     {formatCurrency(
                                       asset.referenceValue!,
@@ -280,7 +280,7 @@ export default function DashboardClient({
                                   </p>
                                 ) : null}
                                 {displayValue == null ? (
-                                  <p className="text-xs text-gray-500">
+                                  <p className="text-xs text-onSurfaceVariant">
                                     Stored amount:{" "}
                                     {formatCurrency(
                                       Number(asset.balance),
@@ -293,7 +293,7 @@ export default function DashboardClient({
                               <button
                                 type="button"
                                 onClick={() => setEditAssetId(asset.id)}
-                                className="text-blue-600 hover:underline"
+                                className="text-primary hover:underline"
                               >
                                 Edit
                               </button>
@@ -310,11 +310,11 @@ export default function DashboardClient({
         </div>
 
         <div className="flex items-center gap-4 mt-10">
-          <div className="flex-1 h-px bg-gray-300"></div>
-          <span className="text-lg font-semibold text-gray-700">
+          <div className="flex-1 h-px bg-outlineVariant/30"></div>
+          <span className="text-lg font-semibold text-onSurface">
             Liabilities
           </span>
-          <div className="flex-1 h-px bg-gray-300"></div>
+          <div className="flex-1 h-px bg-outlineVariant/30"></div>
         </div>
 
         <div className="space-y-6">
@@ -329,7 +329,7 @@ export default function DashboardClient({
                   onClick={() => toggleCategory(category)}
                   className="flex items-center justify-between w-full text-left"
                 >
-                  <span className="text-lg font-medium text-red-600">
+                  <span className="text-lg font-medium text-tertiary">
                     {category}
                   </span>
                   <DisclosureIcon open={openCategories[category]} />
@@ -346,17 +346,17 @@ export default function DashboardClient({
                         return (
                           <li
                             key={asset.id}
-                            className="bg-white shadow rounded-2xl p-4 flex items-center justify-between"
+                            className="bg-surfaceContainerLowest shadow-ambient rounded-xl md:rounded-[3rem] p-4 flex items-center justify-between"
                           >
                             <div className="flex flex-col">
                               <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900">
+                                <p className="font-semibold text-onSurface">
                                   {asset.name}
                                 </p>
                               </div>
 
                               <div className="flex flex-wrap items-center gap-2 mt-1">
-                                <span className="px-2 py-0.5 rounded-full text-xs font-medium text-white bg-red-600">
+                                <span className="px-2 py-0.5 rounded-full text-xs font-medium text-white bg-tertiary text-onPrimary">
                                   {asset.liabilityKind}
                                 </span>
 
@@ -370,12 +370,12 @@ export default function DashboardClient({
 
                             <div className="flex items-center gap-4">
                               <div className="flex flex-col items-end">
-                                <p className="text-lg font-semibold text-gray-900">
+                                <p className="text-lg font-semibold text-onSurface">
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable in ${baseCurrency}`}
                                 </p>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-onSurfaceVariant">
                                   {getValuationLabel(asset)}
                                 </p>
                               </div>
@@ -383,7 +383,7 @@ export default function DashboardClient({
                               <button
                                 type="button"
                                 onClick={() => setEditAssetId(asset.id)}
-                                className="text-blue-600 hover:underline"
+                                className="text-primary hover:underline"
                               >
                                 Edit
                               </button>
