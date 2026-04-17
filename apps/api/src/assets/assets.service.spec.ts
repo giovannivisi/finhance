@@ -55,6 +55,7 @@ function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'asset-1',
     userId: OWNER_ID,
+    accountId: null,
     name: 'Apple',
     type: AssetType.ASSET,
     kind: AssetKind.STOCK,
@@ -117,6 +118,9 @@ describe('AssetsService', () => {
     getMarketPrice: jest.Mock;
     getFxRate: jest.Mock;
   };
+  let accounts: {
+    assertAccountAssignmentAllowed: jest.Mock;
+  };
 
   beforeEach(() => {
     prisma = {
@@ -162,7 +166,15 @@ describe('AssetsService', () => {
       getFxRate: jest.fn(),
     };
 
-    service = new AssetsService(prisma as never, prices as never);
+    accounts = {
+      assertAccountAssignmentAllowed: jest.fn(),
+    };
+
+    service = new AssetsService(
+      prisma as never,
+      prices as never,
+      accounts as never,
+    );
   });
 
   it('merges repeated market buys using decimal math within the owner scope', async () => {
@@ -267,6 +279,91 @@ describe('AssetsService', () => {
     expect(dashboard.assets[0].referenceValue).toBe(72);
     expect(dashboard.assets[0].valuationSource).toBe('AVG_COST');
     expect(dashboard.summary.assets).toBe(72);
+  });
+
+  it('assigns non-market assets to validated accounts', async () => {
+    const created = createAsset({
+      accountId: 'account-1',
+      kind: AssetKind.CASH,
+      ticker: null,
+      exchange: null,
+      quantity: null,
+      unitPrice: null,
+      balance: new Prisma.Decimal('100'),
+      currency: 'EUR',
+    });
+    prisma.asset.create.mockResolvedValue(created);
+
+    await service.create(OWNER_ID, {
+      name: 'Cash reserve',
+      type: AssetType.ASSET,
+      kind: AssetKind.CASH,
+      balance: 100,
+      currency: 'EUR',
+      accountId: 'account-1',
+    });
+
+    expect(accounts.assertAccountAssignmentAllowed).toHaveBeenCalledWith(
+      OWNER_ID,
+      'account-1',
+    );
+    const createCall = firstCallArg<{
+      data: {
+        accountId: string | null;
+      };
+    }>(prisma.asset.create);
+
+    expect(createCall.data.accountId).toBe('account-1');
+  });
+
+  it('passes the current account context during asset updates', async () => {
+    const existing = createAsset({
+      accountId: 'account-1',
+      kind: AssetKind.CASH,
+      ticker: null,
+      exchange: null,
+      quantity: null,
+      unitPrice: null,
+      balance: new Prisma.Decimal('100'),
+      currency: 'EUR',
+    });
+    prisma.asset.findFirst.mockResolvedValue(existing);
+    prisma.asset.update.mockResolvedValue(existing);
+
+    await service.update(OWNER_ID, existing.id, {
+      name: 'Cash reserve',
+      type: AssetType.ASSET,
+      kind: AssetKind.CASH,
+      balance: 100,
+      currency: 'EUR',
+      accountId: 'account-1',
+    });
+
+    expect(accounts.assertAccountAssignmentAllowed).toHaveBeenCalledWith(
+      OWNER_ID,
+      'account-1',
+      'account-1',
+    );
+  });
+
+  it('keeps dashboard totals unchanged when assets are assigned to accounts', async () => {
+    prisma.asset.findMany.mockResolvedValue([
+      createAsset({
+        accountId: 'account-1',
+        kind: AssetKind.CASH,
+        ticker: null,
+        exchange: null,
+        quantity: null,
+        unitPrice: null,
+        balance: new Prisma.Decimal('80'),
+        currency: 'EUR',
+      }),
+    ]);
+
+    const dashboard = await service.getDashboard(OWNER_ID);
+
+    expect(dashboard.summary.assets).toBe(80);
+    expect(dashboard.summary.netWorth).toBe(80);
   });
 
   it('deduplicates FX refresh work and returns stale count for one owner', async () => {

@@ -2,11 +2,13 @@
 
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import type { AccountResponse } from "@finhance/shared";
 import {
   ASSET_KIND_OPTIONS,
   EXCHANGE_SUFFIXES,
   LIABILITY_KIND_OPTIONS,
 } from "@lib/asset-ui";
+import { formatAccountOptionLabel } from "@lib/accounts";
 import {
   buildAssetPayload,
   ensureKindForType,
@@ -14,7 +16,7 @@ import {
   normalizeExchangeInput,
   type AssetFormValues,
 } from "@lib/asset-form";
-import { getApiUrl, readApiError } from "@lib/api";
+import { api, getApiUrl, readApiError } from "@lib/api";
 
 interface AssetFormProps {
   assetId?: string;
@@ -32,6 +34,8 @@ export default function AssetForm({
   const router = useRouter();
   const fieldPrefix = useId();
   const [form, setForm] = useState<AssetFormValues>(initialValues);
+  const [accounts, setAccounts] = useState<AccountResponse[]>([]);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -44,6 +48,49 @@ export default function AssetForm({
   useEffect(() => {
     setForm(initialValues);
   }, [initialValues]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAccounts() {
+      setAccountsError(null);
+
+      try {
+        const nextAccounts = await api<AccountResponse[]>("/accounts");
+        const selectedAccountId = initialValues.accountId.trim();
+
+        if (
+          selectedAccountId &&
+          !nextAccounts.some((account) => account.id === selectedAccountId)
+        ) {
+          const selectedAccount = await api<AccountResponse>(
+            `/accounts/${selectedAccountId}`,
+          );
+          nextAccounts.push(selectedAccount);
+        }
+
+        nextAccounts.sort((left, right) => left.order - right.order);
+
+        if (!cancelled) {
+          setAccounts(nextAccounts);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setAccountsError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to load accounts.",
+          );
+        }
+      }
+    }
+
+    void loadAccounts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialValues.accountId]);
 
   useEffect(() => {
     setForm((previous) => {
@@ -299,6 +346,31 @@ export default function AssetForm({
           value={form.currency}
           onChange={(event) => updateField("currency", event.target.value)}
         />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor={`${fieldPrefix}-account`}
+          className="text-sm text-gray-600"
+        >
+          Account
+        </label>
+        <select
+          id={`${fieldPrefix}-account`}
+          className="border rounded-lg px-3 py-2"
+          value={form.accountId}
+          onChange={(event) => updateField("accountId", event.target.value)}
+        >
+          <option value="">No account</option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {formatAccountOptionLabel(account)}
+            </option>
+          ))}
+        </select>
+        {accountsError ? (
+          <p className="text-xs text-amber-700">{accountsError}</p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-1">

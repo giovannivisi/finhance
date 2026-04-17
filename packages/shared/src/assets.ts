@@ -22,6 +22,7 @@ export type ValuationSource =
 export interface UpsertAssetRequest {
   name: string;
   type: AssetType;
+  accountId?: string | null;
   currency?: string;
   ticker?: string | null;
   exchange?: string | null;
@@ -38,6 +39,7 @@ export interface AssetResponse {
   id: string;
   name: string;
   type: AssetType;
+  accountId: string | null;
   kind: AssetKind | null;
   liabilityKind: LiabilityKind | null;
   ticker: string | null;

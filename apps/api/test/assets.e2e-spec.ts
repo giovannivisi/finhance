@@ -1,6 +1,11 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  BadRequestException,
+  INestApplication,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
+import { AccountsService } from '@accounts/accounts.service';
 import { AssetsController } from '@assets/assets.controller';
 import { AssetsService } from '@assets/assets.service';
 import { DashboardController } from '@assets/dashboard.controller';
@@ -53,6 +58,7 @@ function createAsset(overrides: Partial<Asset> = {}): Asset {
   return {
     id: 'asset-1',
     userId: OWNER_ID,
+    accountId: null,
     name: 'Apple',
     type: AssetType.ASSET,
     kind: AssetKind.STOCK,
@@ -98,6 +104,7 @@ function expectAssetResponseDto(
     id: asset.id,
     name: asset.name,
     type: asset.type,
+    accountId: asset.accountId,
     kind: asset.kind,
     liabilityKind: asset.liabilityKind,
     ticker: asset.ticker,
@@ -142,6 +149,9 @@ describe('Asset routes (e2e)', () => {
     buildMarketSymbol: jest.Mock;
     getMarketPrice: jest.Mock;
     getFxRate: jest.Mock;
+  };
+  let accounts: {
+    assertAccountAssignmentAllowed: jest.Mock;
   };
 
   function httpServer(): HttpServer {
@@ -192,10 +202,15 @@ describe('Asset routes (e2e)', () => {
       getFxRate: jest.fn(),
     };
 
+    accounts = {
+      assertAccountAssignmentAllowed: jest.fn(),
+    };
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [AssetsController, DashboardController],
       providers: [
         AssetsService,
+        { provide: AccountsService, useValue: accounts },
         { provide: PrismaService, useValue: prisma },
         { provide: PricesService, useValue: prices },
         {
@@ -260,6 +275,55 @@ describe('Asset routes (e2e)', () => {
         const body = bodyAs<Record<string, unknown>>(response);
         expectAssetResponseDto(body, created);
       });
+  });
+
+  it('creates a direct-balance asset with accountId through POST /assets', async () => {
+    const created = createAsset({
+      accountId: 'account-1',
+      kind: AssetKind.CASH,
+      ticker: null,
+      exchange: null,
+      quantity: null,
+      unitPrice: null,
+      balance: new Prisma.Decimal('100'),
+      currency: 'EUR',
+    });
+    prisma.asset.create.mockResolvedValue(created);
+
+    await request(httpServer())
+      .post('/assets')
+      .send({
+        name: 'Cash reserve',
+        type: 'ASSET',
+        kind: 'CASH',
+        balance: 100,
+        currency: 'eur',
+        accountId: 'account-1',
+      })
+      .expect(201)
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<Record<string, unknown>>(response);
+        expectAssetResponseDto(body, created);
+      });
+
+    expect(accounts.assertAccountAssignmentAllowed).toHaveBeenCalledWith(
+      OWNER_ID,
+      'account-1',
+    );
+  });
+
+  it('rejects overly long asset notes on POST /assets', async () => {
+    await request(httpServer())
+      .post('/assets')
+      .send({
+        name: 'Cash reserve',
+        type: 'ASSET',
+        kind: 'CASH',
+        balance: 100,
+        currency: 'EUR',
+        notes: 'N'.repeat(2001),
+      })
+      .expect(400);
   });
 
   it('returns DTO responses from GET /assets', async () => {
@@ -345,6 +409,35 @@ describe('Asset routes (e2e)', () => {
         currency: 'USD',
       })
       .expect(409);
+  });
+
+  it('rejects invalid accountId on PUT /assets/:id', async () => {
+    prisma.asset.findFirst.mockResolvedValueOnce(
+      createAsset({
+        kind: AssetKind.CASH,
+        ticker: null,
+        exchange: null,
+        quantity: null,
+        unitPrice: null,
+        balance: new Prisma.Decimal('100'),
+        currency: 'EUR',
+      }),
+    );
+    accounts.assertAccountAssignmentAllowed.mockRejectedValueOnce(
+      new BadRequestException('Account missing'),
+    );
+
+    await request(httpServer())
+      .put('/assets/asset-1')
+      .send({
+        name: 'Cash reserve',
+        type: 'ASSET',
+        kind: 'CASH',
+        balance: 100,
+        currency: 'EUR',
+        accountId: 'missing-account',
+      })
+      .expect(400);
   });
 
   it('returns 404 when deleting a missing asset', async () => {
