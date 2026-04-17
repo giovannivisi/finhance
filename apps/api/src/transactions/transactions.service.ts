@@ -1,0 +1,868 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { AccountsService } from '@accounts/accounts.service';
+import { PrismaService } from '@prisma/prisma.service';
+import { CategoriesService } from '@transactions/categories.service';
+import { CreateTransactionDto } from '@transactions/dto/create-transaction.dto';
+import { UpdateTransactionDto } from '@transactions/dto/update-transaction.dto';
+import {
+  CashflowFilters,
+  LogicalTransactionEntry,
+  TransactionFilters,
+  TransactionRecord,
+} from '@transactions/transactions.types';
+import {
+  CategoryType,
+  Prisma,
+  TransactionDirection,
+  TransactionKind,
+} from '@prisma/client';
+import type {
+  CashflowSummaryResponse,
+  CashflowCurrencySummaryResponse,
+} from '@finhance/shared';
+import {
+  romeDateToUtcExclusiveEnd,
+  romeDateToUtcStart,
+} from '@transactions/transactions.dates';
+
+interface PreparedStandardTransactionInput {
+  postedAt: Date;
+  amount: Prisma.Decimal;
+  currency: string;
+  kind: 'EXPENSE' | 'INCOME' | 'ADJUSTMENT';
+  direction: TransactionDirection;
+  accountId: string;
+  categoryId: string | null;
+  description: string;
+  notes: string | null;
+  counterparty: string | null;
+}
+
+interface PreparedTransferTransactionInput {
+  postedAt: Date;
+  amount: Prisma.Decimal;
+  currency: string;
+  description: string;
+  notes: string | null;
+  sourceAccountId: string;
+  destinationAccountId: string;
+}
+
+@Injectable()
+export class TransactionsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accountsService: AccountsService,
+    private readonly categoriesService: CategoriesService,
+  ) {}
+
+  async findAll(
+    ownerId: string,
+    filters: TransactionFilters,
+  ): Promise<LogicalTransactionEntry[]> {
+    const rows = await this.findRows(ownerId, filters);
+    const entries = this.toLogicalEntries(rows);
+
+    return entries
+      .filter((entry) => this.matchesFilters(entry, filters))
+      .sort((left, right) => this.compareEntriesDesc(left, right));
+  }
+
+  async findOne(ownerId: string, id: string): Promise<LogicalTransactionEntry> {
+    const byId = await this.prisma.transaction.findFirst({
+      where: { id, userId: ownerId },
+      include: {
+        account: true,
+        category: true,
+      },
+    });
+
+    if (byId) {
+      if (byId.kind !== TransactionKind.TRANSFER) {
+        return {
+          entryType: 'STANDARD',
+          row: byId,
+        };
+      }
+
+      return this.findTransferEntry(ownerId, byId.transferGroupId ?? id);
+    }
+
+    return this.findTransferEntry(ownerId, id);
+  }
+
+  async create(
+    ownerId: string,
+    dto: CreateTransactionDto,
+  ): Promise<LogicalTransactionEntry> {
+    if (dto.kind === TransactionKind.TRANSFER) {
+      return this.createTransfer(ownerId, dto);
+    }
+
+    const prepared = await this.prepareStandardTransaction(ownerId, dto);
+    const row = await this.prisma.transaction.create({
+      data: {
+        userId: ownerId,
+        postedAt: prepared.postedAt,
+        accountId: prepared.accountId,
+        categoryId: prepared.categoryId,
+        amount: prepared.amount,
+        currency: prepared.currency,
+        direction: prepared.direction,
+        kind: prepared.kind,
+        description: prepared.description,
+        notes: prepared.notes,
+        counterparty: prepared.counterparty,
+        transferGroupId: null,
+      },
+      include: {
+        account: true,
+        category: true,
+      },
+    });
+
+    return {
+      entryType: 'STANDARD',
+      row,
+    };
+  }
+
+  async update(
+    ownerId: string,
+    id: string,
+    dto: UpdateTransactionDto,
+  ): Promise<LogicalTransactionEntry> {
+    const existing = await this.findOne(ownerId, id);
+
+    if (existing.entryType === 'TRANSFER') {
+      if (dto.kind !== TransactionKind.TRANSFER) {
+        throw new ConflictException(
+          'Transaction kind cannot be changed. Delete and recreate the transaction.',
+        );
+      }
+
+      const prepared = await this.prepareTransferTransaction(ownerId, dto, {
+        sourceAccountId: existing.outflow.accountId,
+        destinationAccountId: existing.inflow.accountId,
+      });
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.transaction.update({
+          where: { id: existing.outflow.id },
+          data: {
+            postedAt: prepared.postedAt,
+            accountId: prepared.sourceAccountId,
+            amount: prepared.amount,
+            currency: prepared.currency,
+            direction: TransactionDirection.OUTFLOW,
+            kind: TransactionKind.TRANSFER,
+            categoryId: null,
+            description: prepared.description,
+            notes: prepared.notes,
+            counterparty: null,
+          },
+        });
+
+        await tx.transaction.update({
+          where: { id: existing.inflow.id },
+          data: {
+            postedAt: prepared.postedAt,
+            accountId: prepared.destinationAccountId,
+            amount: prepared.amount,
+            currency: prepared.currency,
+            direction: TransactionDirection.INFLOW,
+            kind: TransactionKind.TRANSFER,
+            categoryId: null,
+            description: prepared.description,
+            notes: prepared.notes,
+            counterparty: null,
+          },
+        });
+      });
+
+      return this.findTransferEntry(ownerId, existing.transferGroupId);
+    }
+
+    if (dto.kind === TransactionKind.TRANSFER) {
+      throw new ConflictException(
+        'Transaction kind cannot be changed. Delete and recreate the transaction.',
+      );
+    }
+
+    if (dto.kind !== existing.row.kind) {
+      throw new ConflictException(
+        'Transaction kind cannot be changed. Delete and recreate the transaction.',
+      );
+    }
+
+    const prepared = await this.prepareStandardTransaction(ownerId, dto, {
+      accountId: existing.row.accountId,
+      categoryId: existing.row.categoryId,
+    });
+
+    const row = await this.prisma.transaction.update({
+      where: { id: existing.row.id },
+      data: {
+        postedAt: prepared.postedAt,
+        accountId: prepared.accountId,
+        categoryId: prepared.categoryId,
+        amount: prepared.amount,
+        currency: prepared.currency,
+        direction: prepared.direction,
+        description: prepared.description,
+        notes: prepared.notes,
+        counterparty: prepared.counterparty,
+      },
+      include: {
+        account: true,
+        category: true,
+      },
+    });
+
+    return {
+      entryType: 'STANDARD',
+      row,
+    };
+  }
+
+  async remove(ownerId: string, id: string): Promise<void> {
+    const existing = await this.findOne(ownerId, id);
+
+    if (existing.entryType === 'TRANSFER') {
+      await this.prisma.transaction.deleteMany({
+        where: {
+          userId: ownerId,
+          transferGroupId: existing.transferGroupId,
+        },
+      });
+      return;
+    }
+
+    await this.prisma.transaction.delete({
+      where: { id: existing.row.id },
+    });
+  }
+
+  async getCashflowSummary(
+    ownerId: string,
+    filters: CashflowFilters,
+  ): Promise<CashflowSummaryResponse> {
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        userId: ownerId,
+        kind: {
+          not: TransactionKind.TRANSFER,
+        },
+        ...this.toPostedAtWhere(filters.from, filters.to),
+      },
+      include: {
+        account: true,
+        category: true,
+      },
+    });
+
+    const includeArchivedAccounts = filters.includeArchivedAccounts ?? false;
+    const filteredRows = rows.filter((row) => {
+      if (!includeArchivedAccounts && row.account.archivedAt) {
+        return false;
+      }
+
+      if (filters.accountId && row.accountId !== filters.accountId) {
+        return false;
+      }
+
+      if (filters.categoryId && row.categoryId !== filters.categoryId) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return this.buildCashflowSummary(filteredRows);
+  }
+
+  private async createTransfer(
+    ownerId: string,
+    dto: CreateTransactionDto,
+  ): Promise<LogicalTransactionEntry> {
+    const prepared = await this.prepareTransferTransaction(ownerId, dto);
+    const transferGroupId = `transfer_${randomUUID()}`;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.transaction.create({
+        data: {
+          userId: ownerId,
+          postedAt: prepared.postedAt,
+          accountId: prepared.sourceAccountId,
+          categoryId: null,
+          amount: prepared.amount,
+          currency: prepared.currency,
+          direction: TransactionDirection.OUTFLOW,
+          kind: TransactionKind.TRANSFER,
+          description: prepared.description,
+          notes: prepared.notes,
+          counterparty: null,
+          transferGroupId,
+        },
+      });
+
+      await tx.transaction.create({
+        data: {
+          userId: ownerId,
+          postedAt: prepared.postedAt,
+          accountId: prepared.destinationAccountId,
+          categoryId: null,
+          amount: prepared.amount,
+          currency: prepared.currency,
+          direction: TransactionDirection.INFLOW,
+          kind: TransactionKind.TRANSFER,
+          description: prepared.description,
+          notes: prepared.notes,
+          counterparty: null,
+          transferGroupId,
+        },
+      });
+    });
+
+    return this.findTransferEntry(ownerId, transferGroupId);
+  }
+
+  private async prepareStandardTransaction(
+    ownerId: string,
+    dto: CreateTransactionDto | UpdateTransactionDto,
+    current?: {
+      accountId?: string | null;
+      categoryId?: string | null;
+    },
+  ): Promise<PreparedStandardTransactionInput> {
+    if (dto.kind === TransactionKind.TRANSFER) {
+      throw new BadRequestException(
+        'Transfer transactions must use source and destination accounts.',
+      );
+    }
+
+    if (!dto.accountId) {
+      throw new BadRequestException('accountId is required.');
+    }
+
+    if (dto.sourceAccountId || dto.destinationAccountId) {
+      throw new BadRequestException(
+        'sourceAccountId and destinationAccountId are only valid for transfers.',
+      );
+    }
+
+    if (!dto.direction) {
+      throw new BadRequestException('direction is required.');
+    }
+
+    if (
+      dto.kind === TransactionKind.EXPENSE &&
+      dto.direction !== TransactionDirection.OUTFLOW
+    ) {
+      throw new BadRequestException(
+        'Expense transactions must use the OUTFLOW direction.',
+      );
+    }
+
+    if (
+      dto.kind === TransactionKind.INCOME &&
+      dto.direction !== TransactionDirection.INFLOW
+    ) {
+      throw new BadRequestException(
+        'Income transactions must use the INFLOW direction.',
+      );
+    }
+
+    if (dto.kind === TransactionKind.ADJUSTMENT && dto.categoryId) {
+      throw new BadRequestException(
+        'Adjustment transactions cannot be assigned to categories.',
+      );
+    }
+
+    const account = await this.accountsService.getAssignableAccount(
+      ownerId,
+      dto.accountId,
+      current?.accountId,
+    );
+
+    let categoryId: string | null = null;
+    if (dto.categoryId) {
+      const category = await this.categoriesService.getAssignableCategory(
+        ownerId,
+        dto.categoryId,
+        dto.kind,
+        current?.categoryId,
+      );
+      categoryId = category.id;
+    }
+
+    return {
+      postedAt: this.parsePostedAt(dto.postedAt),
+      amount: this.toDecimal(dto.amount),
+      currency: account.currency,
+      kind: dto.kind,
+      direction: dto.direction,
+      accountId: account.id,
+      categoryId,
+      description: this.requireText(
+        dto.description,
+        'Description is required.',
+      ),
+      notes: this.optionalText(dto.notes),
+      counterparty: this.optionalText(dto.counterparty),
+    };
+  }
+
+  private async prepareTransferTransaction(
+    ownerId: string,
+    dto: CreateTransactionDto | UpdateTransactionDto,
+    current?: {
+      sourceAccountId?: string | null;
+      destinationAccountId?: string | null;
+    },
+  ): Promise<PreparedTransferTransactionInput> {
+    if (dto.kind !== TransactionKind.TRANSFER) {
+      throw new BadRequestException(
+        'Only transfer transactions may use source and destination accounts.',
+      );
+    }
+
+    if (!dto.sourceAccountId || !dto.destinationAccountId) {
+      throw new BadRequestException(
+        'sourceAccountId and destinationAccountId are required for transfers.',
+      );
+    }
+
+    if (dto.accountId || dto.direction || dto.categoryId || dto.counterparty) {
+      throw new BadRequestException(
+        'Transfers must omit accountId, direction, categoryId, and counterparty.',
+      );
+    }
+
+    if (dto.sourceAccountId === dto.destinationAccountId) {
+      throw new BadRequestException(
+        'sourceAccountId and destinationAccountId must be different.',
+      );
+    }
+
+    const sourceAccount = await this.accountsService.getAssignableAccount(
+      ownerId,
+      dto.sourceAccountId,
+      current?.sourceAccountId,
+    );
+    const destinationAccount = await this.accountsService.getAssignableAccount(
+      ownerId,
+      dto.destinationAccountId,
+      current?.destinationAccountId,
+    );
+
+    if (sourceAccount.currency !== destinationAccount.currency) {
+      throw new BadRequestException(
+        'Transfers require source and destination accounts with the same currency.',
+      );
+    }
+
+    return {
+      postedAt: this.parsePostedAt(dto.postedAt),
+      amount: this.toDecimal(dto.amount),
+      currency: sourceAccount.currency,
+      description: this.requireText(
+        dto.description,
+        'Description is required.',
+      ),
+      notes: this.optionalText(dto.notes),
+      sourceAccountId: sourceAccount.id,
+      destinationAccountId: destinationAccount.id,
+    };
+  }
+
+  private async findRows(
+    ownerId: string,
+    filters: TransactionFilters,
+  ): Promise<TransactionRecord[]> {
+    return this.prisma.transaction.findMany({
+      where: {
+        userId: ownerId,
+        ...this.toPostedAtWhere(filters.from, filters.to),
+      },
+      include: {
+        account: true,
+        category: true,
+      },
+    });
+  }
+
+  private async findTransferEntry(
+    ownerId: string,
+    transferGroupId: string,
+  ): Promise<LogicalTransactionEntry> {
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        userId: ownerId,
+        transferGroupId,
+      },
+      include: {
+        account: true,
+        category: true,
+      },
+    });
+
+    if (rows.length === 0) {
+      throw new NotFoundException(
+        `Transaction ${transferGroupId} was not found.`,
+      );
+    }
+
+    return this.toTransferEntry(transferGroupId, rows);
+  }
+
+  private toLogicalEntries(
+    rows: TransactionRecord[],
+  ): LogicalTransactionEntry[] {
+    const entries: LogicalTransactionEntry[] = [];
+    const transferGroups = new Map<string, TransactionRecord[]>();
+
+    for (const row of rows) {
+      if (row.kind === TransactionKind.TRANSFER && row.transferGroupId) {
+        const group = transferGroups.get(row.transferGroupId) ?? [];
+        group.push(row);
+        transferGroups.set(row.transferGroupId, group);
+        continue;
+      }
+
+      entries.push({
+        entryType: 'STANDARD',
+        row,
+      });
+    }
+
+    for (const [transferGroupId, groupRows] of transferGroups.entries()) {
+      entries.push(this.toTransferEntry(transferGroupId, groupRows));
+    }
+
+    return entries;
+  }
+
+  private toTransferEntry(
+    transferGroupId: string,
+    rows: TransactionRecord[],
+  ): LogicalTransactionEntry {
+    if (rows.length !== 2) {
+      throw new ConflictException(
+        `Transfer ${transferGroupId} is incomplete and cannot be represented.`,
+      );
+    }
+
+    const outflow = rows.find(
+      (row) => row.direction === TransactionDirection.OUTFLOW,
+    );
+    const inflow = rows.find(
+      (row) => row.direction === TransactionDirection.INFLOW,
+    );
+
+    if (!outflow || !inflow) {
+      throw new ConflictException(
+        `Transfer ${transferGroupId} is missing one direction.`,
+      );
+    }
+
+    return {
+      entryType: 'TRANSFER',
+      transferGroupId,
+      outflow,
+      inflow,
+    };
+  }
+
+  private matchesFilters(
+    entry: LogicalTransactionEntry,
+    filters: TransactionFilters,
+  ): boolean {
+    if (
+      !(filters.includeArchivedAccounts ?? false) &&
+      this.entryUsesArchivedAccount(entry)
+    ) {
+      return false;
+    }
+
+    if (filters.kind && this.getEntryKind(entry) !== filters.kind) {
+      return false;
+    }
+
+    if (
+      filters.accountId &&
+      !this.entryMatchesAccount(entry, filters.accountId)
+    ) {
+      return false;
+    }
+
+    if (filters.categoryId) {
+      return (
+        entry.entryType === 'STANDARD' &&
+        entry.row.categoryId === filters.categoryId
+      );
+    }
+
+    return true;
+  }
+
+  private entryUsesArchivedAccount(entry: LogicalTransactionEntry): boolean {
+    if (entry.entryType === 'STANDARD') {
+      return entry.row.account.archivedAt !== null;
+    }
+
+    return (
+      entry.outflow.account.archivedAt !== null ||
+      entry.inflow.account.archivedAt !== null
+    );
+  }
+
+  private entryMatchesAccount(
+    entry: LogicalTransactionEntry,
+    accountId: string,
+  ): boolean {
+    if (entry.entryType === 'STANDARD') {
+      return entry.row.accountId === accountId;
+    }
+
+    return (
+      entry.outflow.accountId === accountId ||
+      entry.inflow.accountId === accountId
+    );
+  }
+
+  private getEntryKind(entry: LogicalTransactionEntry): TransactionKind {
+    return entry.entryType === 'STANDARD'
+      ? entry.row.kind
+      : TransactionKind.TRANSFER;
+  }
+
+  private compareEntriesDesc(
+    left: LogicalTransactionEntry,
+    right: LogicalTransactionEntry,
+  ): number {
+    const postedAtDiff =
+      this.getEntryPostedAt(right).getTime() -
+      this.getEntryPostedAt(left).getTime();
+
+    if (postedAtDiff !== 0) {
+      return postedAtDiff;
+    }
+
+    const updatedAtDiff =
+      this.getEntryUpdatedAt(right).getTime() -
+      this.getEntryUpdatedAt(left).getTime();
+
+    if (updatedAtDiff !== 0) {
+      return updatedAtDiff;
+    }
+
+    return this.getEntryId(left).localeCompare(this.getEntryId(right));
+  }
+
+  private getEntryPostedAt(entry: LogicalTransactionEntry): Date {
+    return entry.entryType === 'STANDARD'
+      ? entry.row.postedAt
+      : entry.outflow.postedAt;
+  }
+
+  private getEntryUpdatedAt(entry: LogicalTransactionEntry): Date {
+    if (entry.entryType === 'STANDARD') {
+      return entry.row.updatedAt;
+    }
+
+    return entry.outflow.updatedAt.getTime() >= entry.inflow.updatedAt.getTime()
+      ? entry.outflow.updatedAt
+      : entry.inflow.updatedAt;
+  }
+
+  private getEntryId(entry: LogicalTransactionEntry): string {
+    return entry.entryType === 'STANDARD'
+      ? entry.row.id
+      : entry.transferGroupId;
+  }
+
+  private buildCashflowSummary(
+    rows: TransactionRecord[],
+  ): CashflowSummaryResponse {
+    type CategoryCashflowTotal = {
+      categoryId: string | null;
+      name: string;
+      type: CategoryType;
+      total: Prisma.Decimal;
+    };
+    type AccountCashflowTotal = {
+      accountId: string;
+      name: string;
+      inflowTotal: Prisma.Decimal;
+      outflowTotal: Prisma.Decimal;
+    };
+    type CashflowBucket = {
+      summary: CashflowCurrencySummaryResponse;
+      categoryTotals: Map<string, CategoryCashflowTotal>;
+      accountTotals: Map<string, AccountCashflowTotal>;
+    };
+
+    const buckets = new Map<string, CashflowBucket>();
+
+    for (const row of rows) {
+      const bucket: CashflowBucket = buckets.get(row.currency) ?? {
+        summary: {
+          currency: row.currency,
+          incomeTotal: 0,
+          expenseTotal: 0,
+          adjustmentInTotal: 0,
+          adjustmentOutTotal: 0,
+          netCashflow: 0,
+          byCategory: [],
+          byAccount: [],
+        },
+        categoryTotals: new Map<string, CategoryCashflowTotal>(),
+        accountTotals: new Map<string, AccountCashflowTotal>(),
+      };
+
+      const amount = row.amount;
+      const accountTotal = bucket.accountTotals.get(row.accountId) ?? {
+        accountId: row.accountId,
+        name: row.account.name,
+        inflowTotal: this.toDecimal(0),
+        outflowTotal: this.toDecimal(0),
+      };
+
+      if (row.direction === TransactionDirection.INFLOW) {
+        accountTotal.inflowTotal = accountTotal.inflowTotal.plus(amount);
+      } else {
+        accountTotal.outflowTotal = accountTotal.outflowTotal.plus(amount);
+      }
+
+      bucket.accountTotals.set(row.accountId, accountTotal);
+
+      if (row.kind === TransactionKind.INCOME) {
+        bucket.summary.incomeTotal += amount.toNumber();
+      } else if (row.kind === TransactionKind.EXPENSE) {
+        bucket.summary.expenseTotal += amount.toNumber();
+      } else if (row.direction === TransactionDirection.INFLOW) {
+        bucket.summary.adjustmentInTotal += amount.toNumber();
+      } else {
+        bucket.summary.adjustmentOutTotal += amount.toNumber();
+      }
+
+      if (
+        row.kind === TransactionKind.INCOME ||
+        row.kind === TransactionKind.EXPENSE
+      ) {
+        const categoryType =
+          row.kind === TransactionKind.INCOME
+            ? CategoryType.INCOME
+            : CategoryType.EXPENSE;
+        const categoryKey = row.categoryId
+          ? `category:${row.categoryId}`
+          : `uncategorized:${categoryType}`;
+        const categoryTotal = bucket.categoryTotals.get(categoryKey) ?? {
+          categoryId: row.categoryId,
+          name: row.category?.name ?? 'Uncategorized',
+          type: row.category?.type ?? categoryType,
+          total: this.toDecimal(0),
+        };
+
+        categoryTotal.total = categoryTotal.total.plus(amount);
+        bucket.categoryTotals.set(categoryKey, categoryTotal);
+      }
+
+      buckets.set(row.currency, bucket);
+    }
+
+    return Array.from(buckets.values())
+      .map((bucket) => {
+        bucket.summary.netCashflow =
+          bucket.summary.incomeTotal +
+          bucket.summary.adjustmentInTotal -
+          bucket.summary.expenseTotal -
+          bucket.summary.adjustmentOutTotal;
+        bucket.summary.byCategory = Array.from(bucket.categoryTotals.values())
+          .map((categoryTotal) => ({
+            categoryId: categoryTotal.categoryId,
+            name: categoryTotal.name,
+            type: categoryTotal.type,
+            total: categoryTotal.total.toNumber(),
+          }))
+          .sort((left, right) => {
+            if (left.type !== right.type) {
+              return left.type.localeCompare(right.type);
+            }
+
+            if (right.total !== left.total) {
+              return right.total - left.total;
+            }
+
+            return left.name.localeCompare(right.name);
+          });
+        bucket.summary.byAccount = Array.from(bucket.accountTotals.values())
+          .map((accountTotal) => ({
+            accountId: accountTotal.accountId,
+            name: accountTotal.name,
+            inflowTotal: accountTotal.inflowTotal.toNumber(),
+            outflowTotal: accountTotal.outflowTotal.toNumber(),
+            netCashflow: accountTotal.inflowTotal
+              .minus(accountTotal.outflowTotal)
+              .toNumber(),
+          }))
+          .sort((left, right) => left.name.localeCompare(right.name));
+
+        return bucket.summary;
+      })
+      .sort((left, right) => left.currency.localeCompare(right.currency));
+  }
+
+  private toPostedAtWhere(
+    from?: string,
+    to?: string,
+  ): Pick<Prisma.TransactionWhereInput, 'postedAt'> {
+    const postedAt: Prisma.DateTimeFilter = {};
+
+    if (from) {
+      postedAt.gte = romeDateToUtcStart(from);
+    }
+
+    if (to) {
+      postedAt.lt = romeDateToUtcExclusiveEnd(to);
+    }
+
+    return Object.keys(postedAt).length > 0 ? { postedAt } : {};
+  }
+
+  private parsePostedAt(value: string): Date {
+    const postedAt = new Date(value);
+
+    if (Number.isNaN(postedAt.getTime())) {
+      throw new BadRequestException(`Invalid postedAt value ${value}.`);
+    }
+
+    return postedAt;
+  }
+
+  private requireText(value: string, errorMessage: string): string {
+    const normalized = value.trim();
+
+    if (!normalized) {
+      throw new BadRequestException(errorMessage);
+    }
+
+    return normalized;
+  }
+
+  private optionalText(value?: string | null): string | null {
+    const normalized = value?.trim();
+    return normalized ? normalized : null;
+  }
+
+  private toDecimal(value: number): Prisma.Decimal {
+    return new Prisma.Decimal(value.toString());
+  }
+}

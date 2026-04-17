@@ -15,11 +15,17 @@ export default function Header() {
           <Link href="/" className="hover:text-gray-900">
             Dashboard
           </Link>
+          <Link href="/transactions" className="hover:text-gray-900">
+            Transactions
+          </Link>
           <Link href="/history" className="hover:text-gray-900">
             History
           </Link>
           <Link href="/accounts" className="hover:text-gray-900">
             Accounts
+          </Link>
+          <Link href="/categories" className="hover:text-gray-900">
+            Categories
           </Link>
         </nav>
       </div>

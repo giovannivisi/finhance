@@ -192,12 +192,24 @@ export class AccountsService {
       return;
     }
 
-    const account = await this.prisma.account.findFirst({
-      where: { id: accountId, userId: ownerId },
-    });
+    await this.getAssignableAccount(ownerId, accountId, currentAccountId);
+  }
 
-    if (!account) {
-      throw new BadRequestException(`Account ${accountId} is invalid.`);
+  async getAssignableAccount(
+    ownerId: string,
+    accountId: string,
+    currentAccountId?: string | null,
+  ): Promise<Account> {
+    let account: Account;
+
+    try {
+      account = await this.findOne(ownerId, accountId);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new BadRequestException(`Account ${accountId} is invalid.`);
+      }
+
+      throw error;
     }
 
     if (account.archivedAt && account.id !== currentAccountId) {
@@ -205,6 +217,8 @@ export class AccountsService {
         'Archived accounts cannot be newly assigned to assets.',
       );
     }
+
+    return account;
   }
 
   private prepareAccountInput(

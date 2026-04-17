@@ -10,7 +10,8 @@
     ".": "./src/index.ts",
     "./assets": "./src/assets.ts",
     "./accounts": "./src/accounts.ts",
-    "./snapshots": "./src/snapshots.ts"
+    "./snapshots": "./src/snapshots.ts",
+    "./transactions": "./src/transactions.ts"
   },
   "license": "MIT",
   "author": "giovisi"
