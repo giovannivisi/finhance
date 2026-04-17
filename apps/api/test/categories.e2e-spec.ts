@@ -198,4 +198,14 @@ describe('Category routes (e2e)', () => {
       })
       .expect(400);
   });
+
+  it('rejects overly long category names on POST /categories', async () => {
+    await request(httpServer())
+      .post('/categories')
+      .send({
+        name: 'G'.repeat(121),
+        type: 'EXPENSE',
+      })
+      .expect(400);
+  });
 });

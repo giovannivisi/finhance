@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  MaxLength,
   IsOptional,
   IsString,
 } from 'class-validator';
@@ -14,9 +15,12 @@ function trimStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
 
+const CATEGORY_NAME_MAX_LENGTH = 120;
+
 export class CreateCategoryDto implements UpsertCategoryRequest {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(CATEGORY_NAME_MAX_LENGTH)
   @Transform(trimStringValue)
   name!: string;
 

@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  MaxLength,
   IsOptional,
   IsString,
   Matches,
@@ -23,9 +24,14 @@ function uppercaseStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim().toUpperCase() : value;
 }
 
+const ACCOUNT_NAME_MAX_LENGTH = 120;
+const ACCOUNT_INSTITUTION_MAX_LENGTH = 120;
+const ACCOUNT_NOTES_MAX_LENGTH = 2_000;
+
 export class CreateAccountDto implements UpsertAccountRequest {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(ACCOUNT_NAME_MAX_LENGTH)
   @Transform(trimStringValue)
   name!: string;
 
@@ -40,11 +46,13 @@ export class CreateAccountDto implements UpsertAccountRequest {
 
   @IsOptional()
   @IsString()
+  @MaxLength(ACCOUNT_INSTITUTION_MAX_LENGTH)
   @Transform(trimOptionalStringValue)
   institution?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(ACCOUNT_NOTES_MAX_LENGTH)
   @Transform(trimOptionalStringValue)
   notes?: string | null;
 

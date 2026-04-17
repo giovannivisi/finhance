@@ -1,6 +1,7 @@
 import {
   isAllowedCorsOrigin,
   parseAllowedOrigins,
+  parseTrustProxy,
   resolveBootstrapRuntimeConfig,
 } from '@/config/bootstrap.config';
 
@@ -9,6 +10,7 @@ describe('bootstrap config', () => {
     expect(resolveBootstrapRuntimeConfig({} as NodeJS.ProcessEnv)).toEqual({
       host: '127.0.0.1',
       allowedOrigins: ['http://localhost:3001', 'http://127.0.0.1:3001'],
+      trustProxy: false,
     });
   });
 
@@ -38,6 +40,22 @@ describe('bootstrap config', () => {
       } as NodeJS.ProcessEnv),
     ).toThrow(
       'Refusing to bind API_HOST=0.0.0.0 without ALLOW_NON_LOOPBACK=true.',
+    );
+  });
+
+  it('parses trust proxy settings for proxied deployments', () => {
+    expect(parseTrustProxy('true')).toBe(true);
+    expect(parseTrustProxy('1')).toBe(1);
+    expect(parseTrustProxy('2')).toBe(2);
+    expect(parseTrustProxy(undefined)).toBe(false);
+  });
+
+  it('rejects invalid trust proxy settings', () => {
+    expect(() => parseTrustProxy('0')).toThrow(
+      'API_TRUST_PROXY must be "true", "false", or a positive integer.',
+    );
+    expect(() => parseTrustProxy('maybe')).toThrow(
+      'API_TRUST_PROXY must be "true", "false", or a positive integer.',
     );
   });
 });

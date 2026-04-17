@@ -31,6 +31,17 @@ import {
   romeDateToUtcStart,
 } from '@transactions/transactions.dates';
 
+const DEFAULT_TRANSACTION_LIMIT = 200;
+const MAX_TRANSACTION_LIMIT = 500;
+const DEFAULT_TRANSACTION_OFFSET = 0;
+const MAX_TRANSACTION_RANGE_DAYS = 3_650;
+const ROME_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Rome',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 interface PreparedStandardTransactionInput {
   postedAt: Date;
   amount: Prisma.Decimal;
@@ -66,12 +77,26 @@ export class TransactionsService {
     ownerId: string,
     filters: TransactionFilters,
   ): Promise<LogicalTransactionEntry[]> {
-    const rows = await this.findRows(ownerId, filters);
-    const entries = this.toLogicalEntries(rows);
-
-    return entries
-      .filter((entry) => this.matchesFilters(entry, filters))
+    const normalizedFilters = this.normalizeTransactionFilters(filters);
+    const rows = await this.findRows(ownerId, normalizedFilters);
+    const entries = this.toLogicalEntries(rows)
+      .filter((entry) => this.matchesFilters(entry, normalizedFilters))
       .sort((left, right) => this.compareEntriesDesc(left, right));
+
+    if (
+      normalizedFilters.limit === undefined &&
+      normalizedFilters.offset === undefined
+    ) {
+      return entries;
+    }
+
+    const offset = normalizedFilters.offset ?? DEFAULT_TRANSACTION_OFFSET;
+    const limit = normalizedFilters.limit;
+
+    return entries.slice(
+      offset,
+      limit === undefined ? undefined : offset + limit,
+    );
   }
 
   async findOne(ownerId: string, id: string): Promise<LogicalTransactionEntry> {
@@ -253,13 +278,26 @@ export class TransactionsService {
     ownerId: string,
     filters: CashflowFilters,
   ): Promise<CashflowSummaryResponse> {
+    const normalizedRange = this.resolveOptionalBoundedDateRange(
+      filters.from,
+      filters.to,
+    );
     const rows = await this.prisma.transaction.findMany({
       where: {
         userId: ownerId,
         kind: {
           not: TransactionKind.TRANSFER,
         },
-        ...this.toPostedAtWhere(filters.from, filters.to),
+        ...(filters.accountId ? { accountId: filters.accountId } : {}),
+        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+        ...(!(filters.includeArchivedAccounts ?? false)
+          ? {
+              account: {
+                archivedAt: null,
+              },
+            }
+          : {}),
+        ...this.toPostedAtWhere(normalizedRange.from, normalizedRange.to),
       },
       include: {
         account: true,
@@ -267,24 +305,7 @@ export class TransactionsService {
       },
     });
 
-    const includeArchivedAccounts = filters.includeArchivedAccounts ?? false;
-    const filteredRows = rows.filter((row) => {
-      if (!includeArchivedAccounts && row.account.archivedAt) {
-        return false;
-      }
-
-      if (filters.accountId && row.accountId !== filters.accountId) {
-        return false;
-      }
-
-      if (filters.categoryId && row.categoryId !== filters.categoryId) {
-        return false;
-      }
-
-      return true;
-    });
-
-    return this.buildCashflowSummary(filteredRows);
+    return this.buildCashflowSummary(rows);
   }
 
   private async createTransfer(
@@ -489,6 +510,8 @@ export class TransactionsService {
     return this.prisma.transaction.findMany({
       where: {
         userId: ownerId,
+        ...(filters.kind ? { kind: filters.kind } : {}),
+        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
         ...this.toPostedAtWhere(filters.from, filters.to),
       },
       include: {
@@ -610,6 +633,137 @@ export class TransactionsService {
     }
 
     return true;
+  }
+
+  private normalizeTransactionFilters(
+    filters: TransactionFilters,
+  ): TransactionFilters {
+    const range = this.resolveOptionalBoundedDateRange(
+      filters.from,
+      filters.to,
+    );
+    const paginationRequested =
+      filters.limit !== undefined || filters.offset !== undefined;
+
+    return {
+      ...filters,
+      from: range.from,
+      to: range.to,
+      limit: paginationRequested
+        ? this.normalizeLimit(filters.limit)
+        : undefined,
+      offset: paginationRequested
+        ? this.normalizeOffset(filters.offset)
+        : undefined,
+    };
+  }
+
+  private normalizeLimit(limit?: number): number {
+    if (limit === undefined) {
+      return DEFAULT_TRANSACTION_LIMIT;
+    }
+
+    return Math.min(Math.max(limit, 1), MAX_TRANSACTION_LIMIT);
+  }
+
+  private normalizeOffset(offset?: number): number {
+    if (offset === undefined) {
+      return DEFAULT_TRANSACTION_OFFSET;
+    }
+
+    return Math.max(offset, DEFAULT_TRANSACTION_OFFSET);
+  }
+
+  private resolveOptionalBoundedDateRange(
+    from?: string,
+    to?: string,
+  ): { from?: string; to?: string } {
+    if (from === undefined && to === undefined) {
+      return {};
+    }
+
+    return this.resolveBoundedDateRange(from, to);
+  }
+
+  private resolveBoundedDateRange(
+    from?: string,
+    to?: string,
+  ): { from: string; to: string } {
+    const today = this.getTodayRomeDateString();
+    const effectiveTo = to ?? today;
+    const effectiveFrom =
+      from ??
+      this.addDaysToLocalDate(effectiveTo, -(MAX_TRANSACTION_RANGE_DAYS - 1));
+
+    if (effectiveFrom > effectiveTo) {
+      throw new BadRequestException('from must be less than or equal to to.');
+    }
+
+    const daySpan = this.diffLocalDays(effectiveFrom, effectiveTo) + 1;
+    if (daySpan > MAX_TRANSACTION_RANGE_DAYS) {
+      throw new BadRequestException(
+        `Date range cannot exceed ${MAX_TRANSACTION_RANGE_DAYS} days.`,
+      );
+    }
+
+    return {
+      from: effectiveFrom,
+      to: effectiveTo,
+    };
+  }
+
+  private getTodayRomeDateString(): string {
+    const parts = ROME_DATE_FORMATTER.formatToParts(new Date());
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+
+    if (!year || !month || !day) {
+      throw new Error('Unable to resolve the current Europe/Rome date.');
+    }
+
+    return `${year}-${month}-${day}`;
+  }
+
+  private addDaysToLocalDate(dateString: string, amount: number): string {
+    const { year, month, day } = this.parseLocalDate(dateString);
+    const next = new Date(Date.UTC(year, month - 1, day + amount));
+
+    return [
+      next.getUTCFullYear(),
+      String(next.getUTCMonth() + 1).padStart(2, '0'),
+      String(next.getUTCDate()).padStart(2, '0'),
+    ].join('-');
+  }
+
+  private diffLocalDays(from: string, to: string): number {
+    const fromDate = this.localDateToUtcEpoch(from);
+    const toDate = this.localDateToUtcEpoch(to);
+
+    return Math.floor((toDate - fromDate) / 86_400_000);
+  }
+
+  private localDateToUtcEpoch(dateString: string): number {
+    const { year, month, day } = this.parseLocalDate(dateString);
+    return Date.UTC(year, month - 1, day);
+  }
+
+  private parseLocalDate(dateString: string): {
+    year: number;
+    month: number;
+    day: number;
+  } {
+    const [year, month, day] = dateString.split('-').map(Number);
+
+    if (!year || !month || !day) {
+      throw new BadRequestException(`Invalid local date ${dateString}.`);
+    }
+
+    return {
+      year,
+      month,
+      day,
+    };
   }
 
   private entryUsesArchivedAccount(entry: LogicalTransactionEntry): boolean {

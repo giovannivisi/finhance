@@ -300,6 +300,36 @@ describe('Transaction routes (e2e)', () => {
       });
   });
 
+  it('applies transaction result limits from GET /transactions', async () => {
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransactionRow({ id: 'transaction-1' }),
+      createTransactionRow({ id: 'transaction-2' }),
+    ]);
+
+    await request(httpServer())
+      .get('/transactions?limit=1')
+      .expect(200)
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<TransactionResponse[]>(response);
+        expect(body).toHaveLength(1);
+        expect(body[0]).toMatchObject({ id: 'transaction-1' });
+      });
+  });
+
+  it('rejects overly long transaction descriptions on POST /transactions', async () => {
+    await request(httpServer())
+      .post('/transactions')
+      .send({
+        postedAt: '2026-04-17T09:00:00.000Z',
+        kind: 'INCOME',
+        amount: 100,
+        description: 'D'.repeat(241),
+        accountId: 'account-1',
+        direction: 'INFLOW',
+      })
+      .expect(400);
+  });
+
   it('deletes both rows for logical transfers', async () => {
     prisma.transaction.findFirst.mockResolvedValue(
       createTransactionRow({
@@ -360,5 +390,11 @@ describe('Transaction routes (e2e)', () => {
           }),
         ]);
       });
+  });
+
+  it('rejects cashflow ranges longer than the configured cap', async () => {
+    await request(httpServer())
+      .get('/cashflow/summary?from=2000-01-01&to=2026-04-17')
+      .expect(400);
   });
 });

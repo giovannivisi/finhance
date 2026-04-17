@@ -221,4 +221,14 @@ describe('Account routes (e2e)', () => {
       })
       .expect(400);
   });
+
+  it('rejects overly long account names on POST /accounts', async () => {
+    await request(httpServer())
+      .post('/accounts')
+      .send({
+        name: 'A'.repeat(121),
+        type: 'BANK',
+      })
+      .expect(400);
+  });
 });

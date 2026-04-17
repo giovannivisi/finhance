@@ -4,6 +4,7 @@ import {
   IsDateString,
   IsEnum,
   IsNotEmpty,
+  MaxLength,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -23,6 +24,10 @@ function trimOptionalStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() || undefined : value;
 }
 
+const TRANSACTION_DESCRIPTION_MAX_LENGTH = 240;
+const TRANSACTION_COUNTERPARTY_MAX_LENGTH = 120;
+const TRANSACTION_NOTES_MAX_LENGTH = 2_000;
+
 export class CreateTransactionDto {
   @IsDateString()
   postedAt!: string;
@@ -36,11 +41,13 @@ export class CreateTransactionDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(TRANSACTION_DESCRIPTION_MAX_LENGTH)
   @Transform(trimStringValue)
   description!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(TRANSACTION_NOTES_MAX_LENGTH)
   @Transform(trimOptionalStringValue)
   notes?: string | null;
 
@@ -62,6 +69,7 @@ export class CreateTransactionDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(TRANSACTION_COUNTERPARTY_MAX_LENGTH)
   @Transform(trimOptionalStringValue)
   counterparty?: string | null;
 

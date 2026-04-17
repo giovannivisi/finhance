@@ -279,6 +279,28 @@ describe('TransactionsService', () => {
     expect(withArchived).toHaveLength(2);
   });
 
+  it('returns the full history when pagination is not requested', async () => {
+    prisma.transaction.findMany.mockResolvedValue(
+      Array.from({ length: 205 }, (_, index) =>
+        createTransactionRow({
+          id: `transaction-${index + 1}`,
+        }),
+      ),
+    );
+
+    const result = await service.findAll(OWNER_ID, {});
+
+    expect(result).toHaveLength(205);
+    expect(
+      nthCallArg<{ where: Record<string, unknown> }>(
+        prisma.transaction.findMany,
+        0,
+      ).where,
+    ).toEqual({
+      userId: OWNER_ID,
+    });
+  });
+
   it('builds per-currency cashflow summaries and excludes transfers', async () => {
     prisma.transaction.findMany.mockResolvedValue([
       createTransactionRow({
@@ -339,5 +361,71 @@ describe('TransactionsService', () => {
         }),
       ]),
     );
+  });
+
+  it('applies safe database filters and pagination to transaction history queries', async () => {
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransactionRow({
+        id: 'transaction-1',
+        postedAt: new Date('2026-04-17T09:00:00.000Z'),
+      }),
+      createTransactionRow({
+        id: 'transaction-2',
+        postedAt: new Date('2026-04-16T09:00:00.000Z'),
+      }),
+    ]);
+
+    const result = await service.findAll(OWNER_ID, {
+      from: '2026-04-01',
+      to: '2026-04-30',
+      kind: TransactionKind.INCOME,
+      categoryId: 'category-1',
+      limit: 1,
+      offset: 1,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.entryType).toBe('STANDARD');
+    if (result[0]?.entryType !== 'STANDARD') {
+      throw new Error('Expected a standard transaction entry.');
+    }
+    expect(result[0].row.id).toBe('transaction-2');
+
+    expect(
+      nthCallArg<{ where: Record<string, unknown> }>(
+        prisma.transaction.findMany,
+        0,
+      ).where,
+    ).toMatchObject({
+      userId: OWNER_ID,
+      kind: TransactionKind.INCOME,
+      categoryId: 'category-1',
+    });
+  });
+
+  it('pushes cashflow account and archive filters into Prisma', async () => {
+    prisma.transaction.findMany.mockResolvedValue([createTransactionRow()]);
+
+    await service.getCashflowSummary(OWNER_ID, {
+      from: '2026-04-01',
+      to: '2026-04-30',
+      accountId: 'account-1',
+      categoryId: 'category-1',
+      includeArchivedAccounts: false,
+    });
+
+    expect(
+      nthCallArg<{ where: Record<string, unknown> }>(
+        prisma.transaction.findMany,
+        0,
+      ).where,
+    ).toMatchObject({
+      userId: OWNER_ID,
+      accountId: 'account-1',
+      categoryId: 'category-1',
+      account: {
+        archivedAt: null,
+      },
+    });
   });
 });

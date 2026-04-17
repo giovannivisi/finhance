@@ -312,6 +312,20 @@ describe('Asset routes (e2e)', () => {
     );
   });
 
+  it('rejects overly long asset notes on POST /assets', async () => {
+    await request(httpServer())
+      .post('/assets')
+      .send({
+        name: 'Cash reserve',
+        type: 'ASSET',
+        kind: 'CASH',
+        balance: 100,
+        currency: 'EUR',
+        notes: 'N'.repeat(2001),
+      })
+      .expect(400);
+  });
+
   it('returns DTO responses from GET /assets', async () => {
     const asset = createAsset();
     prisma.asset.findMany.mockResolvedValue([asset]);

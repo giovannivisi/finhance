@@ -3,6 +3,9 @@ import type { TransformFnParams } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
+  IsInt,
+  Max,
+  Min,
   IsOptional,
   IsString,
   Matches,
@@ -11,6 +14,8 @@ import { TransactionKind as PrismaTransactionKind } from '@prisma/client';
 import type { TransactionKind } from '@finhance/shared';
 
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_QUERY_LIMIT = 500;
+const MAX_QUERY_OFFSET = 1_000;
 
 function trimOptionalStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() || undefined : value;
@@ -27,6 +32,22 @@ function booleanValue({ value }: TransformFnParams): unknown {
 
   if (typeof value === 'string') {
     return value.trim().toLowerCase() === 'true';
+  }
+
+  return value;
+}
+
+function integerValue({ value }: TransformFnParams): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? value : value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    return Number(value);
   }
 
   return value;
@@ -63,4 +84,18 @@ export class FindTransactionsQueryDto {
   @Transform(booleanValue)
   @IsBoolean()
   includeArchivedAccounts?: boolean;
+
+  @IsOptional()
+  @Transform(integerValue)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_QUERY_LIMIT)
+  limit?: number;
+
+  @IsOptional()
+  @Transform(integerValue)
+  @IsInt()
+  @Min(0)
+  @Max(MAX_QUERY_OFFSET)
+  offset?: number;
 }

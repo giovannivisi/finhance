@@ -30,6 +30,8 @@ export interface TransactionFilters {
   categoryId?: string;
   kind?: TransactionKind;
   includeArchivedAccounts?: boolean;
+  limit?: number;
+  offset?: number;
 }
 
 export interface CashflowFilters {
