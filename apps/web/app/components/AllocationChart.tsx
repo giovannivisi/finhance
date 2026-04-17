@@ -3,7 +3,7 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import type { PieLabelRenderProps } from "recharts";
 import { formatCurrency } from "@lib/format";
-import { COLORS } from "@lib/api-types";
+import { COLORS } from "@lib/asset-ui";
 
 const renderLabel = (props: PieLabelRenderProps) => {
   const { name, percent, x, y } = props;
@@ -33,11 +33,10 @@ export default function AllocationChart({
   const isSingle = cleaned.length === 1;
   const single = isSingle ? cleaned[0] : null;
 
-return (
-  <div className="flex items-center justify-center w-full">
-    <ResponsiveContainer width={size} height={size}>
-      <PieChart>
-        ...
+  return (
+    <div className="flex items-center justify-center w-full">
+      <ResponsiveContainer width={size} height={size}>
+        <PieChart>
           <Pie
             data={cleaned}
             dataKey="total"
@@ -48,6 +47,8 @@ return (
             outerRadius={90}
             stroke="#fff"
             strokeWidth={2}
+            labelLine={false}
+            label={isSingle ? false : renderLabel}
           >
             {cleaned.map((entry, index) => (
               <Cell
@@ -57,7 +58,7 @@ return (
             ))}
           </Pie>
 
-          {isSingle && single && (
+          {isSingle && single ? (
             <text
               x="50%"
               y="50%"
@@ -65,14 +66,19 @@ return (
               dominantBaseline="middle"
               style={{ fontSize: "16px", fontWeight: 600, fill: "#111827" }}
             >
-              {single.label} {" "}
-              {((single.total / cleaned.reduce((s, d) => s + d.total, 0)) * 100).toFixed(0)}%
+              {single.label}{" "}
+              {(
+                (single.total /
+                  cleaned.reduce((sum, item) => sum + item.total, 0)) *
+                100
+              ).toFixed(0)}
+              %
             </text>
-          )}
+          ) : null}
 
-          {!isSingle && (
+          {!isSingle ? (
             <Tooltip formatter={(value: number) => formatCurrency(value)} />
-          )}
+          ) : null}
         </PieChart>
       </ResponsiveContainer>
     </div>

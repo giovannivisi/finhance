@@ -1,19 +1,11 @@
-export type ApiAsset = {
-  id: string;
-  name: string;
-  balance: number;
-  type: string;
-  kind?: string | null;
-  ticker?: string | null;
-  quantity?: number | string | null;
-  unitPrice?: number | string | null;
-  notes?: string | null;
-  order?: number | null;
-  liabilityKind?: string | null;
-  currentValue?: number | null;
-  lastPrice?: number | string | null;
-  lastPriceAt?: string | null;
-};
+import type { AssetKind, LiabilityKind } from "@finhance/shared";
+
+export interface KindConfig {
+  showBalance: boolean;
+  showTicker: boolean;
+  showQuantity: boolean;
+  showUnitPrice: boolean;
+}
 
 export const COLORS = {
   STOCK: "#4F46E5",
@@ -23,8 +15,8 @@ export const COLORS = {
   REAL_ESTATE: "#F97316",
   COMMODITY: "#A16207",
   PENSION: "#6B7280",
-  OTHER: "#4B5563"
-} as const;
+  OTHER: "#4B5563",
+} as const satisfies Record<AssetKind, string>;
 
 export const EXCHANGE_SUFFIXES = [
   { label: "🇺🇸 United States", value: "" },
@@ -33,8 +25,21 @@ export const EXCHANGE_SUFFIXES = [
   { label: "🇩🇪 Xetra (DE)", value: ".DE" },
   { label: "🇫🇷 Paris (EPA)", value: ".PA" },
   { label: "🇪🇸 Madrid (BME)", value: ".MC" },
-  { label: "Crypto", value: "_CRYPTO_" }
+  { label: "Crypto", value: "_CRYPTO_" },
+] as const;
+
+export const ASSET_KIND_OPTIONS: AssetKind[] = [
+  "CASH",
+  "STOCK",
+  "BOND",
+  "CRYPTO",
+  "REAL_ESTATE",
+  "PENSION",
+  "COMMODITY",
+  "OTHER",
 ];
+
+export const LIABILITY_KIND_OPTIONS: LiabilityKind[] = ["TAX", "DEBT", "OTHER"];
 
 export const ASSET_KIND_CONFIG = {
   CASH: {
@@ -85,25 +90,25 @@ export const ASSET_KIND_CONFIG = {
     showQuantity: false,
     showUnitPrice: false,
   },
-} as const;
+} as const satisfies Record<AssetKind, KindConfig>;
 
 export const LIABILITY_CONFIG = {
   TAX: {
-  showBalance: true,
-  showTicker: false,
-  showQuantity: false,
-  showUnitPrice: false,
-  }, 
+    showBalance: true,
+    showTicker: false,
+    showQuantity: false,
+    showUnitPrice: false,
+  },
   DEBT: {
     showBalance: true,
     showTicker: false,
     showQuantity: false,
     showUnitPrice: false,
-  }, 
+  },
   OTHER: {
     showBalance: true,
     showTicker: false,
     showQuantity: false,
     showUnitPrice: false,
-  },  
-} as const;
+  },
+} as const satisfies Record<LiabilityKind, KindConfig>;
