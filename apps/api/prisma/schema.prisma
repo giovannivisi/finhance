@@ -10,6 +10,7 @@ datasource db {
 model Asset {
   id            String         @id @default(cuid())
   userId        String
+  accountId     String?
   name          String
   kind          AssetKind?
   liabilityKind LiabilityKind?
@@ -28,9 +29,29 @@ model Asset {
   lastPriceAt   DateTime?
   lastFxRate    Decimal?       @db.Decimal(20, 10)
   lastFxRateAt  DateTime?
+  account       Account?       @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
 
   @@unique([userId, type, kind, ticker, exchange])
   @@index([userId])
+  @@index([userId, accountId])
+}
+
+model Account {
+  id          String      @id @default(cuid())
+  userId      String
+  name        String
+  type        AccountType
+  currency    String      @default("EUR")
+  institution String?
+  notes       String?
+  order       Int         @default(0)
+  archivedAt  DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  assets      Asset[]
+
+  @@unique([id, userId])
+  @@index([userId, archivedAt, order, createdAt])
 }
 
 model PortfolioState {
@@ -60,5 +81,14 @@ enum AssetKind {
 enum LiabilityKind {
   TAX
   DEBT
+  OTHER
+}
+
+enum AccountType {
+  BANK
+  BROKER
+  CARD
+  CASH
+  LOAN
   OTHER
 }

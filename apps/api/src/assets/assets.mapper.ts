@@ -12,6 +12,7 @@ export function toAssetResponse(asset: Asset): AssetResponse {
     id: asset.id,
     name: asset.name,
     type: asset.type,
+    accountId: asset.accountId,
     kind: asset.kind,
     liabilityKind: asset.liabilityKind,
     ticker: asset.ticker,

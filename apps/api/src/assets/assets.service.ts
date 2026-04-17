@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
+import { AccountsService } from '@accounts/accounts.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
 import { PricesService } from '@prices/prices.service';
@@ -34,6 +35,7 @@ import type {
 
 interface PreparedAssetInput {
   userId: string;
+  accountId: string | null;
   name: string;
   type: AssetType;
   kind: AssetKind | null;
@@ -62,6 +64,7 @@ export class AssetsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricesService: PricesService,
+    private readonly accountsService: AccountsService,
   ) {}
 
   async findAll(ownerId: string): Promise<Asset[]> {
@@ -255,6 +258,10 @@ export class AssetsService {
       prepared.type === AssetType.LIABILITY ||
       !this.isMarketKind(prepared.kind)
     ) {
+      await this.accountsService.assertAccountAssignmentAllowed(
+        ownerId,
+        prepared.accountId,
+      );
       return this.prisma.asset.create({
         data: this.toAssetCreateInput(prepared),
       });
@@ -282,6 +289,11 @@ export class AssetsService {
   ): Promise<Asset> {
     const existing = await this.findOne(ownerId, id);
     const prepared = this.prepareAssetInput(ownerId, dto);
+    await this.accountsService.assertAccountAssignmentAllowed(
+      ownerId,
+      prepared.accountId,
+      existing.accountId,
+    );
 
     if (prepared.type === AssetType.ASSET && this.isMarketKind(prepared.kind)) {
       const duplicate = await this.prisma.asset.findUnique({
@@ -452,10 +464,24 @@ export class AssetsService {
           });
 
           if (!existing) {
+            await this.accountsService.assertAccountAssignmentAllowed(
+              prepared.userId,
+              prepared.accountId,
+            );
             return tx.asset.create({
               data: this.toAssetCreateInput(prepared),
             });
           }
+
+          const mergedAccountId = this.resolveMergedAccountId(
+            existing,
+            prepared,
+          );
+          await this.accountsService.assertAccountAssignmentAllowed(
+            prepared.userId,
+            mergedAccountId,
+            existing.accountId,
+          );
 
           const mergedQuantity = this.toDecimal(existing.quantity).plus(
             prepared.quantity!,
@@ -475,6 +501,7 @@ export class AssetsService {
               balance: mergedCost,
               currency: prepared.currency,
               notes: prepared.notes ?? existing.notes,
+              accountId: mergedAccountId,
               order: prepared.order,
             },
           });
@@ -505,6 +532,7 @@ export class AssetsService {
     );
     const name = dto.name.trim();
     const order = dto.order ?? 0;
+    const accountId = dto.accountId ?? null;
     const notes = dto.notes ?? null;
 
     if (dto.type === AssetType.LIABILITY) {
@@ -518,6 +546,7 @@ export class AssetsService {
 
       return {
         userId: ownerId,
+        accountId,
         name,
         type: AssetType.LIABILITY,
         kind: null,
@@ -555,6 +584,7 @@ export class AssetsService {
 
       return {
         userId: ownerId,
+        accountId,
         name,
         type: AssetType.ASSET,
         kind: dto.kind,
@@ -576,6 +606,7 @@ export class AssetsService {
 
     return {
       userId: ownerId,
+      accountId,
       name,
       type: AssetType.ASSET,
       kind: dto.kind,
@@ -639,11 +670,32 @@ export class AssetsService {
     return normalized;
   }
 
+  private resolveMergedAccountId(
+    existing: Pick<Asset, 'accountId'>,
+    prepared: Pick<PreparedAssetInput, 'accountId'>,
+  ): string | null {
+    if (prepared.accountId === null) {
+      return existing.accountId;
+    }
+
+    if (
+      existing.accountId === null ||
+      existing.accountId === prepared.accountId
+    ) {
+      return prepared.accountId;
+    }
+
+    throw new ConflictException(
+      'This position already belongs to another account. Reassign the asset before adding more.',
+    );
+  }
+
   private toAssetCreateInput(
     prepared: PreparedAssetInput,
-  ): Prisma.AssetCreateInput {
+  ): Prisma.AssetUncheckedCreateInput {
     return {
       userId: prepared.userId,
+      accountId: prepared.accountId,
       name: prepared.name,
       type: prepared.type,
       kind: prepared.kind,
@@ -661,9 +713,10 @@ export class AssetsService {
 
   private toAssetWritePayload(
     prepared: PreparedAssetInput,
-  ): Prisma.AssetUpdateInput {
+  ): Prisma.AssetUncheckedUpdateInput {
     return {
       userId: prepared.userId,
+      accountId: prepared.accountId,
       name: prepared.name,
       type: prepared.type,
       kind: prepared.kind,

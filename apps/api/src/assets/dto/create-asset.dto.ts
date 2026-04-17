@@ -47,6 +47,12 @@ export class CreateAssetDto implements UpsertAssetRequest {
   @Transform(trimStringValue)
   name!: string;
 
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @Transform(trimOptionalStringValue)
+  accountId?: string | null;
+
   @IsEnum(PrismaAssetType)
   type!: AssetType;
 

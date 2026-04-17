@@ -72,6 +72,7 @@
     },
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/$1",
+      "^@accounts/(.*)$": "<rootDir>/accounts/$1",
       "^@assets/(.*)$": "<rootDir>/assets/$1",
       "^@prices/(.*)$": "<rootDir>/prices/$1",
       "^@prisma/(prisma\\..*)$": "<rootDir>/prisma/$1"
