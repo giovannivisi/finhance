@@ -15,6 +15,9 @@ export default function Header() {
           <Link href="/" className="hover:text-gray-900">
             Dashboard
           </Link>
+          <Link href="/history" className="hover:text-gray-900">
+            History
+          </Link>
           <Link href="/accounts" className="hover:text-gray-900">
             Accounts
           </Link>

@@ -10,5 +10,6 @@ import { RequestOwnerResolver } from '@/security/request-owner.resolver';
   imports: [PricesModule, AccountsModule],
   controllers: [AssetsController, DashboardController],
   providers: [AssetsService, RequestOwnerResolver],
+  exports: [AssetsService],
 })
 export class AssetsModule {}
