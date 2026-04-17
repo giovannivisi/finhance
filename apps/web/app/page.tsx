@@ -1,12 +1,13 @@
-import Container from "@components/Container";
-import Header from "@components/Header";
+import Container from "./components/Container";
+import Header from "./components/Header";
 import type {
   DashboardAssetResponse,
   DashboardResponse,
 } from "@finhance/shared";
-import { api } from "@lib/api";
-import DashboardClient from "@components/DashboardClient";
-import { formatCurrency } from "@lib/format";
+import { api } from "../lib/api";
+import DashboardClient from "./components/DashboardClient";
+import { formatCurrency } from "../lib/format";
+import { Card, CardContent } from "@repo/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +29,20 @@ export default async function Home() {
       <>
         <Header />
         <Container>
-          <h2 className="text-2xl font-semibold">Dashboard unavailable</h2>
-          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
-            <p className="font-medium">The web app could not reach the API.</p>
-            <p className="mt-2 text-sm text-amber-900/80">
-              {errorMessage ?? "Start the API and refresh the page."}
-            </p>
+          <div className="pt-12 md:pt-24 space-y-6">
+            <h2 className="text-display-md font-heading font-extrabold tracking-tight">
+              Dashboard unavailable
+            </h2>
+            <Card className="bg-tertiary/10">
+              <CardContent className="p-8">
+                <p className="font-heading font-medium text-lg text-onSurface">
+                  The web app could not reach the API.
+                </p>
+                <p className="mt-2 text-onSurfaceVariant">
+                  {errorMessage ?? "Start the API and refresh the page."}
+                </p>
+              </CardContent>
+            </Card>
           </div>
         </Container>
       </>
@@ -79,41 +88,54 @@ export default async function Home() {
     <>
       <Header />
       <Container>
-        <h2 className="text-2xl font-semibold">Summary</h2>
+        <div className="space-y-12">
+          {/* Main Summary Section */}
+          <div className="flex flex-col gap-6 md:gap-12 md:flex-row md:items-end md:justify-between py-6">
+            <div className="space-y-2">
+              <h2 className="font-heading font-extrabold tracking-[-0.04em] text-5xl md:text-7xl text-onSurface">
+                {formatCurrency(
+                  dashboard.summary.netWorth,
+                  dashboard.baseCurrency,
+                )}
+              </h2>
+              <p className="text-onSurfaceVariant font-sans text-lg font-medium tracking-wide uppercase ml-1">
+                Total Net Worth
+              </p>
+            </div>
 
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white shadow rounded-2xl p-4 text-center">
-            <p className="text-sm text-gray-500">Assets</p>
-            <p className="text-green-600 text-xl font-bold">
-              {formatCurrency(dashboard.summary.assets, dashboard.baseCurrency)}
-            </p>
+            <div className="flex gap-4 md:gap-8">
+              <div className="flex flex-col">
+                <p className="text-sm font-sans tracking-widest text-onSurfaceVariant uppercase mb-1">
+                  Assets
+                </p>
+                <p className="text-secondary font-heading text-2xl md:text-3xl font-bold tracking-tight">
+                  {formatCurrency(
+                    dashboard.summary.assets,
+                    dashboard.baseCurrency,
+                  )}
+                </p>
+              </div>
+              <div className="flex flex-col">
+                <p className="text-sm font-sans tracking-widest text-onSurfaceVariant uppercase mb-1">
+                  Liabilities
+                </p>
+                <p className="text-tertiary font-heading text-2xl md:text-3xl font-bold tracking-tight">
+                  {formatCurrency(
+                    dashboard.summary.liabilities,
+                    dashboard.baseCurrency,
+                  )}
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="bg-white shadow rounded-2xl p-4 text-center">
-            <p className="text-sm text-gray-500">Liabilities</p>
-            <p className="text-red-600 text-xl font-bold">
-              {formatCurrency(
-                dashboard.summary.liabilities,
-                dashboard.baseCurrency,
-              )}
-            </p>
-          </div>
-          <div className="bg-white shadow rounded-2xl p-4 text-center">
-            <p className="text-sm text-gray-500">Net Worth</p>
-            <p className="text-black text-xl font-bold">
-              {formatCurrency(
-                dashboard.summary.netWorth,
-                dashboard.baseCurrency,
-              )}
-            </p>
-          </div>
+
+          <DashboardClient
+            grouped={grouped}
+            kindTotalsArray={kindTotalsArray}
+            baseCurrency={dashboard.baseCurrency}
+            lastRefreshAt={dashboard.lastRefreshAt}
+          />
         </div>
-
-        <DashboardClient
-          grouped={grouped}
-          kindTotalsArray={kindTotalsArray}
-          baseCurrency={dashboard.baseCurrency}
-          lastRefreshAt={dashboard.lastRefreshAt}
-        />
       </Container>
     </>
   );
