@@ -30,6 +30,19 @@ out/
 build
 dist
 
+# pnpm store
+.pnpm-store/
+pnpm-store/
+
+# IDEs
+.idea/
+
+# TypeScript incremental build state
+*.tsbuildinfo
+
+# pnpm debug logs
+.pnpm-debug.log*
+pnpm-debug.log*
 
 # Debug
 npm-debug.log*
