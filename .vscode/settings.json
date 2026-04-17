@@ -1,9 +1,0 @@
-{
-  "eslint.workingDirectories": [
-    {
-      "mode": "auto"
-    }
-  ],
-  "tailwindCSS.lint.cssConflict": "ignore",
-  "tailwindCSS.lint.invalidTailwindDirective": "ignore"
-}
