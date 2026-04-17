@@ -1,15 +1,16 @@
-import {
-  ASSET_KIND_CONFIG,
-  LIABILITY_CONFIG,
-  type ApiAsset,
-  type AssetPayload,
-  type AssetType,
-} from '@lib/api-types';
+import { ASSET_KIND_CONFIG, LIABILITY_CONFIG } from "@lib/asset-ui";
+import type {
+  AssetKind,
+  AssetResponse,
+  AssetType,
+  LiabilityKind,
+  UpsertAssetRequest,
+} from "@finhance/shared";
 
 export interface AssetFormValues {
   name: string;
   type: AssetType;
-  kind: string;
+  kind: AssetKind | LiabilityKind;
   balance: string;
   currency: string;
   ticker: string;
@@ -20,15 +21,20 @@ export interface AssetFormValues {
   order: string;
 }
 
-const DEFAULT_ASSET_KIND = 'CASH';
-const DEFAULT_LIABILITY_KIND = 'TAX';
+const DEFAULT_ASSET_KIND: AssetKind = "CASH";
+const DEFAULT_LIABILITY_KIND: LiabilityKind = "TAX";
 
-export function getDefaultKindForType(type: AssetType): string {
-  return type === 'LIABILITY' ? DEFAULT_LIABILITY_KIND : DEFAULT_ASSET_KIND;
+export function getDefaultKindForType(
+  type: AssetType,
+): AssetKind | LiabilityKind {
+  return type === "LIABILITY" ? DEFAULT_LIABILITY_KIND : DEFAULT_ASSET_KIND;
 }
 
-export function ensureKindForType(type: AssetType, kind: string): string {
-  if (type === 'LIABILITY') {
+export function ensureKindForType(
+  type: AssetType,
+  kind: AssetKind | LiabilityKind,
+): AssetKind | LiabilityKind {
+  if (type === "LIABILITY") {
     return kind in LIABILITY_CONFIG ? kind : DEFAULT_LIABILITY_KIND;
   }
 
@@ -40,36 +46,44 @@ export function normalizeTickerInput(value: string): string {
 }
 
 export function normalizeCurrencyInput(value: string): string {
-  return value.trim().toUpperCase() || 'EUR';
+  return value.trim().toUpperCase() || "EUR";
 }
 
-export function normalizeExchangeInput(type: AssetType, kind: string, value: string): string {
+export function normalizeExchangeInput(
+  type: AssetType,
+  kind: AssetKind | LiabilityKind,
+  value: string,
+): string {
   const normalized = value.trim().toUpperCase();
 
-  if (type !== 'ASSET') {
-    return '';
+  if (type !== "ASSET") {
+    return "";
   }
 
-  if (kind === 'CRYPTO') {
-    return '_CRYPTO_';
+  if (kind === "CRYPTO") {
+    return "_CRYPTO_";
   }
 
-  return normalized === '_CRYPTO_' ? '' : normalized;
+  return normalized === "_CRYPTO_" ? "" : normalized;
 }
 
-export function getKindConfig(type: AssetType, kind: string) {
+export function getKindConfig(
+  type: AssetType,
+  kind: AssetKind | LiabilityKind,
+) {
   const safeKind = ensureKindForType(type, kind);
 
-  if (type === 'LIABILITY') {
+  if (type === "LIABILITY") {
     return LIABILITY_CONFIG[safeKind as keyof typeof LIABILITY_CONFIG];
   }
 
   return ASSET_KIND_CONFIG[safeKind as keyof typeof ASSET_KIND_CONFIG];
 }
 
-export function buildAssetPayload(
-  values: AssetFormValues,
-): { payload?: AssetPayload; error?: string } {
+export function buildAssetPayload(values: AssetFormValues): {
+  payload?: UpsertAssetRequest;
+  error?: string;
+} {
   const type = values.type;
   const kind = ensureKindForType(type, values.kind);
   const config = getKindConfig(type, kind);
@@ -82,12 +96,14 @@ export function buildAssetPayload(
   const order = parseNumber(values.order);
 
   if (!values.name.trim()) {
-    return { error: 'Name is required.' };
+    return { error: "Name is required." };
   }
 
-  if (type === 'LIABILITY') {
+  if (type === "LIABILITY") {
+    const liabilityKind = kind as LiabilityKind;
+
     if (balance === null) {
-      return { error: 'Please enter an amount for the liability.' };
+      return { error: "Please enter an amount for the liability." };
     }
 
     return {
@@ -101,27 +117,29 @@ export function buildAssetPayload(
         unitPrice: null,
         balance,
         kind: null,
-        liabilityKind: kind,
+        liabilityKind,
         notes: values.notes.trim() || null,
         order,
       },
     };
   }
 
+  const assetKind = kind as AssetKind;
+
   if (config.showTicker && !ticker) {
-    return { error: 'Please enter a ticker.' };
+    return { error: "Please enter a ticker." };
   }
 
   if (config.showQuantity && quantity === null) {
-    return { error: 'Please enter a quantity.' };
+    return { error: "Please enter a quantity." };
   }
 
   if (config.showUnitPrice && unitPrice === null) {
-    return { error: 'Please enter a unit price.' };
+    return { error: "Please enter a unit price." };
   }
 
   if (config.showBalance && balance === null) {
-    return { error: 'Please enter an amount.' };
+    return { error: "Please enter an amount." };
   }
 
   const computedBalance = config.showBalance
@@ -131,7 +149,10 @@ export function buildAssetPayload(
       : null;
 
   if (computedBalance === null) {
-    return { error: 'The selected asset requires either an amount or a quantity and unit price.' };
+    return {
+      error:
+        "The selected asset requires either an amount or a quantity and unit price.",
+    };
   }
 
   return {
@@ -144,7 +165,7 @@ export function buildAssetPayload(
       quantity: config.showQuantity ? quantity : null,
       unitPrice: config.showUnitPrice ? unitPrice : null,
       balance: computedBalance,
-      kind,
+      kind: assetKind,
       liabilityKind: null,
       notes: values.notes.trim() || null,
       order,
@@ -152,38 +173,38 @@ export function buildAssetPayload(
   };
 }
 
-export function assetToFormValues(asset: ApiAsset): AssetFormValues {
+export function assetToFormValues(asset: AssetResponse): AssetFormValues {
   return {
     name: asset.name,
     type: asset.type,
     kind:
-      asset.type === 'LIABILITY'
-        ? asset.liabilityKind ?? DEFAULT_LIABILITY_KIND
-        : asset.kind ?? DEFAULT_ASSET_KIND,
+      asset.type === "LIABILITY"
+        ? (asset.liabilityKind ?? DEFAULT_LIABILITY_KIND)
+        : (asset.kind ?? DEFAULT_ASSET_KIND),
     balance: toInputString(asset.balance),
-    currency: asset.currency ?? 'EUR',
-    ticker: asset.ticker ?? '',
-    exchange: asset.exchange ?? '',
+    currency: asset.currency ?? "EUR",
+    ticker: asset.ticker ?? "",
+    exchange: asset.exchange ?? "",
     quantity: toInputString(asset.quantity),
     unitPrice: toInputString(asset.unitPrice),
-    notes: asset.notes ?? '',
-    order: asset.order != null ? String(asset.order) : '',
+    notes: asset.notes ?? "",
+    order: asset.order != null ? String(asset.order) : "",
   };
 }
 
 export function createEmptyAssetFormValues(): AssetFormValues {
   return {
-    name: '',
-    type: 'ASSET',
+    name: "",
+    type: "ASSET",
     kind: DEFAULT_ASSET_KIND,
-    balance: '',
-    currency: 'EUR',
-    ticker: '',
-    exchange: '',
-    quantity: '',
-    unitPrice: '',
-    notes: '',
-    order: '',
+    balance: "",
+    currency: "EUR",
+    ticker: "",
+    exchange: "",
+    quantity: "",
+    unitPrice: "",
+    notes: "",
+    order: "",
   };
 }
 
@@ -198,7 +219,7 @@ function parseNumber(value: string): number | null {
 
 function toInputString(value: string | number | null | undefined): string {
   if (value === null || value === undefined) {
-    return '';
+    return "";
   }
 
   return String(value);

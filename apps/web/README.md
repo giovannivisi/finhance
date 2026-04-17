@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Web App
 
-## Getting Started
+This app is the Next.js frontend for Finhance. In local development it should
+run on `http://localhost:3001`, while the Nest API runs on
+`http://127.0.0.1:3000`.
 
-First, run the development server:
+## Local Setup
+
+Set `NEXT_PUBLIC_API_URL` in `apps/web/.env.local` to one of:
 
 ```bash
-npm run dev
+NEXT_PUBLIC_API_URL=http://127.0.0.1:3000
 # or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+NEXT_PUBLIC_API_URL=http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Start the full repo from the workspace root:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Then open [http://localhost:3001](http://localhost:3001).
 
-## Learn More
+If you prefer to start services separately:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+pnpm --filter api dev
+pnpm --filter web dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Expected Ports
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Web: `3001`
+- API: `3000`
 
-## Deploy on Vercel
+The API CORS defaults already assume the web app runs on `3001`, so keeping the
+frontend and backend on separate local ports avoids sending API requests to the
+Next.js server by mistake.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Troubleshooting
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+If the dashboard says it could not reach the API:
+
+- confirm the API returns JSON at `http://127.0.0.1:3000/dashboard`
+- confirm the web app is running at `http://localhost:3001`
+- confirm `NEXT_PUBLIC_API_URL` is not pointing at the web server
+
+If `NEXT_PUBLIC_API_URL` points at the web app, the frontend may receive an
+HTML page instead of API JSON.
+
+## Deploy
+
+This README only documents the local development contract between the Next.js
+frontend and the local Nest API.

@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,20 +10,30 @@ import { PrismaService } from '@prisma/prisma.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
 import { PricesService } from '@prices/prices.service';
-import { Asset, AssetKind, AssetType, LiabilityKind, Prisma } from '@prisma/client';
+import {
+  Asset,
+  AssetKind,
+  AssetType,
+  LiabilityKind,
+  Prisma,
+} from '@prisma/client';
+import { toAssetResponse } from '@assets/assets.mapper';
 import {
   BASE_CURRENCY,
-  DashboardAssetView,
+  MARKET_KINDS,
+  REFRESH_COOLDOWN_MS,
+  VALUATION_STALE_MS,
+} from '@assets/assets.types';
+import type {
+  DashboardAssetResponse,
   DashboardResponse,
   DashboardSummary,
-  MARKET_KINDS,
   RefreshAssetsResponse,
-  VALUATION_STALE_MS,
   ValuationSource,
-} from '@assets/assets.types';
+} from '@finhance/shared';
 
 interface PreparedAssetInput {
-  userId: string | null;
+  userId: string;
   name: string;
   type: AssetType;
   kind: AssetKind | null;
@@ -52,24 +64,28 @@ export class AssetsService {
     private readonly pricesService: PricesService,
   ) {}
 
-  async findAll(): Promise<Asset[]> {
+  async findAll(ownerId: string): Promise<Asset[]> {
     return this.prisma.asset.findMany({
+      where: { userId: ownerId },
       orderBy: { createdAt: 'asc' },
     });
   }
 
-  async findAllWithCurrentValue(): Promise<DashboardAssetView[]> {
-    const dashboard = await this.getDashboard();
+  async findAllWithCurrentValue(
+    ownerId: string,
+  ): Promise<DashboardAssetResponse[]> {
+    const dashboard = await this.getDashboard(ownerId);
     return dashboard.assets;
   }
 
-  async getSummary(): Promise<DashboardSummary> {
-    const dashboard = await this.getDashboard();
+  async getSummary(ownerId: string): Promise<DashboardSummary> {
+    const dashboard = await this.getDashboard(ownerId);
     return dashboard.summary;
   }
 
-  async getDashboard(): Promise<DashboardResponse> {
+  async getDashboard(ownerId: string): Promise<DashboardResponse> {
     const assets = await this.prisma.asset.findMany({
+      where: { userId: ownerId },
       orderBy: [{ type: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
     });
     const now = new Date();
@@ -80,151 +96,165 @@ export class AssetsService {
       baseCurrency: BASE_CURRENCY,
       assets: views,
       summary,
-      lastRefreshAt: this.maxDate(
-        assets.flatMap((asset) => [asset.lastPriceAt, asset.lastFxRateAt]),
-      )?.toISOString() ?? null,
+      lastRefreshAt:
+        this.maxDate(
+          assets.flatMap((asset) => [asset.lastPriceAt, asset.lastFxRateAt]),
+        )?.toISOString() ?? null,
     };
   }
 
-  async refreshAssets(): Promise<RefreshAssetsResponse> {
-    const assets = await this.prisma.asset.findMany({
-      orderBy: { createdAt: 'asc' },
-    });
+  async refreshAssets(ownerId: string): Promise<RefreshAssetsResponse> {
     const refreshedAt = new Date();
+    await this.claimRefreshLock(ownerId, refreshedAt);
 
-    const quoteKeys = new Map<string, Asset>();
-    const fxCurrencies = new Set<string>();
+    try {
+      const assets = await this.prisma.asset.findMany({
+        where: { userId: ownerId },
+        orderBy: { createdAt: 'asc' },
+      });
 
-    for (const asset of assets) {
-      if (this.isMarketAsset(asset)) {
-        try {
-          const symbol = this.pricesService.buildMarketSymbol({
-            kind: asset.kind!,
-            ticker: asset.ticker ?? '',
-            exchange: asset.exchange,
-            quoteCurrency: asset.currency,
-          });
-          quoteKeys.set(symbol, asset);
-        } catch {
-          continue;
+      const quoteKeys = new Map<string, Asset>();
+      const fxCurrencies = new Set<string>();
+
+      for (const asset of assets) {
+        if (this.isMarketAsset(asset)) {
+          try {
+            const symbol = this.pricesService.buildMarketSymbol({
+              kind: asset.kind!,
+              ticker: asset.ticker ?? '',
+              exchange: asset.exchange,
+              quoteCurrency: asset.currency,
+            });
+            quoteKeys.set(symbol, asset);
+          } catch {
+            continue;
+          }
+        }
+
+        if (asset.currency !== BASE_CURRENCY) {
+          fxCurrencies.add(asset.currency);
         }
       }
 
-      if (asset.currency !== BASE_CURRENCY) {
-        fxCurrencies.add(asset.currency);
-      }
-    }
+      const quoteResults = new Map<string, Prisma.Decimal | null>();
+      const fxResults = new Map<string, Prisma.Decimal | null>();
 
-    const quoteResults = new Map<string, Prisma.Decimal | null>();
-    const fxResults = new Map<string, Prisma.Decimal | null>();
+      await Promise.all(
+        Array.from(quoteKeys.keys()).map(async (symbol) => {
+          const sample = quoteKeys.get(symbol);
+          if (!sample?.kind || !sample.ticker) {
+            quoteResults.set(symbol, null);
+            return;
+          }
 
-    await Promise.all(
-      Array.from(quoteKeys.keys()).map(async (symbol) => {
-        const sample = quoteKeys.get(symbol);
-        if (!sample?.kind || !sample.ticker) {
-          quoteResults.set(symbol, null);
-          return;
-        }
+          quoteResults.set(
+            symbol,
+            await this.pricesService.getMarketPrice(
+              {
+                kind: sample.kind,
+                ticker: sample.ticker,
+                exchange: sample.exchange,
+                quoteCurrency: sample.currency,
+              },
+              { forceRefresh: true },
+            ),
+          );
+        }),
+      );
 
-        quoteResults.set(
-          symbol,
-          await this.pricesService.getMarketPrice(
-            {
-              kind: sample.kind,
-              ticker: sample.ticker,
-              exchange: sample.exchange,
-              quoteCurrency: sample.currency,
-            },
-            { forceRefresh: true },
-          ),
-        );
-      }),
-    );
+      await Promise.all(
+        Array.from(fxCurrencies).map(async (currency) => {
+          fxResults.set(
+            currency,
+            await this.pricesService.getFxRate(currency, BASE_CURRENCY, {
+              forceRefresh: true,
+            }),
+          );
+        }),
+      );
 
-    await Promise.all(
-      Array.from(fxCurrencies).map(async (currency) => {
-        fxResults.set(
-          currency,
-          await this.pricesService.getFxRate(currency, BASE_CURRENCY, {
-            forceRefresh: true,
-          }),
-        );
-      }),
-    );
+      let updatedCount = 0;
 
-    let updatedCount = 0;
+      for (const asset of assets) {
+        const data: Prisma.AssetUpdateInput = {};
+        let shouldUpdate = false;
 
-    for (const asset of assets) {
-      const data: Prisma.AssetUpdateInput = {};
-      let shouldUpdate = false;
-
-      if (this.isMarketAsset(asset)) {
-        try {
-          const symbol = this.pricesService.buildMarketSymbol({
-            kind: asset.kind!,
-            ticker: asset.ticker ?? '',
-            exchange: asset.exchange,
-            quoteCurrency: asset.currency,
-          });
-          const price = quoteResults.get(symbol) ?? null;
-          if (price) {
-            data.lastPrice = price;
-            data.lastPriceAt = refreshedAt;
+        if (this.isMarketAsset(asset)) {
+          try {
+            const symbol = this.pricesService.buildMarketSymbol({
+              kind: asset.kind!,
+              ticker: asset.ticker ?? '',
+              exchange: asset.exchange,
+              quoteCurrency: asset.currency,
+            });
+            const price = quoteResults.get(symbol) ?? null;
+            if (price) {
+              data.lastPrice = price;
+              data.lastPriceAt = refreshedAt;
+              shouldUpdate = true;
+            }
+          } catch {
+            data.lastPrice = null;
+            data.lastPriceAt = null;
             shouldUpdate = true;
           }
-        } catch {
+        } else if (asset.lastPrice !== null || asset.lastPriceAt !== null) {
           data.lastPrice = null;
           data.lastPriceAt = null;
           shouldUpdate = true;
         }
-      } else if (asset.lastPrice !== null || asset.lastPriceAt !== null) {
-        data.lastPrice = null;
-        data.lastPriceAt = null;
-        shouldUpdate = true;
-      }
 
-      if (asset.currency === BASE_CURRENCY) {
-        if (asset.lastFxRate !== null || asset.lastFxRateAt !== null) {
-          data.lastFxRate = null;
-          data.lastFxRateAt = null;
-          shouldUpdate = true;
+        if (asset.currency === BASE_CURRENCY) {
+          if (asset.lastFxRate !== null || asset.lastFxRateAt !== null) {
+            data.lastFxRate = null;
+            data.lastFxRateAt = null;
+            shouldUpdate = true;
+          }
+        } else {
+          const fxRate = fxResults.get(asset.currency) ?? null;
+          if (fxRate) {
+            data.lastFxRate = fxRate;
+            data.lastFxRateAt = refreshedAt;
+            shouldUpdate = true;
+          }
         }
-      } else {
-        const fxRate = fxResults.get(asset.currency) ?? null;
-        if (fxRate) {
-          data.lastFxRate = fxRate;
-          data.lastFxRateAt = refreshedAt;
-          shouldUpdate = true;
+
+        if (!shouldUpdate) {
+          continue;
         }
+
+        await this.prisma.asset.update({
+          where: { id: asset.id },
+          data,
+        });
+        updatedCount += 1;
       }
 
-      if (!shouldUpdate) {
-        continue;
-      }
+      const dashboard = await this.getDashboard(ownerId);
+      const staleCount = dashboard.assets.filter(
+        (asset) => asset.isStale || asset.valuationSource === 'UNAVAILABLE',
+      ).length;
 
-      await this.prisma.asset.update({
-        where: { id: asset.id },
-        data,
-      });
-      updatedCount += 1;
+      await this.completeRefresh(ownerId, refreshedAt);
+
+      return {
+        refreshedAt: refreshedAt.toISOString(),
+        updatedCount,
+        staleCount,
+      };
+    } catch (error) {
+      await this.releaseRefreshLock(ownerId);
+      throw error;
     }
-
-    const dashboard = await this.getDashboard();
-    const staleCount = dashboard.assets.filter(
-      (asset) => asset.isStale || asset.valuationSource === 'UNAVAILABLE',
-    ).length;
-
-    return {
-      refreshedAt: refreshedAt.toISOString(),
-      updatedCount,
-      staleCount,
-    };
   }
 
-  async create(dto: CreateAssetDto): Promise<Asset> {
-    const prepared = this.prepareAssetInput(dto);
+  async create(ownerId: string, dto: CreateAssetDto): Promise<Asset> {
+    const prepared = this.prepareAssetInput(ownerId, dto);
 
-    if (prepared.type === AssetType.LIABILITY || !this.isMarketKind(prepared.kind)) {
+    if (
+      prepared.type === AssetType.LIABILITY ||
+      !this.isMarketKind(prepared.kind)
+    ) {
       return this.prisma.asset.create({
         data: this.toAssetCreateInput(prepared),
       });
@@ -233,9 +263,9 @@ export class AssetsService {
     return this.mergeOrCreateMarketAsset(prepared);
   }
 
-  async findOne(id: string): Promise<Asset> {
-    const asset = await this.prisma.asset.findUnique({
-      where: { id },
+  async findOne(ownerId: string, id: string): Promise<Asset> {
+    const asset = await this.prisma.asset.findFirst({
+      where: { id, userId: ownerId },
     });
 
     if (!asset) {
@@ -245,14 +275,19 @@ export class AssetsService {
     return asset;
   }
 
-  async update(id: string, dto: UpdateAssetDto): Promise<Asset> {
-    const existing = await this.findOne(id);
-    const prepared = this.prepareAssetInput(dto);
+  async update(
+    ownerId: string,
+    id: string,
+    dto: UpdateAssetDto,
+  ): Promise<Asset> {
+    const existing = await this.findOne(ownerId, id);
+    const prepared = this.prepareAssetInput(ownerId, dto);
 
     if (prepared.type === AssetType.ASSET && this.isMarketKind(prepared.kind)) {
       const duplicate = await this.prisma.asset.findUnique({
         where: {
-          type_kind_ticker_exchange: {
+          userId_type_kind_ticker_exchange: {
+            userId: ownerId,
             type: AssetType.ASSET,
             kind: prepared.kind,
             ticker: prepared.ticker!,
@@ -299,9 +334,102 @@ export class AssetsService {
     return updated;
   }
 
-  async remove(id: string): Promise<void> {
-    await this.findOne(id);
+  async remove(ownerId: string, id: string): Promise<void> {
+    await this.findOne(ownerId, id);
     await this.prisma.asset.delete({ where: { id } });
+  }
+
+  private async claimRefreshLock(
+    ownerId: string,
+    refreshStartedAt: Date,
+    attempt = 0,
+  ): Promise<void> {
+    try {
+      await this.prisma.$transaction(
+        async (tx) => {
+          const state = await tx.portfolioState.findUnique({
+            where: { userId: ownerId },
+          });
+
+          if (
+            state?.refreshStartedAt &&
+            state.refreshStartedAt.getTime() + REFRESH_COOLDOWN_MS >
+              refreshStartedAt.getTime()
+          ) {
+            throw new HttpException(
+              'Refresh already in progress.',
+              HttpStatus.CONFLICT,
+            );
+          }
+
+          if (state?.lastRefreshSucceededAt) {
+            const nextAllowedAt =
+              state.lastRefreshSucceededAt.getTime() + REFRESH_COOLDOWN_MS;
+
+            if (nextAllowedAt > refreshStartedAt.getTime()) {
+              const remainingSeconds = Math.max(
+                1,
+                Math.ceil((nextAllowedAt - refreshStartedAt.getTime()) / 1000),
+              );
+              throw new HttpException(
+                `Refresh is cooling down. Try again in ${remainingSeconds}s.`,
+                HttpStatus.TOO_MANY_REQUESTS,
+              );
+            }
+
+            await tx.portfolioState.update({
+              where: { userId: ownerId },
+              data: {
+                refreshStartedAt,
+              },
+            });
+            return;
+          }
+
+          await tx.portfolioState.create({
+            data: {
+              userId: ownerId,
+              refreshStartedAt,
+            },
+          });
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      );
+    } catch (error) {
+      if (
+        attempt < 2 &&
+        (this.isPrismaError(error, 'P2002') ||
+          this.isPrismaError(error, 'P2034'))
+      ) {
+        return this.claimRefreshLock(ownerId, refreshStartedAt, attempt + 1);
+      }
+
+      throw error;
+    }
+  }
+
+  private async completeRefresh(
+    ownerId: string,
+    refreshedAt: Date,
+  ): Promise<void> {
+    await this.prisma.portfolioState.update({
+      where: { userId: ownerId },
+      data: {
+        lastRefreshSucceededAt: refreshedAt,
+        refreshStartedAt: null,
+      },
+    });
+  }
+
+  private async releaseRefreshLock(ownerId: string): Promise<void> {
+    await this.prisma.portfolioState.update({
+      where: { userId: ownerId },
+      data: {
+        refreshStartedAt: null,
+      },
+    });
   }
 
   private async mergeOrCreateMarketAsset(
@@ -313,7 +441,8 @@ export class AssetsService {
         async (tx) => {
           const existing = await tx.asset.findUnique({
             where: {
-              type_kind_ticker_exchange: {
+              userId_type_kind_ticker_exchange: {
+                userId: prepared.userId,
                 type: AssetType.ASSET,
                 kind: prepared.kind!,
                 ticker: prepared.ticker!,
@@ -328,8 +457,12 @@ export class AssetsService {
             });
           }
 
-          const mergedQuantity = this.toDecimal(existing.quantity).plus(prepared.quantity!);
-          const mergedCost = this.toDecimal(existing.balance).plus(prepared.balance);
+          const mergedQuantity = this.toDecimal(existing.quantity).plus(
+            prepared.quantity!,
+          );
+          const mergedCost = this.toDecimal(existing.balance).plus(
+            prepared.balance,
+          );
           const mergedUnitPrice = mergedQuantity.eq(ZERO)
             ? prepared.unitPrice!
             : mergedCost.div(mergedQuantity);
@@ -351,7 +484,11 @@ export class AssetsService {
         },
       );
     } catch (error) {
-      if (attempt < 2 && (this.isPrismaError(error, 'P2002') || this.isPrismaError(error, 'P2034'))) {
+      if (
+        attempt < 2 &&
+        (this.isPrismaError(error, 'P2002') ||
+          this.isPrismaError(error, 'P2034'))
+      ) {
         return this.mergeOrCreateMarketAsset(prepared, attempt + 1);
       }
 
@@ -359,12 +496,16 @@ export class AssetsService {
     }
   }
 
-  private prepareAssetInput(dto: CreateAssetDto | UpdateAssetDto): PreparedAssetInput {
-    const currency = this.pricesService.normalizeCurrency(dto.currency ?? BASE_CURRENCY);
+  private prepareAssetInput(
+    ownerId: string,
+    dto: CreateAssetDto | UpdateAssetDto,
+  ): PreparedAssetInput {
+    const currency = this.pricesService.normalizeCurrency(
+      dto.currency ?? BASE_CURRENCY,
+    );
     const name = dto.name.trim();
     const order = dto.order ?? 0;
     const notes = dto.notes ?? null;
-    const userId = dto.userId ?? null;
 
     if (dto.type === AssetType.LIABILITY) {
       if (!dto.liabilityKind) {
@@ -376,7 +517,7 @@ export class AssetsService {
       }
 
       return {
-        userId,
+        userId: ownerId,
         name,
         type: AssetType.LIABILITY,
         kind: null,
@@ -398,7 +539,9 @@ export class AssetsService {
 
     if (this.isMarketKind(dto.kind)) {
       if (dto.quantity == null || dto.unitPrice == null) {
-        throw new BadRequestException('Market assets require quantity and unit price.');
+        throw new BadRequestException(
+          'Market assets require quantity and unit price.',
+        );
       }
 
       if (!dto.ticker) {
@@ -411,7 +554,7 @@ export class AssetsService {
       const unitPrice = this.toDecimal(dto.unitPrice);
 
       return {
-        userId,
+        userId: ownerId,
         name,
         type: AssetType.ASSET,
         kind: dto.kind,
@@ -432,7 +575,7 @@ export class AssetsService {
     }
 
     return {
-      userId,
+      userId: ownerId,
       name,
       type: AssetType.ASSET,
       kind: dto.kind,
@@ -448,7 +591,11 @@ export class AssetsService {
     };
   }
 
-  private normalizeTicker(kind: AssetKind, ticker: string, currency: string): string {
+  private normalizeTicker(
+    kind: AssetKind,
+    ticker: string,
+    currency: string,
+  ): string {
     const normalized = this.pricesService.normalizeTicker(ticker);
 
     if (kind !== AssetKind.CRYPTO) {
@@ -475,20 +622,26 @@ export class AssetsService {
 
     if (kind === AssetKind.CRYPTO) {
       if (normalized && normalized !== '_CRYPTO_') {
-        throw new BadRequestException('Crypto assets must use the crypto exchange sentinel.');
+        throw new BadRequestException(
+          'Crypto assets must use the crypto exchange sentinel.',
+        );
       }
 
       return '_CRYPTO_';
     }
 
     if (normalized === '_CRYPTO_') {
-      throw new BadRequestException('Only crypto assets may use the crypto exchange sentinel.');
+      throw new BadRequestException(
+        'Only crypto assets may use the crypto exchange sentinel.',
+      );
     }
 
     return normalized;
   }
 
-  private toAssetCreateInput(prepared: PreparedAssetInput): Prisma.AssetCreateInput {
+  private toAssetCreateInput(
+    prepared: PreparedAssetInput,
+  ): Prisma.AssetCreateInput {
     return {
       userId: prepared.userId,
       name: prepared.name,
@@ -506,7 +659,9 @@ export class AssetsService {
     };
   }
 
-  private toAssetWritePayload(prepared: PreparedAssetInput): Prisma.AssetUpdateInput {
+  private toAssetWritePayload(
+    prepared: PreparedAssetInput,
+  ): Prisma.AssetUpdateInput {
     return {
       userId: prepared.userId,
       name: prepared.name,
@@ -524,27 +679,11 @@ export class AssetsService {
     };
   }
 
-  private toDashboardAsset(asset: Asset, now: Date): DashboardAssetView {
+  private toDashboardAsset(asset: Asset, now: Date): DashboardAssetResponse {
     const valuation = this.buildValuation(asset, now);
 
     return {
-      id: asset.id,
-      name: asset.name,
-      type: asset.type,
-      kind: asset.kind,
-      liabilityKind: asset.liabilityKind,
-      ticker: asset.ticker,
-      exchange: asset.exchange,
-      quantity: this.decimalToNumber(asset.quantity),
-      unitPrice: this.decimalToNumber(asset.unitPrice),
-      balance: this.decimalToNumber(asset.balance) ?? 0,
-      currency: asset.currency,
-      notes: asset.notes,
-      order: asset.order,
-      lastPrice: this.decimalToNumber(asset.lastPrice),
-      lastPriceAt: asset.lastPriceAt?.toISOString() ?? null,
-      lastFxRate: this.decimalToNumber(asset.lastFxRate),
-      lastFxRateAt: asset.lastFxRateAt?.toISOString() ?? null,
+      ...toAssetResponse(asset),
       currentValue: this.decimalToNumber(valuation.currentValue),
       referenceValue: this.decimalToNumber(valuation.referenceValue),
       valuationSource: valuation.valuationSource,
@@ -555,10 +694,12 @@ export class AssetsService {
 
   private buildValuation(asset: Asset, now: Date): ValuationModel {
     const referenceValue = this.convertToBaseCurrency(asset.balance, asset);
-    const fxTimestamp = asset.currency === BASE_CURRENCY ? now : asset.lastFxRateAt;
+    const fxTimestamp =
+      asset.currency === BASE_CURRENCY ? now : asset.lastFxRateAt;
     const fxStale =
       asset.currency !== BASE_CURRENCY &&
-      (!fxTimestamp || now.getTime() - fxTimestamp.getTime() > VALUATION_STALE_MS);
+      (!fxTimestamp ||
+        now.getTime() - fxTimestamp.getTime() > VALUATION_STALE_MS);
 
     if (!this.isMarketAsset(asset)) {
       if (!referenceValue) {
@@ -575,7 +716,10 @@ export class AssetsService {
         currentValue: referenceValue,
         referenceValue,
         valuationSource: 'DIRECT_BALANCE',
-        valuationAsOf: asset.currency === BASE_CURRENCY ? asset.updatedAt : asset.lastFxRateAt,
+        valuationAsOf:
+          asset.currency === BASE_CURRENCY
+            ? asset.updatedAt
+            : asset.lastFxRateAt,
         isStale: fxStale,
       };
     }
@@ -583,7 +727,9 @@ export class AssetsService {
     const quantity = this.toDecimal(asset.quantity);
     const priceTimestamp = asset.lastPriceAt;
     const quoteValue =
-      asset.lastPrice && quantity ? quantity.mul(this.toDecimal(asset.lastPrice)) : null;
+      asset.lastPrice && quantity
+        ? quantity.mul(this.toDecimal(asset.lastPrice))
+        : null;
     const currentValue = quoteValue
       ? this.convertToBaseCurrency(quoteValue, asset)
       : null;
@@ -621,12 +767,14 @@ export class AssetsService {
     };
   }
 
-  private buildSummary(assets: DashboardAssetView[]): DashboardSummary {
+  private buildSummary(assets: DashboardAssetResponse[]): DashboardSummary {
     let assetsTotal = ZERO;
     let liabilitiesTotal = ZERO;
 
     for (const asset of assets) {
-      const effectiveValue = this.valueFromView(asset.currentValue ?? asset.referenceValue);
+      const effectiveValue = this.valueFromView(
+        asset.currentValue ?? asset.referenceValue,
+      );
       if (!effectiveValue) {
         continue;
       }
@@ -664,10 +812,9 @@ export class AssetsService {
     return value.mul(this.toDecimal(asset.lastFxRate));
   }
 
-  private isMarketAsset(asset: Pick<Asset, 'type' | 'kind'>): asset is Pick<
-    Asset,
-    'type' | 'kind'
-  > & { kind: AssetKind } {
+  private isMarketAsset(
+    asset: Pick<Asset, 'type' | 'kind'>,
+  ): asset is Pick<Asset, 'type' | 'kind'> & { kind: AssetKind } {
     return asset.type === AssetType.ASSET && this.isMarketKind(asset.kind);
   }
 
@@ -675,7 +822,9 @@ export class AssetsService {
     return !!kind && MARKET_KINDS.has(kind);
   }
 
-  private toDecimal(value: Prisma.Decimal | number | string | null | undefined): Prisma.Decimal {
+  private toDecimal(
+    value: Prisma.Decimal | number | string | null | undefined,
+  ): Prisma.Decimal {
     if (value instanceof Prisma.Decimal) {
       return value;
     }
@@ -687,7 +836,9 @@ export class AssetsService {
     return new Prisma.Decimal(value.toString());
   }
 
-  private decimalToNumber(value: Prisma.Decimal | null | undefined): number | null {
+  private decimalToNumber(
+    value: Prisma.Decimal | null | undefined,
+  ): number | null {
     return value ? value.toNumber() : null;
   }
 
@@ -723,7 +874,8 @@ export class AssetsService {
 
   private isPrismaError(error: unknown, code: string): boolean {
     return (
-      error instanceof Prisma.PrismaClientKnownRequestError && error.code === code
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === code
     );
   }
 }

@@ -1,71 +1,11 @@
-export type AssetType = "ASSET" | "LIABILITY";
-export type AssetKind =
-  | "CASH"
-  | "STOCK"
-  | "BOND"
-  | "CRYPTO"
-  | "REAL_ESTATE"
-  | "PENSION"
-  | "COMMODITY"
-  | "OTHER";
-export type LiabilityKind = "TAX" | "DEBT" | "OTHER";
-export type ValuationSource =
-  | "LIVE"
-  | "LAST_QUOTE"
-  | "AVG_COST"
-  | "DIRECT_BALANCE"
-  | "UNAVAILABLE";
+import type { AssetKind, LiabilityKind } from "@finhance/shared";
 
-export type ApiAsset = {
-  id: string;
-  name: string;
-  balance: number | string;
-  type: AssetType;
-  kind?: AssetKind | null;
-  ticker?: string | null;
-  exchange?: string | null;
-  quantity?: number | string | null;
-  unitPrice?: number | string | null;
-  notes?: string | null;
-  order?: number | null;
-  liabilityKind?: LiabilityKind | null;
-  currency?: string;
-  currentValue?: number | null;
-  referenceValue?: number | null;
-  valuationSource?: ValuationSource;
-  valuationAsOf?: string | null;
-  isStale?: boolean;
-  lastPrice?: number | null;
-  lastPriceAt?: string | null;
-  lastFxRate?: number | null;
-  lastFxRateAt?: string | null;
-};
-
-export type DashboardResponse = {
-  baseCurrency: string;
-  assets: ApiAsset[];
-  summary: {
-    assets: number;
-    liabilities: number;
-    netWorth: number;
-  };
-  lastRefreshAt: string | null;
-};
-
-export type AssetPayload = {
-  name: string;
-  type: AssetType;
-  currency: string;
-  ticker: string | null;
-  exchange: string | null;
-  quantity: number | null;
-  unitPrice: number | null;
-  balance: number;
-  kind: string | null;
-  liabilityKind: string | null;
-  notes: string | null;
-  order: number | null;
-};
+export interface KindConfig {
+  showBalance: boolean;
+  showTicker: boolean;
+  showQuantity: boolean;
+  showUnitPrice: boolean;
+}
 
 export const COLORS = {
   STOCK: "#4F46E5",
@@ -75,8 +15,8 @@ export const COLORS = {
   REAL_ESTATE: "#F97316",
   COMMODITY: "#A16207",
   PENSION: "#6B7280",
-  OTHER: "#4B5563"
-} as const;
+  OTHER: "#4B5563",
+} as const satisfies Record<AssetKind, string>;
 
 export const EXCHANGE_SUFFIXES = [
   { label: "🇺🇸 United States", value: "" },
@@ -85,8 +25,21 @@ export const EXCHANGE_SUFFIXES = [
   { label: "🇩🇪 Xetra (DE)", value: ".DE" },
   { label: "🇫🇷 Paris (EPA)", value: ".PA" },
   { label: "🇪🇸 Madrid (BME)", value: ".MC" },
-  { label: "Crypto", value: "_CRYPTO_" }
+  { label: "Crypto", value: "_CRYPTO_" },
+] as const;
+
+export const ASSET_KIND_OPTIONS: AssetKind[] = [
+  "CASH",
+  "STOCK",
+  "BOND",
+  "CRYPTO",
+  "REAL_ESTATE",
+  "PENSION",
+  "COMMODITY",
+  "OTHER",
 ];
+
+export const LIABILITY_KIND_OPTIONS: LiabilityKind[] = ["TAX", "DEBT", "OTHER"];
 
 export const ASSET_KIND_CONFIG = {
   CASH: {
@@ -137,25 +90,25 @@ export const ASSET_KIND_CONFIG = {
     showQuantity: false,
     showUnitPrice: false,
   },
-} as const;
+} as const satisfies Record<AssetKind, KindConfig>;
 
 export const LIABILITY_CONFIG = {
   TAX: {
-  showBalance: true,
-  showTicker: false,
-  showQuantity: false,
-  showUnitPrice: false,
-  }, 
+    showBalance: true,
+    showTicker: false,
+    showQuantity: false,
+    showUnitPrice: false,
+  },
   DEBT: {
     showBalance: true,
     showTicker: false,
     showQuantity: false,
     showUnitPrice: false,
-  }, 
+  },
   OTHER: {
     showBalance: true,
     showTicker: false,
     showQuantity: false,
     showUnitPrice: false,
-  },  
-} as const;
+  },
+} as const satisfies Record<LiabilityKind, KindConfig>;

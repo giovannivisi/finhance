@@ -3,7 +3,7 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import type { PieLabelRenderProps } from "recharts";
 import { formatCurrency } from "@lib/format";
-import { COLORS } from "@lib/api-types";
+import { COLORS } from "@lib/asset-ui";
 
 const renderLabel = (props: PieLabelRenderProps) => {
   const { name, percent, x, y } = props;
@@ -33,49 +33,54 @@ export default function AllocationChart({
   const isSingle = cleaned.length === 1;
   const single = isSingle ? cleaned[0] : null;
 
-return (
-  <div className="flex items-center justify-center w-full">
-    <ResponsiveContainer width={size} height={size}>
-      <PieChart>
-        <Pie
-          data={cleaned}
-          dataKey="total"
-          nameKey="label"
-          cx="50%"
-          cy="50%"
-          innerRadius={50}
-          outerRadius={90}
-          stroke="#fff"
-          strokeWidth={2}
-          labelLine={false}
-          label={isSingle ? false : renderLabel}
-        >
-          {cleaned.map((entry, index) => (
-            <Cell
-              key={`cell-${index}`}
-              fill={COLORS[entry.label as keyof typeof COLORS] || "#6B7280"}
-            />
-          ))}
-        </Pie>
-
-        {isSingle && single ? (
-          <text
-            x="50%"
-            y="50%"
-            textAnchor="middle"
-            dominantBaseline="middle"
-            style={{ fontSize: "16px", fontWeight: 600, fill: "#111827" }}
+  return (
+    <div className="flex items-center justify-center w-full">
+      <ResponsiveContainer width={size} height={size}>
+        <PieChart>
+          <Pie
+            data={cleaned}
+            dataKey="total"
+            nameKey="label"
+            cx="50%"
+            cy="50%"
+            innerRadius={50}
+            outerRadius={90}
+            stroke="#fff"
+            strokeWidth={2}
+            labelLine={false}
+            label={isSingle ? false : renderLabel}
           >
-            {single.label}{" "}
-            {((single.total / cleaned.reduce((sum, item) => sum + item.total, 0)) * 100).toFixed(0)}%
-          </text>
-        ) : null}
+            {cleaned.map((entry, index) => (
+              <Cell
+                key={`cell-${index}`}
+                fill={COLORS[entry.label as keyof typeof COLORS] || "#6B7280"}
+              />
+            ))}
+          </Pie>
 
-        {!isSingle ? (
-          <Tooltip formatter={(value: number) => formatCurrency(value)} />
-        ) : null}
-      </PieChart>
-    </ResponsiveContainer>
-  </div>
-);
+          {isSingle && single ? (
+            <text
+              x="50%"
+              y="50%"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{ fontSize: "16px", fontWeight: 600, fill: "#111827" }}
+            >
+              {single.label}{" "}
+              {(
+                (single.total /
+                  cleaned.reduce((sum, item) => sum + item.total, 0)) *
+                100
+              ).toFixed(0)}
+              %
+            </text>
+          ) : null}
+
+          {!isSingle ? (
+            <Tooltip formatter={(value: number) => formatCurrency(value)} />
+          ) : null}
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }

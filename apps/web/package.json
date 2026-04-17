@@ -3,12 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3001",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "next start --port 3001",
+    "lint": "eslint",
+    "test": "node --experimental-default-type=module --test lib/api.test.mts"
   },
   "dependencies": {
+    "@finhance/shared": "workspace:^",
     "next": "16.0.3",
     "react": "19.2.0",
     "react-dom": "19.2.0",

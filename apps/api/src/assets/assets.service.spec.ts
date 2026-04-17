@@ -1,13 +1,16 @@
 import { ConflictException } from '@nestjs/common';
-import { AssetKind, AssetType, LiabilityKind, Prisma } from '@prisma/client';
 import { AssetsService } from '@assets/assets.service';
+import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
+import { AssetKind, AssetType, Prisma } from '@prisma/client';
+
+const OWNER_ID = 'local-dev';
 
 function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
   const now = new Date();
 
   return {
     id: 'asset-1',
-    userId: null,
+    userId: OWNER_ID,
     name: 'Apple',
     type: AssetType.ASSET,
     kind: AssetKind.STOCK,
@@ -30,15 +33,36 @@ function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+function createPortfolioState(
+  overrides: Partial<Record<string, unknown>> = {},
+) {
+  const now = new Date();
+
+  return {
+    userId: OWNER_ID,
+    lastRefreshSucceededAt: null,
+    refreshStartedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 describe('AssetsService', () => {
   let service: AssetsService;
   let prisma: {
     asset: {
       findMany: jest.Mock;
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       update: jest.Mock;
       create: jest.Mock;
       delete: jest.Mock;
+    };
+    portfolioState: {
+      findUnique: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -55,12 +79,31 @@ describe('AssetsService', () => {
       asset: {
         findMany: jest.fn(),
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
         create: jest.fn(),
         delete: jest.fn(),
       },
+      portfolioState: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
       $transaction: jest.fn(),
     };
+
+    prisma.$transaction.mockImplementation(
+      async (
+        callback: (tx: {
+          asset: typeof prisma.asset;
+          portfolioState: typeof prisma.portfolioState;
+        }) => Promise<unknown>,
+      ) =>
+        callback({
+          asset: prisma.asset,
+          portfolioState: prisma.portfolioState,
+        }),
+    );
 
     prices = {
       normalizeCurrency: jest.fn((currency?: string | null) =>
@@ -78,7 +121,7 @@ describe('AssetsService', () => {
     service = new AssetsService(prisma as never, prices as never);
   });
 
-  it('merges repeated market buys using decimal math', async () => {
+  it('merges repeated market buys using decimal math within the owner scope', async () => {
     const existing = createAsset({
       quantity: new Prisma.Decimal('1.5'),
       unitPrice: new Prisma.Decimal('10.25'),
@@ -95,11 +138,20 @@ describe('AssetsService', () => {
       update: jest.fn().mockResolvedValue(updated),
     };
 
-    prisma.$transaction.mockImplementation(async (callback: (tx: { asset: typeof transactionAsset }) => Promise<unknown>) =>
-      callback({ asset: transactionAsset }),
+    prisma.$transaction.mockImplementation(
+      async (
+        callback: (tx: {
+          asset: typeof transactionAsset;
+          portfolioState: typeof prisma.portfolioState;
+        }) => Promise<unknown>,
+      ) =>
+        callback({
+          asset: transactionAsset,
+          portfolioState: prisma.portfolioState,
+        }),
     );
 
-    await service.create({
+    await service.create(OWNER_ID, {
       name: 'Apple',
       type: AssetType.ASSET,
       kind: AssetKind.STOCK,
@@ -110,13 +162,22 @@ describe('AssetsService', () => {
       currency: 'usd',
     });
 
+    expect(
+      transactionAsset.findUnique.mock.calls[0][0].where
+        .userId_type_kind_ticker_exchange,
+    ).toMatchObject({
+      userId: OWNER_ID,
+      ticker: 'AAPL',
+      exchange: '',
+    });
+
     const updateCall = transactionAsset.update.mock.calls[0][0];
     expect(updateCall.data.quantity.toString()).toBe('4.5');
     expect(updateCall.data.balance.toString()).toBe('54.75');
     expect(updateCall.data.unitPrice.toString()).toBe('12.166666666666666667');
   });
 
-  it('computes live current value and EUR summary with FX conversion', async () => {
+  it('computes live current value and EUR summary within one owner portfolio', async () => {
     const now = new Date();
     prisma.asset.findMany.mockResolvedValue([
       createAsset({
@@ -129,8 +190,13 @@ describe('AssetsService', () => {
       }),
     ]);
 
-    const dashboard = await service.getDashboard();
+    const dashboard = await service.getDashboard(OWNER_ID);
 
+    expect(prisma.asset.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: OWNER_ID },
+      }),
+    );
     expect(dashboard.assets[0].currentValue).toBe(90);
     expect(dashboard.assets[0].referenceValue).toBe(72);
     expect(dashboard.assets[0].valuationSource).toBe('LIVE');
@@ -149,7 +215,7 @@ describe('AssetsService', () => {
       }),
     ]);
 
-    const dashboard = await service.getDashboard();
+    const dashboard = await service.getDashboard(OWNER_ID);
 
     expect(dashboard.assets[0].currentValue).toBeNull();
     expect(dashboard.assets[0].referenceValue).toBe(72);
@@ -157,7 +223,7 @@ describe('AssetsService', () => {
     expect(dashboard.summary.assets).toBe(72);
   });
 
-  it('deduplicates FX refresh work and returns stale count', async () => {
+  it('deduplicates FX refresh work and returns stale count for one owner', async () => {
     const refreshAsset = createAsset({
       lastPrice: null,
       lastPriceAt: null,
@@ -179,6 +245,8 @@ describe('AssetsService', () => {
       lastFxRateAt: null,
     });
 
+    prisma.portfolioState.findUnique.mockResolvedValue(null);
+    prisma.portfolioState.create.mockResolvedValue(createPortfolioState());
     prisma.asset.findMany
       .mockResolvedValueOnce([refreshAsset, usdCash])
       .mockResolvedValueOnce([
@@ -207,8 +275,27 @@ describe('AssetsService', () => {
     prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
     prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
-    const response = await service.refreshAssets();
+    const response = await service.refreshAssets(OWNER_ID);
 
+    expect(prisma.portfolioState.create).toHaveBeenCalledWith({
+      data: {
+        userId: OWNER_ID,
+        refreshStartedAt: expect.any(Date),
+      },
+    });
+    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+      data: {
+        lastRefreshSucceededAt: expect.any(Date),
+        refreshStartedAt: null,
+      },
+    });
+    expect(prisma.asset.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { userId: OWNER_ID },
+      }),
+    );
     expect(prices.getMarketPrice).toHaveBeenCalledTimes(1);
     expect(prices.getFxRate).toHaveBeenCalledTimes(1);
     expect(prisma.asset.update).toHaveBeenCalledTimes(2);
@@ -216,13 +303,93 @@ describe('AssetsService', () => {
     expect(response.staleCount).toBe(0);
   });
 
-  it('rejects updates that would collide with another position', async () => {
-    prisma.asset.findUnique
-      .mockResolvedValueOnce(createAsset())
-      .mockResolvedValueOnce(createAsset({ id: 'asset-2' }));
+  it('rejects refreshes during the success-based cooldown window', async () => {
+    prisma.portfolioState.findUnique.mockResolvedValue(
+      createPortfolioState({
+        lastRefreshSucceededAt: new Date(Date.now() - 1_000),
+      }),
+    );
+
+    await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow(
+      'Refresh is cooling down.',
+    );
+    expect(prisma.asset.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects refreshes while another refresh is still in flight', async () => {
+    prisma.portfolioState.findUnique.mockResolvedValue(
+      createPortfolioState({
+        refreshStartedAt: new Date(Date.now() - 1_000),
+      }),
+    );
+
+    await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow(
+      'Refresh already in progress.',
+    );
+    expect(prisma.asset.findMany).not.toHaveBeenCalled();
+  });
+
+  it('clears the lock and skips cooldown when refresh work fails', async () => {
+    const asset = createAsset();
+    prisma.portfolioState.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(createPortfolioState());
+    prisma.asset.findMany.mockResolvedValueOnce([asset]);
+    prices.getMarketPrice.mockRejectedValue(new Error('quote down'));
+
+    await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow('quote down');
+
+    expect(prisma.portfolioState.create).toHaveBeenCalledWith({
+      data: {
+        userId: OWNER_ID,
+        refreshStartedAt: expect.any(Date),
+      },
+    });
+    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+      data: {
+        refreshStartedAt: null,
+      },
+    });
+  });
+
+  it('reclaims stale in-flight locks', async () => {
+    const refreshAsset = createAsset();
+    prisma.portfolioState.findUnique.mockResolvedValue(
+      createPortfolioState({
+        refreshStartedAt: new Date(Date.now() - REFRESH_COOLDOWN_MS - 1_000),
+      }),
+    );
+    prisma.asset.findMany
+      .mockResolvedValueOnce([refreshAsset])
+      .mockResolvedValueOnce([
+        createAsset({
+          lastPrice: new Prisma.Decimal('50'),
+          lastPriceAt: new Date(),
+          lastFxRate: new Prisma.Decimal('0.9'),
+          lastFxRateAt: new Date(),
+        }),
+      ]);
+    prisma.asset.update.mockResolvedValue(createAsset());
+    prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
+    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
+
+    await service.refreshAssets(OWNER_ID);
+
+    expect(prisma.portfolioState.findUnique).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+    });
+    expect(prisma.asset.findMany).toHaveBeenCalled();
+  });
+
+  it('rejects updates that would collide with another position in the same owner scope', async () => {
+    prisma.asset.findFirst.mockResolvedValueOnce(createAsset());
+    prisma.asset.findUnique.mockResolvedValueOnce(
+      createAsset({ id: 'asset-2' }),
+    );
 
     await expect(
-      service.update('asset-1', {
+      service.update(OWNER_ID, 'asset-1', {
         name: 'Apple',
         type: AssetType.ASSET,
         kind: AssetKind.STOCK,
@@ -233,5 +400,17 @@ describe('AssetsService', () => {
         currency: 'USD',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prisma.asset.findUnique).toHaveBeenCalledWith({
+      where: {
+        userId_type_kind_ticker_exchange: {
+          userId: OWNER_ID,
+          type: AssetType.ASSET,
+          kind: AssetKind.STOCK,
+          ticker: 'AAPL',
+          exchange: '',
+        },
+      },
+    });
   });
 });

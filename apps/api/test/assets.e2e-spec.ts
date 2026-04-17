@@ -1,20 +1,29 @@
-import { ValidationPipe } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { DashboardController } from '@assets/dashboard.controller';
 import { AssetsController } from '@assets/assets.controller';
 import { AssetsService } from '@assets/assets.service';
+import { DashboardController } from '@assets/dashboard.controller';
+import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
-import { AssetKind, AssetType, Prisma } from '@prisma/client';
+import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import {
+  Asset,
+  AssetKind,
+  AssetType,
+  PortfolioState,
+  Prisma,
+} from '@prisma/client';
 
-function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
+const OWNER_ID = 'local-dev';
+
+function createAsset(overrides: Partial<Asset> = {}): Asset {
   const now = new Date();
 
   return {
     id: 'asset-1',
-    userId: null,
+    userId: OWNER_ID,
     name: 'Apple',
     type: AssetType.ASSET,
     kind: AssetKind.STOCK,
@@ -37,15 +46,64 @@ function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+function createPortfolioState(
+  overrides: Partial<PortfolioState> = {},
+): PortfolioState {
+  const now = new Date();
+
+  return {
+    userId: OWNER_ID,
+    lastRefreshSucceededAt: null,
+    refreshStartedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function expectAssetResponseDto(
+  body: Record<string, unknown>,
+  asset: ReturnType<typeof createAsset>,
+) {
+  expect(body).toEqual({
+    id: asset.id,
+    name: asset.name,
+    type: asset.type,
+    kind: asset.kind,
+    liabilityKind: asset.liabilityKind,
+    ticker: asset.ticker,
+    exchange: asset.exchange,
+    quantity: asset.quantity?.toNumber() ?? null,
+    unitPrice: asset.unitPrice?.toNumber() ?? null,
+    balance: asset.balance.toNumber(),
+    currency: asset.currency,
+    notes: asset.notes,
+    order: asset.order,
+    lastPrice: asset.lastPrice ? asset.lastPrice.toNumber() : null,
+    lastPriceAt: asset.lastPriceAt?.toISOString() ?? null,
+    lastFxRate: asset.lastFxRate ? asset.lastFxRate.toNumber() : null,
+    lastFxRateAt: asset.lastFxRateAt?.toISOString() ?? null,
+  });
+  expect(body).not.toHaveProperty('userId');
+  expect(body).not.toHaveProperty('createdAt');
+  expect(body).not.toHaveProperty('updatedAt');
+}
+
 describe('Asset routes (e2e)', () => {
   let app: INestApplication;
   let prisma: {
     asset: {
       findMany: jest.Mock;
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       update: jest.Mock;
       create: jest.Mock;
       delete: jest.Mock;
+    };
+    portfolioState: {
+      findUnique: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -62,12 +120,31 @@ describe('Asset routes (e2e)', () => {
       asset: {
         findMany: jest.fn(),
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
         create: jest.fn(),
         delete: jest.fn(),
       },
+      portfolioState: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
       $transaction: jest.fn(),
     };
+
+    prisma.$transaction.mockImplementation(
+      async (
+        callback: (tx: {
+          asset: typeof prisma.asset;
+          portfolioState: typeof prisma.portfolioState;
+        }) => Promise<unknown>,
+      ) =>
+        callback({
+          asset: prisma.asset,
+          portfolioState: prisma.portfolioState,
+        }),
+    );
 
     prices = {
       normalizeCurrency: jest.fn((currency?: string | null) =>
@@ -88,6 +165,12 @@ describe('Asset routes (e2e)', () => {
         AssetsService,
         { provide: PrismaService, useValue: prisma },
         { provide: PricesService, useValue: prices },
+        {
+          provide: RequestOwnerResolver,
+          useValue: {
+            resolveOwnerId: () => OWNER_ID,
+          },
+        },
       ],
     }).compile();
 
@@ -114,8 +197,17 @@ describe('Asset routes (e2e)', () => {
       update: jest.fn(),
     };
 
-    prisma.$transaction.mockImplementation(async (callback: (tx: { asset: typeof transactionAsset }) => Promise<unknown>) =>
-      callback({ asset: transactionAsset }),
+    prisma.$transaction.mockImplementation(
+      async (
+        callback: (tx: {
+          asset: typeof transactionAsset;
+          portfolioState: typeof prisma.portfolioState;
+        }) => Promise<unknown>,
+      ) =>
+        callback({
+          asset: transactionAsset,
+          portfolioState: prisma.portfolioState,
+        }),
     );
 
     await request(app.getHttpServer())
@@ -132,14 +224,74 @@ describe('Asset routes (e2e)', () => {
       })
       .expect(201)
       .expect(({ body }) => {
-        expect(body.name).toBe('Apple');
+        expectAssetResponseDto(body, created);
       });
   });
 
+  it('returns DTO responses from GET /assets', async () => {
+    const asset = createAsset();
+    prisma.asset.findMany.mockResolvedValue([asset]);
+
+    await request(app.getHttpServer())
+      .get('/assets')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toHaveLength(1);
+        expectAssetResponseDto(body[0], asset);
+      });
+  });
+
+  it('returns DTO responses from GET /assets/:id', async () => {
+    const asset = createAsset();
+    prisma.asset.findFirst.mockResolvedValue(asset);
+
+    await request(app.getHttpServer())
+      .get('/assets/asset-1')
+      .expect(200)
+      .expect(({ body }) => {
+        expectAssetResponseDto(body, asset);
+      });
+  });
+
+  it('rejects client-controlled userId on POST /assets', async () => {
+    await request(app.getHttpServer())
+      .post('/assets')
+      .send({
+        userId: 'spoofed-user',
+        name: 'Apple',
+        type: 'ASSET',
+        kind: 'STOCK',
+        ticker: 'aapl',
+        exchange: '',
+        quantity: 2,
+        unitPrice: 40,
+        currency: 'usd',
+      })
+      .expect(400);
+  });
+
+  it('rejects client-controlled userId on PUT /assets/:id', async () => {
+    await request(app.getHttpServer())
+      .put('/assets/asset-1')
+      .send({
+        userId: 'spoofed-user',
+        name: 'Apple',
+        type: 'ASSET',
+        kind: 'STOCK',
+        ticker: 'AAPL',
+        exchange: '',
+        quantity: 2,
+        unitPrice: 40,
+        currency: 'USD',
+      })
+      .expect(400);
+  });
+
   it('rejects duplicate PUT /assets/:id updates with 409', async () => {
-    prisma.asset.findUnique
-      .mockResolvedValueOnce(createAsset())
-      .mockResolvedValueOnce(createAsset({ id: 'asset-2' }));
+    prisma.asset.findFirst.mockResolvedValueOnce(createAsset());
+    prisma.asset.findUnique.mockResolvedValueOnce(
+      createAsset({ id: 'asset-2' }),
+    );
 
     await request(app.getHttpServer())
       .put('/assets/asset-1')
@@ -157,25 +309,23 @@ describe('Asset routes (e2e)', () => {
   });
 
   it('returns 404 when deleting a missing asset', async () => {
-    prisma.asset.findUnique.mockResolvedValue(null);
+    prisma.asset.findFirst.mockResolvedValue(null);
 
-    await request(app.getHttpServer())
-      .delete('/assets/missing')
-      .expect(404);
+    await request(app.getHttpServer()).delete('/assets/missing').expect(404);
   });
 
   it('refreshes stored quotes through POST /assets/refresh', async () => {
     const asset = createAsset();
-    prisma.asset.findMany
-      .mockResolvedValueOnce([asset])
-      .mockResolvedValueOnce([
-        createAsset({
-          lastPrice: new Prisma.Decimal('50'),
-          lastPriceAt: new Date(),
-          lastFxRate: new Prisma.Decimal('0.9'),
-          lastFxRateAt: new Date(),
-        }),
-      ]);
+    prisma.portfolioState.findUnique.mockResolvedValue(null);
+    prisma.portfolioState.create.mockResolvedValue(createPortfolioState());
+    prisma.asset.findMany.mockResolvedValueOnce([asset]).mockResolvedValueOnce([
+      createAsset({
+        lastPrice: new Prisma.Decimal('50'),
+        lastPriceAt: new Date(),
+        lastFxRate: new Prisma.Decimal('0.9'),
+        lastFxRateAt: new Date(),
+      }),
+    ]);
     prisma.asset.update.mockResolvedValue(asset);
     prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
     prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
@@ -187,6 +337,74 @@ describe('Asset routes (e2e)', () => {
         expect(body.updatedCount).toBe(1);
         expect(body.staleCount).toBe(0);
       });
+
+    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+      data: {
+        lastRefreshSucceededAt: expect.any(Date),
+        refreshStartedAt: null,
+      },
+    });
+  });
+
+  it('returns 429 after a recent successful refresh', async () => {
+    prisma.portfolioState.findUnique.mockResolvedValue(
+      createPortfolioState({
+        lastRefreshSucceededAt: new Date(Date.now() - 1_000),
+      }),
+    );
+
+    await request(app.getHttpServer()).post('/assets/refresh').expect(429);
+  });
+
+  it('allows immediate retry after a failed refresh', async () => {
+    const asset = createAsset();
+    prisma.portfolioState.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(createPortfolioState())
+      .mockResolvedValueOnce(createPortfolioState());
+    prisma.portfolioState.create.mockResolvedValue(createPortfolioState());
+    prisma.asset.findMany
+      .mockResolvedValueOnce([asset])
+      .mockResolvedValueOnce([asset])
+      .mockResolvedValueOnce([
+        createAsset({
+          lastPrice: new Prisma.Decimal('50'),
+          lastPriceAt: new Date(),
+          lastFxRate: new Prisma.Decimal('0.9'),
+          lastFxRateAt: new Date(),
+        }),
+      ]);
+    prisma.asset.update.mockResolvedValue(asset);
+    prices.getMarketPrice
+      .mockRejectedValueOnce(new Error('quote down'))
+      .mockResolvedValueOnce(new Prisma.Decimal('50'));
+    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
+
+    await request(app.getHttpServer()).post('/assets/refresh').expect(500);
+    await request(app.getHttpServer())
+      .post('/assets/refresh')
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.updatedCount).toBe(1);
+      });
+
+    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+      data: {
+        refreshStartedAt: null,
+      },
+    });
+  });
+
+  it('returns 409 while a refresh is already in flight', async () => {
+    prisma.portfolioState.findUnique.mockResolvedValue(
+      createPortfolioState({
+        refreshStartedAt: new Date(Date.now() - 1_000),
+      }),
+    );
+
+    await request(app.getHttpServer()).post('/assets/refresh').expect(409);
   });
 
   it('returns fallback valuation metadata from GET /dashboard', async () => {
