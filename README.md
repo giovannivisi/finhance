@@ -1,6 +1,6 @@
 # finhance
 
-This repository contains the complete codebase for **finhance**, the financial management platform designed to provide accurate accounting, automated categorization, insightful analytics, and robust asset tracking. The project is implemented as a multi‑application monorepo to keep domain logic organized, maximize code reuse, and support scalable feature development.  
+This repository contains the complete codebase for **finhance**, the financial management platform designed to provide accurate accounting, automated categorization, insightful analytics, and robust asset tracking. The project is implemented as a multi‑application monorepo to keep domain logic organized, maximize code reuse, and support scalable feature development.
 finhance was created to unify all services, modules, and tooling related to personal and business financial operations into a single, coherent architecture.
 
 ## Structure

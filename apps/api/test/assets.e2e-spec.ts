@@ -4,7 +4,11 @@ import request from 'supertest';
 import { AssetsController } from '@assets/assets.controller';
 import { AssetsService } from '@assets/assets.service';
 import { DashboardController } from '@assets/dashboard.controller';
-import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
+import type {
+  AssetResponse,
+  DashboardResponse,
+  RefreshAssetsResponse,
+} from '@finhance/shared';
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
@@ -17,6 +21,31 @@ import {
 } from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
+type ResponseWithBody = { body: unknown };
+type RefreshSuccessStateUpdateCall = {
+  where: { userId: string };
+  data: {
+    lastRefreshSucceededAt: unknown;
+    refreshStartedAt: null;
+  };
+};
+
+type RefreshReleaseStateUpdateCall = {
+  where: { userId: string };
+  data: {
+    refreshStartedAt: null;
+  };
+};
+type HttpServer = Parameters<typeof request>[0];
+
+function bodyAs<T>(response: ResponseWithBody): T {
+  return response.body as T;
+}
+
+function firstCallArg<T>(mockFn: jest.Mock): T {
+  const calls = mockFn.mock.calls as unknown[][];
+  return calls[0]?.[0] as T;
+}
 
 function createAsset(overrides: Partial<Asset> = {}): Asset {
   const now = new Date();
@@ -115,6 +144,10 @@ describe('Asset routes (e2e)', () => {
     getFxRate: jest.Mock;
   };
 
+  function httpServer(): HttpServer {
+    return app.getHttpServer() as HttpServer;
+  }
+
   beforeEach(async () => {
     prisma = {
       asset: {
@@ -210,7 +243,7 @@ describe('Asset routes (e2e)', () => {
         }),
     );
 
-    await request(app.getHttpServer())
+    await request(httpServer())
       .post('/assets')
       .send({
         name: 'Apple',
@@ -223,7 +256,8 @@ describe('Asset routes (e2e)', () => {
         currency: 'usd',
       })
       .expect(201)
-      .expect(({ body }) => {
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<Record<string, unknown>>(response);
         expectAssetResponseDto(body, created);
       });
   });
@@ -232,12 +266,16 @@ describe('Asset routes (e2e)', () => {
     const asset = createAsset();
     prisma.asset.findMany.mockResolvedValue([asset]);
 
-    await request(app.getHttpServer())
+    await request(httpServer())
       .get('/assets')
       .expect(200)
-      .expect(({ body }) => {
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<AssetResponse[]>(response);
         expect(body).toHaveLength(1);
-        expectAssetResponseDto(body[0], asset);
+        expectAssetResponseDto(
+          body[0] as unknown as Record<string, unknown>,
+          asset,
+        );
       });
   });
 
@@ -245,16 +283,17 @@ describe('Asset routes (e2e)', () => {
     const asset = createAsset();
     prisma.asset.findFirst.mockResolvedValue(asset);
 
-    await request(app.getHttpServer())
+    await request(httpServer())
       .get('/assets/asset-1')
       .expect(200)
-      .expect(({ body }) => {
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<Record<string, unknown>>(response);
         expectAssetResponseDto(body, asset);
       });
   });
 
   it('rejects client-controlled userId on POST /assets', async () => {
-    await request(app.getHttpServer())
+    await request(httpServer())
       .post('/assets')
       .send({
         userId: 'spoofed-user',
@@ -271,7 +310,7 @@ describe('Asset routes (e2e)', () => {
   });
 
   it('rejects client-controlled userId on PUT /assets/:id', async () => {
-    await request(app.getHttpServer())
+    await request(httpServer())
       .put('/assets/asset-1')
       .send({
         userId: 'spoofed-user',
@@ -293,7 +332,7 @@ describe('Asset routes (e2e)', () => {
       createAsset({ id: 'asset-2' }),
     );
 
-    await request(app.getHttpServer())
+    await request(httpServer())
       .put('/assets/asset-1')
       .send({
         name: 'Apple',
@@ -311,7 +350,7 @@ describe('Asset routes (e2e)', () => {
   it('returns 404 when deleting a missing asset', async () => {
     prisma.asset.findFirst.mockResolvedValue(null);
 
-    await request(app.getHttpServer()).delete('/assets/missing').expect(404);
+    await request(httpServer()).delete('/assets/missing').expect(404);
   });
 
   it('refreshes stored quotes through POST /assets/refresh', async () => {
@@ -330,18 +369,22 @@ describe('Asset routes (e2e)', () => {
     prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
     prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
-    await request(app.getHttpServer())
+    await request(httpServer())
       .post('/assets/refresh')
       .expect(201)
-      .expect(({ body }) => {
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<RefreshAssetsResponse>(response);
         expect(body.updatedCount).toBe(1);
         expect(body.staleCount).toBe(0);
       });
 
-    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+    const successUpdateCall = firstCallArg<RefreshSuccessStateUpdateCall>(
+      prisma.portfolioState.update,
+    );
+    expect(successUpdateCall).toEqual({
       where: { userId: OWNER_ID },
       data: {
-        lastRefreshSucceededAt: expect.any(Date),
+        lastRefreshSucceededAt: expect.any(Date) as unknown,
         refreshStartedAt: null,
       },
     });
@@ -354,7 +397,7 @@ describe('Asset routes (e2e)', () => {
       }),
     );
 
-    await request(app.getHttpServer()).post('/assets/refresh').expect(429);
+    await request(httpServer()).post('/assets/refresh').expect(429);
   });
 
   it('allows immediate retry after a failed refresh', async () => {
@@ -381,15 +424,19 @@ describe('Asset routes (e2e)', () => {
       .mockResolvedValueOnce(new Prisma.Decimal('50'));
     prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
-    await request(app.getHttpServer()).post('/assets/refresh').expect(500);
-    await request(app.getHttpServer())
+    await request(httpServer()).post('/assets/refresh').expect(500);
+    await request(httpServer())
       .post('/assets/refresh')
       .expect(201)
-      .expect(({ body }) => {
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<RefreshAssetsResponse>(response);
         expect(body.updatedCount).toBe(1);
       });
 
-    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+    const releaseUpdateCall = firstCallArg<RefreshReleaseStateUpdateCall>(
+      prisma.portfolioState.update,
+    );
+    expect(releaseUpdateCall).toEqual({
       where: { userId: OWNER_ID },
       data: {
         refreshStartedAt: null,
@@ -404,7 +451,7 @@ describe('Asset routes (e2e)', () => {
       }),
     );
 
-    await request(app.getHttpServer()).post('/assets/refresh').expect(409);
+    await request(httpServer()).post('/assets/refresh').expect(409);
   });
 
   it('returns fallback valuation metadata from GET /dashboard', async () => {
@@ -417,10 +464,11 @@ describe('Asset routes (e2e)', () => {
       }),
     ]);
 
-    await request(app.getHttpServer())
+    await request(httpServer())
       .get('/dashboard')
       .expect(200)
-      .expect(({ body }) => {
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<DashboardResponse>(response);
         expect(body.baseCurrency).toBe('EUR');
         expect(body.assets[0].valuationSource).toBe('AVG_COST');
         expect(body.summary.assets).toBe(72);

@@ -120,7 +120,7 @@ export class AssetsService {
         if (this.isMarketAsset(asset)) {
           try {
             const symbol = this.pricesService.buildMarketSymbol({
-              kind: asset.kind!,
+              kind: asset.kind,
               ticker: asset.ticker ?? '',
               exchange: asset.exchange,
               quoteCurrency: asset.currency,
@@ -182,7 +182,7 @@ export class AssetsService {
         if (this.isMarketAsset(asset)) {
           try {
             const symbol = this.pricesService.buildMarketSymbol({
-              kind: asset.kind!,
+              kind: asset.kind,
               ticker: asset.ticker ?? '',
               exchange: asset.exchange,
               quoteCurrency: asset.currency,
