@@ -11,8 +11,8 @@ export default function CreateAssetModal({
   onClose: () => void;
 }) {
   return (
-    <Modal open={open} onClose={onClose}>
-      <CreateAssetForm  onSuccess={onClose} />
+    <Modal open={open} onClose={onClose} title="Create asset or liability">
+      <CreateAssetForm onSuccess={onClose} />
     </Modal>
   );
 }
