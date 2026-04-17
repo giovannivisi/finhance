@@ -141,7 +141,9 @@ export class PricesService {
       );
 
       if (!response.ok) {
-        this.logger.warn(`Yahoo quote failed for ${symbol}: ${response.status}`);
+        this.logger.warn(
+          `Yahoo quote failed for ${symbol}: ${response.status}`,
+        );
         return null;
       }
 

@@ -9,6 +9,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import type { TransformFnParams } from 'class-transformer';
 import {
   AssetKind as PrismaAssetKind,
   AssetType as PrismaAssetType,
@@ -21,27 +22,46 @@ import type {
   UpsertAssetRequest,
 } from '@finhance/shared';
 
+type AssetTypeProbe = Pick<CreateAssetDto, 'type'>;
+type AssetKindProbe = Pick<CreateAssetDto, 'type' | 'kind'>;
+
+function isMarketKind(kind: AssetKind | null | undefined): boolean {
+  return kind === 'STOCK' || kind === 'BOND' || kind === 'CRYPTO';
+}
+
+function trimStringValue({ value }: TransformFnParams): unknown {
+  return typeof value === 'string' ? value.trim() : value;
+}
+
+function trimOptionalStringValue({ value }: TransformFnParams): unknown {
+  return typeof value === 'string' ? value.trim() || undefined : value;
+}
+
+function uppercaseStringValue({ value }: TransformFnParams): unknown {
+  return typeof value === 'string' ? value.trim().toUpperCase() : value;
+}
+
 export class CreateAssetDto implements UpsertAssetRequest {
   @IsString()
   @IsNotEmpty()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(trimStringValue)
   name!: string;
 
   @IsEnum(PrismaAssetType)
   type!: AssetType;
 
-  @ValidateIf((a) => a.type === 'LIABILITY')
+  @ValidateIf((asset: AssetTypeProbe) => asset.type === 'LIABILITY')
   @IsEnum(PrismaLiabilityKind)
   liabilityKind?: LiabilityKind | null;
 
-  @ValidateIf((a) => a.type === 'ASSET')
+  @ValidateIf((asset: AssetTypeProbe) => asset.type === 'ASSET')
   @IsEnum(PrismaAssetKind)
   kind?: AssetKind | null;
 
   @ValidateIf(
-    (a) =>
-      a.type === 'LIABILITY' ||
-      (a.type === 'ASSET' && !['STOCK', 'BOND', 'CRYPTO'].includes(a.kind)),
+    (asset: AssetKindProbe) =>
+      asset.type === 'LIABILITY' ||
+      (asset.type === 'ASSET' && !isMarketKind(asset.kind)),
   )
   @IsNumber()
   @IsPositive()
@@ -50,39 +70,37 @@ export class CreateAssetDto implements UpsertAssetRequest {
   @IsOptional()
   @IsString()
   @Matches(/^[A-Z]{3}$/)
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim().toUpperCase() : value,
-  )
+  @Transform(uppercaseStringValue)
   currency?: string;
 
   @ValidateIf(
-    (a) => a.type === 'ASSET' && ['STOCK', 'BOND', 'CRYPTO'].includes(a.kind),
+    (asset: AssetKindProbe) =>
+      asset.type === 'ASSET' && isMarketKind(asset.kind),
   )
   @IsString()
   @IsNotEmpty()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim().toUpperCase() : value,
-  )
+  @Transform(uppercaseStringValue)
   ticker?: string | null;
 
   @ValidateIf(
-    (a) => a.type === 'ASSET' && ['STOCK', 'BOND', 'CRYPTO'].includes(a.kind),
+    (asset: AssetKindProbe) =>
+      asset.type === 'ASSET' && isMarketKind(asset.kind),
   )
   @IsString()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim().toUpperCase() : value,
-  )
+  @Transform(uppercaseStringValue)
   exchange?: string | null;
 
   @ValidateIf(
-    (a) => a.type === 'ASSET' && ['STOCK', 'BOND', 'CRYPTO'].includes(a.kind),
+    (asset: AssetKindProbe) =>
+      asset.type === 'ASSET' && isMarketKind(asset.kind),
   )
   @IsNumber()
   @IsPositive()
   quantity?: number | null;
 
   @ValidateIf(
-    (a) => a.type === 'ASSET' && ['STOCK', 'BOND', 'CRYPTO'].includes(a.kind),
+    (asset: AssetKindProbe) =>
+      asset.type === 'ASSET' && isMarketKind(asset.kind),
   )
   @IsNumber()
   @IsPositive()
@@ -90,9 +108,7 @@ export class CreateAssetDto implements UpsertAssetRequest {
 
   @IsOptional()
   @IsString()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() || undefined : value,
-  )
+  @Transform(trimOptionalStringValue)
   notes?: string | null;
 
   @IsOptional()

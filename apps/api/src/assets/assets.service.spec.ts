@@ -4,6 +4,50 @@ import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
 import { AssetKind, AssetType, Prisma } from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
+type MarketPositionWhere = {
+  userId_type_kind_ticker_exchange: {
+    userId: string;
+    type: AssetType;
+    kind: AssetKind;
+    ticker: string;
+    exchange: string;
+  };
+};
+
+type AssetUpdateCall = {
+  data: {
+    quantity: Prisma.Decimal;
+    balance: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+  };
+};
+
+type PortfolioStateCreateCall = {
+  data: {
+    userId: string;
+    refreshStartedAt: unknown;
+  };
+};
+
+type PortfolioStateSuccessUpdateCall = {
+  where: { userId: string };
+  data: {
+    lastRefreshSucceededAt: unknown;
+    refreshStartedAt: null;
+  };
+};
+
+type PortfolioStateReleaseUpdateCall = {
+  where: { userId: string };
+  data: {
+    refreshStartedAt: null;
+  };
+};
+
+function firstCallArg<T>(mockFn: jest.Mock): T {
+  const calls = mockFn.mock.calls as unknown[][];
+  return calls[0]?.[0] as T;
+}
 
 function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
   const now = new Date();
@@ -162,16 +206,18 @@ describe('AssetsService', () => {
       currency: 'usd',
     });
 
-    expect(
-      transactionAsset.findUnique.mock.calls[0][0].where
-        .userId_type_kind_ticker_exchange,
-    ).toMatchObject({
-      userId: OWNER_ID,
-      ticker: 'AAPL',
-      exchange: '',
-    });
+    const findUniqueArgs = firstCallArg<{
+      where: MarketPositionWhere;
+    }>(transactionAsset.findUnique);
+    expect(findUniqueArgs.where.userId_type_kind_ticker_exchange).toMatchObject(
+      {
+        userId: OWNER_ID,
+        ticker: 'AAPL',
+        exchange: '',
+      },
+    );
 
-    const updateCall = transactionAsset.update.mock.calls[0][0];
+    const updateCall = firstCallArg<AssetUpdateCall>(transactionAsset.update);
     expect(updateCall.data.quantity.toString()).toBe('4.5');
     expect(updateCall.data.balance.toString()).toBe('54.75');
     expect(updateCall.data.unitPrice.toString()).toBe('12.166666666666666667');
@@ -277,16 +323,22 @@ describe('AssetsService', () => {
 
     const response = await service.refreshAssets(OWNER_ID);
 
-    expect(prisma.portfolioState.create).toHaveBeenCalledWith({
+    const createCall = firstCallArg<PortfolioStateCreateCall>(
+      prisma.portfolioState.create,
+    );
+    expect(createCall).toEqual({
       data: {
         userId: OWNER_ID,
-        refreshStartedAt: expect.any(Date),
+        refreshStartedAt: expect.any(Date) as unknown,
       },
     });
-    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+    const successUpdateCall = firstCallArg<PortfolioStateSuccessUpdateCall>(
+      prisma.portfolioState.update,
+    );
+    expect(successUpdateCall).toEqual({
       where: { userId: OWNER_ID },
       data: {
-        lastRefreshSucceededAt: expect.any(Date),
+        lastRefreshSucceededAt: expect.any(Date) as unknown,
         refreshStartedAt: null,
       },
     });
@@ -339,13 +391,19 @@ describe('AssetsService', () => {
 
     await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow('quote down');
 
-    expect(prisma.portfolioState.create).toHaveBeenCalledWith({
+    const createCall = firstCallArg<PortfolioStateCreateCall>(
+      prisma.portfolioState.create,
+    );
+    expect(createCall).toEqual({
       data: {
         userId: OWNER_ID,
-        refreshStartedAt: expect.any(Date),
+        refreshStartedAt: expect.any(Date) as unknown,
       },
     });
-    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+    const releaseUpdateCall = firstCallArg<PortfolioStateReleaseUpdateCall>(
+      prisma.portfolioState.update,
+    );
+    expect(releaseUpdateCall).toEqual({
       where: { userId: OWNER_ID },
       data: {
         refreshStartedAt: null,

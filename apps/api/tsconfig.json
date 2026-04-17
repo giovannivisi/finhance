@@ -18,7 +18,7 @@
       "@/*": ["./src/*"],
       "@prisma/*": ["./src/prisma/*"],
       "@assets/*": ["src/assets/*"],
-      "@prices/*": ["./src/prices/*"],
+      "@prices/*": ["./src/prices/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

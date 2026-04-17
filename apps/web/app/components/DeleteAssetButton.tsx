@@ -14,12 +14,9 @@ export default function DeleteAssetButton({ id }: DeleteAssetButtonProps) {
     const confirmed = confirm("Are you sure you want to delete this asset?");
     if (!confirmed) return;
 
-    const res = await fetch(
-      getApiUrl(`/assets/${id}`),
-      {
-        method: "DELETE",
-      }
-    );
+    const res = await fetch(getApiUrl(`/assets/${id}`), {
+      method: "DELETE",
+    });
 
     if (!res.ok) {
       alert(await readApiError(res));
