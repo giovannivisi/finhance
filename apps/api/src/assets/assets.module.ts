@@ -3,22 +3,11 @@ import { AssetsService } from '@assets/assets.service';
 import { AssetsController } from '@assets/assets.controller';
 import { DashboardController } from '@assets/dashboard.controller';
 import { PricesModule } from '@prices/prices.module';
-import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
-  imports: [
-    PricesModule,
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: REFRESH_COOLDOWN_MS,
-        limit: 60,
-      },
-    ]),
-  ],
+  imports: [PricesModule],
   controllers: [AssetsController, DashboardController],
-  providers: [AssetsService, RequestOwnerResolver, ThrottlerGuard],
+  providers: [AssetsService, RequestOwnerResolver],
 })
 export class AssetsModule {}

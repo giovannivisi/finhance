@@ -6,14 +6,11 @@ import {
   Param,
   Post,
   Put,
-  UseGuards,
 } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
-import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type {
   AssetResponse,
   DashboardAssetResponse,
@@ -50,13 +47,6 @@ export class AssetsController {
   }
 
   @Post('refresh')
-  @UseGuards(ThrottlerGuard)
-  @Throttle({
-    default: {
-      limit: 1,
-      ttl: REFRESH_COOLDOWN_MS,
-    },
-  })
   async refreshAssets(): Promise<RefreshAssetsResponse> {
     return this.assetsService.refreshAssets(this.resolveOwnerId());
   }

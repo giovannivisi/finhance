@@ -34,10 +34,11 @@ model Asset {
 }
 
 model PortfolioState {
-  userId                 String   @id
-  lastRefreshRequestedAt DateTime
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  userId                 String    @id
+  lastRefreshSucceededAt DateTime?
+  refreshStartedAt       DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 }
 
 enum AssetType {

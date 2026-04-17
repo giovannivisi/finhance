@@ -1,6 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 import { AssetsController } from '@assets/assets.controller';
 import { AssetsService } from '@assets/assets.service';
@@ -54,7 +53,8 @@ function createPortfolioState(
 
   return {
     userId: OWNER_ID,
-    lastRefreshRequestedAt: now,
+    lastRefreshSucceededAt: null,
+    refreshStartedAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -160,19 +160,9 @@ describe('Asset routes (e2e)', () => {
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ThrottlerModule.forRoot([
-          {
-            name: 'default',
-            ttl: REFRESH_COOLDOWN_MS,
-            limit: 60,
-          },
-        ]),
-      ],
       controllers: [AssetsController, DashboardController],
       providers: [
         AssetsService,
-        ThrottlerGuard,
         { provide: PrismaService, useValue: prisma },
         { provide: PricesService, useValue: prices },
         {
@@ -347,27 +337,74 @@ describe('Asset routes (e2e)', () => {
         expect(body.updatedCount).toBe(1);
         expect(body.staleCount).toBe(0);
       });
+
+    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+      data: {
+        lastRefreshSucceededAt: expect.any(Date),
+        refreshStartedAt: null,
+      },
+    });
   });
 
-  it('rate limits repeated POST /assets/refresh requests', async () => {
-    const asset = createAsset();
-    prisma.portfolioState.findUnique.mockResolvedValue(null);
-    prisma.portfolioState.create.mockResolvedValue(createPortfolioState());
-    prisma.asset.findMany.mockResolvedValueOnce([asset]).mockResolvedValueOnce([
-      createAsset({
-        lastPrice: new Prisma.Decimal('50'),
-        lastPriceAt: new Date(),
-        lastFxRate: new Prisma.Decimal('0.9'),
-        lastFxRateAt: new Date(),
+  it('returns 429 after a recent successful refresh', async () => {
+    prisma.portfolioState.findUnique.mockResolvedValue(
+      createPortfolioState({
+        lastRefreshSucceededAt: new Date(Date.now() - 1_000),
       }),
-    ]);
-    prisma.asset.update.mockResolvedValue(asset);
-    prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
-    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
-
-    await request(app.getHttpServer()).post('/assets/refresh').expect(201);
+    );
 
     await request(app.getHttpServer()).post('/assets/refresh').expect(429);
+  });
+
+  it('allows immediate retry after a failed refresh', async () => {
+    const asset = createAsset();
+    prisma.portfolioState.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(createPortfolioState())
+      .mockResolvedValueOnce(createPortfolioState());
+    prisma.portfolioState.create.mockResolvedValue(createPortfolioState());
+    prisma.asset.findMany
+      .mockResolvedValueOnce([asset])
+      .mockResolvedValueOnce([asset])
+      .mockResolvedValueOnce([
+        createAsset({
+          lastPrice: new Prisma.Decimal('50'),
+          lastPriceAt: new Date(),
+          lastFxRate: new Prisma.Decimal('0.9'),
+          lastFxRateAt: new Date(),
+        }),
+      ]);
+    prisma.asset.update.mockResolvedValue(asset);
+    prices.getMarketPrice
+      .mockRejectedValueOnce(new Error('quote down'))
+      .mockResolvedValueOnce(new Prisma.Decimal('50'));
+    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
+
+    await request(app.getHttpServer()).post('/assets/refresh').expect(500);
+    await request(app.getHttpServer())
+      .post('/assets/refresh')
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.updatedCount).toBe(1);
+      });
+
+    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+      data: {
+        refreshStartedAt: null,
+      },
+    });
+  });
+
+  it('returns 409 while a refresh is already in flight', async () => {
+    prisma.portfolioState.findUnique.mockResolvedValue(
+      createPortfolioState({
+        refreshStartedAt: new Date(Date.now() - 1_000),
+      }),
+    );
+
+    await request(app.getHttpServer()).post('/assets/refresh').expect(409);
   });
 
   it('returns fallback valuation metadata from GET /dashboard', async () => {

@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
+import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
 import { AssetKind, AssetType, Prisma } from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
@@ -39,7 +40,8 @@ function createPortfolioState(
 
   return {
     userId: OWNER_ID,
-    lastRefreshRequestedAt: now,
+    lastRefreshSucceededAt: null,
+    refreshStartedAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -278,7 +280,14 @@ describe('AssetsService', () => {
     expect(prisma.portfolioState.create).toHaveBeenCalledWith({
       data: {
         userId: OWNER_ID,
-        lastRefreshRequestedAt: expect.any(Date),
+        refreshStartedAt: expect.any(Date),
+      },
+    });
+    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+      data: {
+        lastRefreshSucceededAt: expect.any(Date),
+        refreshStartedAt: null,
       },
     });
     expect(prisma.asset.findMany).toHaveBeenNthCalledWith(
@@ -294,10 +303,10 @@ describe('AssetsService', () => {
     expect(response.staleCount).toBe(0);
   });
 
-  it('rejects refreshes during the per-owner cooldown window', async () => {
+  it('rejects refreshes during the success-based cooldown window', async () => {
     prisma.portfolioState.findUnique.mockResolvedValue(
       createPortfolioState({
-        lastRefreshRequestedAt: new Date(Date.now() - 1_000),
+        lastRefreshSucceededAt: new Date(Date.now() - 1_000),
       }),
     );
 
@@ -305,6 +314,72 @@ describe('AssetsService', () => {
       'Refresh is cooling down.',
     );
     expect(prisma.asset.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects refreshes while another refresh is still in flight', async () => {
+    prisma.portfolioState.findUnique.mockResolvedValue(
+      createPortfolioState({
+        refreshStartedAt: new Date(Date.now() - 1_000),
+      }),
+    );
+
+    await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow(
+      'Refresh already in progress.',
+    );
+    expect(prisma.asset.findMany).not.toHaveBeenCalled();
+  });
+
+  it('clears the lock and skips cooldown when refresh work fails', async () => {
+    const asset = createAsset();
+    prisma.portfolioState.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(createPortfolioState());
+    prisma.asset.findMany.mockResolvedValueOnce([asset]);
+    prices.getMarketPrice.mockRejectedValue(new Error('quote down'));
+
+    await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow('quote down');
+
+    expect(prisma.portfolioState.create).toHaveBeenCalledWith({
+      data: {
+        userId: OWNER_ID,
+        refreshStartedAt: expect.any(Date),
+      },
+    });
+    expect(prisma.portfolioState.update).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+      data: {
+        refreshStartedAt: null,
+      },
+    });
+  });
+
+  it('reclaims stale in-flight locks', async () => {
+    const refreshAsset = createAsset();
+    prisma.portfolioState.findUnique.mockResolvedValue(
+      createPortfolioState({
+        refreshStartedAt: new Date(Date.now() - REFRESH_COOLDOWN_MS - 1_000),
+      }),
+    );
+    prisma.asset.findMany
+      .mockResolvedValueOnce([refreshAsset])
+      .mockResolvedValueOnce([
+        createAsset({
+          lastPrice: new Prisma.Decimal('50'),
+          lastPriceAt: new Date(),
+          lastFxRate: new Prisma.Decimal('0.9'),
+          lastFxRateAt: new Date(),
+        }),
+      ]);
+    prisma.asset.update.mockResolvedValue(createAsset());
+    prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
+    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
+
+    await service.refreshAssets(OWNER_ID);
+
+    expect(prisma.portfolioState.findUnique).toHaveBeenCalledWith({
+      where: { userId: OWNER_ID },
+    });
+    expect(prisma.asset.findMany).toHaveBeenCalled();
   });
 
   it('rejects updates that would collide with another position in the same owner scope', async () => {
