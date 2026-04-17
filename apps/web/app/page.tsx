@@ -1,9 +1,12 @@
 import Container from "@components/Container";
 import Header from "@components/Header";
+import type {
+  DashboardAssetResponse,
+  DashboardResponse,
+} from "@finhance/shared";
 import { api } from "@lib/api";
 import DashboardClient from "@components/DashboardClient";
 import { formatCurrency } from "@lib/format";
-import { ApiAsset, DashboardResponse } from "@lib/api-types";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +18,9 @@ export default async function Home() {
     dashboard = await api<DashboardResponse>("/dashboard");
   } catch (error) {
     errorMessage =
-      error instanceof Error ? error.message : "Dashboard data is currently unavailable.";
+      error instanceof Error
+        ? error.message
+        : "Dashboard data is currently unavailable.";
   }
 
   if (!dashboard) {
@@ -37,28 +42,32 @@ export default async function Home() {
 
   const assets = dashboard.assets;
   const assetList = assets.filter((asset) => asset.type === "ASSET");
-  const grouped: Record<string, ApiAsset[]> = assets.reduce(
+  const grouped: Record<string, DashboardAssetResponse[]> = assets.reduce(
     (acc, asset) => {
-      const groupKey = asset.type === "ASSET"
-        ? asset.kind || "Unassigned"
-        : asset.liabilityKind || "Unassigned";
+      const groupKey =
+        asset.type === "ASSET"
+          ? asset.kind || "Unassigned"
+          : asset.liabilityKind || "Unassigned";
       if (!acc[groupKey]) acc[groupKey] = [];
       acc[groupKey].push(asset);
       return acc;
     },
-    {} as Record<string, ApiAsset[]>
+    {} as Record<string, DashboardAssetResponse[]>,
   );
 
-  const kindTotals = assetList.reduce((acc, asset) => {
-    const value = asset.currentValue ?? asset.referenceValue ?? null;
+  const kindTotals = assetList.reduce(
+    (acc, asset) => {
+      const value = asset.currentValue ?? asset.referenceValue ?? null;
 
-    if (value !== null) {
-      const kind = asset.kind ?? "Unassigned";
-      acc[kind] = (acc[kind] || 0) + value;
-    }
-    return acc;
-  }, {} as Record<string, number>);
-  
+      if (value !== null) {
+        const kind = asset.kind ?? "Unassigned";
+        acc[kind] = (acc[kind] || 0) + value;
+      }
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
   const kindTotalsArray = Object.entries(kindTotals)
     .map(([kind, total]) => ({
       kind,
@@ -82,13 +91,19 @@ export default async function Home() {
           <div className="bg-white shadow rounded-2xl p-4 text-center">
             <p className="text-sm text-gray-500">Liabilities</p>
             <p className="text-red-600 text-xl font-bold">
-              {formatCurrency(dashboard.summary.liabilities, dashboard.baseCurrency)}
+              {formatCurrency(
+                dashboard.summary.liabilities,
+                dashboard.baseCurrency,
+              )}
             </p>
           </div>
           <div className="bg-white shadow rounded-2xl p-4 text-center">
             <p className="text-sm text-gray-500">Net Worth</p>
             <p className="text-black text-xl font-bold">
-              {formatCurrency(dashboard.summary.netWorth, dashboard.baseCurrency)}
+              {formatCurrency(
+                dashboard.summary.netWorth,
+                dashboard.baseCurrency,
+              )}
             </p>
           </div>
         </div>
@@ -99,7 +114,6 @@ export default async function Home() {
           baseCurrency={dashboard.baseCurrency}
           lastRefreshAt={dashboard.lastRefreshAt}
         />
-
       </Container>
     </>
   );

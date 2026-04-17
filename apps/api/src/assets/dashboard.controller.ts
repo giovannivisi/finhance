@@ -1,7 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
-import { DashboardResponse } from '@assets/assets.types';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import type { DashboardResponse } from '@finhance/shared';
 
 @Controller('dashboard')
 export class DashboardController {

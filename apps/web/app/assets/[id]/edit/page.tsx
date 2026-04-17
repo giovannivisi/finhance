@@ -1,17 +1,17 @@
 import { api } from "@lib/api";
-import EditAssettForm from "@components/EditAssetForm";
-import { ApiAsset } from "@lib/api-types";
+import type { AssetResponse } from "@finhance/shared";
+import EditAssetForm from "@components/EditAssetForm";
 
-export default async function EditAssettPage(props: {
-  params: Promise<{ id: string }>
+export default async function EditAssetPage(props: {
+  params: Promise<{ id: string }>;
 }) {
-  const { id } = await props.params; // Important!
-  const asset = await api<ApiAsset>(`/assets/${id}`);
-
+  const { id } = await props.params;
+  const asset = await api<AssetResponse>(`/assets/${id}`);
 
   return (
-    <div>
-      <EditAssettForm asset={asset}  />
+    <div className="mx-auto max-w-2xl space-y-6">
+      <h1 className="text-2xl font-semibold">Edit asset</h1>
+      <EditAssetForm asset={asset} />
     </div>
   );
 }

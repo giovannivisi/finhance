@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { DashboardAssetResponse } from "@finhance/shared";
 import CreateAssetModal from "@/components/CreateAssetModal";
 import EditAssetModal from "@components/EditAssetModal";
 import DeleteAssetButton from "@components/DeleteAssetButton";
@@ -11,9 +12,8 @@ import HeaderAddButton from "@components/HeaderAddButton";
 import SectionHeader from "@components/SectionHeader";
 import DisclosureIcon from "@components/DisclosureIcon";
 import AllocationChart from "@components/AllocationChart";
-import { ApiAsset } from "@lib/api-types";
 
-function getValuationLabel(asset: ApiAsset): string {
+function getValuationLabel(asset: DashboardAssetResponse): string {
   switch (asset.valuationSource) {
     case "LIVE":
       return asset.isStale ? "Live quote (stale)" : "Live quote";
@@ -36,7 +36,7 @@ export default function DashboardClient({
   baseCurrency,
   lastRefreshAt,
 }: {
-  grouped: Record<string, ApiAsset[]>;
+  grouped: Record<string, DashboardAssetResponse[]>;
   kindTotalsArray: { kind: string; total: number }[];
   baseCurrency: string;
   lastRefreshAt?: string | null;
@@ -44,12 +44,16 @@ export default function DashboardClient({
   const router = useRouter();
   const [editAssetId, setEditAssetId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(
+    {},
+  );
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
-  const sortedCategories = Object.keys(grouped).sort();
-  const categorySignature = sortedCategories.join("|");
+  const sortedCategories = useMemo(
+    () => Object.keys(grouped).sort(),
+    [grouped],
+  );
 
   useEffect(() => {
     setNowMs(Date.now());
@@ -67,7 +71,7 @@ export default function DashboardClient({
 
       return next;
     });
-  }, [categorySignature]);
+  }, [sortedCategories]);
 
   function toggleCategory(category: string) {
     setOpenCategories((previous) => ({
@@ -94,7 +98,9 @@ export default function DashboardClient({
       router.refresh();
     } catch (error) {
       setRefreshError(
-        error instanceof Error ? error.message : "Unable to refresh asset quotes.",
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh asset quotes.",
       );
     } finally {
       setIsRefreshing(false);
@@ -147,7 +153,10 @@ export default function DashboardClient({
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 mt-6">
         {kindTotalsArray.map(({ kind, total }) => (
-          <div key={kind} className="bg-white shadow rounded-2xl p-6 text-center">
+          <div
+            key={kind}
+            className="bg-white shadow rounded-2xl p-6 text-center"
+          >
             <p className="text-md font-medium text-gray-700">{kind}</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
               {formatCurrency(total, baseCurrency)}
@@ -170,7 +179,9 @@ export default function DashboardClient({
 
         <div className="space-y-6">
           {sortedCategories
-            .filter((category) => grouped[category].some((asset) => asset.type === "ASSET"))
+            .filter((category) =>
+              grouped[category].some((asset) => asset.type === "ASSET"),
+            )
             .map((category) => (
               <div key={category}>
                 <button
@@ -178,7 +189,9 @@ export default function DashboardClient({
                   onClick={() => toggleCategory(category)}
                   className="flex items-center justify-between w-full text-left"
                 >
-                  <span className="text-lg font-medium text-gray-900">{category}</span>
+                  <span className="text-lg font-medium text-gray-900">
+                    {category}
+                  </span>
                   <DisclosureIcon open={openCategories[category]} />
                 </button>
 
@@ -187,11 +200,13 @@ export default function DashboardClient({
                     {grouped[category]
                       .filter((asset) => asset.type === "ASSET")
                       .map((asset) => {
-                        const displayValue = asset.currentValue ?? asset.referenceValue;
+                        const displayValue =
+                          asset.currentValue ?? asset.referenceValue;
                         const referenceDiffers =
                           asset.referenceValue != null &&
                           asset.currentValue != null &&
-                          Math.abs(asset.referenceValue - asset.currentValue) > 0.005;
+                          Math.abs(asset.referenceValue - asset.currentValue) >
+                            0.005;
 
                         return (
                           <li
@@ -200,9 +215,13 @@ export default function DashboardClient({
                           >
                             <div className="flex flex-col">
                               <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900">{asset.name}</p>
+                                <p className="font-semibold text-gray-900">
+                                  {asset.name}
+                                </p>
                                 {asset.ticker ? (
-                                  <span className="text-xs text-gray-500">({asset.ticker})</span>
+                                  <span className="text-xs text-gray-500">
+                                    ({asset.ticker})
+                                  </span>
                                 ) : null}
                               </div>
 
@@ -222,9 +241,14 @@ export default function DashboardClient({
                                   {asset.kind}
                                 </span>
 
-                                {asset.quantity != null && asset.unitPrice != null ? (
+                                {asset.quantity != null &&
+                                asset.unitPrice != null ? (
                                   <span className="text-xs text-gray-600">
-                                    {asset.quantity} × {formatCurrency(Number(asset.unitPrice), asset.currency ?? baseCurrency)}
+                                    {asset.quantity} ×{" "}
+                                    {formatCurrency(
+                                      Number(asset.unitPrice),
+                                      asset.currency ?? baseCurrency,
+                                    )}
                                   </span>
                                 ) : null}
 
@@ -243,15 +267,25 @@ export default function DashboardClient({
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable in ${baseCurrency}`}
                                 </p>
-                                <p className="text-xs text-gray-500">{getValuationLabel(asset)}</p>
+                                <p className="text-xs text-gray-500">
+                                  {getValuationLabel(asset)}
+                                </p>
                                 {referenceDiffers ? (
                                   <p className="text-xs text-gray-500">
-                                    Ref: {formatCurrency(asset.referenceValue!, baseCurrency)}
+                                    Ref:{" "}
+                                    {formatCurrency(
+                                      asset.referenceValue!,
+                                      baseCurrency,
+                                    )}
                                   </p>
                                 ) : null}
                                 {displayValue == null ? (
                                   <p className="text-xs text-gray-500">
-                                    Stored amount: {formatCurrency(Number(asset.balance), asset.currency ?? baseCurrency)}
+                                    Stored amount:{" "}
+                                    {formatCurrency(
+                                      Number(asset.balance),
+                                      asset.currency ?? baseCurrency,
+                                    )}
                                   </p>
                                 ) : null}
                               </div>
@@ -277,7 +311,9 @@ export default function DashboardClient({
 
         <div className="flex items-center gap-4 mt-10">
           <div className="flex-1 h-px bg-gray-300"></div>
-          <span className="text-lg font-semibold text-gray-700">Liabilities</span>
+          <span className="text-lg font-semibold text-gray-700">
+            Liabilities
+          </span>
           <div className="flex-1 h-px bg-gray-300"></div>
         </div>
 
@@ -293,7 +329,9 @@ export default function DashboardClient({
                   onClick={() => toggleCategory(category)}
                   className="flex items-center justify-between w-full text-left"
                 >
-                  <span className="text-lg font-medium text-red-600">{category}</span>
+                  <span className="text-lg font-medium text-red-600">
+                    {category}
+                  </span>
                   <DisclosureIcon open={openCategories[category]} />
                 </button>
 
@@ -302,7 +340,8 @@ export default function DashboardClient({
                     {grouped[category]
                       .filter((asset) => asset.type === "LIABILITY")
                       .map((asset) => {
-                        const displayValue = asset.currentValue ?? asset.referenceValue;
+                        const displayValue =
+                          asset.currentValue ?? asset.referenceValue;
 
                         return (
                           <li
@@ -311,7 +350,9 @@ export default function DashboardClient({
                           >
                             <div className="flex flex-col">
                               <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900">{asset.name}</p>
+                                <p className="font-semibold text-gray-900">
+                                  {asset.name}
+                                </p>
                               </div>
 
                               <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -334,7 +375,9 @@ export default function DashboardClient({
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable in ${baseCurrency}`}
                                 </p>
-                                <p className="text-xs text-gray-500">{getValuationLabel(asset)}</p>
+                                <p className="text-xs text-gray-500">
+                                  {getValuationLabel(asset)}
+                                </p>
                               </div>
 
                               <button

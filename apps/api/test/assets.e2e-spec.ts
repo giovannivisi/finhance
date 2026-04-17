@@ -9,11 +9,17 @@ import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
-import { AssetKind, AssetType, Prisma } from '@prisma/client';
+import {
+  Asset,
+  AssetKind,
+  AssetType,
+  PortfolioState,
+  Prisma,
+} from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
 
-function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
+function createAsset(overrides: Partial<Asset> = {}): Asset {
   const now = new Date();
 
   return {
@@ -42,8 +48,8 @@ function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 function createPortfolioState(
-  overrides: Partial<Record<string, unknown>> = {},
-) {
+  overrides: Partial<PortfolioState> = {},
+): PortfolioState {
   const now = new Date();
 
   return {
@@ -53,6 +59,34 @@ function createPortfolioState(
     updatedAt: now,
     ...overrides,
   };
+}
+
+function expectAssetResponseDto(
+  body: Record<string, unknown>,
+  asset: ReturnType<typeof createAsset>,
+) {
+  expect(body).toEqual({
+    id: asset.id,
+    name: asset.name,
+    type: asset.type,
+    kind: asset.kind,
+    liabilityKind: asset.liabilityKind,
+    ticker: asset.ticker,
+    exchange: asset.exchange,
+    quantity: asset.quantity?.toNumber() ?? null,
+    unitPrice: asset.unitPrice?.toNumber() ?? null,
+    balance: asset.balance.toNumber(),
+    currency: asset.currency,
+    notes: asset.notes,
+    order: asset.order,
+    lastPrice: asset.lastPrice ? asset.lastPrice.toNumber() : null,
+    lastPriceAt: asset.lastPriceAt?.toISOString() ?? null,
+    lastFxRate: asset.lastFxRate ? asset.lastFxRate.toNumber() : null,
+    lastFxRateAt: asset.lastFxRateAt?.toISOString() ?? null,
+  });
+  expect(body).not.toHaveProperty('userId');
+  expect(body).not.toHaveProperty('createdAt');
+  expect(body).not.toHaveProperty('updatedAt');
 }
 
 describe('Asset routes (e2e)', () => {
@@ -200,8 +234,32 @@ describe('Asset routes (e2e)', () => {
       })
       .expect(201)
       .expect(({ body }) => {
-        expect(body.name).toBe('Apple');
-        expect(body.userId).toBe(OWNER_ID);
+        expectAssetResponseDto(body, created);
+      });
+  });
+
+  it('returns DTO responses from GET /assets', async () => {
+    const asset = createAsset();
+    prisma.asset.findMany.mockResolvedValue([asset]);
+
+    await request(app.getHttpServer())
+      .get('/assets')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toHaveLength(1);
+        expectAssetResponseDto(body[0], asset);
+      });
+  });
+
+  it('returns DTO responses from GET /assets/:id', async () => {
+    const asset = createAsset();
+    prisma.asset.findFirst.mockResolvedValue(asset);
+
+    await request(app.getHttpServer())
+      .get('/assets/asset-1')
+      .expect(200)
+      .expect(({ body }) => {
+        expectAssetResponseDto(body, asset);
       });
   });
 

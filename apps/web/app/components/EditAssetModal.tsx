@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { AssetResponse } from "@finhance/shared";
 import Modal from "./Modal";
 import EditAssetForm from "@components/EditAssetForm";
 import { getApiUrl, readApiError } from "@lib/api";
-import { ApiAsset } from "@lib/api-types";
 
 export default function EditAssetModal({
   assetId,
@@ -15,15 +15,15 @@ export default function EditAssetModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const [asset, setAsset] = useState<ApiAsset | null>(null);
+  const [asset, setAsset] = useState<AssetResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !assetId) {
-      setAsset(null);
-      setError(null);
       return;
     }
+
+    let isCancelled = false;
 
     async function fetchData() {
       setError(null);
@@ -35,36 +35,47 @@ export default function EditAssetModal({
         });
 
         if (!assetResponse.ok) {
-          setError(await readApiError(assetResponse));
+          if (!isCancelled) {
+            setError(await readApiError(assetResponse));
+          }
           return;
         }
 
-        setAsset(await assetResponse.json());
+        if (!isCancelled) {
+          setAsset(await assetResponse.json());
+        }
       } catch (fetchError) {
-        setError(
-          fetchError instanceof Error
-            ? fetchError.message
-            : "Unable to load this asset.",
-        );
+        if (!isCancelled) {
+          setError(
+            fetchError instanceof Error
+              ? fetchError.message
+              : "Unable to load this asset.",
+          );
+        }
       }
     }
 
     void fetchData();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [open, assetId]);
 
   if (!open) return null;
 
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={asset ? `Edit ${asset.name}` : "Edit asset"}
+    >
       {error ? (
         <p className="text-sm text-red-600">{error}</p>
       ) : !asset ? (
         <p>Loading…</p>
       ) : (
-        <EditAssetForm
-          asset={asset}
-          onSuccess={onClose}
-        />
+        <EditAssetForm asset={asset} onSuccess={onClose} />
       )}
     </Modal>
   );

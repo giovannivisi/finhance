@@ -17,17 +17,20 @@ import {
   LiabilityKind,
   Prisma,
 } from '@prisma/client';
+import { toAssetResponse } from '@assets/assets.mapper';
 import {
   BASE_CURRENCY,
-  DashboardAssetView,
-  DashboardResponse,
-  DashboardSummary,
   MARKET_KINDS,
   REFRESH_COOLDOWN_MS,
-  RefreshAssetsResponse,
   VALUATION_STALE_MS,
-  ValuationSource,
 } from '@assets/assets.types';
+import type {
+  DashboardAssetResponse,
+  DashboardResponse,
+  DashboardSummary,
+  RefreshAssetsResponse,
+  ValuationSource,
+} from '@finhance/shared';
 
 interface PreparedAssetInput {
   userId: string;
@@ -70,7 +73,7 @@ export class AssetsService {
 
   async findAllWithCurrentValue(
     ownerId: string,
-  ): Promise<DashboardAssetView[]> {
+  ): Promise<DashboardAssetResponse[]> {
     const dashboard = await this.getDashboard(ownerId);
     return dashboard.assets;
   }
@@ -636,27 +639,11 @@ export class AssetsService {
     };
   }
 
-  private toDashboardAsset(asset: Asset, now: Date): DashboardAssetView {
+  private toDashboardAsset(asset: Asset, now: Date): DashboardAssetResponse {
     const valuation = this.buildValuation(asset, now);
 
     return {
-      id: asset.id,
-      name: asset.name,
-      type: asset.type,
-      kind: asset.kind,
-      liabilityKind: asset.liabilityKind,
-      ticker: asset.ticker,
-      exchange: asset.exchange,
-      quantity: this.decimalToNumber(asset.quantity),
-      unitPrice: this.decimalToNumber(asset.unitPrice),
-      balance: this.decimalToNumber(asset.balance) ?? 0,
-      currency: asset.currency,
-      notes: asset.notes,
-      order: asset.order,
-      lastPrice: this.decimalToNumber(asset.lastPrice),
-      lastPriceAt: asset.lastPriceAt?.toISOString() ?? null,
-      lastFxRate: this.decimalToNumber(asset.lastFxRate),
-      lastFxRateAt: asset.lastFxRateAt?.toISOString() ?? null,
+      ...toAssetResponse(asset),
       currentValue: this.decimalToNumber(valuation.currentValue),
       referenceValue: this.decimalToNumber(valuation.referenceValue),
       valuationSource: valuation.valuationSource,
@@ -740,7 +727,7 @@ export class AssetsService {
     };
   }
 
-  private buildSummary(assets: DashboardAssetView[]): DashboardSummary {
+  private buildSummary(assets: DashboardAssetResponse[]): DashboardSummary {
     let assetsTotal = ZERO;
     let liabilitiesTotal = ZERO;
 

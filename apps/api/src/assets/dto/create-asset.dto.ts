@@ -9,25 +9,34 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { AssetType, AssetKind, LiabilityKind } from '@prisma/client';
+import {
+  AssetKind as PrismaAssetKind,
+  AssetType as PrismaAssetType,
+  LiabilityKind as PrismaLiabilityKind,
+} from '@prisma/client';
+import type {
+  AssetKind,
+  AssetType,
+  LiabilityKind,
+  UpsertAssetRequest,
+} from '@finhance/shared';
 
-export class CreateAssetDto {
+export class CreateAssetDto implements UpsertAssetRequest {
   @IsString()
   @IsNotEmpty()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   name!: string;
 
-  // Existing
-  @IsEnum(AssetType)
-  type!: AssetType; // ASSET | LIABILITY
+  @IsEnum(PrismaAssetType)
+  type!: AssetType;
 
   @ValidateIf((a) => a.type === 'LIABILITY')
-  @IsEnum(LiabilityKind)
-  liabilityKind?: LiabilityKind;
+  @IsEnum(PrismaLiabilityKind)
+  liabilityKind?: LiabilityKind | null;
 
   @ValidateIf((a) => a.type === 'ASSET')
-  @IsEnum(AssetKind)
-  kind?: AssetKind;
+  @IsEnum(PrismaAssetKind)
+  kind?: AssetKind | null;
 
   @ValidateIf(
     (a) =>
@@ -36,7 +45,7 @@ export class CreateAssetDto {
   )
   @IsNumber()
   @IsPositive()
-  balance?: number;
+  balance?: number | null;
 
   @IsOptional()
   @IsString()
@@ -54,7 +63,7 @@ export class CreateAssetDto {
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim().toUpperCase() : value,
   )
-  ticker?: string;
+  ticker?: string | null;
 
   @ValidateIf(
     (a) => a.type === 'ASSET' && ['STOCK', 'BOND', 'CRYPTO'].includes(a.kind),
@@ -63,30 +72,30 @@ export class CreateAssetDto {
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim().toUpperCase() : value,
   )
-  exchange?: string;
+  exchange?: string | null;
 
   @ValidateIf(
     (a) => a.type === 'ASSET' && ['STOCK', 'BOND', 'CRYPTO'].includes(a.kind),
   )
   @IsNumber()
   @IsPositive()
-  quantity?: number;
+  quantity?: number | null;
 
   @ValidateIf(
     (a) => a.type === 'ASSET' && ['STOCK', 'BOND', 'CRYPTO'].includes(a.kind),
   )
   @IsNumber()
   @IsPositive()
-  unitPrice?: number;
+  unitPrice?: number | null;
 
   @IsOptional()
   @IsString()
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim() || undefined : value,
   )
-  notes?: string;
+  notes?: string | null;
 
   @IsOptional()
   @IsNumber()
-  order?: number;
+  order?: number | null;
 }

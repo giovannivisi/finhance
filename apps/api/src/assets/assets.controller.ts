@@ -11,15 +11,16 @@ import {
 import { AssetsService } from '@assets/assets.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
-import {
-  DashboardAssetView,
-  DashboardSummary,
-  REFRESH_COOLDOWN_MS,
-  RefreshAssetsResponse,
-} from '@assets/assets.types';
-import { Asset } from '@prisma/client';
+import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import type {
+  AssetResponse,
+  DashboardAssetResponse,
+  DashboardSummary,
+  RefreshAssetsResponse,
+} from '@finhance/shared';
+import { toAssetResponse } from '@assets/assets.mapper';
 
 @Controller('assets')
 export class AssetsController {
@@ -33,12 +34,13 @@ export class AssetsController {
   }
 
   @Get()
-  async findAll(): Promise<Asset[]> {
-    return this.assetsService.findAll(this.resolveOwnerId());
+  async findAll(): Promise<AssetResponse[]> {
+    const assets = await this.assetsService.findAll(this.resolveOwnerId());
+    return assets.map(toAssetResponse);
   }
 
   @Get('with-values')
-  async findAllWithValues(): Promise<DashboardAssetView[]> {
+  async findAllWithValues(): Promise<DashboardAssetResponse[]> {
     return this.assetsService.findAllWithCurrentValue(this.resolveOwnerId());
   }
 
@@ -60,21 +62,28 @@ export class AssetsController {
   }
 
   @Post()
-  async create(@Body() dto: CreateAssetDto): Promise<Asset> {
-    return this.assetsService.create(this.resolveOwnerId(), dto);
+  async create(@Body() dto: CreateAssetDto): Promise<AssetResponse> {
+    const asset = await this.assetsService.create(this.resolveOwnerId(), dto);
+    return toAssetResponse(asset);
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Asset> {
-    return this.assetsService.findOne(this.resolveOwnerId(), id);
+  async findOne(@Param('id') id: string): Promise<AssetResponse> {
+    const asset = await this.assetsService.findOne(this.resolveOwnerId(), id);
+    return toAssetResponse(asset);
   }
 
   @Put(':id')
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateAssetDto,
-  ): Promise<Asset> {
-    return this.assetsService.update(this.resolveOwnerId(), id, dto);
+  ): Promise<AssetResponse> {
+    const asset = await this.assetsService.update(
+      this.resolveOwnerId(),
+      id,
+      dto,
+    );
+    return toAssetResponse(asset);
   }
 
   @Delete(':id')
