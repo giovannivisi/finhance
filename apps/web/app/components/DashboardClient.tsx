@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardAssetResponse } from "@finhance/shared";
 import CreateAssetModal from "@/components/CreateAssetModal";
 import EditAssetModal from "@components/EditAssetModal";
 import DeleteAssetButton from "@components/DeleteAssetButton";
-import { getApiUrl, readApiError } from "@lib/api";
+import {
+  requestDashboardRefresh,
+  shouldIgnoreDashboardRefreshError,
+} from "@lib/dashboard-refresh";
 import { formatCurrency } from "@lib/format";
 import HeaderAddButton from "@components/HeaderAddButton";
 import SectionHeader from "@components/SectionHeader";
@@ -50,6 +53,7 @@ export default function DashboardClient({
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
+  const autoRefreshAttemptedRef = useRef(false);
   const sortedCategories = useMemo(
     () => Object.keys(grouped).sort(),
     [grouped],
@@ -73,6 +77,31 @@ export default function DashboardClient({
     });
   }, [sortedCategories]);
 
+  useEffect(() => {
+    if (autoRefreshAttemptedRef.current) {
+      return;
+    }
+
+    autoRefreshAttemptedRef.current = true;
+
+    async function runAutoRefresh() {
+      const result = await requestDashboardRefresh();
+
+      if (result.ok) {
+        router.refresh();
+        return;
+      }
+
+      if (shouldIgnoreDashboardRefreshError("auto", result.status)) {
+        return;
+      }
+
+      setRefreshError(result.error);
+    }
+
+    void runAutoRefresh();
+  }, [router]);
+
   function toggleCategory(category: string) {
     setOpenCategories((previous) => ({
       ...previous,
@@ -85,23 +114,14 @@ export default function DashboardClient({
     setIsRefreshing(true);
 
     try {
-      const response = await fetch(getApiUrl("/assets/refresh"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const result = await requestDashboardRefresh();
 
-      if (!response.ok) {
-        setRefreshError(await readApiError(response));
+      if (!result.ok) {
+        setRefreshError(result.error);
         return;
       }
 
       router.refresh();
-    } catch (error) {
-      setRefreshError(
-        error instanceof Error
-          ? error.message
-          : "Unable to refresh asset quotes.",
-      );
     } finally {
       setIsRefreshing(false);
     }
