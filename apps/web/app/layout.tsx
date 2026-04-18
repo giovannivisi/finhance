@@ -2,6 +2,7 @@ import "./globals.css";
 import { Manrope, Inter } from "next/font/google";
 import { ThemeProvider } from "./providers";
 import { BottomTabBar } from "./components/navigation/BottomTabBar";
+import { Sidebar } from "./components/navigation/Sidebar";
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -34,12 +35,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div className="flex flex-col min-h-screen pb-24 lg:flex-row lg:pb-0 mx-auto max-w-[1200px]">
-            {/* Desktop Sidebar / Header */}
+          <div className="app-container">
+            <Sidebar />
             {/* Main Content Area */}
-            <main className="flex-1 w-full p-4 md:p-8 overflow-hidden">
-              {children}
-            </main>
+            <main className="main-content">{children}</main>
             <BottomTabBar />
           </div>
         </ThemeProvider>
