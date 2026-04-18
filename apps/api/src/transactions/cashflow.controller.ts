@@ -1,8 +1,12 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { CashflowMonthlyQueryDto } from '@transactions/dto/cashflow-monthly-query.dto';
 import { CashflowSummaryQueryDto } from '@transactions/dto/cashflow-summary-query.dto';
 import { TransactionsService } from '@transactions/transactions.service';
-import type { CashflowSummaryResponse } from '@finhance/shared';
+import type {
+  CashflowSummaryResponse,
+  MonthlyCashflowResponse,
+} from '@finhance/shared';
 
 @Controller('cashflow')
 export class CashflowController {
@@ -13,6 +17,18 @@ export class CashflowController {
 
   private resolveOwnerId(): string {
     return this.requestOwnerResolver.resolveOwnerId();
+  }
+
+  @Get('monthly')
+  async getMonthly(
+    @Query() query: CashflowMonthlyQueryDto,
+  ): Promise<MonthlyCashflowResponse> {
+    return this.transactionsService.getMonthlyCashflow(this.resolveOwnerId(), {
+      from: query.from,
+      to: query.to,
+      accountIds: query.accountId,
+      includeArchivedAccounts: query.includeArchivedAccounts,
+    });
   }
 
   @Get('summary')

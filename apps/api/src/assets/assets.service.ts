@@ -103,6 +103,9 @@ export class AssetsService {
         this.maxDate(
           assets.flatMap((asset) => [asset.lastPriceAt, asset.lastFxRateAt]),
         )?.toISOString() ?? null,
+      latestSnapshotDate: null,
+      latestSnapshotCapturedAt: null,
+      latestSnapshotIsPartial: null,
     };
   }
 
