@@ -12,10 +12,14 @@ const renderLabel = (props: PieLabelRenderProps) => {
     <text
       x={x}
       y={y}
-      fill="#111827"
+      fill="var(--text-primary)"
       textAnchor="middle"
       dominantBaseline="central"
-      style={{ fontSize: "12px", fontWeight: 500 }}
+      style={{
+        fontSize: "14px",
+        fontWeight: 600,
+        fontFamily: "var(--font-heading)",
+      }}
     >
       {`${name} ${(percent * 100).toFixed(0)}%`}
     </text>
@@ -34,8 +38,8 @@ export default function AllocationChart({
   const single = isSingle ? cleaned[0] : null;
 
   return (
-    <div className="flex items-center justify-center w-full">
-      <ResponsiveContainer width={size} height={size}>
+    <div className="flex-row items-center justify-center w-full">
+      <ResponsiveContainer width="100%" height={size}>
         <PieChart>
           <Pie
             data={cleaned}
@@ -43,17 +47,21 @@ export default function AllocationChart({
             nameKey="label"
             cx="50%"
             cy="50%"
-            innerRadius={50}
-            outerRadius={90}
-            stroke="#fff"
-            strokeWidth={2}
+            innerRadius={size * 0.35}
+            outerRadius={size * 0.45}
+            stroke="none"
+            paddingAngle={4}
+            cornerRadius={8}
             labelLine={false}
             label={isSingle ? false : renderLabel}
           >
             {cleaned.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
-                fill={COLORS[entry.label as keyof typeof COLORS] || "#6B7280"}
+                fill={
+                  COLORS[entry.label as keyof typeof COLORS] ||
+                  "var(--text-secondary)"
+                }
               />
             ))}
           </Pie>
@@ -64,7 +72,12 @@ export default function AllocationChart({
               y="50%"
               textAnchor="middle"
               dominantBaseline="middle"
-              style={{ fontSize: "16px", fontWeight: 600, fill: "#111827" }}
+              fill="var(--text-primary)"
+              style={{
+                fontSize: "24px",
+                fontWeight: 700,
+                fontFamily: "var(--font-heading)",
+              }}
             >
               {single.label}{" "}
               {(
@@ -77,7 +90,17 @@ export default function AllocationChart({
           ) : null}
 
           {!isSingle ? (
-            <Tooltip formatter={(value: number) => formatCurrency(value)} />
+            <Tooltip
+              formatter={(value: number) => formatCurrency(value)}
+              contentStyle={{
+                borderRadius: "16px",
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-card)",
+                backdropFilter: "blur(10px)",
+                color: "var(--text-primary)",
+              }}
+              itemStyle={{ color: "var(--text-primary)", fontWeight: 600 }}
+            />
           ) : null}
         </PieChart>
       </ResponsiveContainer>

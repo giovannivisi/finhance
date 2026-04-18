@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardAssetResponse } from "@finhance/shared";
 import CreateAssetModal from "@/components/CreateAssetModal";
@@ -12,6 +12,11 @@ import HeaderAddButton from "@components/HeaderAddButton";
 import SectionHeader from "@components/SectionHeader";
 import DisclosureIcon from "@components/DisclosureIcon";
 import AllocationChart from "@components/AllocationChart";
+
+type AccentTextStyle = CSSProperties & {
+  "--accent-primary": string;
+  "--accent-secondary": string;
+};
 
 function getValuationLabel(asset: DashboardAssetResponse): string {
   switch (asset.valuationSource) {
@@ -30,12 +35,22 @@ function getValuationLabel(asset: DashboardAssetResponse): string {
   }
 }
 
+import { PortfolioChart } from "./PortfolioChart";
+import { Building2, CreditCard } from "lucide-react";
+
+const DANGER_ACCENT_TEXT_STYLE: AccentTextStyle = {
+  "--accent-primary": "var(--accent-danger)",
+  "--accent-secondary": "var(--accent-warning)",
+};
+
 export default function DashboardClient({
+  summary,
   grouped,
   kindTotalsArray,
   baseCurrency,
   lastRefreshAt,
 }: {
+  summary: { netWorth: number; assets: number; liabilities: number };
   grouped: Record<string, DashboardAssetResponse[]>;
   kindTotalsArray: { kind: string; total: number }[];
   baseCurrency: string;
@@ -119,13 +134,16 @@ export default function DashboardClient({
 
   return (
     <>
-      <SectionHeader title="Asset Allocation" />
-
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-onSurfaceVariant">{refreshStatus}</p>
+      <div className="flex-row items-center justify-between gap-4 mb-4">
+        <div className="flex-col">
+          <p className="text-sm">{refreshStatus}</p>
           {refreshError ? (
-            <p className="mt-1 text-sm text-tertiary">{refreshError}</p>
+            <p
+              className="text-xs text-gradient mt-2"
+              style={DANGER_ACCENT_TEXT_STYLE}
+            >
+              {refreshError}
+            </p>
           ) : null}
         </div>
 
@@ -133,70 +151,153 @@ export default function DashboardClient({
           type="button"
           onClick={handleRefresh}
           disabled={isRefreshing}
-          className="text-sm px-3 py-1.5 rounded-lg bg-surfaceContainerLowest shadow hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          className="btn btn-secondary"
+          style={{
+            opacity: isRefreshing ? 0.6 : 1,
+            cursor: isRefreshing ? "not-allowed" : "pointer",
+          }}
         >
           {isRefreshing ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
-      <div className="bg-surfaceContainerLowest shadow-ambient rounded-xl md:rounded-[3rem] p-10 flex items-center justify-center mx-auto my-6">
-        <div className="w-[520px] h-[520px]">
-          <AllocationChart
-            size={520}
-            data={kindTotalsArray.map((kindTotal) => ({
-              label: kindTotal.kind,
-              total: kindTotal.total,
-            }))}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 mt-6">
-        {kindTotalsArray.map(({ kind, total }) => (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gap: "24px",
+        }}
+      >
+        <div className="flex-col gap-6" style={{ gridColumn: "1 / -1" }}>
           <div
-            key={kind}
-            className="bg-surfaceContainerLowest shadow-ambient rounded-xl md:rounded-[3rem] p-6 text-center"
+            className="glass-card flex-col"
+            style={{ padding: "32px", width: "100%" }}
           >
-            <p className="text-md font-medium text-onSurface">{kind}</p>
-            <p className="text-2xl font-bold text-onSurface mt-1">
-              {formatCurrency(total, baseCurrency)}
+            <p className="text-xs font-bold text-secondary tracking-widest uppercase">
+              Total Portfolio Value
+            </p>
+            <h2
+              className="text-display-md font-bold mt-2"
+              style={{ letterSpacing: "-0.04em" }}
+            >
+              {formatCurrency(summary.netWorth, baseCurrency)}
+            </h2>
+            <PortfolioChart currentValue={summary.netWorth} />
+          </div>
+        </div>
+
+        <div
+          className="glass-card flex-col items-center justify-center"
+          style={{ padding: "32px" }}
+        >
+          <p className="text-xs font-bold text-secondary tracking-widest uppercase w-full text-left">
+            Asset Allocation
+          </p>
+          <div style={{ width: 240, height: 240, marginTop: 32 }}>
+            <AllocationChart
+              size={240}
+              data={kindTotalsArray.map((kindTotal) => ({
+                label: kindTotal.kind,
+                total: kindTotal.total,
+              }))}
+            />
+          </div>
+        </div>
+
+        <div className="flex-col gap-6">
+          <div
+            className="glass-card flex-col"
+            style={{ padding: "24px", height: "100%" }}
+          >
+            <div
+              className="avatar"
+              style={{
+                backgroundColor: "var(--surface-container)",
+                width: 40,
+                height: 40,
+                marginBottom: 16,
+              }}
+            >
+              <Building2 size={20} color="var(--text-primary)" />
+            </div>
+            <p className="text-h4 font-bold">Total Assets</p>
+            <p className="text-secondary mt-1">
+              {formatCurrency(summary.assets, baseCurrency)}
             </p>
           </div>
-        ))}
-      </div>
-
-      <SectionHeader
-        title="Assets and liabilities"
-        action={<HeaderAddButton onClick={() => setCreateOpen(true)} />}
-      />
-
-      <div className="space-y-10 mt-6">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 h-px bg-outlineVariant/30"></div>
-          <span className="text-lg font-semibold text-onSurface">Assets</span>
-          <div className="flex-1 h-px bg-outlineVariant/30"></div>
         </div>
 
-        <div className="space-y-6">
+        <div className="flex-col gap-6">
+          <div
+            className="glass-card flex-col"
+            style={{ padding: "24px", height: "100%" }}
+          >
+            <div
+              className="avatar"
+              style={{
+                backgroundColor: "var(--surface-container)",
+                width: 40,
+                height: 40,
+                marginBottom: 16,
+              }}
+            >
+              <CreditCard size={20} color="var(--text-primary)" />
+            </div>
+            <p className="text-h4 font-bold">Total Liabilities</p>
+            <p className="text-secondary mt-1">
+              {formatCurrency(summary.liabilities, baseCurrency)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-12">
+        <SectionHeader
+          title="Assets and liabilities"
+          action={<HeaderAddButton onClick={() => setCreateOpen(true)} />}
+        />
+      </div>
+
+      <div className="flex-col gap-6 mt-6">
+        <div className="flex-row items-center gap-4">
+          <div
+            style={{
+              flex: 1,
+              height: 1,
+              backgroundColor: "var(--border-color)",
+            }}
+          ></div>
+          <span className="text-h3">Assets</span>
+          <div
+            style={{
+              flex: 1,
+              height: 1,
+              backgroundColor: "var(--border-color)",
+            }}
+          ></div>
+        </div>
+
+        <div className="flex-col gap-4">
           {sortedCategories
             .filter((category) =>
               grouped[category].some((asset) => asset.type === "ASSET"),
             )
             .map((category) => (
-              <div key={category}>
+              <div key={category} className="flex-col gap-2">
                 <button
                   type="button"
                   onClick={() => toggleCategory(category)}
-                  className="flex items-center justify-between w-full text-left"
+                  className="flex-row items-center justify-between w-full"
+                  style={{ textAlign: "left", padding: "8px 0" }}
                 >
-                  <span className="text-lg font-medium text-onSurface">
+                  <span className="text-body font-bold text-gradient">
                     {category}
                   </span>
                   <DisclosureIcon open={openCategories[category]} />
                 </button>
 
                 {openCategories[category] ? (
-                  <ul className="space-y-2 mt-2 transition-all duration-200 ease-in-out">
+                  <ul className="flex-col" style={{ gap: 12 }}>
                     {grouped[category]
                       .filter((asset) => asset.type === "ASSET")
                       .map((asset) => {
@@ -208,42 +309,41 @@ export default function DashboardClient({
                           Math.abs(asset.referenceValue - asset.currentValue) >
                             0.005;
 
+                        const badgeClass =
+                          asset.kind === "STOCK"
+                            ? "badge-purple"
+                            : asset.kind === "CRYPTO"
+                              ? "badge-yellow"
+                              : asset.kind === "CASH"
+                                ? "badge-green"
+                                : "badge-blue";
+
                         return (
                           <li
                             key={asset.id}
-                            className="bg-surfaceContainerLowest shadow-ambient rounded-xl md:rounded-[3rem] p-4 flex items-center justify-between"
+                            className="glass-card flex-row justify-between items-center animate-slide-up"
+                            style={{ padding: 20 }}
                           >
-                            <div className="flex flex-col">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-onSurface">
+                            <div className="flex-col gap-2">
+                              <div className="flex-row items-center gap-2">
+                                <p className="text-body font-bold">
                                   {asset.name}
                                 </p>
                                 {asset.ticker ? (
-                                  <span className="text-xs text-onSurfaceVariant">
+                                  <span className="text-xs text-secondary">
                                     ({asset.ticker})
                                   </span>
                                 ) : null}
                               </div>
 
-                              <div className="flex flex-wrap items-center gap-2 mt-1">
-                                <span
-                                  className={
-                                    "px-2 py-0.5 rounded-full text-xs font-medium text-white " +
-                                    (asset.kind === "STOCK"
-                                      ? "bg-indigo-600"
-                                      : asset.kind === "CRYPTO"
-                                        ? "bg-yellow-500"
-                                        : asset.kind === "CASH"
-                                          ? "bg-green-600"
-                                          : "bg-gray-500")
-                                  }
-                                >
+                              <div className="flex-row items-center flex-wrap gap-2">
+                                <span className={`badge ${badgeClass}`}>
                                   {asset.kind}
                                 </span>
 
                                 {asset.quantity != null &&
                                 asset.unitPrice != null ? (
-                                  <span className="text-xs text-gray-600">
+                                  <span className="text-xs">
                                     {asset.quantity} ×{" "}
                                     {formatCurrency(
                                       Number(asset.unitPrice),
@@ -253,25 +353,37 @@ export default function DashboardClient({
                                 ) : null}
 
                                 {asset.notes ? (
-                                  <span className="text-xs text-gray-400 italic truncate max-w-[150px]">
+                                  <span
+                                    className="text-xs text-tertiary"
+                                    style={{
+                                      fontStyle: "italic",
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      maxWidth: 150,
+                                    }}
+                                  >
                                     {asset.notes}
                                   </span>
                                 ) : null}
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                              <div className="flex flex-col items-end">
-                                <p className="text-lg font-semibold text-onSurface">
+                            <div className="flex-row items-center gap-4">
+                              <div
+                                className="flex-col"
+                                style={{ alignItems: "flex-end" }}
+                              >
+                                <p className="text-body font-bold">
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable in ${baseCurrency}`}
                                 </p>
-                                <p className="text-xs text-onSurfaceVariant">
+                                <p className="text-xs">
                                   {getValuationLabel(asset)}
                                 </p>
                                 {referenceDiffers ? (
-                                  <p className="text-xs text-onSurfaceVariant">
+                                  <p className="text-xs text-secondary">
                                     Ref:{" "}
                                     {formatCurrency(
                                       asset.referenceValue!,
@@ -280,7 +392,7 @@ export default function DashboardClient({
                                   </p>
                                 ) : null}
                                 {displayValue == null ? (
-                                  <p className="text-xs text-onSurfaceVariant">
+                                  <p className="text-xs text-secondary">
                                     Stored amount:{" "}
                                     {formatCurrency(
                                       Number(asset.balance),
@@ -293,7 +405,8 @@ export default function DashboardClient({
                               <button
                                 type="button"
                                 onClick={() => setEditAssetId(asset.id)}
-                                className="text-primary hover:underline"
+                                className="text-sm font-medium"
+                                style={{ color: "var(--accent-primary)" }}
                               >
                                 Edit
                               </button>
@@ -309,34 +422,48 @@ export default function DashboardClient({
             ))}
         </div>
 
-        <div className="flex items-center gap-4 mt-10">
-          <div className="flex-1 h-px bg-outlineVariant/30"></div>
-          <span className="text-lg font-semibold text-onSurface">
-            Liabilities
-          </span>
-          <div className="flex-1 h-px bg-outlineVariant/30"></div>
+        <div className="flex-row items-center gap-4 mt-6">
+          <div
+            style={{
+              flex: 1,
+              height: 1,
+              backgroundColor: "var(--border-color)",
+            }}
+          ></div>
+          <span className="text-h3">Liabilities</span>
+          <div
+            style={{
+              flex: 1,
+              height: 1,
+              backgroundColor: "var(--border-color)",
+            }}
+          ></div>
         </div>
 
-        <div className="space-y-6">
+        <div className="flex-col gap-4">
           {sortedCategories
             .filter((category) =>
               grouped[category].some((asset) => asset.type === "LIABILITY"),
             )
             .map((category) => (
-              <div key={category}>
+              <div key={category} className="flex-col gap-2">
                 <button
                   type="button"
                   onClick={() => toggleCategory(category)}
-                  className="flex items-center justify-between w-full text-left"
+                  className="flex-row items-center justify-between w-full"
+                  style={{ textAlign: "left", padding: "8px 0" }}
                 >
-                  <span className="text-lg font-medium text-tertiary">
+                  <span
+                    className="text-body font-bold text-gradient"
+                    style={DANGER_ACCENT_TEXT_STYLE}
+                  >
                     {category}
                   </span>
                   <DisclosureIcon open={openCategories[category]} />
                 </button>
 
                 {openCategories[category] ? (
-                  <ul className="space-y-2 mt-2 transition-all duration-200 ease-in-out">
+                  <ul className="flex-col" style={{ gap: 12 }}>
                     {grouped[category]
                       .filter((asset) => asset.type === "LIABILITY")
                       .map((asset) => {
@@ -346,36 +473,49 @@ export default function DashboardClient({
                         return (
                           <li
                             key={asset.id}
-                            className="bg-surfaceContainerLowest shadow-ambient rounded-xl md:rounded-[3rem] p-4 flex items-center justify-between"
+                            className="glass-card flex-row justify-between items-center animate-slide-up"
+                            style={{ padding: 20 }}
                           >
-                            <div className="flex flex-col">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-onSurface">
+                            <div className="flex-col gap-2">
+                              <div className="flex-row items-center gap-2">
+                                <p className="text-body font-bold">
                                   {asset.name}
                                 </p>
                               </div>
 
-                              <div className="flex flex-wrap items-center gap-2 mt-1">
-                                <span className="px-2 py-0.5 rounded-full text-xs font-medium text-white bg-tertiary text-onPrimary">
+                              <div className="flex-row items-center flex-wrap gap-2">
+                                <span className="badge badge-red">
                                   {asset.liabilityKind}
                                 </span>
 
                                 {asset.notes ? (
-                                  <span className="text-xs text-gray-400 italic truncate max-w-[150px]">
+                                  <span
+                                    className="text-xs text-tertiary"
+                                    style={{
+                                      fontStyle: "italic",
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      maxWidth: 150,
+                                    }}
+                                  >
                                     {asset.notes}
                                   </span>
                                 ) : null}
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                              <div className="flex flex-col items-end">
-                                <p className="text-lg font-semibold text-onSurface">
+                            <div className="flex-row items-center gap-4">
+                              <div
+                                className="flex-col"
+                                style={{ alignItems: "flex-end" }}
+                              >
+                                <p className="text-body font-bold">
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable in ${baseCurrency}`}
                                 </p>
-                                <p className="text-xs text-onSurfaceVariant">
+                                <p className="text-xs">
                                   {getValuationLabel(asset)}
                                 </p>
                               </div>
@@ -383,7 +523,8 @@ export default function DashboardClient({
                               <button
                                 type="button"
                                 onClick={() => setEditAssetId(asset.id)}
-                                className="text-primary hover:underline"
+                                className="text-sm font-medium"
+                                style={{ color: "var(--accent-primary)" }}
                               >
                                 Edit
                               </button>

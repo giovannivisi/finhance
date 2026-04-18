@@ -1,6 +1,6 @@
 import type { NetWorthSnapshotResponse } from "@finhance/shared";
 import Container from "@components/Container";
-import Header from "@components/Header";
+
 import HistoryPageClient from "@components/HistoryPageClient";
 import { api } from "@lib/api";
 
@@ -21,7 +21,6 @@ export default async function HistoryPage() {
 
   return (
     <>
-      <Header />
       <Container>
         {!snapshots ? (
           <>

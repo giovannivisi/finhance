@@ -1,4 +1,3 @@
-import Header from "@components/Header";
 import Container from "@components/Container";
 import AccountsPageClient from "@components/AccountsPageClient";
 import { api } from "@lib/api";
@@ -21,7 +20,6 @@ export default async function AccountsPage() {
 
   return (
     <>
-      <Header />
       <Container>
         {!accounts ? (
           <>
