@@ -39,7 +39,16 @@ function booleanValue({ value }: TransformFnParams): unknown {
   }
 
   if (typeof value === 'string') {
-    return value.trim().toLowerCase() === 'true';
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') {
+      return true;
+    }
+
+    if (normalized === 'false') {
+      return false;
+    }
+
+    return value;
   }
 
   return value;

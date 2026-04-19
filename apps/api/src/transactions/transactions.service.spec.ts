@@ -681,4 +681,79 @@ describe('TransactionsService', () => {
       },
     });
   });
+
+  it('skips filtered one-sided transfer groups when computing excluded totals', async () => {
+    prisma.transaction.findMany
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'expense-april',
+          postedAt: new Date('2026-04-10T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('40'),
+          currency: 'EUR',
+          categoryId: 'category-expense',
+          category: createCategory({
+            id: 'category-expense',
+            name: 'Rent',
+            type: CategoryType.EXPENSE,
+          }),
+        }),
+      ])
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'transfer-out',
+          postedAt: new Date('2026-04-20T09:00:00.000Z'),
+          kind: TransactionKind.TRANSFER,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('25'),
+          currency: 'EUR',
+          categoryId: null,
+          category: null,
+          transferGroupId: 'transfer-1',
+        }),
+      ]);
+
+    const summary = await service.getMonthlyCashflow(OWNER_ID, {
+      from: '2026-04',
+      to: '2026-04',
+      accountIds: ['account-1'],
+    });
+
+    expect(summary).toEqual([
+      {
+        currency: 'EUR',
+        averageMonthlyExpense: 40,
+        rangeExpenseCategories: [
+          {
+            categoryId: 'category-expense',
+            name: 'Rent',
+            total: 40,
+          },
+        ],
+        months: [
+          {
+            month: '2026-04',
+            incomeTotal: 0,
+            expenseTotal: 40,
+            netCashflow: -40,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 0,
+            transferTotalExcluded: 0,
+            uncategorizedExpenseTotal: 0,
+            uncategorizedIncomeTotal: 0,
+            savingsRate: null,
+            expenseCategories: [
+              {
+                categoryId: 'category-expense',
+                name: 'Rent',
+                total: 40,
+              },
+            ],
+            incomeCategories: [],
+          },
+        ],
+      },
+    ]);
+  });
 });

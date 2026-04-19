@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { DashboardService } from '@/dashboard/dashboard.service';
 import type { DashboardResponse } from '@finhance/shared';
 import { Prisma } from '@prisma/client';
@@ -78,9 +77,7 @@ describe('DashboardService', () => {
   let snapshots: {
     findLatest: jest.Mock;
     hasSnapshotForDate: jest.Mock;
-    captureFromDashboard: jest.Mock;
   };
-  let loggerErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     assets = {
@@ -90,20 +87,12 @@ describe('DashboardService', () => {
     snapshots = {
       findLatest: jest.fn(),
       hasSnapshotForDate: jest.fn(),
-      captureFromDashboard: jest.fn(),
     };
 
     service = new DashboardService(assets as never, snapshots as never);
-    loggerErrorSpy = jest
-      .spyOn(Logger.prototype, 'error')
-      .mockImplementation(() => undefined);
   });
 
-  afterEach(() => {
-    loggerErrorSpy.mockRestore();
-  });
-
-  it('returns latest snapshot metadata and triggers background capture when today is missing', async () => {
+  it('returns latest snapshot metadata without triggering a write when today is missing', async () => {
     const dashboard = createDashboard();
     const latestSnapshot = createSnapshot({
       snapshotDate: new Date('2026-04-16T00:00:00.000Z'),
@@ -113,17 +102,12 @@ describe('DashboardService', () => {
     assets.getDashboard.mockResolvedValue(dashboard);
     snapshots.findLatest.mockResolvedValue(latestSnapshot);
     snapshots.hasSnapshotForDate.mockResolvedValue(false);
-    snapshots.captureFromDashboard.mockResolvedValue(createSnapshot());
 
     const result = await service.getDashboard(OWNER_ID);
 
     expect(result.latestSnapshotDate).toBe('2026-04-16');
     expect(result.latestSnapshotCapturedAt).toBe('2026-04-16T21:15:00.000Z');
     expect(result.latestSnapshotIsPartial).toBe(true);
-    expect(snapshots.captureFromDashboard).toHaveBeenCalledWith(
-      OWNER_ID,
-      dashboard,
-    );
   });
 
   it('does not trigger background capture when a same-day snapshot already exists', async () => {
@@ -138,28 +122,17 @@ describe('DashboardService', () => {
     expect(result.latestSnapshotDate).toBe('2026-04-17');
     expect(result.latestSnapshotCapturedAt).toBe('2026-04-17T10:00:00.000Z');
     expect(result.latestSnapshotIsPartial).toBe(false);
-    expect(snapshots.captureFromDashboard).not.toHaveBeenCalled();
   });
 
-  it('logs opportunistic capture failures without failing the dashboard response', async () => {
-    const dashboard = createDashboard();
-    const failure = new Error('boom');
-    assets.getDashboard.mockResolvedValue(dashboard);
+  it('returns null snapshot metadata when no snapshot exists yet', async () => {
+    assets.getDashboard.mockResolvedValue(createDashboard());
     snapshots.findLatest.mockResolvedValue(null);
     snapshots.hasSnapshotForDate.mockResolvedValue(false);
-    snapshots.captureFromDashboard.mockRejectedValue(failure);
 
     const result = await service.getDashboard(OWNER_ID);
-    await Promise.resolve();
 
     expect(result.latestSnapshotDate).toBeNull();
     expect(result.latestSnapshotCapturedAt).toBeNull();
     expect(result.latestSnapshotIsPartial).toBeNull();
-    expect(loggerErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'Failed opportunistic snapshot capture for owner=local-dev baseCurrency=EUR: boom',
-      ),
-      failure.stack,
-    );
   });
 });

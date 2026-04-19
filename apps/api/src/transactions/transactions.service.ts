@@ -45,7 +45,7 @@ const DEFAULT_TRANSACTION_LIMIT = 200;
 const MAX_TRANSACTION_LIMIT = 500;
 const DEFAULT_TRANSACTION_OFFSET = 0;
 const MAX_TRANSACTION_RANGE_DAYS = 3_650;
-const MAX_MONTHLY_CASHFLOW_RANGE_MONTHS = 120;
+const MAX_MONTHLY_CASHFLOW_RANGE_MONTHS = 24;
 const LOCAL_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const ROME_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Rome',
@@ -1262,22 +1262,29 @@ export class TransactionsService {
       transferGroups.set(key, group);
     }
 
-    return Array.from(transferGroups.values()).map((group) => {
-      const sample =
-        group.find((row) => row.direction === TransactionDirection.OUTFLOW) ??
-        group[0];
-
-      if (!sample) {
-        throw new ConflictException(
-          'Transfer group is empty and cannot be summarized.',
-        );
+    return Array.from(transferGroups.values()).flatMap((group) => {
+      if (group.length !== 2) {
+        return [];
       }
 
-      return {
-        postedAt: sample.postedAt,
-        currency: sample.currency,
-        amount: sample.amount,
-      };
+      const outflow = group.find(
+        (row) => row.direction === TransactionDirection.OUTFLOW,
+      );
+      const inflow = group.find(
+        (row) => row.direction === TransactionDirection.INFLOW,
+      );
+
+      if (!outflow || !inflow) {
+        return [];
+      }
+
+      return [
+        {
+          postedAt: outflow.postedAt,
+          currency: outflow.currency,
+          amount: outflow.amount,
+        },
+      ];
     });
   }
 

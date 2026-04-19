@@ -585,7 +585,7 @@ describe('Asset routes (e2e)', () => {
     await request(httpServer()).post('/assets/refresh').expect(409);
   });
 
-  it('returns fallback valuation metadata from GET /dashboard', async () => {
+  it('returns fallback valuation metadata from GET /dashboard without writing a snapshot', async () => {
     prisma.asset.findMany.mockResolvedValue([
       createAsset({
         lastPrice: null,
@@ -601,7 +601,6 @@ describe('Asset routes (e2e)', () => {
     });
     snapshots.findLatest.mockResolvedValue(latestSnapshot);
     snapshots.hasSnapshotForDate.mockResolvedValue(false);
-    snapshots.captureFromDashboard.mockResolvedValue(createSnapshot());
 
     await request(httpServer())
       .get('/dashboard')
@@ -614,31 +613,6 @@ describe('Asset routes (e2e)', () => {
         expect(body.latestSnapshotDate).toBe('2026-04-16');
         expect(body.latestSnapshotCapturedAt).toBe('2026-04-16T21:30:00.000Z');
         expect(body.latestSnapshotIsPartial).toBe(true);
-      });
-
-    expect(snapshots.captureFromDashboard).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not opportunistically capture on GET /dashboard when today already exists', async () => {
-    prisma.asset.findMany.mockResolvedValue([
-      createAsset({
-        lastPrice: null,
-        lastPriceAt: null,
-        lastFxRate: new Prisma.Decimal('0.9'),
-        lastFxRateAt: new Date(),
-      }),
-    ]);
-    snapshots.findLatest.mockResolvedValue(createSnapshot());
-    snapshots.hasSnapshotForDate.mockResolvedValue(true);
-
-    await request(httpServer())
-      .get('/dashboard')
-      .expect(200)
-      .expect((response: ResponseWithBody) => {
-        const body = bodyAs<DashboardResponse>(response);
-        expect(body.latestSnapshotDate).toBe('2026-04-17');
-        expect(body.latestSnapshotCapturedAt).toBe('2026-04-17T10:00:00.000Z');
-        expect(body.latestSnapshotIsPartial).toBe(false);
       });
 
     expect(snapshots.captureFromDashboard).not.toHaveBeenCalled();

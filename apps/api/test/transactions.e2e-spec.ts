@@ -525,6 +525,11 @@ describe('Transaction routes (e2e)', () => {
     await request(httpServer())
       .get('/cashflow/monthly?from=2016-01&to=2026-04')
       .expect(400);
+    await request(httpServer())
+      .get(
+        '/cashflow/monthly?from=2026-04&to=2026-05&includeArchivedAccounts=yes',
+      )
+      .expect(400);
   });
 
   it('rejects cashflow ranges longer than the configured cap', async () => {
