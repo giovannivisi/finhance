@@ -8,7 +8,8 @@ import request from 'supertest';
 import { AccountsService } from '@accounts/accounts.service';
 import { AssetsController } from '@assets/assets.controller';
 import { AssetsService } from '@assets/assets.service';
-import { DashboardController } from '@assets/dashboard.controller';
+import { DashboardController } from '@/dashboard/dashboard.controller';
+import { DashboardService } from '@/dashboard/dashboard.service';
 import type {
   AssetResponse,
   DashboardResponse,
@@ -17,10 +18,12 @@ import type {
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { SnapshotsService } from '@snapshots/snapshots.service';
 import {
   Asset,
   AssetKind,
   AssetType,
+  NetWorthSnapshot,
   PortfolioState,
   Prisma,
 } from '@prisma/client';
@@ -96,6 +99,28 @@ function createPortfolioState(
   };
 }
 
+function createSnapshot(
+  overrides: Partial<NetWorthSnapshot> = {},
+): NetWorthSnapshot {
+  const now = new Date('2026-04-17T10:00:00.000Z');
+
+  return {
+    id: 'snapshot-1',
+    userId: OWNER_ID,
+    snapshotDate: new Date('2026-04-17T00:00:00.000Z'),
+    capturedAt: now,
+    baseCurrency: 'EUR',
+    assetsTotal: new Prisma.Decimal('72'),
+    liabilitiesTotal: new Prisma.Decimal('0'),
+    netWorthTotal: new Prisma.Decimal('72'),
+    unavailableCount: 0,
+    isPartial: false,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 function expectAssetResponseDto(
   body: Record<string, unknown>,
   asset: ReturnType<typeof createAsset>,
@@ -153,6 +178,11 @@ describe('Asset routes (e2e)', () => {
   let accounts: {
     assertAccountAssignmentAllowed: jest.Mock;
   };
+  let snapshots: {
+    findLatest: jest.Mock;
+    hasSnapshotForDate: jest.Mock;
+    captureFromDashboard: jest.Mock;
+  };
 
   function httpServer(): HttpServer {
     return app.getHttpServer() as HttpServer;
@@ -206,13 +236,21 @@ describe('Asset routes (e2e)', () => {
       assertAccountAssignmentAllowed: jest.fn(),
     };
 
+    snapshots = {
+      findLatest: jest.fn(),
+      hasSnapshotForDate: jest.fn().mockResolvedValue(true),
+      captureFromDashboard: jest.fn(),
+    };
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [AssetsController, DashboardController],
       providers: [
         AssetsService,
+        DashboardService,
         { provide: AccountsService, useValue: accounts },
         { provide: PrismaService, useValue: prisma },
         { provide: PricesService, useValue: prices },
+        { provide: SnapshotsService, useValue: snapshots },
         {
           provide: RequestOwnerResolver,
           useValue: {
@@ -547,7 +585,7 @@ describe('Asset routes (e2e)', () => {
     await request(httpServer()).post('/assets/refresh').expect(409);
   });
 
-  it('returns fallback valuation metadata from GET /dashboard', async () => {
+  it('returns fallback valuation metadata from GET /dashboard without writing a snapshot', async () => {
     prisma.asset.findMany.mockResolvedValue([
       createAsset({
         lastPrice: null,
@@ -556,6 +594,13 @@ describe('Asset routes (e2e)', () => {
         lastFxRateAt: new Date(),
       }),
     ]);
+    const latestSnapshot = createSnapshot({
+      snapshotDate: new Date('2026-04-16T00:00:00.000Z'),
+      capturedAt: new Date('2026-04-16T21:30:00.000Z'),
+      isPartial: true,
+    });
+    snapshots.findLatest.mockResolvedValue(latestSnapshot);
+    snapshots.hasSnapshotForDate.mockResolvedValue(false);
 
     await request(httpServer())
       .get('/dashboard')
@@ -565,6 +610,11 @@ describe('Asset routes (e2e)', () => {
         expect(body.baseCurrency).toBe('EUR');
         expect(body.assets[0].valuationSource).toBe('AVG_COST');
         expect(body.summary.assets).toBe(72);
+        expect(body.latestSnapshotDate).toBe('2026-04-16');
+        expect(body.latestSnapshotCapturedAt).toBe('2026-04-16T21:30:00.000Z');
+        expect(body.latestSnapshotIsPartial).toBe(true);
       });
+
+    expect(snapshots.captureFromDashboard).not.toHaveBeenCalled();
   });
 });

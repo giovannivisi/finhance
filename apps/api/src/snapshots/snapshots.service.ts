@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
 import { PrismaService } from '@prisma/prisma.service';
-import type { DashboardAssetResponse } from '@finhance/shared';
+import type {
+  DashboardAssetResponse,
+  DashboardResponse,
+} from '@finhance/shared';
 import { NetWorthSnapshot, Prisma } from '@prisma/client';
 
 const SNAPSHOT_TIME_ZONE = 'Europe/Rome';
@@ -20,10 +23,18 @@ export class SnapshotsService {
   ) {}
 
   async capture(ownerId: string): Promise<NetWorthSnapshot> {
-    const capturedAt = new Date();
     const dashboard = await this.assetsService.getDashboard(ownerId);
-    const snapshotDateKey = this.toSnapshotDateKey(capturedAt);
-    const snapshotDate = this.toSnapshotDateValue(snapshotDateKey);
+    return this.captureFromDashboard(ownerId, dashboard);
+  }
+
+  async captureFromDashboard(
+    ownerId: string,
+    dashboard: DashboardResponse,
+    capturedAt = new Date(),
+  ): Promise<NetWorthSnapshot> {
+    const snapshotDate = this.toSnapshotDateValue(
+      this.toSnapshotDateKey(capturedAt),
+    );
     const unavailableCount = dashboard.assets.filter((asset) =>
       this.isUnavailableForTotals(asset),
     ).length;
@@ -57,6 +68,41 @@ export class SnapshotsService {
         isPartial,
       },
     });
+  }
+
+  async findLatest(
+    ownerId: string,
+    baseCurrency: string,
+  ): Promise<NetWorthSnapshot | null> {
+    return this.prisma.netWorthSnapshot.findFirst({
+      where: {
+        userId: ownerId,
+        baseCurrency,
+      },
+      orderBy: [{ snapshotDate: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async hasSnapshotForDate(
+    ownerId: string,
+    baseCurrency: string,
+    capturedAt = new Date(),
+  ): Promise<boolean> {
+    const snapshotDate = this.toSnapshotDateValue(
+      this.toSnapshotDateKey(capturedAt),
+    );
+
+    const snapshot = await this.prisma.netWorthSnapshot.findUnique({
+      where: {
+        userId_snapshotDate_baseCurrency: {
+          userId: ownerId,
+          snapshotDate,
+          baseCurrency,
+        },
+      },
+    });
+
+    return snapshot !== null;
   }
 
   async findAll(ownerId: string): Promise<NetWorthSnapshot[]> {

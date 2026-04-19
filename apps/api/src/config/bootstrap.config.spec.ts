@@ -33,13 +33,13 @@ describe('bootstrap config', () => {
     );
   });
 
-  it('rejects non-loopback hosts without explicit opt-in', () => {
+  it('rejects non-loopback hosts while authentication is disabled', () => {
     expect(() =>
       resolveBootstrapRuntimeConfig({
         API_HOST: '0.0.0.0',
       } as NodeJS.ProcessEnv),
     ).toThrow(
-      'Refusing to bind API_HOST=0.0.0.0 without ALLOW_NON_LOOPBACK=true.',
+      'Refusing to bind API_HOST=0.0.0.0 while authentication is disabled.',
     );
   });
 

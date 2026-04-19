@@ -37,3 +37,11 @@ export function resolveClientIp(request: RequestLike): string {
 
   return 'unknown';
 }
+
+export function isLoopbackIp(candidate: string): boolean {
+  return (
+    candidate === '127.0.0.1' ||
+    candidate === '::1' ||
+    candidate === '::ffff:127.0.0.1'
+  );
+}
