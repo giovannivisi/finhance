@@ -109,11 +109,10 @@ export function resolveBootstrapRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): BootstrapRuntimeConfig {
   const host = normalizeHost(env.API_HOST);
-  const allowNonLoopback = env.ALLOW_NON_LOOPBACK === 'true';
 
-  if (!isLoopbackHost(host) && !allowNonLoopback) {
+  if (!isLoopbackHost(host)) {
     throw new Error(
-      `Refusing to bind API_HOST=${host} without ALLOW_NON_LOOPBACK=true.`,
+      `Refusing to bind API_HOST=${host} while authentication is disabled.`,
     );
   }
 

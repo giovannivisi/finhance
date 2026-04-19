@@ -60,6 +60,9 @@ function createDashboard(
       netWorth: 75,
     },
     lastRefreshAt: '2026-04-17T10:00:00.000Z',
+    latestSnapshotDate: null,
+    latestSnapshotCapturedAt: null,
+    latestSnapshotIsPartial: null,
     ...overrides,
   };
 }
@@ -95,6 +98,8 @@ describe('SnapshotsService', () => {
     netWorthSnapshot: {
       upsert: jest.Mock;
       findMany: jest.Mock;
+      findFirst: jest.Mock;
+      findUnique: jest.Mock;
     };
   };
   let assets: {
@@ -108,6 +113,8 @@ describe('SnapshotsService', () => {
       netWorthSnapshot: {
         upsert: jest.fn(),
         findMany: jest.fn(),
+        findFirst: jest.fn(),
+        findUnique: jest.fn(),
       },
     };
 
@@ -246,6 +253,39 @@ describe('SnapshotsService', () => {
     expect(prisma.netWorthSnapshot.findMany).toHaveBeenCalledWith({
       where: { userId: OWNER_ID },
       orderBy: [{ snapshotDate: 'asc' }, { createdAt: 'asc' }],
+    });
+  });
+
+  it('returns the latest snapshot for one owner and base currency', async () => {
+    prisma.netWorthSnapshot.findFirst.mockResolvedValue(createSnapshot());
+
+    await service.findLatest(OWNER_ID, 'EUR');
+
+    expect(prisma.netWorthSnapshot.findFirst).toHaveBeenCalledWith({
+      where: {
+        userId: OWNER_ID,
+        baseCurrency: 'EUR',
+      },
+      orderBy: [{ snapshotDate: 'desc' }, { createdAt: 'desc' }],
+    });
+  });
+
+  it('checks whether a same-day snapshot already exists', async () => {
+    jest.setSystemTime(new Date('2026-04-17T10:15:00.000Z'));
+    prisma.netWorthSnapshot.findUnique.mockResolvedValue(createSnapshot());
+
+    await expect(service.hasSnapshotForDate(OWNER_ID, 'EUR')).resolves.toBe(
+      true,
+    );
+
+    expect(prisma.netWorthSnapshot.findUnique).toHaveBeenCalledWith({
+      where: {
+        userId_snapshotDate_baseCurrency: {
+          userId: OWNER_ID,
+          snapshotDate: new Date('2026-04-17T00:00:00.000Z'),
+          baseCurrency: 'EUR',
+        },
+      },
     });
   });
 });
