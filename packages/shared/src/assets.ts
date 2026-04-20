@@ -75,6 +75,9 @@ export interface DashboardResponse {
   assets: DashboardAssetResponse[];
   summary: DashboardSummary;
   lastRefreshAt: string | null;
+  latestSnapshotDate: string | null;
+  latestSnapshotCapturedAt: string | null;
+  latestSnapshotIsPartial: boolean | null;
 }
 
 export interface RefreshAssetsResponse {

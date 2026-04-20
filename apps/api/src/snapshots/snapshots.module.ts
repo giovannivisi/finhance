@@ -8,5 +8,6 @@ import { SnapshotsService } from '@snapshots/snapshots.service';
   imports: [AssetsModule],
   controllers: [SnapshotsController],
   providers: [SnapshotsService, RequestOwnerResolver],
+  exports: [SnapshotsService],
 })
 export class SnapshotsModule {}

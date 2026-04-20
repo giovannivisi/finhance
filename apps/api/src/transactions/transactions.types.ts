@@ -41,3 +41,10 @@ export interface CashflowFilters {
   categoryId?: string;
   includeArchivedAccounts?: boolean;
 }
+
+export interface MonthlyCashflowFilters {
+  from: string;
+  to: string;
+  accountIds?: string[];
+  includeArchivedAccounts?: boolean;
+}
