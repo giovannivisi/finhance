@@ -35,6 +35,8 @@ function createAccount(overrides: Partial<Record<string, unknown>> = {}) {
     institution: null,
     notes: null,
     order: 0,
+    openingBalance: new Prisma.Decimal('0'),
+    openingBalanceDate: null,
     archivedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -238,6 +240,52 @@ describe('TransactionsService', () => {
         destinationAccountId: 'destination',
       }),
     ).rejects.toThrow('same currency');
+  });
+
+  it('rejects non-transfer transactions before the account opening-balance date', async () => {
+    accounts.getAssignableAccount.mockResolvedValue(
+      createAccount({
+        openingBalanceDate: new Date('2026-04-10T00:00:00.000Z'),
+      }),
+    );
+
+    await expect(
+      service.create(OWNER_ID, {
+        postedAt: '2026-04-09T09:00:00.000Z',
+        kind: TransactionKind.INCOME,
+        amount: 100,
+        description: 'Salary',
+        accountId: 'account-1',
+        direction: TransactionDirection.INFLOW,
+      }),
+    ).rejects.toThrow('Transactions before 2026-04-10 are not allowed');
+  });
+
+  it('rejects transfers before either account opening-balance date', async () => {
+    accounts.getAssignableAccount
+      .mockResolvedValueOnce(
+        createAccount({
+          id: 'source',
+          openingBalanceDate: new Date('2026-04-10T00:00:00.000Z'),
+        }),
+      )
+      .mockResolvedValueOnce(
+        createAccount({
+          id: 'destination',
+          openingBalanceDate: new Date('2026-04-11T00:00:00.000Z'),
+        }),
+      );
+
+    await expect(
+      service.create(OWNER_ID, {
+        postedAt: '2026-04-10T12:00:00.000Z',
+        kind: TransactionKind.TRANSFER,
+        amount: 25,
+        description: 'Transfer',
+        sourceAccountId: 'source',
+        destinationAccountId: 'destination',
+      }),
+    ).rejects.toThrow('Transactions before 2026-04-11 are not allowed');
   });
 
   it('collapses transfer rows and filters archived accounts from the list', async () => {

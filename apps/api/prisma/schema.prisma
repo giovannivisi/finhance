@@ -37,19 +37,21 @@ model Asset {
 }
 
 model Account {
-  id           String        @id @default(cuid())
-  userId       String
-  name         String
-  type         AccountType
-  currency     String        @default("EUR")
-  institution  String?
-  notes        String?
-  order        Int           @default(0)
-  archivedAt   DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  assets       Asset[]
-  transactions Transaction[]
+  id                 String        @id @default(cuid())
+  userId             String
+  name               String
+  type               AccountType
+  currency           String        @default("EUR")
+  institution        String?
+  notes              String?
+  order              Int           @default(0)
+  openingBalance     Decimal       @default(0) @db.Decimal(20, 10)
+  openingBalanceDate DateTime?     @db.Date
+  archivedAt         DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  assets             Asset[]
+  transactions       Transaction[]
 
   @@unique([id, userId])
   @@index([userId, archivedAt, order, createdAt])

@@ -39,6 +39,8 @@ function createAccount(overrides: Partial<Record<string, unknown>> = {}) {
     institution: null,
     notes: null,
     order: 0,
+    openingBalance: new Prisma.Decimal('0'),
+    openingBalanceDate: null,
     archivedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -279,6 +281,54 @@ describe('Transaction routes (e2e)', () => {
         accountId: 'account-1',
         direction: 'INFLOW',
         currency: 'EUR',
+      })
+      .expect(400);
+  });
+
+  it('rejects non-transfer transactions before the account opening-balance date', async () => {
+    accounts.getAssignableAccount.mockResolvedValue(
+      createAccount({
+        openingBalanceDate: new Date('2026-04-10T00:00:00.000Z'),
+      }),
+    );
+
+    await request(httpServer())
+      .post('/transactions')
+      .send({
+        postedAt: '2026-04-09T09:00:00.000Z',
+        kind: 'INCOME',
+        amount: 100,
+        description: 'Salary',
+        accountId: 'account-1',
+        direction: 'INFLOW',
+      })
+      .expect(400);
+  });
+
+  it('rejects transfers before either account opening-balance date', async () => {
+    accounts.getAssignableAccount
+      .mockResolvedValueOnce(
+        createAccount({
+          id: 'source',
+          openingBalanceDate: new Date('2026-04-10T00:00:00.000Z'),
+        }),
+      )
+      .mockResolvedValueOnce(
+        createAccount({
+          id: 'destination',
+          openingBalanceDate: new Date('2026-04-11T00:00:00.000Z'),
+        }),
+      );
+
+    await request(httpServer())
+      .post('/transactions')
+      .send({
+        postedAt: '2026-04-10T12:00:00.000Z',
+        kind: 'TRANSFER',
+        amount: 25,
+        description: 'Transfer',
+        sourceAccountId: 'source',
+        destinationAccountId: 'destination',
       })
       .expect(400);
   });

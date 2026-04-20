@@ -1,0 +1,3 @@
+ALTER TABLE "Account"
+ADD COLUMN "openingBalance" DECIMAL(20,10) NOT NULL DEFAULT 0,
+ADD COLUMN "openingBalanceDate" DATE;
