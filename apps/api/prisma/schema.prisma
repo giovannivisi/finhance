@@ -11,6 +11,8 @@ model Asset {
   id            String         @id @default(cuid())
   userId        String
   accountId     String?
+  importSource  ImportSource?
+  importKey     String?
   name          String
   kind          AssetKind?
   liabilityKind LiabilityKind?
@@ -32,6 +34,7 @@ model Asset {
   account       Account?       @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
 
   @@unique([userId, type, kind, ticker, exchange])
+  @@unique([userId, importSource, importKey])
   @@index([userId])
   @@index([userId, accountId])
 }
@@ -39,6 +42,8 @@ model Asset {
 model Account {
   id                 String        @id @default(cuid())
   userId             String
+  importSource       ImportSource?
+  importKey          String?
   name               String
   type               AccountType
   currency           String        @default("EUR")
@@ -54,12 +59,16 @@ model Account {
   transactions       Transaction[]
 
   @@unique([id, userId])
+  @@unique([userId, importSource, importKey])
   @@index([userId, archivedAt, order, createdAt])
 }
+
 
 model Category {
   id           String        @id @default(cuid())
   userId       String
+  importSource ImportSource?
+  importKey    String?
   name         String
   type         CategoryType
   order        Int           @default(0)
@@ -69,6 +78,7 @@ model Category {
   transactions Transaction[]
 
   @@unique([id, userId])
+  @@unique([userId, importSource, importKey])
   @@index([userId, type, archivedAt, order, createdAt])
 }
 
@@ -101,6 +111,8 @@ model NetWorthSnapshot {
 model Transaction {
   id              String               @id @default(cuid())
   userId          String
+  importSource    ImportSource?
+  importKey       String?
   postedAt        DateTime
   accountId       String
   categoryId      String?
@@ -117,11 +129,26 @@ model Transaction {
   account         Account              @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
   category        Category?            @relation(fields: [categoryId, userId], references: [id, userId], onUpdate: Cascade)
 
+  @@unique([userId, importSource, importKey, direction])
   @@index([userId, postedAt])
   @@index([userId, kind, postedAt])
   @@index([userId, accountId, postedAt])
   @@index([userId, categoryId, postedAt])
   @@index([userId, transferGroupId])
+}
+
+model ImportBatch {
+  id          String            @id @default(cuid())
+  userId      String
+  source      ImportSource
+  status      ImportBatchStatus
+  summaryJson Json
+  errorJson   Json
+  payloadJson Json?
+  createdAt   DateTime          @default(now())
+  appliedAt   DateTime?
+
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 enum AssetType {
@@ -170,4 +197,14 @@ enum TransactionKind {
 enum TransactionDirection {
   INFLOW
   OUTFLOW
+}
+
+enum ImportSource {
+  CSV_TEMPLATE
+}
+
+enum ImportBatchStatus {
+  PREVIEW
+  APPLIED
+  FAILED
 }
