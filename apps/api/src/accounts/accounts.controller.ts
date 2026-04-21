@@ -12,9 +12,17 @@ import {
 import { AccountsService } from '@accounts/accounts.service';
 import { CreateAccountDto } from '@accounts/dto/create-account.dto';
 import { UpdateAccountDto } from '@accounts/dto/update-account.dto';
-import { toAccountResponse } from '@accounts/accounts.mapper';
+import {
+  toAccountReconciliationResponse,
+  toAccountResponse,
+} from '@accounts/accounts.mapper';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
-import type { AccountResponse } from '@finhance/shared';
+import { toTransactionResponse } from '@transactions/transactions.mapper';
+import type {
+  AccountReconciliationResponse,
+  AccountResponse,
+  TransactionResponse,
+} from '@finhance/shared';
 
 @Controller('accounts')
 export class AccountsController {
@@ -37,6 +45,19 @@ export class AccountsController {
     return accounts.map(toAccountResponse);
   }
 
+  @Get('reconciliation')
+  async findReconciliation(
+    @Query('includeArchived') includeArchived?: string,
+  ): Promise<AccountReconciliationResponse[]> {
+    const entries = await this.accountsService.findReconciliation(
+      this.resolveOwnerId(),
+      {
+        includeArchived: includeArchived === 'true',
+      },
+    );
+    return entries.map(toAccountReconciliationResponse);
+  }
+
   @Post()
   async create(@Body() dto: CreateAccountDto): Promise<AccountResponse> {
     const account = await this.accountsService.create(
@@ -44,6 +65,18 @@ export class AccountsController {
       dto,
     );
     return toAccountResponse(account);
+  }
+
+  @Post(':id/reconciliation/adjust')
+  async createReconciliationAdjustment(
+    @Param('id') id: string,
+  ): Promise<TransactionResponse> {
+    const transaction =
+      await this.accountsService.createReconciliationAdjustment(
+        this.resolveOwnerId(),
+        id,
+      );
+    return toTransactionResponse(transaction);
   }
 
   @Get(':id')

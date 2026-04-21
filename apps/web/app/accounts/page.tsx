@@ -2,16 +2,25 @@ import Header from "@components/Header";
 import Container from "@components/Container";
 import AccountsPageClient from "@components/AccountsPageClient";
 import { api } from "@lib/api";
-import type { AccountResponse } from "@finhance/shared";
+import type {
+  AccountReconciliationResponse,
+  AccountResponse,
+} from "@finhance/shared";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountsPage() {
   let accounts: AccountResponse[] | null = null;
+  let reconciliations: AccountReconciliationResponse[] | null = null;
   let errorMessage: string | null = null;
 
   try {
-    accounts = await api<AccountResponse[]>("/accounts?includeArchived=true");
+    [accounts, reconciliations] = await Promise.all([
+      api<AccountResponse[]>("/accounts?includeArchived=true"),
+      api<AccountReconciliationResponse[]>(
+        "/accounts/reconciliation?includeArchived=true",
+      ),
+    ]);
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -23,7 +32,7 @@ export default async function AccountsPage() {
     <>
       <Header />
       <Container>
-        {!accounts ? (
+        {!accounts || !reconciliations ? (
           <>
             <h1 className="text-3xl font-semibold text-gray-900">Accounts</h1>
             <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
@@ -36,7 +45,10 @@ export default async function AccountsPage() {
             </div>
           </>
         ) : (
-          <AccountsPageClient accounts={accounts} />
+          <AccountsPageClient
+            accounts={accounts}
+            reconciliations={reconciliations}
+          />
         )}
       </Container>
     </>

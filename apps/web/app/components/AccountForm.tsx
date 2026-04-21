@@ -169,6 +169,45 @@ export default function AccountForm({
 
         <div className="flex flex-col gap-1">
           <label
+            htmlFor={`${fieldPrefix}-opening-balance`}
+            className="text-sm font-medium text-gray-600"
+          >
+            Opening balance
+          </label>
+          <input
+            id={`${fieldPrefix}-opening-balance`}
+            className="rounded-lg border px-3 py-2"
+            type="number"
+            step="0.01"
+            value={form.openingBalance}
+            onChange={(event) =>
+              updateField("openingBalance", event.target.value)
+            }
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor={`${fieldPrefix}-opening-balance-date`}
+            className="text-sm font-medium text-gray-600"
+          >
+            Opening balance date
+          </label>
+          <input
+            id={`${fieldPrefix}-opening-balance-date`}
+            className="rounded-lg border px-3 py-2"
+            type="date"
+            value={form.openingBalanceDate}
+            onChange={(event) =>
+              updateField("openingBalanceDate", event.target.value)
+            }
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label
             htmlFor={`${fieldPrefix}-order`}
             className="text-sm font-medium text-gray-600"
           >
