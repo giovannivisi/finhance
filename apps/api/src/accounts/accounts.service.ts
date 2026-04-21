@@ -396,6 +396,32 @@ export class AccountsService {
     }
 
     const transferGroups = new Map<string, Transaction[]>();
+    const invalidTransferGroupIds = new Set<string>();
+
+    for (const transaction of transactions) {
+      if (
+        transaction.kind === TransactionKind.TRANSFER &&
+        transaction.transferGroupId
+      ) {
+        const group = transferGroups.get(transaction.transferGroupId) ?? [];
+        group.push(transaction);
+        transferGroups.set(transaction.transferGroupId, group);
+      }
+    }
+
+    for (const [groupId, group] of transferGroups.entries()) {
+      const hasOutflow = group.some(
+        (transaction) => transaction.direction === TransactionDirection.OUTFLOW,
+      );
+      const hasInflow = group.some(
+        (transaction) => transaction.direction === TransactionDirection.INFLOW,
+      );
+
+      if (group.length !== 2 || !hasOutflow || !hasInflow) {
+        invalidTransferGroupIds.add(groupId);
+      }
+    }
+
     for (const transaction of transactions) {
       const account = accountById.get(transaction.accountId);
       if (
@@ -413,28 +439,11 @@ export class AccountsService {
         continue;
       }
 
-      if (!transaction.transferGroupId) {
+      if (
+        !transaction.transferGroupId ||
+        invalidTransferGroupIds.has(transaction.transferGroupId)
+      ) {
         transferIssueAccountIds.add(transaction.accountId);
-        continue;
-      }
-
-      const group = transferGroups.get(transaction.transferGroupId) ?? [];
-      group.push(transaction);
-      transferGroups.set(transaction.transferGroupId, group);
-    }
-
-    for (const group of transferGroups.values()) {
-      const hasOutflow = group.some(
-        (transaction) => transaction.direction === TransactionDirection.OUTFLOW,
-      );
-      const hasInflow = group.some(
-        (transaction) => transaction.direction === TransactionDirection.INFLOW,
-      );
-
-      if (group.length !== 2 || !hasOutflow || !hasInflow) {
-        for (const transaction of group) {
-          transferIssueAccountIds.add(transaction.accountId);
-        }
       }
     }
 
@@ -523,7 +532,10 @@ export class AccountsService {
       transactionCount: transactions.length,
       issueCodes: [...issueCodes],
       canCreateAdjustment:
-        account.archivedAt === null && status === 'MISMATCH' && !delta.eq(ZERO),
+        account.archivedAt === null &&
+        status === 'MISMATCH' &&
+        !delta.eq(ZERO) &&
+        !issueCodes.has('TRANSFER_GROUP_INCOMPLETE'),
     };
   }
 

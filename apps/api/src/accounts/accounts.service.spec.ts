@@ -469,6 +469,97 @@ describe('AccountsService', () => {
     expect(entry.expectedBalance?.eq(new Prisma.Decimal(-50))).toBe(true);
   });
 
+  it('does not flag complete transfers when the counterpart account is excluded from the result set', async () => {
+    const activeAccount = createAccount({ id: 'active-account' });
+    const archivedAccount = createAccount({
+      id: 'archived-account',
+      archivedAt: new Date('2026-04-20T08:00:00.000Z'),
+    });
+
+    prisma.account.findMany.mockResolvedValue([activeAccount]);
+    prisma.asset.findMany.mockResolvedValue([
+      createAsset({
+        accountId: activeAccount.id,
+        type: AssetType.LIABILITY,
+        kind: AssetKind.OTHER,
+        balance: new Prisma.Decimal(25),
+      }),
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransaction({
+        id: 'transfer-out',
+        accountId: activeAccount.id,
+        kind: TransactionKind.TRANSFER,
+        direction: TransactionDirection.OUTFLOW,
+        amount: new Prisma.Decimal(25),
+        transferGroupId: 'transfer-1',
+      }),
+      createTransaction({
+        id: 'transfer-in',
+        accountId: archivedAccount.id,
+        kind: TransactionKind.TRANSFER,
+        direction: TransactionDirection.INFLOW,
+        amount: new Prisma.Decimal(25),
+        transferGroupId: 'transfer-1',
+      }),
+    ]);
+
+    const [entry] = await service.findReconciliation(OWNER_ID);
+
+    expect(entry.status).toBe('CLEAN');
+    expect(entry.issueCodes).toEqual([]);
+    expect(entry.canCreateAdjustment).toBe(false);
+  });
+
+  it('does not flag complete transfers when another account baseline filters out the counterpart row', async () => {
+    const earlierAccount = createAccount({
+      id: 'earlier-account',
+      openingBalanceDate: new Date('2026-04-10T00:00:00.000Z'),
+    });
+    const laterAccount = createAccount({
+      id: 'later-account',
+      openingBalanceDate: new Date('2026-04-12T00:00:00.000Z'),
+    });
+
+    prisma.account.findMany.mockResolvedValue([earlierAccount, laterAccount]);
+    prisma.asset.findMany.mockResolvedValue([
+      createAsset({
+        accountId: earlierAccount.id,
+        type: AssetType.LIABILITY,
+        kind: AssetKind.OTHER,
+        balance: new Prisma.Decimal(25),
+      }),
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransaction({
+        id: 'transfer-out',
+        accountId: earlierAccount.id,
+        postedAt: new Date('2026-04-11T10:00:00.000Z'),
+        kind: TransactionKind.TRANSFER,
+        direction: TransactionDirection.OUTFLOW,
+        amount: new Prisma.Decimal(25),
+        transferGroupId: 'transfer-1',
+      }),
+      createTransaction({
+        id: 'transfer-in',
+        accountId: laterAccount.id,
+        postedAt: new Date('2026-04-11T10:00:00.000Z'),
+        kind: TransactionKind.TRANSFER,
+        direction: TransactionDirection.INFLOW,
+        amount: new Prisma.Decimal(25),
+        transferGroupId: 'transfer-1',
+      }),
+    ]);
+
+    const [earlierEntry, laterEntry] =
+      await service.findReconciliation(OWNER_ID);
+
+    expect(earlierEntry.status).toBe('CLEAN');
+    expect(earlierEntry.issueCodes).toEqual([]);
+    expect(laterEntry.transactionCount).toBe(0);
+    expect(laterEntry.issueCodes).toEqual([]);
+  });
+
   it('creates an inflow reconciliation adjustment for a positive delta', async () => {
     const account = createAccount();
     const createdTransaction = {
@@ -573,6 +664,36 @@ describe('AccountsService', () => {
     }>(transactionsService.createReconciliationAdjustment, 0, 1);
     expect(adjustmentInput.amount.eq(new Prisma.Decimal(20))).toBe(true);
     expect(adjustmentInput.direction).toBe(TransactionDirection.OUTFLOW);
+  });
+
+  it('does not allow reconciliation adjustments when transfer integrity is broken', async () => {
+    const account = createAccount();
+    prisma.account.findMany.mockResolvedValue([account]);
+    prisma.asset.findMany.mockResolvedValue([
+      createAsset({
+        balance: new Prisma.Decimal(80),
+      }),
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransaction({
+        id: 'transfer-out',
+        kind: TransactionKind.TRANSFER,
+        direction: TransactionDirection.OUTFLOW,
+        amount: new Prisma.Decimal(25),
+        transferGroupId: 'transfer-1',
+      }),
+    ]);
+
+    const [entry] = await service.findReconciliation(OWNER_ID);
+
+    expect(entry.issueCodes).toContain('TRANSFER_GROUP_INCOMPLETE');
+    expect(entry.canCreateAdjustment).toBe(false);
+    await expect(
+      service.createReconciliationAdjustment(OWNER_ID, account.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(
+      transactionsService.createReconciliationAdjustment,
+    ).not.toHaveBeenCalled();
   });
 
   it('rejects currency changes while an opening-balance baseline exists', async () => {
