@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   BadRequestException,
   ConflictException,
   Injectable,
@@ -18,6 +20,7 @@ import {
   TransactionRecord,
 } from '@transactions/transactions.types';
 import {
+  Account,
   CategoryType,
   Prisma,
   TransactionDirection,
@@ -77,10 +80,13 @@ interface PreparedTransferTransactionInput {
   destinationAccountId: string;
 }
 
+type TransactionWriteClient = PrismaService | Prisma.TransactionClient;
+
 @Injectable()
 export class TransactionsService {
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => AccountsService))
     private readonly accountsService: AccountsService,
     private readonly categoriesService: CategoriesService,
   ) {}
@@ -137,13 +143,14 @@ export class TransactionsService {
   async create(
     ownerId: string,
     dto: CreateTransactionDto,
+    client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
     if (dto.kind === TransactionKind.TRANSFER) {
-      return this.createTransfer(ownerId, dto);
+      return this.createTransfer(ownerId, dto, client);
     }
 
     const prepared = await this.prepareStandardTransaction(ownerId, dto);
-    const row = await this.prisma.transaction.create({
+    const row = await client.transaction.create({
       data: {
         userId: ownerId,
         postedAt: prepared.postedAt,
@@ -168,6 +175,39 @@ export class TransactionsService {
       entryType: 'STANDARD',
       row,
     };
+  }
+
+  async createReconciliationAdjustment(
+    ownerId: string,
+    input: {
+      accountId: string;
+      amount: Prisma.Decimal;
+      direction: TransactionDirection;
+      notes: string;
+    },
+    client: TransactionWriteClient = this.prisma,
+  ): Promise<LogicalTransactionEntry> {
+    if (input.amount.lte(0)) {
+      throw new BadRequestException(
+        'Reconciliation adjustments require a positive amount.',
+      );
+    }
+
+    return this.create(
+      ownerId,
+      {
+        postedAt: new Date().toISOString(),
+        kind: TransactionKind.ADJUSTMENT,
+        amount: input.amount.toNumber(),
+        description: 'Account reconciliation adjustment',
+        notes: input.notes,
+        accountId: input.accountId,
+        direction: input.direction,
+        categoryId: null,
+        counterparty: null,
+      },
+      client,
+    );
   }
 
   async update(
@@ -386,11 +426,14 @@ export class TransactionsService {
   private async createTransfer(
     ownerId: string,
     dto: CreateTransactionDto,
+    client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
     const prepared = await this.prepareTransferTransaction(ownerId, dto);
     const transferGroupId = `transfer_${randomUUID()}`;
 
-    await this.prisma.$transaction(async (tx) => {
+    const persistTransfer = async (
+      tx: Prisma.TransactionClient,
+    ): Promise<void> => {
       await tx.transaction.create({
         data: {
           userId: ownerId,
@@ -424,9 +467,15 @@ export class TransactionsService {
           transferGroupId,
         },
       });
-    });
+    };
 
-    return this.findTransferEntry(ownerId, transferGroupId);
+    if (client === this.prisma) {
+      await this.prisma.$transaction(persistTransfer);
+    } else {
+      await persistTransfer(client);
+    }
+
+    return this.findTransferEntry(ownerId, transferGroupId, client);
   }
 
   private async prepareStandardTransaction(
@@ -498,8 +547,11 @@ export class TransactionsService {
       categoryId = category.id;
     }
 
+    const postedAt = this.parsePostedAt(dto.postedAt);
+    this.assertPostedAtAllowedForAccount(account, postedAt);
+
     return {
-      postedAt: this.parsePostedAt(dto.postedAt),
+      postedAt,
       amount: this.toDecimal(dto.amount),
       currency: account.currency,
       kind: dto.kind,
@@ -564,8 +616,12 @@ export class TransactionsService {
       );
     }
 
+    const postedAt = this.parsePostedAt(dto.postedAt);
+    this.assertPostedAtAllowedForAccount(sourceAccount, postedAt);
+    this.assertPostedAtAllowedForAccount(destinationAccount, postedAt);
+
     return {
-      postedAt: this.parsePostedAt(dto.postedAt),
+      postedAt,
       amount: this.toDecimal(dto.amount),
       currency: sourceAccount.currency,
       description: this.requireText(
@@ -599,8 +655,9 @@ export class TransactionsService {
   private async findTransferEntry(
     ownerId: string,
     transferGroupId: string,
+    client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
-    const rows = await this.prisma.transaction.findMany({
+    const rows = await client.transaction.findMany({
       where: {
         userId: ownerId,
         transferGroupId,
@@ -1412,6 +1469,26 @@ export class TransactionsService {
     }
 
     return postedAt;
+  }
+
+  private assertPostedAtAllowedForAccount(
+    account: Account,
+    postedAt: Date,
+  ): void {
+    if (!account.openingBalanceDate) {
+      return;
+    }
+
+    const openingBalanceDate = account.openingBalanceDate
+      .toISOString()
+      .slice(0, 10);
+    const cutoff = romeDateToUtcStart(openingBalanceDate);
+
+    if (postedAt < cutoff) {
+      throw new BadRequestException(
+        `Transactions before ${openingBalanceDate} are not allowed for account ${account.name}.`,
+      );
+    }
   }
 
   private requireText(value: string, errorMessage: string): string {

@@ -5,6 +5,7 @@ import {
   IsInt,
   IsNotEmpty,
   MaxLength,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
@@ -59,4 +60,14 @@ export class CreateAccountDto implements UpsertAccountRequest {
   @IsOptional()
   @IsInt()
   order?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  openingBalance?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @Transform(trimOptionalStringValue)
+  openingBalanceDate?: string | null;
 }
