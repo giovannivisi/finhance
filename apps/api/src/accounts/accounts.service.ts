@@ -53,6 +53,7 @@ export interface AccountReconciliationModel {
 }
 
 type AccountTransactionClient = Prisma.TransactionClient;
+type ReconciliationReadClient = PrismaService | Prisma.TransactionClient;
 const ZERO = new Prisma.Decimal(0);
 
 @Injectable()
@@ -68,9 +69,10 @@ export class AccountsService {
   async findAll(
     ownerId: string,
     options?: { includeArchived?: boolean },
+    client: ReconciliationReadClient = this.prisma,
   ): Promise<Account[]> {
     const includeArchived = options?.includeArchived ?? false;
-    const accounts = await this.prisma.account.findMany({
+    const accounts = await client.account.findMany({
       where: {
         userId: ownerId,
         ...(includeArchived ? {} : { archivedAt: null }),
@@ -114,8 +116,9 @@ export class AccountsService {
   async findReconciliation(
     ownerId: string,
     options?: { includeArchived?: boolean },
+    client: ReconciliationReadClient = this.prisma,
   ): Promise<AccountReconciliationModel[]> {
-    const accounts = await this.findAll(ownerId, options);
+    const accounts = await this.findAll(ownerId, options, client);
 
     if (accounts.length === 0) {
       return [];
@@ -123,7 +126,7 @@ export class AccountsService {
 
     const accountIds = new Set(accounts.map((account) => account.id));
     const [assets, transactions] = await Promise.all([
-      this.prisma.asset.findMany({
+      client.asset.findMany({
         where: {
           userId: ownerId,
           accountId: {
@@ -132,7 +135,7 @@ export class AccountsService {
         },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       }),
-      this.prisma.transaction.findMany({
+      client.transaction.findMany({
         where: {
           userId: ownerId,
         },
@@ -147,40 +150,55 @@ export class AccountsService {
     ownerId: string,
     accountId: string,
   ): Promise<LogicalTransactionEntry> {
-    const reconciliation = (
-      await this.findReconciliation(ownerId, { includeArchived: true })
-    ).find((entry) => entry.account.id === accountId);
+    const transactionsService = this.transactionsService;
 
-    if (!reconciliation) {
-      throw new NotFoundException(`Account ${accountId} was not found.`);
-    }
-
-    if (!reconciliation.canCreateAdjustment || !reconciliation.delta) {
-      throw new ConflictException(
-        'This account cannot create a reconciliation adjustment right now.',
-      );
-    }
-
-    if (reconciliation.account.archivedAt) {
-      throw new ConflictException(
-        'Archived accounts cannot receive new reconciliation adjustments.',
-      );
-    }
-
-    if (!this.transactionsService) {
+    if (!transactionsService) {
       throw new ConflictException(
         'Transaction adjustments are not available in the current module context.',
       );
     }
 
-    return this.transactionsService.createReconciliationAdjustment(ownerId, {
-      accountId,
-      amount: reconciliation.delta.abs(),
-      direction: reconciliation.delta.gt(ZERO)
-        ? TransactionDirection.INFLOW
-        : TransactionDirection.OUTFLOW,
-      notes: this.buildReconciliationAdjustmentNote(reconciliation),
-    });
+    return this.prisma.$transaction(
+      async (tx) => {
+        const reconciliation = (
+          await this.findReconciliation(ownerId, { includeArchived: true }, tx)
+        ).find((entry) => entry.account.id === accountId);
+
+        if (!reconciliation) {
+          throw new NotFoundException(`Account ${accountId} was not found.`);
+        }
+
+        if (!reconciliation.canCreateAdjustment || !reconciliation.delta) {
+          throw new ConflictException(
+            'This account cannot create a reconciliation adjustment right now.',
+          );
+        }
+
+        if (reconciliation.account.archivedAt) {
+          throw new ConflictException(
+            'Archived accounts cannot receive new reconciliation adjustments.',
+          );
+        }
+
+        // Recompute and persist inside one serializable transaction so
+        // concurrent requests cannot both apply the same delta snapshot.
+        return transactionsService.createReconciliationAdjustment(
+          ownerId,
+          {
+            accountId,
+            amount: reconciliation.delta.abs(),
+            direction: reconciliation.delta.gt(ZERO)
+              ? TransactionDirection.INFLOW
+              : TransactionDirection.OUTFLOW,
+            notes: this.buildReconciliationAdjustmentNote(reconciliation),
+          },
+          tx,
+        );
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
   }
 
   async create(ownerId: string, dto: CreateAccountDto): Promise<Account> {
@@ -229,6 +247,12 @@ export class AccountsService {
 
     return this.prisma.$transaction(async (tx) => {
       const existing = await this.getRequiredAccount(tx, ownerId, id);
+      await this.assertOpeningBalanceBaselineUpdateAllowed(
+        tx,
+        ownerId,
+        existing,
+        prepared,
+      );
 
       if (
         existing.currency !== prepared.currency &&
@@ -558,6 +582,63 @@ export class AccountsService {
       openingBalance,
       openingBalanceDate,
     };
+  }
+
+  private async assertOpeningBalanceBaselineUpdateAllowed(
+    tx: AccountTransactionClient,
+    ownerId: string,
+    existing: Pick<Account, 'id' | 'openingBalance' | 'openingBalanceDate'>,
+    prepared: Pick<
+      PreparedAccountInput,
+      'openingBalance' | 'openingBalanceDate'
+    >,
+  ): Promise<void> {
+    if (!this.isOpeningBalanceBaselineChanged(existing, prepared)) {
+      return;
+    }
+
+    const [existingAsset, existingTransaction] = await Promise.all([
+      tx.asset.findFirst({
+        where: {
+          userId: ownerId,
+          accountId: existing.id,
+        },
+        select: { id: true },
+      }),
+      tx.transaction.findFirst({
+        where: {
+          userId: ownerId,
+          accountId: existing.id,
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!existingAsset && !existingTransaction) {
+      return;
+    }
+
+    throw new ConflictException(
+      // Rewriting the baseline after history exists would retroactively
+      // reinterpret prior balances and break reconciliation integrity.
+      'Opening balance baselines cannot be changed after assets or transactions exist for this account.',
+    );
+  }
+
+  private isOpeningBalanceBaselineChanged(
+    existing: Pick<Account, 'openingBalance' | 'openingBalanceDate'>,
+    prepared: Pick<
+      PreparedAccountInput,
+      'openingBalance' | 'openingBalanceDate'
+    >,
+  ): boolean {
+    const existingDate = existing.openingBalanceDate?.toISOString() ?? null;
+    const nextDate = prepared.openingBalanceDate?.toISOString() ?? null;
+
+    return (
+      !existing.openingBalance.eq(prepared.openingBalance) ||
+      existingDate !== nextDate
+    );
   }
 
   private shouldIncludeTransactionInReconciliation(

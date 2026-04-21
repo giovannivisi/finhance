@@ -141,9 +141,11 @@ describe('Account routes (e2e)', () => {
     };
     asset: {
       findMany: jest.Mock;
+      findFirst: jest.Mock;
     };
     transaction: {
       findMany: jest.Mock;
+      findFirst: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -169,19 +171,27 @@ describe('Account routes (e2e)', () => {
       },
       asset: {
         findMany: jest.fn(),
+        findFirst: jest.fn(),
       },
       transaction: {
         findMany: jest.fn(),
+        findFirst: jest.fn(),
       },
       $transaction: jest.fn(),
     };
 
     prisma.$transaction.mockImplementation(
       async (
-        callback: (tx: { account: typeof prisma.account }) => Promise<unknown>,
+        callback: (tx: {
+          account: typeof prisma.account;
+          asset: typeof prisma.asset;
+          transaction: typeof prisma.transaction;
+        }) => Promise<unknown>,
       ) =>
         callback({
           account: prisma.account,
+          asset: prisma.asset,
+          transaction: prisma.transaction,
         }),
     );
 
@@ -428,6 +438,13 @@ describe('Account routes (e2e)', () => {
           updatedAt: createdAt.toISOString(),
         });
       });
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
+    );
   });
 
   it('rejects adjustment creation for clean reconciliation rows', async () => {
@@ -508,6 +525,28 @@ describe('Account routes (e2e)', () => {
         openingBalanceDate: '2026-04-10',
       })
       .expect(400);
+  });
+
+  it('rejects baseline rewrites for populated accounts', async () => {
+    const existing = createAccount();
+
+    prisma.account.findFirst.mockResolvedValue(existing);
+    prisma.asset.findFirst.mockResolvedValue(createAsset());
+    prisma.transaction.findFirst.mockResolvedValue(null);
+
+    await request(httpServer())
+      .put(`/accounts/${existing.id}`)
+      .send({
+        name: existing.name,
+        type: existing.type,
+        currency: existing.currency,
+        institution: existing.institution,
+        notes: existing.notes,
+        order: existing.order,
+        openingBalance: 75,
+        openingBalanceDate: '2026-04-12',
+      })
+      .expect(409);
   });
 
   it('rejects client-controlled userId on POST /accounts', async () => {

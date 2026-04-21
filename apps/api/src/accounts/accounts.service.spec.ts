@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
 import { Prisma } from '@prisma/client';
 import {
@@ -110,9 +110,11 @@ describe('AccountsService', () => {
     };
     asset: {
       findMany: jest.Mock;
+      findFirst: jest.Mock;
     };
     transaction: {
       findMany: jest.Mock;
+      findFirst: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -134,19 +136,27 @@ describe('AccountsService', () => {
       },
       asset: {
         findMany: jest.fn(),
+        findFirst: jest.fn(),
       },
       transaction: {
         findMany: jest.fn(),
+        findFirst: jest.fn(),
       },
       $transaction: jest.fn(),
     };
 
     prisma.$transaction.mockImplementation(
       async (
-        callback: (tx: { account: typeof prisma.account }) => Promise<unknown>,
+        callback: (tx: {
+          account: typeof prisma.account;
+          asset: typeof prisma.asset;
+          transaction: typeof prisma.transaction;
+        }) => Promise<unknown>,
       ) =>
         callback({
           account: prisma.account,
+          asset: prisma.asset,
+          transaction: prisma.transaction,
         }),
     );
 
@@ -506,12 +516,28 @@ describe('AccountsService', () => {
       direction: TransactionDirection;
       notes: string;
     }>(transactionsService.createReconciliationAdjustment, 0, 1);
+    const adjustmentClient = nthCallArg<Prisma.TransactionClient>(
+      transactionsService.createReconciliationAdjustment,
+      0,
+      2,
+    );
     expect(adjustmentInput.accountId).toBe(account.id);
     expect(adjustmentInput.amount.eq(new Prisma.Decimal(50))).toBe(true);
     expect(adjustmentInput.direction).toBe(TransactionDirection.INFLOW);
     expect(adjustmentInput.notes).toContain('tracked=150');
     expect(adjustmentInput.notes).toContain('expected=100');
     expect(adjustmentInput.notes).toContain('delta=50');
+    expect(adjustmentClient).toMatchObject({
+      account: prisma.account,
+      asset: prisma.asset,
+      transaction: prisma.transaction,
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
+    );
   });
 
   it('creates an outflow reconciliation adjustment for a negative delta', async () => {
@@ -569,5 +595,47 @@ describe('AccountsService', () => {
         openingBalanceDate: '2026-04-10',
       }),
     ).rejects.toThrow('Clear the opening balance baseline');
+  });
+
+  it('rejects opening-balance baseline changes once the account has history', async () => {
+    const existing = createAccount();
+
+    prisma.account.findFirst.mockResolvedValue(existing);
+    prisma.asset.findFirst.mockResolvedValue(createAsset());
+    prisma.transaction.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.update(OWNER_ID, existing.id, {
+        name: existing.name,
+        type: existing.type,
+        currency: existing.currency,
+        institution: existing.institution,
+        notes: existing.notes,
+        order: existing.order,
+        openingBalance: 25,
+        openingBalanceDate: '2026-04-10',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects opening-balance baseline changes once the account has transactions', async () => {
+    const existing = createAccount();
+
+    prisma.account.findFirst.mockResolvedValue(existing);
+    prisma.asset.findFirst.mockResolvedValue(null);
+    prisma.transaction.findFirst.mockResolvedValue(createTransaction());
+
+    await expect(
+      service.update(OWNER_ID, existing.id, {
+        name: existing.name,
+        type: existing.type,
+        currency: existing.currency,
+        institution: existing.institution,
+        notes: existing.notes,
+        order: existing.order,
+        openingBalance: 25,
+        openingBalanceDate: '2026-04-10',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

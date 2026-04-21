@@ -68,6 +68,8 @@ interface PreparedTransferTransactionInput {
   destinationAccountId: string;
 }
 
+type TransactionWriteClient = PrismaService | Prisma.TransactionClient;
+
 @Injectable()
 export class TransactionsService {
   constructor(
@@ -129,13 +131,14 @@ export class TransactionsService {
   async create(
     ownerId: string,
     dto: CreateTransactionDto,
+    client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
     if (dto.kind === TransactionKind.TRANSFER) {
-      return this.createTransfer(ownerId, dto);
+      return this.createTransfer(ownerId, dto, client);
     }
 
     const prepared = await this.prepareStandardTransaction(ownerId, dto);
-    const row = await this.prisma.transaction.create({
+    const row = await client.transaction.create({
       data: {
         userId: ownerId,
         postedAt: prepared.postedAt,
@@ -170,6 +173,7 @@ export class TransactionsService {
       direction: TransactionDirection;
       notes: string;
     },
+    client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
     if (input.amount.lte(0)) {
       throw new BadRequestException(
@@ -177,17 +181,21 @@ export class TransactionsService {
       );
     }
 
-    return this.create(ownerId, {
-      postedAt: new Date().toISOString(),
-      kind: TransactionKind.ADJUSTMENT,
-      amount: input.amount.toNumber(),
-      description: 'Account reconciliation adjustment',
-      notes: input.notes,
-      accountId: input.accountId,
-      direction: input.direction,
-      categoryId: null,
-      counterparty: null,
-    });
+    return this.create(
+      ownerId,
+      {
+        postedAt: new Date().toISOString(),
+        kind: TransactionKind.ADJUSTMENT,
+        amount: input.amount.toNumber(),
+        description: 'Account reconciliation adjustment',
+        notes: input.notes,
+        accountId: input.accountId,
+        direction: input.direction,
+        categoryId: null,
+        counterparty: null,
+      },
+      client,
+    );
   }
 
   async update(
@@ -343,11 +351,14 @@ export class TransactionsService {
   private async createTransfer(
     ownerId: string,
     dto: CreateTransactionDto,
+    client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
     const prepared = await this.prepareTransferTransaction(ownerId, dto);
     const transferGroupId = `transfer_${randomUUID()}`;
 
-    await this.prisma.$transaction(async (tx) => {
+    const persistTransfer = async (
+      tx: Prisma.TransactionClient,
+    ): Promise<void> => {
       await tx.transaction.create({
         data: {
           userId: ownerId,
@@ -381,9 +392,15 @@ export class TransactionsService {
           transferGroupId,
         },
       });
-    });
+    };
 
-    return this.findTransferEntry(ownerId, transferGroupId);
+    if (client === this.prisma) {
+      await this.prisma.$transaction(persistTransfer);
+    } else {
+      await persistTransfer(client);
+    }
+
+    return this.findTransferEntry(ownerId, transferGroupId, client);
   }
 
   private async prepareStandardTransaction(
@@ -563,8 +580,9 @@ export class TransactionsService {
   private async findTransferEntry(
     ownerId: string,
     transferGroupId: string,
+    client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
-    const rows = await this.prisma.transaction.findMany({
+    const rows = await client.transaction.findMany({
       where: {
         userId: ownerId,
         transferGroupId,
