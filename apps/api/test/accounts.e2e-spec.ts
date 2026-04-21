@@ -434,6 +434,9 @@ describe('Account routes (e2e)', () => {
           counterparty: null,
           sourceAccountId: null,
           destinationAccountId: null,
+          recurringRuleId: null,
+          recurringOccurrenceMonth: null,
+          isRecurringGenerated: false,
           createdAt: createdAt.toISOString(),
           updatedAt: createdAt.toISOString(),
         });

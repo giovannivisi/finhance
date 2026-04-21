@@ -2,6 +2,7 @@ import type {
   AccountResponse,
   CashflowSummaryResponse,
   CategoryResponse,
+  MaterializeRecurringRulesResponse,
   TransactionResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
@@ -87,6 +88,17 @@ export default async function TransactionsPage({
   let errorMessage: string | null = null;
 
   try {
+    try {
+      await api<MaterializeRecurringRulesResponse>(
+        "/recurring-rules/materialize",
+        {
+          method: "POST",
+        },
+      );
+    } catch {
+      // Keep the existing transactions page usable even if best-effort sync fails.
+    }
+
     [transactions, cashflow, accounts, categories] = await Promise.all([
       api<TransactionResponse[]>(`/transactions${transactionsQueryString}`),
       api<CashflowSummaryResponse>(`/cashflow/summary${cashflowQueryString}`),

@@ -32,7 +32,7 @@ function getTimeZoneOffsetMs(date: Date): number {
   return Date.UTC(year, month - 1, day, hour, minute, second) - date.getTime();
 }
 
-function zonedDateTimeToUtc(
+export function romeDateTimeToUtc(
   year: number,
   month: number,
   day: number,
@@ -100,10 +100,10 @@ function addDays(
 
 export function romeDateToUtcStart(dateString: string): Date {
   const { year, month, day } = parseLocalDate(dateString);
-  return zonedDateTimeToUtc(year, month, day, 0, 0, 0, 0);
+  return romeDateTimeToUtc(year, month, day, 0, 0, 0, 0);
 }
 
 export function romeDateToUtcExclusiveEnd(dateString: string): Date {
   const next = addDays(dateString, 1);
-  return zonedDateTimeToUtc(next.year, next.month, next.day, 0, 0, 0, 0);
+  return romeDateTimeToUtc(next.year, next.month, next.day, 0, 0, 0, 0);
 }

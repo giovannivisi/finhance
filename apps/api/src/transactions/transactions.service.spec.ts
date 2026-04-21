@@ -288,6 +288,30 @@ describe('TransactionsService', () => {
     ).rejects.toThrow('Transactions before 2026-04-11 are not allowed');
   });
 
+  it('rejects updates and deletes for generated recurring transactions', async () => {
+    prisma.transaction.findFirst.mockResolvedValue(
+      createTransactionRow({
+        recurringRuleId: 'rule-1',
+        recurringOccurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+      }),
+    );
+
+    await expect(
+      service.update(OWNER_ID, 'transaction-1', {
+        postedAt: '2026-04-17T09:00:00.000Z',
+        kind: TransactionKind.INCOME,
+        amount: 100,
+        description: 'Salary',
+        accountId: 'account-1',
+        direction: TransactionDirection.INFLOW,
+      }),
+    ).rejects.toThrow('Generated recurring transactions');
+
+    await expect(service.remove(OWNER_ID, 'transaction-1')).rejects.toThrow(
+      'Generated recurring transactions',
+    );
+  });
+
   it('collapses transfer rows and filters archived accounts from the list', async () => {
     prisma.transaction.findMany.mockResolvedValue([
       createTransactionRow({
