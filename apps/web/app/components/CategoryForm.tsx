@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import type { CategoryFormValues } from "@lib/category-form";
 import { buildCategoryPayload } from "@lib/category-form";
 import { CATEGORY_TYPE_LABELS, CATEGORY_TYPE_OPTIONS } from "@lib/categories";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 interface CategoryFormProps {
   categoryId?: string;
@@ -27,6 +28,7 @@ export default function CategoryForm({
   const [form, setForm] = useState<CategoryFormValues>(initialValues);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
 
   useEffect(() => {
@@ -45,49 +47,45 @@ export default function CategoryForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    await actions.run("submit", async () => {
+      setError(null);
 
-    const result = buildCategoryPayload(form);
-    if (!result.payload) {
-      setError(result.error ?? "Unable to validate this category.");
-      return;
-    }
-
-    if (!isCreateMode && !categoryId) {
-      setError("Missing category id for this edit.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch(
-        getApiUrl(isCreateMode ? "/categories" : `/categories/${categoryId}`),
-        {
-          method: isCreateMode ? "POST" : "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result.payload),
-        },
-      );
-
-      if (!response.ok) {
-        setError(await readApiError(response));
+      const result = buildCategoryPayload(form);
+      if (!result.payload) {
+        setError(result.error ?? "Unable to validate this category.");
         return;
       }
 
-      onSuccess?.();
-      router.refresh();
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : isCreateMode
-            ? "Error creating category."
-            : "Error updating category.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+      if (!isCreateMode && !categoryId) {
+        setError("Missing category id for this edit.");
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        await apiMutation(
+          isCreateMode ? "/categories" : `/categories/${categoryId}`,
+          {
+            method: isCreateMode ? "POST" : "PUT",
+            body: JSON.stringify(result.payload),
+          },
+        );
+
+        onSuccess?.();
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : isCreateMode
+              ? "Error creating category."
+              : "Error updating category.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    });
   }
 
   return (

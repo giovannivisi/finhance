@@ -9,7 +9,8 @@ import {
   createEmptyCategoryFormValues,
 } from "@lib/category-form";
 import { CATEGORY_TYPE_LABELS } from "@lib/categories";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function CategoriesPageClient({
   categories,
@@ -25,6 +26,7 @@ export default function CategoriesPageClient({
   const [archivingCategoryId, setArchivingCategoryId] = useState<string | null>(
     null,
   );
+  const actions = useSingleFlightActions<string>();
 
   const editingCategory =
     categories.find((category) => category.id === editingCategoryId) ?? null;
@@ -38,32 +40,30 @@ export default function CategoriesPageClient({
   );
 
   async function handleArchive(categoryId: string) {
-    setArchiveError(null);
-    setArchivingCategoryId(categoryId);
+    await actions.run(`archive:${categoryId}`, async () => {
+      setArchiveError(null);
+      setArchivingCategoryId(categoryId);
 
-    try {
-      const response = await fetch(getApiUrl(`/categories/${categoryId}`), {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-      });
+      try {
+        await apiMutation<void>(`/categories/${categoryId}`, {
+          method: "DELETE",
+        });
 
-      if (!response.ok) {
-        setArchiveError(await readApiError(response));
-        return;
+        if (editingCategoryId === categoryId) {
+          setEditingCategoryId(null);
+        }
+
+        router.refresh();
+      } catch (error) {
+        setArchiveError(
+          error instanceof Error
+            ? error.message
+            : "Unable to archive category.",
+        );
+      } finally {
+        setArchivingCategoryId(null);
       }
-
-      if (editingCategoryId === categoryId) {
-        setEditingCategoryId(null);
-      }
-
-      router.refresh();
-    } catch (error) {
-      setArchiveError(
-        error instanceof Error ? error.message : "Unable to archive category.",
-      );
-    } finally {
-      setArchivingCategoryId(null);
-    }
+    });
   }
 
   return (

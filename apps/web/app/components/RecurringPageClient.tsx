@@ -19,7 +19,8 @@ import {
 import { formatCurrency } from "@lib/format";
 import { requestRecurringMaterialization } from "@lib/recurring-materialization";
 import { TRANSACTION_KIND_LABELS } from "@lib/transactions";
-import { getApiUrl, readApiError } from "@lib/api";
+import { api, apiMutation } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/Rome",
@@ -54,6 +55,7 @@ export default function RecurringPageClient({
   );
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoadingOccurrences, setIsLoadingOccurrences] = useState(false);
+  const actions = useSingleFlightActions<string>();
 
   const editingRule = rules.find((rule) => rule.id === editingRuleId) ?? null;
   const occurrenceRule =
@@ -68,156 +70,135 @@ export default function RecurringPageClient({
   );
 
   async function loadOccurrences(ruleId: string) {
-    setIsLoadingOccurrences(true);
+    await actions.run(`load:${ruleId}`, async () => {
+      setIsLoadingOccurrences(true);
 
-    try {
-      const response = await fetch(
-        getApiUrl(`/recurring-rules/${ruleId}/occurrences`),
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-
-      if (!response.ok) {
-        setActionError(await readApiError(response));
+      try {
+        setOccurrences(
+          await api<RecurringOccurrenceResponse[]>(
+            `/recurring-rules/${ruleId}/occurrences`,
+          ),
+        );
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load recurring exceptions.",
+        );
         setOccurrences([]);
-        return;
+      } finally {
+        setIsLoadingOccurrences(false);
       }
-
-      setOccurrences((await response.json()) as RecurringOccurrenceResponse[]);
-    } catch (error) {
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load recurring exceptions.",
-      );
-      setOccurrences([]);
-    } finally {
-      setIsLoadingOccurrences(false);
-    }
+    });
   }
 
   async function handleSync() {
-    setActionError(null);
-    setSyncSummary(null);
-    setIsSyncing(true);
+    await actions.run("sync", async () => {
+      setActionError(null);
+      setSyncSummary(null);
+      setIsSyncing(true);
 
-    try {
-      const result = await requestRecurringMaterialization();
-      if (!result.ok) {
-        setActionError(result.error);
-        return;
+      try {
+        const result = await requestRecurringMaterialization();
+        if (!result.ok) {
+          setActionError(result.error);
+          return;
+        }
+
+        setSyncSummary(result.summary);
+        router.refresh();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to sync due transactions.",
+        );
+      } finally {
+        setIsSyncing(false);
       }
-
-      setSyncSummary(result.summary);
-      router.refresh();
-    } catch (error) {
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : "Unable to sync due transactions.",
-      );
-    } finally {
-      setIsSyncing(false);
-    }
+    });
   }
 
   async function handleDisable(ruleId: string) {
-    setActionError(null);
-    setSyncSummary(null);
-    setBusyRuleId(ruleId);
+    await actions.run(`disable:${ruleId}`, async () => {
+      setActionError(null);
+      setSyncSummary(null);
+      setBusyRuleId(ruleId);
 
-    try {
-      const response = await fetch(getApiUrl(`/recurring-rules/${ruleId}`), {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-      });
+      try {
+        await apiMutation<void>(`/recurring-rules/${ruleId}`, {
+          method: "DELETE",
+        });
 
-      if (!response.ok) {
-        setActionError(await readApiError(response));
-        return;
+        if (editingRuleId === ruleId) {
+          setEditingRuleId(null);
+        }
+
+        router.refresh();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to disable this recurring rule.",
+        );
+      } finally {
+        setBusyRuleId(null);
       }
-
-      if (editingRuleId === ruleId) {
-        setEditingRuleId(null);
-      }
-
-      router.refresh();
-    } catch (error) {
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : "Unable to disable this recurring rule.",
-      );
-    } finally {
-      setBusyRuleId(null);
-    }
+    });
   }
 
   async function handleSkipOccurrence(ruleId: string, month: string) {
-    setActionError(null);
-    setSyncSummary(null);
-    setBusyOccurrenceKey(`${ruleId}:${month}:skip`);
+    await actions.run(`skip:${ruleId}:${month}`, async () => {
+      setActionError(null);
+      setSyncSummary(null);
+      setBusyOccurrenceKey(`${ruleId}:${month}:skip`);
 
-    try {
-      const response = await fetch(
-        getApiUrl(`/recurring-rules/${ruleId}/occurrences/${month}`),
-        {
+      try {
+        await apiMutation(`/recurring-rules/${ruleId}/occurrences/${month}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: "SKIPPED" }),
-        },
-      );
+        });
 
-      if (!response.ok) {
-        setActionError(await readApiError(response));
-        return;
+        await loadOccurrences(ruleId);
+        router.refresh();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to skip this recurring month.",
+        );
+      } finally {
+        setBusyOccurrenceKey(null);
       }
-
-      await loadOccurrences(ruleId);
-      router.refresh();
-    } catch (error) {
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : "Unable to skip this recurring month.",
-      );
-    } finally {
-      setBusyOccurrenceKey(null);
-    }
+    });
   }
 
   async function handleClearOccurrence(ruleId: string, month: string) {
-    setActionError(null);
-    setSyncSummary(null);
-    setBusyOccurrenceKey(`${ruleId}:${month}:clear`);
+    await actions.run(`clear:${ruleId}:${month}`, async () => {
+      setActionError(null);
+      setSyncSummary(null);
+      setBusyOccurrenceKey(`${ruleId}:${month}:clear`);
 
-    try {
-      const response = await fetch(
-        getApiUrl(`/recurring-rules/${ruleId}/occurrences/${month}`),
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+      try {
+        await apiMutation<void>(
+          `/recurring-rules/${ruleId}/occurrences/${month}`,
+          {
+            method: "DELETE",
+          },
+        );
 
-      if (!response.ok) {
-        setActionError(await readApiError(response));
-        return;
+        await loadOccurrences(ruleId);
+        router.refresh();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to clear this recurring exception.",
+        );
+      } finally {
+        setBusyOccurrenceKey(null);
       }
-
-      await loadOccurrences(ruleId);
-      router.refresh();
-    } catch (error) {
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : "Unable to clear this recurring exception.",
-      );
-    } finally {
-      setBusyOccurrenceKey(null);
-    }
+    });
   }
 
   function openOccurrenceManager(ruleId: string) {

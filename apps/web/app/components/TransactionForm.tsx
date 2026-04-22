@@ -19,7 +19,8 @@ import {
   TRANSACTION_KIND_LABELS,
   TRANSACTION_KIND_OPTIONS,
 } from "@lib/transactions";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 interface TransactionFormProps {
   transactionId?: string;
@@ -68,6 +69,7 @@ export default function TransactionForm({
   const [form, setForm] = useState<TransactionFormValues>(initialValues);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
 
   useEffect(() => {
@@ -110,51 +112,45 @@ export default function TransactionForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    await actions.run("submit", async () => {
+      setError(null);
 
-    const result = buildTransactionPayload(form);
-    if (!result.payload) {
-      setError(result.error ?? "Unable to validate this transaction.");
-      return;
-    }
-
-    if (!isCreateMode && !transactionId) {
-      setError("Missing transaction id for this edit.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch(
-        getApiUrl(
-          isCreateMode ? "/transactions" : `/transactions/${transactionId}`,
-        ),
-        {
-          method: isCreateMode ? "POST" : "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result.payload),
-        },
-      );
-
-      if (!response.ok) {
-        setError(await readApiError(response));
+      const result = buildTransactionPayload(form);
+      if (!result.payload) {
+        setError(result.error ?? "Unable to validate this transaction.");
         return;
       }
 
-      onSuccess?.();
-      router.refresh();
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : isCreateMode
-            ? "Error creating transaction."
-            : "Error updating transaction.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+      if (!isCreateMode && !transactionId) {
+        setError("Missing transaction id for this edit.");
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        await apiMutation(
+          isCreateMode ? "/transactions" : `/transactions/${transactionId}`,
+          {
+            method: isCreateMode ? "POST" : "PUT",
+            body: JSON.stringify(result.payload),
+          },
+        );
+
+        onSuccess?.();
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : isCreateMode
+              ? "Error creating transaction."
+              : "Error updating transaction.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    });
   }
 
   const isTransfer = form.kind === "TRANSFER";

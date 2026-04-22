@@ -13,8 +13,9 @@ import {
   createEmptyAccountFormValues,
 } from "@lib/account-form";
 import { ACCOUNT_TYPE_LABELS } from "@lib/accounts";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation } from "@lib/api";
 import { formatCurrency } from "@lib/format";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 const STATUS_STYLES: Record<string, string> = {
   CLEAN: "bg-emerald-100 text-emerald-800",
@@ -47,6 +48,7 @@ export default function AccountsPageClient({
   const [adjustingAccountId, setAdjustingAccountId] = useState<string | null>(
     null,
   );
+  const actions = useSingleFlightActions<string>();
 
   const editingAccount =
     accounts.find((account) => account.id === editingAccountId) ?? null;
@@ -70,64 +72,53 @@ export default function AccountsPageClient({
   );
 
   async function handleArchive(accountId: string) {
-    setArchiveError(null);
-    setReconciliationError(null);
-    setArchivingAccountId(accountId);
+    await actions.run(`archive:${accountId}`, async () => {
+      setArchiveError(null);
+      setReconciliationError(null);
+      setArchivingAccountId(accountId);
 
-    try {
-      const response = await fetch(getApiUrl(`/accounts/${accountId}`), {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-      });
+      try {
+        await apiMutation<void>(`/accounts/${accountId}`, {
+          method: "DELETE",
+        });
 
-      if (!response.ok) {
-        setArchiveError(await readApiError(response));
-        return;
+        if (editingAccountId === accountId) {
+          setEditingAccountId(null);
+        }
+
+        router.refresh();
+      } catch (error) {
+        setArchiveError(
+          error instanceof Error ? error.message : "Unable to archive account.",
+        );
+      } finally {
+        setArchivingAccountId(null);
       }
-
-      if (editingAccountId === accountId) {
-        setEditingAccountId(null);
-      }
-
-      router.refresh();
-    } catch (error) {
-      setArchiveError(
-        error instanceof Error ? error.message : "Unable to archive account.",
-      );
-    } finally {
-      setArchivingAccountId(null);
-    }
+    });
   }
 
   async function handleCreateAdjustment(accountId: string) {
-    setArchiveError(null);
-    setReconciliationError(null);
-    setAdjustingAccountId(accountId);
+    await actions.run(`adjust:${accountId}`, async () => {
+      setArchiveError(null);
+      setReconciliationError(null);
+      setAdjustingAccountId(accountId);
 
-    try {
-      const response = await fetch(
-        getApiUrl(`/accounts/${accountId}/reconciliation/adjust`),
-        {
+      try {
+        await apiMutation(`/accounts/${accountId}/reconciliation/adjust`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+        });
 
-      if (!response.ok) {
-        setReconciliationError(await readApiError(response));
-        return;
+        router.refresh();
+      } catch (error) {
+        setReconciliationError(
+          error instanceof Error
+            ? error.message
+            : "Unable to create reconciliation adjustment.",
+        );
+      } finally {
+        setAdjustingAccountId(null);
       }
-
-      router.refresh();
-    } catch (error) {
-      setReconciliationError(
-        error instanceof Error
-          ? error.message
-          : "Unable to create reconciliation adjustment.",
-      );
-    } finally {
-      setAdjustingAccountId(null);
-    }
+    });
   }
 
   return (

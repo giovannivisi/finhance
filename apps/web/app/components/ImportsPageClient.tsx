@@ -6,7 +6,8 @@ import type {
   ImportFileType,
   ImportPreviewResponse,
 } from "@finhance/shared";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation, fetchApiMutation, readApiError } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 const TEMPLATE_LINKS: Array<{ file: ImportFileType; href: string }> = [
   { file: "accounts", href: "/import-templates/accounts.csv" },
@@ -55,6 +56,7 @@ export default function ImportsPageClient({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const actions = useSingleFlightActions<"preview" | "apply" | "export">();
 
   const selectedCount = useMemo(
     () => Object.values(selectedFiles).filter(Boolean).length,
@@ -73,114 +75,115 @@ export default function ImportsPageClient({
 
   async function handlePreview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPreviewError(null);
-    setApplyError(null);
-    setExportError(null);
-    setPreview(null);
+    await actions.run("preview", async () => {
+      setPreviewError(null);
+      setApplyError(null);
+      setExportError(null);
+      setPreview(null);
 
-    if (selectedCount === 0) {
-      setPreviewError("Choose at least one CSV file to preview.");
-      return;
-    }
-
-    const formData = new FormData();
-    for (const file of TEMPLATE_LINKS.map((entry) => entry.file)) {
-      const selected = selectedFiles[file];
-      if (selected) {
-        formData.append(file, selected, selected.name);
-      }
-    }
-
-    setIsPreviewing(true);
-
-    try {
-      const response = await fetch(getApiUrl("/imports/csv/preview"), {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        setPreviewError(await readApiError(response));
+      if (selectedCount === 0) {
+        setPreviewError("Choose at least one CSV file to preview.");
         return;
       }
 
-      const result = (await response.json()) as ImportPreviewResponse;
-      setPreview(result);
-      setBatches((previous) => upsertBatch(previous, result));
-    } catch (error) {
-      setPreviewError(
-        error instanceof Error
-          ? error.message
-          : "Unable to preview this import.",
-      );
-    } finally {
-      setIsPreviewing(false);
-    }
+      const formData = new FormData();
+      for (const file of TEMPLATE_LINKS.map((entry) => entry.file)) {
+        const selected = selectedFiles[file];
+        if (selected) {
+          formData.append(file, selected, selected.name);
+        }
+      }
+
+      setIsPreviewing(true);
+
+      try {
+        const result = await apiMutation<ImportPreviewResponse>(
+          "/imports/csv/preview",
+          {
+            method: "POST",
+            body: formData,
+          },
+        );
+        setPreview(result);
+        setBatches((previous) => upsertBatch(previous, result));
+      } catch (error) {
+        setPreviewError(
+          error instanceof Error
+            ? error.message
+            : "Unable to preview this import.",
+        );
+      } finally {
+        setIsPreviewing(false);
+      }
+    });
   }
 
   async function handleApply() {
-    if (!preview?.canApply) {
-      return;
-    }
-
-    setApplyError(null);
-    setIsApplying(true);
-
-    try {
-      const response = await fetch(getApiUrl(`/imports/${preview.id}/apply`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) {
-        setApplyError(await readApiError(response));
+    await actions.run("apply", async () => {
+      if (!preview?.canApply) {
         return;
       }
 
-      const applied = (await response.json()) as ImportBatchResponse;
-      setPreview({ ...applied, canApply: false });
-      setBatches((previous) => upsertBatch(previous, applied));
-    } catch (error) {
-      setApplyError(
-        error instanceof Error ? error.message : "Unable to apply this import.",
-      );
-    } finally {
-      setIsApplying(false);
-    }
+      setApplyError(null);
+      setIsApplying(true);
+
+      try {
+        const applied = await apiMutation<ImportBatchResponse>(
+          `/imports/${preview.id}/apply`,
+          {
+            method: "POST",
+          },
+        );
+        setPreview({ ...applied, canApply: false });
+        setBatches((previous) => upsertBatch(previous, applied));
+      } catch (error) {
+        setApplyError(
+          error instanceof Error
+            ? error.message
+            : "Unable to apply this import.",
+        );
+      } finally {
+        setIsApplying(false);
+      }
+    });
   }
 
   async function handleExport() {
-    setExportError(null);
-    setIsExporting(true);
+    await actions.run("export", async () => {
+      setExportError(null);
+      setIsExporting(true);
 
-    try {
-      const response = await fetch(getApiUrl("/imports/csv/export"), {
-        method: "POST",
-      });
+      try {
+        const response = await fetchApiMutation("/imports/csv/export", {
+          method: "POST",
+        });
 
-      if (!response.ok) {
-        setExportError(await readApiError(response));
-        return;
+        if (!response.ok) {
+          setExportError(await readApiError(response));
+          return;
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download =
+          getDownloadFilename(response.headers.get("content-disposition")) ??
+          "finhance-export.zip";
+        document.body.append(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+      } catch (error) {
+        setExportError(
+          error instanceof Error
+            ? error.message
+            : "Unable to export this data.",
+        );
+      } finally {
+        setIsExporting(false);
       }
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download =
-        getDownloadFilename(response.headers.get("content-disposition")) ??
-        "finhance-export.zip";
-      document.body.append(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      setExportError(
-        error instanceof Error ? error.message : "Unable to export this data.",
-      );
-    } finally {
-      setIsExporting(false);
-    }
+    });
   }
 
   return (

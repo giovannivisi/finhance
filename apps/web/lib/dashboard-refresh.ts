@@ -1,4 +1,4 @@
-import { getApiUrl, readApiError } from "./api.ts";
+import { fetchApiMutation, readApiError } from "./api.ts";
 
 export type DashboardRefreshMode = "auto" | "manual";
 
@@ -23,10 +23,13 @@ export async function requestDashboardRefresh(
   fetchImpl: typeof fetch = fetch,
 ): Promise<DashboardRefreshResult> {
   try {
-    const response = await fetchImpl(getApiUrl("/assets/refresh"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
+    const response = await fetchApiMutation(
+      "/assets/refresh",
+      {
+        method: "POST",
+      },
+      fetchImpl,
+    );
 
     if (response.ok) {
       return { ok: true };

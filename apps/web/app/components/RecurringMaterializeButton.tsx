@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { MaterializeRecurringRulesResponse } from "@finhance/shared";
 import { requestRecurringMaterialization } from "@lib/recurring-materialization";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function RecurringMaterializeButton({
   label = "Sync due transactions",
@@ -16,24 +17,27 @@ export default function RecurringMaterializeButton({
   const [summary, setSummary] =
     useState<MaterializeRecurringRulesResponse | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const actions = useSingleFlightActions<"sync">();
 
   async function handleSync() {
-    setError(null);
-    setSummary(null);
-    setIsSyncing(true);
+    await actions.run("sync", async () => {
+      setError(null);
+      setSummary(null);
+      setIsSyncing(true);
 
-    const result = await requestRecurringMaterialization();
+      const result = await requestRecurringMaterialization();
 
-    if (!result.ok) {
-      setError(result.error);
+      if (!result.ok) {
+        setError(result.error);
+        setIsSyncing(false);
+        return;
+      }
+
+      setSummary(result.summary);
       setIsSyncing(false);
-      return;
-    }
-
-    setSummary(result.summary);
-    setIsSyncing(false);
-    startRefresh(() => {
-      router.refresh();
+      startRefresh(() => {
+        router.refresh();
+      });
     });
   }
 

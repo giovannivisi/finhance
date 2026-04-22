@@ -15,7 +15,8 @@ import {
   TRANSACTION_KIND_LABELS,
   TRANSACTION_KIND_OPTIONS,
 } from "@lib/transactions";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 interface RecurringRuleFormProps {
   mode: "create" | "edit";
@@ -62,6 +63,7 @@ export default function RecurringRuleForm({
   const [form, setForm] = useState<RecurringRuleFormValues>(initialValues);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
 
   useEffect(() => {
@@ -104,51 +106,45 @@ export default function RecurringRuleForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    await actions.run("submit", async () => {
+      setError(null);
 
-    const result = buildRecurringRulePayload(form);
-    if (!result.payload) {
-      setError(result.error ?? "Unable to validate this recurring rule.");
-      return;
-    }
-
-    if (!isCreateMode && !ruleId) {
-      setError("Missing recurring rule id for this edit.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch(
-        getApiUrl(
-          isCreateMode ? "/recurring-rules" : `/recurring-rules/${ruleId}`,
-        ),
-        {
-          method: isCreateMode ? "POST" : "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result.payload),
-        },
-      );
-
-      if (!response.ok) {
-        setError(await readApiError(response));
+      const result = buildRecurringRulePayload(form);
+      if (!result.payload) {
+        setError(result.error ?? "Unable to validate this recurring rule.");
         return;
       }
 
-      onSuccess?.();
-      router.refresh();
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : isCreateMode
-            ? "Error creating recurring rule."
-            : "Error updating recurring rule.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+      if (!isCreateMode && !ruleId) {
+        setError("Missing recurring rule id for this edit.");
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        await apiMutation(
+          isCreateMode ? "/recurring-rules" : `/recurring-rules/${ruleId}`,
+          {
+            method: isCreateMode ? "POST" : "PUT",
+            body: JSON.stringify(result.payload),
+          },
+        );
+
+        onSuccess?.();
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : isCreateMode
+              ? "Error creating recurring rule."
+              : "Error updating recurring rule.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    });
   }
 
   const isTransfer = form.kind === "TRANSFER";

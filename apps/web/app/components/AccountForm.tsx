@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import type { AccountFormValues } from "@lib/account-form";
 import { buildAccountPayload } from "@lib/account-form";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_OPTIONS } from "@lib/accounts";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 interface AccountFormProps {
   accountId?: string;
@@ -27,6 +28,7 @@ export default function AccountForm({
   const [form, setForm] = useState<AccountFormValues>(initialValues);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
 
   useEffect(() => {
@@ -45,49 +47,45 @@ export default function AccountForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    await actions.run("submit", async () => {
+      setError(null);
 
-    const result = buildAccountPayload(form);
-    if (!result.payload) {
-      setError(result.error ?? "Unable to validate this account.");
-      return;
-    }
-
-    if (!isCreateMode && !accountId) {
-      setError("Missing account id for this edit.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch(
-        getApiUrl(isCreateMode ? "/accounts" : `/accounts/${accountId}`),
-        {
-          method: isCreateMode ? "POST" : "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result.payload),
-        },
-      );
-
-      if (!response.ok) {
-        setError(await readApiError(response));
+      const result = buildAccountPayload(form);
+      if (!result.payload) {
+        setError(result.error ?? "Unable to validate this account.");
         return;
       }
 
-      onSuccess?.();
-      router.refresh();
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : isCreateMode
-            ? "Error creating account."
-            : "Error updating account.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+      if (!isCreateMode && !accountId) {
+        setError("Missing account id for this edit.");
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        await apiMutation(
+          isCreateMode ? "/accounts" : `/accounts/${accountId}`,
+          {
+            method: isCreateMode ? "POST" : "PUT",
+            body: JSON.stringify(result.payload),
+          },
+        );
+
+        onSuccess?.();
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : isCreateMode
+              ? "Error creating account."
+              : "Error updating account.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    });
   }
 
   return (

@@ -49,6 +49,67 @@ export function getApiUrl(path: string): string {
   return new URL(path, baseUrl).toString();
 }
 
+export function createIdempotencyKey(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function isFormDataBody(body: BodyInit | null | undefined): body is FormData {
+  return typeof FormData !== "undefined" && body instanceof FormData;
+}
+
+function withDefaultHeaders(
+  options: RequestInit | undefined,
+  includeIdempotencyKey: boolean,
+): Headers {
+  const headers = new Headers(options?.headers);
+  const body = options?.body;
+
+  if (!isFormDataBody(body) && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (includeIdempotencyKey && !headers.has("Idempotency-Key")) {
+    headers.set("Idempotency-Key", createIdempotencyKey());
+  }
+
+  return headers;
+}
+
+export async function fetchApi(
+  path: string,
+  options?: RequestInit,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Response> {
+  const headers = withDefaultHeaders(options, false);
+
+  return fetchImpl(getApiUrl(path), {
+    cache: "no-store",
+    ...options,
+    headers,
+  });
+}
+
+export async function fetchApiMutation(
+  path: string,
+  options?: RequestInit,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Response> {
+  const headers = withDefaultHeaders(options, true);
+
+  return fetchImpl(getApiUrl(path), {
+    cache: "no-store",
+    ...options,
+    headers,
+  });
+}
+
 export async function readApiError(response: Response): Promise<string> {
   const text = await response.text();
   const contentType = response.headers.get("content-type");
@@ -73,16 +134,24 @@ export async function readApiError(response: Response): Promise<string> {
 }
 
 export async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const headers = new Headers(options?.headers);
-  if (!headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
+  const response = await fetchApi(path, options);
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response));
   }
 
-  const response = await fetch(getApiUrl(path), {
-    cache: "no-store",
-    ...options,
-    headers,
-  });
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export async function apiMutation<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  const response = await fetchApiMutation(path, options);
 
   if (!response.ok) {
     throw new Error(await readApiError(response));

@@ -2,39 +2,37 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function ReviewCaptureSnapshotButton() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const actions = useSingleFlightActions<"capture">();
 
   async function handleCapture() {
-    setError(null);
-    setIsCapturing(true);
+    await actions.run("capture", async () => {
+      setError(null);
+      setIsCapturing(true);
 
-    try {
-      const response = await fetch(getApiUrl("/snapshots/capture"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
+      try {
+        await apiMutation("/snapshots/capture", {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
 
-      if (!response.ok) {
-        setError(await readApiError(response));
-        return;
+        router.refresh();
+      } catch (captureError) {
+        setError(
+          captureError instanceof Error
+            ? captureError.message
+            : "Unable to capture this snapshot.",
+        );
+      } finally {
+        setIsCapturing(false);
       }
-
-      router.refresh();
-    } catch (captureError) {
-      setError(
-        captureError instanceof Error
-          ? captureError.message
-          : "Unable to capture this snapshot.",
-      );
-    } finally {
-      setIsCapturing(false);
-    }
+    });
   }
 
   return (
