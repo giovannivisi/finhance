@@ -62,6 +62,9 @@ export interface TransactionResponse {
   counterparty: string | null;
   sourceAccountId: string | null;
   destinationAccountId: string | null;
+  recurringRuleId: string | null;
+  recurringOccurrenceMonth: string | null;
+  isRecurringGenerated: boolean;
   createdAt: string;
   updatedAt: string;
 }

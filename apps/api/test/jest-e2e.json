@@ -10,6 +10,7 @@
     "^@/(.*)$": "<rootDir>/src/$1",
     "^@accounts/(.*)$": "<rootDir>/src/accounts/$1",
     "^@assets/(.*)$": "<rootDir>/src/assets/$1",
+    "^@recurring/(.*)$": "<rootDir>/src/recurring/$1",
     "^@imports/(.*)$": "<rootDir>/src/imports/$1",
     "^@snapshots/(.*)$": "<rootDir>/src/snapshots/$1",
     "^@transactions/(.*)$": "<rootDir>/src/transactions/$1",

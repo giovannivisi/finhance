@@ -4,6 +4,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from '@prisma/prisma.module';
 import { AccountsModule } from '@accounts/accounts.module';
 import { AssetsModule } from '@assets/assets.module';
+import { RecurringModule } from '@recurring/recurring.module';
 import { ImportsModule } from '@imports/imports.module';
 import { DashboardModule } from '@/dashboard/dashboard.module';
 import { SnapshotsModule } from '@snapshots/snapshots.module';
@@ -28,6 +29,7 @@ import { ProxyAwareThrottlerGuard } from '@/security/proxy-aware-throttler.guard
     PrismaModule,
     AccountsModule,
     AssetsModule,
+    RecurringModule,
     ImportsModule,
     DashboardModule,
     SnapshotsModule,

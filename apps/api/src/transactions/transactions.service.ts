@@ -216,6 +216,7 @@ export class TransactionsService {
     dto: UpdateTransactionDto,
   ): Promise<LogicalTransactionEntry> {
     const existing = await this.findOne(ownerId, id);
+    this.assertEntryIsMutable(existing);
 
     if (existing.entryType === 'TRANSFER') {
       if (dto.kind !== TransactionKind.TRANSFER) {
@@ -310,6 +311,7 @@ export class TransactionsService {
 
   async remove(ownerId: string, id: string): Promise<void> {
     const existing = await this.findOne(ownerId, id);
+    this.assertEntryIsMutable(existing);
 
     if (existing.entryType === 'TRANSFER') {
       await this.prisma.transaction.deleteMany({
@@ -675,6 +677,24 @@ export class TransactionsService {
     }
 
     return this.toTransferEntry(transferGroupId, rows);
+  }
+
+  private assertEntryIsMutable(entry: LogicalTransactionEntry): void {
+    if (entry.entryType === 'STANDARD') {
+      if (entry.row.recurringRuleId) {
+        throw new ConflictException(
+          'Generated recurring transactions cannot be edited or deleted. Update the recurring rule instead.',
+        );
+      }
+
+      return;
+    }
+
+    if (entry.outflow.recurringRuleId || entry.inflow.recurringRuleId) {
+      throw new ConflictException(
+        'Generated recurring transactions cannot be edited or deleted. Update the recurring rule instead.',
+      );
+    }
   }
 
   private toLogicalEntries(

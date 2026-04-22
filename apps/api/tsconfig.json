@@ -19,6 +19,7 @@
       "@prisma/*": ["./src/prisma/*"],
       "@accounts/*": ["src/accounts/*"],
       "@assets/*": ["src/assets/*"],
+      "@recurring/*": ["src/recurring/*"],
       "@imports/*": ["src/imports/*"],
       "@snapshots/*": ["src/snapshots/*"],
       "@transactions/*": ["src/transactions/*"],

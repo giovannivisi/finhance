@@ -37,6 +37,8 @@ function createCategory(overrides: Partial<Category> = {}): Category {
     name: 'Groceries',
     type: CategoryType.EXPENSE,
     order: 0,
+    importSource: null,
+    importKey: null,
     archivedAt: null,
     createdAt: now,
     updatedAt: now,

@@ -87,11 +87,15 @@ function parseZipEntries(buffer: Buffer): Map<string, string> {
 }
 
 function binaryParser(
-  response: NodeJS.ReadableStream,
+  response: {
+    on(event: 'data', callback: (chunk: Buffer | string) => void): void;
+    on(event: 'end', callback: () => void): void;
+    on(event: 'error', callback: (error: Error) => void): void;
+  },
   callback: (error: Error | null, body: Buffer) => void,
 ): void {
   const chunks: Uint8Array[] = [];
-  response.on('data', (chunk) => {
+  response.on('data', (chunk: Buffer | string) => {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   });
   response.on('end', () => callback(null, Buffer.concat(chunks)));

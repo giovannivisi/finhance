@@ -26,6 +26,10 @@ export function toTransactionResponse(
       counterparty: row.counterparty,
       sourceAccountId: null,
       destinationAccountId: null,
+      recurringRuleId: row.recurringRuleId ?? null,
+      recurringOccurrenceMonth:
+        row.recurringOccurrenceMonth?.toISOString().slice(0, 10) ?? null,
+      isRecurringGenerated: row.recurringRuleId != null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -54,6 +58,11 @@ export function toTransactionResponse(
     counterparty: null,
     sourceAccountId: entry.outflow.accountId,
     destinationAccountId: entry.inflow.accountId,
+    recurringRuleId: entry.outflow.recurringRuleId ?? null,
+    recurringOccurrenceMonth:
+      entry.outflow.recurringOccurrenceMonth?.toISOString().slice(0, 10) ??
+      null,
+    isRecurringGenerated: entry.outflow.recurringRuleId != null,
     createdAt: createdAt.toISOString(),
     updatedAt: updatedAt.toISOString(),
   };
