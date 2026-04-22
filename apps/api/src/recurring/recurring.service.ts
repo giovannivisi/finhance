@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
+import type { AccountReconciliationModel } from '@accounts/accounts.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { CategoriesService } from '@transactions/categories.service';
 import { TransactionsService } from '@transactions/transactions.service';
@@ -19,8 +20,16 @@ import {
   TransactionKind,
 } from '@prisma/client';
 import type {
+  CashflowSummaryResponse,
   MaterializeRecurringRulesResponse,
+  MonthlyCashflowMonthResponse,
+  MonthlyCashflowResponse,
+  MonthlyReviewCurrencyInsightResponse,
+  MonthlyReviewNetWorthExplanationResponse,
+  MonthlyReviewRecurringComparisonResponse,
   MonthlyReviewResponse,
+  MonthlyReviewWarningCode,
+  MonthlyReviewWarningResponse,
 } from '@finhance/shared';
 import { toMonthlyReviewResponse } from '@recurring/recurring.mapper';
 import { CreateRecurringTransactionRuleDto } from '@recurring/dto/create-recurring-transaction-rule.dto';
@@ -144,6 +153,27 @@ interface OverriddenOccurrenceInput {
 type PreparedOccurrenceInput =
   | SkippedOccurrenceInput
   | OverriddenOccurrenceInput;
+
+interface RecurringMonthTransactionRow {
+  recurringRuleId: string;
+  kind: TransactionKind;
+  currency: string;
+  amount: Prisma.Decimal;
+  direction: TransactionDirection | null;
+}
+
+interface RecurringComparisonBucket {
+  currency: string;
+  expectedIncomeTotal: number;
+  actualIncomeTotal: number;
+  expectedExpenseTotal: number;
+  actualExpenseTotal: number;
+  dueRuleCount: number;
+  realizedRuleCount: number;
+  skippedCount: number;
+  overriddenCount: number;
+  transferRulesExcludedCount: number;
+}
 
 @Injectable()
 export class RecurringService {
@@ -642,43 +672,565 @@ export class RecurringService {
     month: string,
   ): Promise<MonthlyReviewResponse> {
     const range = this.resolveMonthRange(month);
+    const occurrenceMonth = this.monthKeyToValue(month);
     const [
       cashflow,
+      monthlyCashflow,
       openingSnapshot,
       closingSnapshot,
+      accounts,
       reconciliations,
       recurringExceptions,
+      recurringRules,
+      recurringRows,
     ] = await Promise.all([
       this.transactionsService.getCashflowSummary(ownerId, {
         from: range.from,
         to: range.to,
         includeArchivedAccounts: true,
       }),
+      this.transactionsService.getMonthlyCashflow(ownerId, {
+        from: month,
+        to: month,
+        includeArchivedAccounts: true,
+      }),
       this.findLatestSnapshotOnOrBefore(ownerId, range.openingSnapshotCutoff),
       this.findLatestSnapshotOnOrBefore(ownerId, range.closingSnapshotCutoff),
+      this.accountsService.findAll(ownerId, { includeArchived: true }),
       this.accountsService.findReconciliation(ownerId),
       this.prisma.recurringTransactionOccurrence.findMany({
         where: {
           userId: ownerId,
-          occurrenceMonth: this.monthKeyToValue(month),
+          occurrenceMonth,
         },
         include: {
           recurringRule: true,
         },
         orderBy: [{ createdAt: 'asc' }],
       }),
+      this.prisma.recurringTransactionRule.findMany({
+        where: {
+          userId: ownerId,
+        },
+        orderBy: [{ dayOfMonth: 'asc' }, { createdAt: 'asc' }],
+      }),
+      this.prisma.transaction.findMany({
+        where: {
+          userId: ownerId,
+          recurringRuleId: {
+            not: null,
+          },
+          recurringOccurrenceMonth: occurrenceMonth,
+        },
+        select: {
+          recurringRuleId: true,
+          kind: true,
+          currency: true,
+          amount: true,
+          direction: true,
+        },
+      }),
     ]);
+    const reconciliationHighlights = reconciliations.filter(
+      (reconciliation) => reconciliation.status !== 'CLEAN',
+    );
+    const netWorthExplanation = this.buildMonthlyReviewNetWorthExplanation(
+      cashflow,
+      openingSnapshot,
+      closingSnapshot,
+    );
+    const recurringComparison = this.buildRecurringComparison(
+      month,
+      recurringRules,
+      recurringExceptions,
+      recurringRows.flatMap((row) =>
+        row.recurringRuleId
+          ? [
+              {
+                recurringRuleId: row.recurringRuleId,
+                kind: row.kind,
+                currency: row.currency,
+                amount: row.amount,
+                direction: row.direction,
+              } satisfies RecurringMonthTransactionRow,
+            ]
+          : [],
+      ),
+      accounts,
+    );
+    const currencyInsights = this.buildMonthlyReviewCurrencyInsights(
+      cashflow,
+      monthlyCashflow,
+      month,
+    );
+    const warnings = this.buildMonthlyReviewWarnings({
+      cashflow,
+      openingSnapshot,
+      closingSnapshot,
+      netWorthExplanation,
+      reconciliationHighlights,
+      recurringExceptions,
+      currencyInsights,
+    });
 
     return toMonthlyReviewResponse({
       month,
       cashflow,
       openingSnapshot,
       closingSnapshot,
-      reconciliationHighlights: reconciliations.filter(
-        (reconciliation) => reconciliation.status !== 'CLEAN',
-      ),
+      warnings,
+      netWorthExplanation,
+      recurringComparison,
+      currencyInsights,
+      reconciliationHighlights,
       recurringExceptions,
     });
+  }
+
+  private buildMonthlyReviewNetWorthExplanation(
+    cashflow: CashflowSummaryResponse,
+    openingSnapshot: NetWorthSnapshot | null,
+    closingSnapshot: NetWorthSnapshot | null,
+  ): MonthlyReviewNetWorthExplanationResponse {
+    if (!openingSnapshot || !closingSnapshot) {
+      return {
+        isComparableInEur: false,
+        cashflowContributionEur: null,
+        valuationMovementEur: null,
+        note: 'Add both opening and closing snapshot boundaries to explain the month in EUR.',
+      };
+    }
+
+    if (openingSnapshot.isPartial || closingSnapshot.isPartial) {
+      return {
+        isComparableInEur: false,
+        cashflowContributionEur: null,
+        valuationMovementEur: null,
+        note: 'Snapshot boundaries are partial, so the EUR net worth delta cannot be decomposed safely.',
+      };
+    }
+
+    const nonEurBuckets = cashflow.filter(
+      (bucket) => bucket.currency !== 'EUR',
+    );
+    if (nonEurBuckets.length > 0) {
+      return {
+        isComparableInEur: false,
+        cashflowContributionEur: null,
+        valuationMovementEur: null,
+        note: 'Cashflow includes non-EUR currencies, so the EUR net worth delta cannot be decomposed safely.',
+      };
+    }
+
+    const openingNetWorth = openingSnapshot.netWorthTotal.toNumber();
+    const closingNetWorth = closingSnapshot.netWorthTotal.toNumber();
+    const cashflowContributionEur =
+      cashflow.find((bucket) => bucket.currency === 'EUR')?.netCashflow ?? 0;
+
+    return {
+      isComparableInEur: true,
+      cashflowContributionEur,
+      valuationMovementEur:
+        closingNetWorth - openingNetWorth - cashflowContributionEur,
+      note: 'Valuation movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
+    };
+  }
+
+  private buildRecurringComparison(
+    monthKey: string,
+    rules: RecurringTransactionRule[],
+    recurringExceptions: RecurringOccurrenceModel[],
+    recurringRows: RecurringMonthTransactionRow[],
+    accounts: Account[],
+  ): MonthlyReviewRecurringComparisonResponse[] {
+    const accountsById = new Map(
+      accounts.map((account) => [account.id, account]),
+    );
+    const occurrencesByRuleId = new Map(
+      recurringExceptions.map((occurrence) => [
+        occurrence.recurringRuleId,
+        occurrence,
+      ]),
+    );
+    const rowsByRuleId = new Map<string, RecurringMonthTransactionRow[]>();
+
+    for (const row of recurringRows) {
+      const existing = rowsByRuleId.get(row.recurringRuleId) ?? [];
+      existing.push(row);
+      rowsByRuleId.set(row.recurringRuleId, existing);
+    }
+
+    const persistedRuleIds = new Set<string>([
+      ...occurrencesByRuleId.keys(),
+      ...rowsByRuleId.keys(),
+    ]);
+    const buckets = new Map<string, RecurringComparisonBucket>();
+
+    for (const rule of rules) {
+      const hasPersistedMonthState = persistedRuleIds.has(rule.id);
+      const isApplicable = this.isOccurrenceMonthApplicable(rule, monthKey);
+
+      if (!hasPersistedMonthState && (!rule.isActive || !isApplicable)) {
+        continue;
+      }
+
+      const occurrence = occurrencesByRuleId.get(rule.id) ?? null;
+      const rows = rowsByRuleId.get(rule.id) ?? [];
+      const currency = this.resolveRecurringComparisonCurrency(
+        rule,
+        occurrence,
+        rows,
+        accountsById,
+      );
+      const bucket =
+        buckets.get(currency) ?? this.createRecurringComparisonBucket(currency);
+
+      bucket.dueRuleCount += 1;
+      if (rows.length > 0) {
+        bucket.realizedRuleCount += 1;
+      }
+
+      if (occurrence?.status === 'SKIPPED') {
+        bucket.skippedCount += 1;
+      }
+
+      if (occurrence?.status === 'OVERRIDDEN') {
+        bucket.overriddenCount += 1;
+      }
+
+      if (rule.kind === TransactionKind.TRANSFER) {
+        bucket.transferRulesExcludedCount += 1;
+        buckets.set(currency, bucket);
+        continue;
+      }
+
+      const expectedAmount =
+        occurrence?.status === 'OVERRIDDEN' && occurrence.overrideAmount
+          ? occurrence.overrideAmount.toNumber()
+          : rule.amount.toNumber();
+      const actualAmount =
+        occurrence?.status === 'SKIPPED'
+          ? 0
+          : rows.reduce((sum, row) => sum + row.amount.toNumber(), 0);
+      const direction = this.resolveRecurringComparisonDirection(
+        rule,
+        occurrence,
+        rows,
+      );
+
+      if (direction === TransactionDirection.INFLOW) {
+        bucket.expectedIncomeTotal += expectedAmount;
+        bucket.actualIncomeTotal += actualAmount;
+      } else {
+        bucket.expectedExpenseTotal += expectedAmount;
+        bucket.actualExpenseTotal += actualAmount;
+      }
+
+      buckets.set(currency, bucket);
+    }
+
+    return [...buckets.values()]
+      .sort((left, right) => left.currency.localeCompare(right.currency))
+      .map((bucket) => ({
+        currency: bucket.currency,
+        expectedIncomeTotal: bucket.expectedIncomeTotal,
+        actualIncomeTotal: bucket.actualIncomeTotal,
+        expectedExpenseTotal: bucket.expectedExpenseTotal,
+        actualExpenseTotal: bucket.actualExpenseTotal,
+        dueRuleCount: bucket.dueRuleCount,
+        realizedRuleCount: bucket.realizedRuleCount,
+        skippedCount: bucket.skippedCount,
+        overriddenCount: bucket.overriddenCount,
+        transferRulesExcludedCount: bucket.transferRulesExcludedCount,
+      }));
+  }
+
+  private resolveRecurringComparisonCurrency(
+    rule: RecurringTransactionRule,
+    occurrence: RecurringOccurrenceModel | null,
+    rows: RecurringMonthTransactionRow[],
+    accountsById: Map<string, Account>,
+  ): string {
+    const rowCurrency = rows[0]?.currency ?? null;
+    const accountId =
+      rule.kind === TransactionKind.TRANSFER
+        ? occurrence?.status === 'OVERRIDDEN'
+          ? (occurrence.overrideSourceAccountId ?? rule.sourceAccountId)
+          : rule.sourceAccountId
+        : occurrence?.status === 'OVERRIDDEN'
+          ? (occurrence.overrideAccountId ?? rule.accountId)
+          : rule.accountId;
+
+    const accountCurrency = accountId
+      ? (accountsById.get(accountId)?.currency ?? null)
+      : null;
+
+    return rowCurrency ?? accountCurrency ?? 'EUR';
+  }
+
+  private resolveRecurringComparisonDirection(
+    rule: RecurringTransactionRule,
+    occurrence: RecurringOccurrenceModel | null,
+    rows: RecurringMonthTransactionRow[],
+  ): TransactionDirection {
+    if (occurrence?.status === 'OVERRIDDEN' && occurrence.overrideDirection) {
+      return occurrence.overrideDirection;
+    }
+
+    const rowDirection = rows.find((row) => row.direction)?.direction;
+    return rowDirection ?? rule.direction ?? TransactionDirection.OUTFLOW;
+  }
+
+  private createRecurringComparisonBucket(
+    currency: string,
+  ): RecurringComparisonBucket {
+    return {
+      currency,
+      expectedIncomeTotal: 0,
+      actualIncomeTotal: 0,
+      expectedExpenseTotal: 0,
+      actualExpenseTotal: 0,
+      dueRuleCount: 0,
+      realizedRuleCount: 0,
+      skippedCount: 0,
+      overriddenCount: 0,
+      transferRulesExcludedCount: 0,
+    };
+  }
+
+  private buildMonthlyReviewCurrencyInsights(
+    cashflow: CashflowSummaryResponse,
+    monthlyCashflow: MonthlyCashflowResponse,
+    monthKey: string,
+  ): MonthlyReviewCurrencyInsightResponse[] {
+    const cashflowByCurrency = new Map(
+      cashflow.map((bucket) => [bucket.currency, bucket]),
+    );
+    const monthlyByCurrency = new Map(
+      monthlyCashflow.map((bucket) => [bucket.currency, bucket]),
+    );
+    const currencies = new Set<string>([
+      ...cashflowByCurrency.keys(),
+      ...monthlyByCurrency.keys(),
+    ]);
+
+    return [...currencies]
+      .sort((left, right) => left.localeCompare(right))
+      .map((currency) => {
+        const cashflowBucket = cashflowByCurrency.get(currency);
+        const monthlyBucket = monthlyByCurrency.get(currency);
+        const month = monthlyBucket
+          ? this.findMonthlyCashflowMonth(monthlyBucket, monthKey)
+          : null;
+
+        return {
+          currency,
+          savingsRate: month?.savingsRate ?? null,
+          uncategorizedExpenseTotal: month?.uncategorizedExpenseTotal ?? 0,
+          uncategorizedIncomeTotal: month?.uncategorizedIncomeTotal ?? 0,
+          topExpenseCategories: this.sortAndLimitCategoryDrivers(
+            month?.expenseCategories ?? [],
+          ),
+          topIncomeCategories: this.sortAndLimitCategoryDrivers(
+            month?.incomeCategories ?? [],
+          ),
+          topAccounts: this.sortAndLimitAccountDrivers(
+            cashflowBucket?.byAccount ?? [],
+          ),
+        };
+      });
+  }
+
+  private findMonthlyCashflowMonth(
+    bucket: MonthlyCashflowResponse[number],
+    monthKey: string,
+  ): MonthlyCashflowMonthResponse | null {
+    return bucket.months.find((month) => month.month === monthKey) ?? null;
+  }
+
+  private sortAndLimitCategoryDrivers(
+    items: MonthlyCashflowMonthResponse['expenseCategories'],
+  ): MonthlyReviewCurrencyInsightResponse['topExpenseCategories'] {
+    return [...items]
+      .sort((left, right) => right.total - left.total)
+      .slice(0, 3)
+      .map((item) => ({
+        categoryId: item.categoryId,
+        name: item.name,
+        total: item.total,
+      }));
+  }
+
+  private sortAndLimitAccountDrivers(
+    items: CashflowSummaryResponse[number]['byAccount'],
+  ): MonthlyReviewCurrencyInsightResponse['topAccounts'] {
+    return [...items]
+      .sort(
+        (left, right) =>
+          Math.abs(right.netCashflow) - Math.abs(left.netCashflow),
+      )
+      .slice(0, 3)
+      .map((item) => ({
+        accountId: item.accountId,
+        name: item.name,
+        inflowTotal: item.inflowTotal,
+        outflowTotal: item.outflowTotal,
+        netCashflow: item.netCashflow,
+      }));
+  }
+
+  private buildMonthlyReviewWarnings(input: {
+    cashflow: CashflowSummaryResponse;
+    openingSnapshot: NetWorthSnapshot | null;
+    closingSnapshot: NetWorthSnapshot | null;
+    netWorthExplanation: MonthlyReviewNetWorthExplanationResponse;
+    reconciliationHighlights: AccountReconciliationModel[];
+    recurringExceptions: RecurringOccurrenceModel[];
+    currencyInsights: MonthlyReviewCurrencyInsightResponse[];
+  }): MonthlyReviewWarningResponse[] {
+    const warnings: MonthlyReviewWarningResponse[] = [];
+
+    if (!input.openingSnapshot) {
+      warnings.push(
+        this.createMonthlyReviewWarning({
+          code: 'MISSING_OPENING_SNAPSHOT',
+          severity: 'WARNING',
+          title: 'Opening snapshot missing',
+          detail:
+            'Add a snapshot before this month to anchor the opening net worth boundary.',
+        }),
+      );
+    } else if (input.openingSnapshot.isPartial) {
+      warnings.push(
+        this.createMonthlyReviewWarning({
+          code: 'PARTIAL_OPENING_SNAPSHOT',
+          severity: 'WARNING',
+          title: 'Opening snapshot is partial',
+          detail:
+            'The opening boundary excludes unavailable valuations, so month-over-month comparisons are incomplete.',
+          count: input.openingSnapshot.unavailableCount,
+        }),
+      );
+    }
+
+    if (!input.closingSnapshot) {
+      warnings.push(
+        this.createMonthlyReviewWarning({
+          code: 'MISSING_CLOSING_SNAPSHOT',
+          severity: 'WARNING',
+          title: 'Closing snapshot missing',
+          detail:
+            'Capture a snapshot in this month to anchor the closing net worth boundary.',
+        }),
+      );
+    } else if (input.closingSnapshot.isPartial) {
+      warnings.push(
+        this.createMonthlyReviewWarning({
+          code: 'PARTIAL_CLOSING_SNAPSHOT',
+          severity: 'WARNING',
+          title: 'Closing snapshot is partial',
+          detail:
+            'The closing boundary excludes unavailable valuations, so the ending net worth is incomplete.',
+          count: input.closingSnapshot.unavailableCount,
+        }),
+      );
+    }
+
+    if (!input.netWorthExplanation.isComparableInEur) {
+      for (const bucket of input.cashflow.filter(
+        (cashflowBucket) => cashflowBucket.currency !== 'EUR',
+      )) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'NON_EUR_CASHFLOW_NOT_COMPARABLE',
+            severity: 'INFO',
+            title: `${bucket.currency} cashflow excluded from EUR explanation`,
+            detail:
+              'This month includes non-EUR cashflow, so the net worth delta cannot be decomposed into one EUR story.',
+            amount: bucket.netCashflow,
+            currency: bucket.currency,
+          }),
+        );
+      }
+    }
+
+    for (const insight of input.currencyInsights) {
+      if (insight.uncategorizedExpenseTotal > 0) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'UNCATEGORIZED_EXPENSES',
+            severity: 'WARNING',
+            title: `Uncategorized expenses in ${insight.currency}`,
+            detail:
+              'Some expense transactions are still uncategorized, so category drivers are incomplete.',
+            amount: insight.uncategorizedExpenseTotal,
+            currency: insight.currency,
+          }),
+        );
+      }
+
+      if (insight.uncategorizedIncomeTotal > 0) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'UNCATEGORIZED_INCOME',
+            severity: 'WARNING',
+            title: `Uncategorized income in ${insight.currency}`,
+            detail:
+              'Some income transactions are still uncategorized, so category drivers are incomplete.',
+            amount: insight.uncategorizedIncomeTotal,
+            currency: insight.currency,
+          }),
+        );
+      }
+    }
+
+    if (input.reconciliationHighlights.length > 0) {
+      warnings.push(
+        this.createMonthlyReviewWarning({
+          code: 'RECONCILIATION_ISSUES',
+          severity: 'WARNING',
+          title: 'Reconciliation needs attention',
+          detail:
+            'One or more accounts still have mismatches or unsupported reconciliation state.',
+          count: input.reconciliationHighlights.length,
+        }),
+      );
+    }
+
+    if (input.recurringExceptions.length > 0) {
+      warnings.push(
+        this.createMonthlyReviewWarning({
+          code: 'RECURRING_EXCEPTIONS_PRESENT',
+          severity: 'INFO',
+          title: 'Recurring exceptions saved for this month',
+          detail:
+            'This month includes skipped or overridden recurring occurrences that change the expected schedule.',
+          count: input.recurringExceptions.length,
+        }),
+      );
+    }
+
+    return warnings;
+  }
+
+  private createMonthlyReviewWarning(input: {
+    code: MonthlyReviewWarningCode;
+    severity: MonthlyReviewWarningResponse['severity'];
+    title: string;
+    detail: string;
+    count?: number;
+    amount?: number;
+    currency?: string;
+  }): MonthlyReviewWarningResponse {
+    return {
+      code: input.code,
+      severity: input.severity,
+      title: input.title,
+      detail: input.detail,
+      count: input.count ?? null,
+      amount: input.amount ?? null,
+      currency: input.currency ?? null,
+    };
   }
 
   private async prepareOccurrenceInput(
