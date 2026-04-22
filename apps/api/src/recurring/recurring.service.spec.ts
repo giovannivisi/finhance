@@ -14,6 +14,8 @@ import { CategoriesService } from '@transactions/categories.service';
 import { TransactionsService } from '@transactions/transactions.service';
 
 const OWNER_ID = 'local-dev';
+const USER_VISIBLE_MATERIALIZATION_ERROR =
+  'Unable to materialize this recurring rule. Review the rule configuration and try again.';
 
 function createAccount(overrides: Partial<Record<string, unknown>> = {}) {
   const now = new Date('2026-04-21T10:00:00.000Z');
@@ -146,6 +148,7 @@ describe('RecurringService', () => {
     };
     recurringTransactionOccurrence: {
       findMany: jest.Mock;
+      findFirst: jest.Mock;
       upsert: jest.Mock;
       deleteMany: jest.Mock;
     };
@@ -182,6 +185,7 @@ describe('RecurringService', () => {
       },
       recurringTransactionOccurrence: {
         findMany: jest.fn(),
+        findFirst: jest.fn(),
         upsert: jest.fn(),
         deleteMany: jest.fn(),
       },
@@ -209,6 +213,7 @@ describe('RecurringService', () => {
     };
 
     prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([]);
+    prisma.recurringTransactionOccurrence.findFirst.mockResolvedValue(null);
     prisma.$transaction.mockImplementation(
       (callback: (client: typeof prisma) => unknown) => callback(prisma),
     );
@@ -300,6 +305,12 @@ describe('RecurringService', () => {
     expect(nthCreateCall(2).data.postedAt?.toISOString().slice(0, 10)).toBe(
       '2026-04-30',
     );
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
+    );
   });
 
   it('materializes transfer pairs exactly once per month', async () => {
@@ -374,9 +385,24 @@ describe('RecurringService', () => {
     expect(firstRuleUpdateCall()).toMatchObject({
       where: { id: 'rule-1' },
       data: {
-        lastMaterializationError: 'Archived accounts cannot be newly assigned.',
+        lastMaterializationError: USER_VISIBLE_MATERIALIZATION_ERROR,
       },
     });
+  });
+
+  it('rejects recurring rules whose start date exceeds the backfill window', async () => {
+    await expect(
+      service.create(OWNER_ID, {
+        name: 'Old rent',
+        kind: TransactionKind.EXPENSE,
+        amount: 42,
+        dayOfMonth: 1,
+        startDate: '2024-04-01',
+        accountId: 'account-1',
+        direction: TransactionDirection.OUTFLOW,
+        description: 'Old rent',
+      }),
+    ).rejects.toThrow('24 months in the past');
   });
 
   it('skips a due occurrence and removes generated recurring rows', async () => {
@@ -498,6 +524,29 @@ describe('RecurringService', () => {
         description: 'Bad override',
       }),
     ).rejects.toThrow('selected occurrence month');
+  });
+
+  it('rejects overrides with impossible calendar dates', async () => {
+    const rule = createRecurringRule({
+      kind: TransactionKind.EXPENSE,
+      direction: TransactionDirection.OUTFLOW,
+      categoryId: null,
+      counterparty: null,
+      startDate: new Date('2026-02-01T00:00:00.000Z'),
+    });
+
+    prisma.recurringTransactionRule.findFirst.mockResolvedValue(rule);
+
+    await expect(
+      service.upsertOccurrence(OWNER_ID, rule.id, '2026-02', {
+        status: 'OVERRIDDEN',
+        amount: 120,
+        postedAtDate: '2026-02-31',
+        accountId: 'account-1',
+        direction: 'OUTFLOW',
+        description: 'Bad override',
+      }),
+    ).rejects.toThrow('postedAtDate is invalid');
   });
 
   it('returns a month-bounded review with snapshot delta and reconciliation highlights', async () => {

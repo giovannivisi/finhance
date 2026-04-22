@@ -140,7 +140,12 @@ describe('Recurring routes (e2e)', () => {
   });
 
   it('returns recurring rules through GET /recurring-rules', async () => {
-    recurring.findAll.mockResolvedValue([createRuleModel()]);
+    recurring.findAll.mockResolvedValue([
+      createRuleModel({
+        lastMaterializationError: 'Raw database error: duplicate key value',
+        lastMaterializationErrorAt: new Date('2026-04-21T09:00:00.000Z'),
+      }),
+    ]);
 
     await request(httpServer())
       .get('/recurring-rules')
@@ -148,6 +153,9 @@ describe('Recurring routes (e2e)', () => {
       .expect((response: ResponseWithBody) => {
         const body = bodyAs<RecurringTransactionRuleResponse[]>(response);
         expect(body[0]?.name).toBe('Salary');
+        expect(body[0]?.lastMaterializationError).toBe(
+          'Unable to materialize this recurring rule. Review the rule configuration and try again.',
+        );
       });
   });
 

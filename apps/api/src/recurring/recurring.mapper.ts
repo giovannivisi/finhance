@@ -11,6 +11,9 @@ import type {
   NetWorthSnapshot,
 } from '@prisma/client';
 
+const USER_VISIBLE_MATERIALIZATION_ERROR =
+  'Unable to materialize this recurring rule. Review the rule configuration and try again.';
+
 function decimalToNumber(value: Prisma.Decimal): number {
   return value.toNumber();
 }
@@ -39,7 +42,9 @@ export function toRecurringTransactionRuleResponse(
     destinationAccountId: rule.destinationAccountId,
     description: rule.description,
     notes: rule.notes,
-    lastMaterializationError: rule.lastMaterializationError,
+    lastMaterializationError: rule.lastMaterializationError
+      ? USER_VISIBLE_MATERIALIZATION_ERROR
+      : null,
     lastMaterializationErrorAt:
       rule.lastMaterializationErrorAt?.toISOString() ?? null,
     createdAt: rule.createdAt.toISOString(),

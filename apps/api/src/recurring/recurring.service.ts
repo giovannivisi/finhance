@@ -29,6 +29,9 @@ import { UpdateRecurringTransactionRuleDto } from '@recurring/dto/update-recurri
 
 const ROME_TIME_ZONE = 'Europe/Rome';
 const ZERO = new Prisma.Decimal(0);
+const MAX_RECURRING_BACKFILL_MONTHS = 24;
+const USER_VISIBLE_MATERIALIZATION_ERROR =
+  'Unable to materialize this recurring rule. Review the rule configuration and try again.';
 const MONTH_KEY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   timeZone: ROME_TIME_ZONE,
   year: 'numeric',
@@ -82,6 +85,7 @@ interface ExistingOccurrenceMapEntry {
 }
 
 type TransactionWriteClient = PrismaService | Prisma.TransactionClient;
+type RecurringMaterializationClient = PrismaService | Prisma.TransactionClient;
 
 type RecurringOccurrenceModel =
   Prisma.RecurringTransactionOccurrenceGetPayload<{
@@ -417,71 +421,6 @@ export class RecurringService {
     }
 
     const currentMonthKey = this.formatMonthKey(new Date());
-    const currentOccurrenceMonth = this.monthKeyToValue(currentMonthKey);
-    const existingRows = await this.prisma.transaction.findMany({
-      where: {
-        userId: ownerId,
-        recurringRuleId: {
-          in: rules.map((rule) => rule.id),
-        },
-      },
-      select: {
-        recurringRuleId: true,
-        recurringOccurrenceMonth: true,
-        direction: true,
-      },
-    });
-    const occurrenceExceptions =
-      await this.prisma.recurringTransactionOccurrence.findMany({
-        where: {
-          userId: ownerId,
-          recurringRuleId: {
-            in: rules.map((rule) => rule.id),
-          },
-          occurrenceMonth: {
-            lte: currentOccurrenceMonth,
-          },
-        },
-      });
-
-    const existingByRuleAndMonth = new Map<
-      string,
-      ExistingOccurrenceMapEntry
-    >();
-
-    for (const row of existingRows) {
-      if (!row.recurringRuleId || !row.recurringOccurrenceMonth) {
-        continue;
-      }
-
-      const key = this.ruleOccurrenceKey(
-        row.recurringRuleId,
-        this.monthValueToKey(row.recurringOccurrenceMonth),
-      );
-      const entry = existingByRuleAndMonth.get(key) ?? {
-        INFLOW: false,
-        OUTFLOW: false,
-      };
-
-      entry[row.direction] = true;
-      existingByRuleAndMonth.set(key, entry);
-    }
-
-    const exceptionsByRuleAndMonth = new Map<
-      string,
-      RecurringTransactionOccurrence
-    >();
-
-    for (const occurrence of occurrenceExceptions) {
-      exceptionsByRuleAndMonth.set(
-        this.ruleOccurrenceKey(
-          occurrence.recurringRuleId,
-          this.monthValueToKey(occurrence.occurrenceMonth),
-        ),
-        occurrence,
-      );
-    }
-
     let createdCount = 0;
     let failedRuleCount = 0;
 
@@ -508,172 +447,21 @@ export class RecurringService {
         let createdForRule = 0;
 
         for (const monthKey of dueMonthKeys) {
-          const occurrenceMonth = this.monthKeyToValue(monthKey);
-          const existing = existingByRuleAndMonth.get(
-            this.ruleOccurrenceKey(rule.id, monthKey),
-          ) ?? {
-            INFLOW: false,
-            OUTFLOW: false,
-          };
-          const occurrenceException = exceptionsByRuleAndMonth.get(
-            this.ruleOccurrenceKey(rule.id, monthKey),
-          );
-
-          if (occurrenceException?.status === 'SKIPPED') {
-            await this.deleteOccurrenceTransactions(
-              this.prisma,
-              ownerId,
-              rule.id,
-              monthKey,
-            );
-            existing.INFLOW = false;
-            existing.OUTFLOW = false;
-            existingByRuleAndMonth.set(
-              this.ruleOccurrenceKey(rule.id, monthKey),
-              existing,
-            );
-            continue;
-          }
-
-          if (occurrenceException?.status === 'OVERRIDDEN') {
-            const preparedOccurrence =
-              await this.prepareStoredOccurrenceOverride(
-                ownerId,
-                rule,
-                monthKey,
-                occurrenceException,
-              );
-
-            await this.replaceOccurrenceTransactions(
-              this.prisma,
-              ownerId,
-              rule,
-              monthKey,
-              preparedOccurrence.spec,
-            );
-
-            existing.INFLOW =
-              preparedOccurrence.spec.kind === 'TRANSFER' ||
-              preparedOccurrence.spec.direction === TransactionDirection.INFLOW;
-            existing.OUTFLOW =
-              preparedOccurrence.spec.kind === 'TRANSFER' ||
-              preparedOccurrence.spec.direction ===
-                TransactionDirection.OUTFLOW;
-            existingByRuleAndMonth.set(
-              this.ruleOccurrenceKey(rule.id, monthKey),
-              existing,
-            );
-            createdForRule += this.countNewRows(
-              existing,
-              preparedOccurrence.spec,
-            );
-            continue;
-          }
-
-          const defaultSpec = this.buildDefaultOccurrenceSpec(
-            rule,
-            targets,
-            monthKey,
-          );
-
-          if (targets.kind === 'TRANSFER') {
-            const transferSpec = defaultSpec as TransferOccurrenceSpec;
-            if (!existing.OUTFLOW) {
-              await this.prisma.transaction.create({
-                data: {
-                  userId: ownerId,
-                  postedAt: transferSpec.postedAt,
-                  accountId: targets.sourceAccount.id,
-                  categoryId: null,
-                  amount: transferSpec.amount,
-                  currency: targets.sourceAccount.currency,
-                  direction: TransactionDirection.OUTFLOW,
-                  kind: TransactionKind.TRANSFER,
-                  description: transferSpec.description,
-                  notes: transferSpec.notes,
-                  counterparty: null,
-                  transferGroupId: this.transferGroupId(rule.id, monthKey),
-                  recurringRuleId: rule.id,
-                  recurringOccurrenceMonth: occurrenceMonth,
-                },
-              });
-              existing.OUTFLOW = true;
-              createdForRule += 1;
-            }
-
-            if (!existing.INFLOW) {
-              await this.prisma.transaction.create({
-                data: {
-                  userId: ownerId,
-                  postedAt: transferSpec.postedAt,
-                  accountId: targets.destinationAccount.id,
-                  categoryId: null,
-                  amount: transferSpec.amount,
-                  currency: targets.destinationAccount.currency,
-                  direction: TransactionDirection.INFLOW,
-                  kind: TransactionKind.TRANSFER,
-                  description: transferSpec.description,
-                  notes: transferSpec.notes,
-                  counterparty: null,
-                  transferGroupId: this.transferGroupId(rule.id, monthKey),
-                  recurringRuleId: rule.id,
-                  recurringOccurrenceMonth: occurrenceMonth,
-                },
-              });
-              existing.INFLOW = true;
-              createdForRule += 1;
-            }
-
-            existingByRuleAndMonth.set(
-              this.ruleOccurrenceKey(rule.id, monthKey),
-              existing,
-            );
-            continue;
-          }
-
-          const standardSpec = defaultSpec as StandardOccurrenceSpec;
-
-          if (existing[rule.direction ?? TransactionDirection.OUTFLOW]) {
-            continue;
-          }
-
-          await this.prisma.transaction.create({
-            data: {
-              userId: ownerId,
-              postedAt: standardSpec.postedAt,
-              accountId: targets.account.id,
-              categoryId: targets.category?.id ?? null,
-              amount: standardSpec.amount,
-              currency: targets.account.currency,
-              direction: rule.direction ?? TransactionDirection.OUTFLOW,
-              kind: rule.kind,
-              description: standardSpec.description,
-              notes: standardSpec.notes,
-              counterparty: standardSpec.counterparty,
-              transferGroupId: null,
-              recurringRuleId: rule.id,
-              recurringOccurrenceMonth: occurrenceMonth,
+          createdForRule += await this.prisma.$transaction(
+            async (tx) =>
+              this.materializeRuleMonth(tx, ownerId, rule, monthKey, targets),
+            {
+              isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
             },
-          });
-
-          existing[rule.direction ?? TransactionDirection.OUTFLOW] = true;
-          existingByRuleAndMonth.set(
-            this.ruleOccurrenceKey(rule.id, monthKey),
-            existing,
           );
-          createdForRule += 1;
         }
 
         createdCount += createdForRule;
         await this.clearMaterializationError(rule.id);
       } catch (error) {
         failedRuleCount += 1;
-        await this.persistMaterializationError(
-          rule.id,
-          error instanceof Error
-            ? error.message
-            : 'Unable to materialize this recurring rule.',
-        );
+        void error;
+        await this.persistMaterializationError(rule.id);
       }
     }
 
@@ -682,6 +470,160 @@ export class RecurringService {
       processedRuleCount: rules.length,
       failedRuleCount,
     };
+  }
+
+  private async materializeRuleMonth(
+    client: RecurringMaterializationClient,
+    ownerId: string,
+    rule: RecurringTransactionRule,
+    monthKey: string,
+    targets: PreparedRuleTargets,
+  ): Promise<number> {
+    const occurrenceMonth = this.monthKeyToValue(monthKey);
+    const [rows, occurrenceException] = await Promise.all([
+      client.transaction.findMany({
+        where: {
+          userId: ownerId,
+          recurringRuleId: rule.id,
+          recurringOccurrenceMonth: occurrenceMonth,
+        },
+        select: {
+          direction: true,
+        },
+      }),
+      client.recurringTransactionOccurrence.findFirst({
+        where: {
+          userId: ownerId,
+          recurringRuleId: rule.id,
+          occurrenceMonth,
+        },
+      }),
+    ]);
+    const existing = this.buildExistingOccurrenceEntry(rows);
+
+    if (occurrenceException?.status === 'SKIPPED') {
+      await this.deleteOccurrenceTransactions(
+        client,
+        ownerId,
+        rule.id,
+        monthKey,
+      );
+      return 0;
+    }
+
+    if (occurrenceException?.status === 'OVERRIDDEN') {
+      const preparedOccurrence = await this.prepareStoredOccurrenceOverride(
+        ownerId,
+        rule,
+        monthKey,
+        occurrenceException,
+      );
+      const createdRows = this.countNewRows(existing, preparedOccurrence.spec);
+
+      await this.replaceOccurrenceTransactions(
+        client,
+        ownerId,
+        rule,
+        monthKey,
+        preparedOccurrence.spec,
+      );
+
+      return createdRows;
+    }
+
+    const defaultSpec = this.buildDefaultOccurrenceSpec(
+      rule,
+      targets,
+      monthKey,
+    );
+
+    if (defaultSpec.kind === 'TRANSFER') {
+      if (targets.kind !== 'TRANSFER') {
+        throw new Error('Transfer materialization requires transfer targets.');
+      }
+
+      const { sourceAccount, destinationAccount } = targets;
+      const createdRows = this.countNewRows(existing, defaultSpec);
+
+      if (createdRows === 0) {
+        return 0;
+      }
+
+      if (!existing.OUTFLOW) {
+        await client.transaction.create({
+          data: {
+            userId: ownerId,
+            postedAt: defaultSpec.postedAt,
+            accountId: sourceAccount.id,
+            categoryId: null,
+            amount: defaultSpec.amount,
+            currency: sourceAccount.currency,
+            direction: TransactionDirection.OUTFLOW,
+            kind: TransactionKind.TRANSFER,
+            description: defaultSpec.description,
+            notes: defaultSpec.notes,
+            counterparty: null,
+            transferGroupId: this.transferGroupId(rule.id, monthKey),
+            recurringRuleId: rule.id,
+            recurringOccurrenceMonth: occurrenceMonth,
+          },
+        });
+      }
+
+      if (!existing.INFLOW) {
+        await client.transaction.create({
+          data: {
+            userId: ownerId,
+            postedAt: defaultSpec.postedAt,
+            accountId: destinationAccount.id,
+            categoryId: null,
+            amount: defaultSpec.amount,
+            currency: destinationAccount.currency,
+            direction: TransactionDirection.INFLOW,
+            kind: TransactionKind.TRANSFER,
+            description: defaultSpec.description,
+            notes: defaultSpec.notes,
+            counterparty: null,
+            transferGroupId: this.transferGroupId(rule.id, monthKey),
+            recurringRuleId: rule.id,
+            recurringOccurrenceMonth: occurrenceMonth,
+          },
+        });
+      }
+
+      return createdRows;
+    }
+
+    if (targets.kind !== 'STANDARD') {
+      throw new Error('Standard materialization requires standard targets.');
+    }
+
+    const { account, category } = targets;
+
+    if (existing[defaultSpec.direction]) {
+      return 0;
+    }
+
+    await client.transaction.create({
+      data: {
+        userId: ownerId,
+        postedAt: defaultSpec.postedAt,
+        accountId: account.id,
+        categoryId: category?.id ?? null,
+        amount: defaultSpec.amount,
+        currency: account.currency,
+        direction: defaultSpec.direction,
+        kind: rule.kind,
+        description: defaultSpec.description,
+        notes: defaultSpec.notes,
+        counterparty: defaultSpec.counterparty,
+        transferGroupId: null,
+        recurringRuleId: rule.id,
+        recurringOccurrenceMonth: occurrenceMonth,
+      },
+    });
+
+    return 1;
   }
 
   async getMonthlyReview(
@@ -1069,6 +1011,21 @@ export class RecurringService {
     return Number(!existing[spec.direction]);
   }
 
+  private buildExistingOccurrenceEntry(
+    rows: Array<{ direction: TransactionDirection }>,
+  ): ExistingOccurrenceMapEntry {
+    const entry: ExistingOccurrenceMapEntry = {
+      INFLOW: false,
+      OUTFLOW: false,
+    };
+
+    for (const row of rows) {
+      entry[row.direction] = true;
+    }
+
+    return entry;
+  }
+
   private assertOccurrenceMonthAllowed(
     rule: RecurringTransactionRule,
     monthKey: string,
@@ -1151,6 +1108,8 @@ export class RecurringService {
     if (endDateKey && endDateKey < startDateKey) {
       throw new BadRequestException('endDate must be on or after startDate.');
     }
+
+    this.assertBackfillWindowAllowed(startDateKey);
 
     const targets = await this.resolveRuleTargets(ownerId, {
       ...dto,
@@ -1385,17 +1344,28 @@ export class RecurringService {
     });
   }
 
-  private async persistMaterializationError(
-    ruleId: string,
-    message: string,
-  ): Promise<void> {
+  private async persistMaterializationError(ruleId: string): Promise<void> {
     await this.prisma.recurringTransactionRule.update({
       where: { id: ruleId },
       data: {
-        lastMaterializationError: message,
+        lastMaterializationError: USER_VISIBLE_MATERIALIZATION_ERROR,
         lastMaterializationErrorAt: new Date(),
       },
     });
+  }
+
+  private assertBackfillWindowAllowed(startDateKey: string): void {
+    const earliestAllowedMonthKey = this.addMonthsToMonthKey(
+      this.formatMonthKey(new Date()),
+      -(MAX_RECURRING_BACKFILL_MONTHS - 1),
+    );
+    const startMonthKey = this.monthKeyFromDateKey(startDateKey);
+
+    if (startMonthKey < earliestAllowedMonthKey) {
+      throw new BadRequestException(
+        `startDate cannot be more than ${MAX_RECURRING_BACKFILL_MONTHS} months in the past.`,
+      );
+    }
   }
 
   private async findLatestSnapshotOnOrBefore(
@@ -1486,8 +1456,12 @@ export class RecurringService {
   }
 
   private incrementMonthKey(monthKey: string): string {
+    return this.addMonthsToMonthKey(monthKey, 1);
+  }
+
+  private addMonthsToMonthKey(monthKey: string, amount: number): string {
     const [yearValue, monthValue] = monthKey.split('-').map(Number);
-    const next = new Date(Date.UTC(yearValue, monthValue, 1));
+    const next = new Date(Date.UTC(yearValue, monthValue - 1 + amount, 1));
 
     return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(
       2,
@@ -1524,7 +1498,10 @@ export class RecurringService {
     }
 
     const parsed = new Date(`${value}T00:00:00.000Z`);
-    if (Number.isNaN(parsed.getTime())) {
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.toISOString().slice(0, 10) !== value
+    ) {
       throw new BadRequestException(`${fieldName} is invalid.`);
     }
 
@@ -1534,6 +1511,11 @@ export class RecurringService {
   private requireMonthKey(value: string, fieldName: string): string {
     if (!/^\d{4}-\d{2}$/.test(value)) {
       throw new BadRequestException(`${fieldName} must use YYYY-MM.`);
+    }
+
+    const [yearValue, monthValue] = value.split('-').map(Number);
+    if (!yearValue || monthValue < 1 || monthValue > 12) {
+      throw new BadRequestException(`${fieldName} is invalid.`);
     }
 
     return value;
