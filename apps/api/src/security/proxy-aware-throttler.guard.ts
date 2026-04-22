@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ExecutionContext } from '@nestjs/common';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import {
+  ThrottlerGuard,
+  type ThrottlerGenerateKeyFunction,
+  type ThrottlerGetTrackerFunction,
+} from '@nestjs/throttler';
 import { resolveClientIp } from '@/security/client-ip';
 
 const THROTTLER_SKIP = 'THROTTLER:SKIP';
@@ -13,10 +17,6 @@ const THROTTLER_KEY_GENERATOR = 'THROTTLER:KEY_GENERATOR';
 type ThrottleNumeric =
   | number
   | ((context: ExecutionContext) => number | Promise<number>);
-type ThrottleTracker = (
-  req: Record<string, unknown>,
-) => string | Promise<string>;
-type ThrottleKeyGenerator = (...args: unknown[]) => string;
 
 @Injectable()
 export class ProxyAwareThrottlerGuard extends ThrottlerGuard {
@@ -49,10 +49,10 @@ export class ProxyAwareThrottlerGuard extends ThrottlerGuard {
           ThrottleNumeric | undefined
         >(THROTTLER_BLOCK_DURATION + suffix, [handler, classRef]);
         const routeOrClassGetTracker = this.reflector.getAllAndOverride<
-          ThrottleTracker | undefined
+          ThrottlerGetTrackerFunction | undefined
         >(THROTTLER_TRACKER + suffix, [handler, classRef]);
         const routeOrClassGetKeyGenerator = this.reflector.getAllAndOverride<
-          ThrottleKeyGenerator | undefined
+          ThrottlerGenerateKeyFunction | undefined
         >(THROTTLER_KEY_GENERATOR + suffix, [handler, classRef]);
         const hasExplicitThrottle =
           routeOrClassLimit !== undefined ||
@@ -77,14 +77,16 @@ export class ProxyAwareThrottlerGuard extends ThrottlerGuard {
           context,
           routeOrClassBlockDuration ?? namedThrottler.blockDuration ?? ttl,
         );
-        const getTracker =
+        const getTracker: ThrottlerGetTrackerFunction =
           routeOrClassGetTracker ??
           namedThrottler.getTracker ??
-          this.commonOptions.getTracker;
-        const generateKey =
+          this.commonOptions.getTracker ??
+          ((req) => this.getTracker(req));
+        const generateKey: ThrottlerGenerateKeyFunction =
           routeOrClassGetKeyGenerator ??
           namedThrottler.generateKey ??
-          this.commonOptions.generateKey;
+          this.commonOptions.generateKey ??
+          ((ctx, tracker, name) => this.generateKey(ctx, tracker, name));
 
         return this.handleRequest({
           context,
