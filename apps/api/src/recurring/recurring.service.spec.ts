@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import {
   CategoryType,
   NetWorthSnapshot,
+  RecurringOccurrenceStatus,
   RecurringTransactionRule,
   TransactionDirection,
   TransactionKind,
@@ -104,18 +105,54 @@ function createSnapshot(
   };
 }
 
+function createOccurrenceModel(
+  rule: RecurringTransactionRule,
+  overrides: Partial<Record<string, unknown>> = {},
+) {
+  const now = new Date('2026-04-21T10:00:00.000Z');
+
+  return {
+    id: 'occurrence-1',
+    userId: OWNER_ID,
+    recurringRuleId: rule.id,
+    occurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+    status: RecurringOccurrenceStatus.SKIPPED,
+    overrideAmount: null,
+    overridePostedAtDate: null,
+    overrideAccountId: null,
+    overrideDirection: null,
+    overrideCategoryId: null,
+    overrideCounterparty: null,
+    overrideSourceAccountId: null,
+    overrideDestinationAccountId: null,
+    overrideDescription: null,
+    overrideNotes: null,
+    createdAt: now,
+    updatedAt: now,
+    recurringRule: rule,
+    ...overrides,
+  };
+}
+
 describe('RecurringService', () => {
   let service: RecurringService;
   let prisma: {
+    $transaction: jest.Mock;
     recurringTransactionRule: {
       findMany: jest.Mock;
       findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
     };
+    recurringTransactionOccurrence: {
+      findMany: jest.Mock;
+      upsert: jest.Mock;
+      deleteMany: jest.Mock;
+    };
     transaction: {
       findMany: jest.Mock;
       create: jest.Mock;
+      deleteMany: jest.Mock;
     };
     netWorthSnapshot: {
       findFirst: jest.Mock;
@@ -136,15 +173,22 @@ describe('RecurringService', () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-21T10:00:00.000Z'));
 
     prisma = {
+      $transaction: jest.fn(),
       recurringTransactionRule: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
       },
+      recurringTransactionOccurrence: {
+        findMany: jest.fn(),
+        upsert: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       transaction: {
         findMany: jest.fn(),
         create: jest.fn(),
+        deleteMany: jest.fn(),
       },
       netWorthSnapshot: {
         findFirst: jest.fn(),
@@ -163,6 +207,11 @@ describe('RecurringService', () => {
     transactions = {
       getCashflowSummary: jest.fn().mockResolvedValue([]),
     };
+
+    prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([]);
+    prisma.$transaction.mockImplementation(
+      (callback: (client: typeof prisma) => unknown) => callback(prisma),
+    );
 
     service = new RecurringService(
       prisma as never,
@@ -330,6 +379,127 @@ describe('RecurringService', () => {
     });
   });
 
+  it('skips a due occurrence and removes generated recurring rows', async () => {
+    const rule = createRecurringRule({
+      kind: TransactionKind.EXPENSE,
+      direction: TransactionDirection.OUTFLOW,
+      categoryId: null,
+      counterparty: null,
+      description: 'Rent',
+    });
+
+    prisma.recurringTransactionRule.findFirst.mockResolvedValue(rule);
+    prisma.recurringTransactionOccurrence.upsert.mockResolvedValue(
+      createOccurrenceModel(rule, {
+        status: RecurringOccurrenceStatus.SKIPPED,
+      }),
+    );
+    prisma.transaction.deleteMany.mockResolvedValue({ count: 1 });
+    prisma.recurringTransactionRule.update.mockResolvedValue(rule);
+
+    const occurrence = await service.upsertOccurrence(
+      OWNER_ID,
+      rule.id,
+      '2026-04',
+      {
+        status: 'SKIPPED',
+      },
+    );
+
+    expect(occurrence.status).toBe('SKIPPED');
+    expect(prisma.transaction.deleteMany).toHaveBeenCalledWith({
+      where: {
+        userId: OWNER_ID,
+        recurringRuleId: rule.id,
+        recurringOccurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    });
+    expect(prisma.transaction.create).not.toHaveBeenCalled();
+  });
+
+  it('overrides transfer occurrences by recreating both recurring rows', async () => {
+    const rule = createRecurringRule({
+      kind: TransactionKind.TRANSFER,
+      direction: null,
+      accountId: null,
+      categoryId: null,
+      counterparty: null,
+      sourceAccountId: 'source-account',
+      destinationAccountId: 'destination-account',
+      description: 'Broker move',
+    });
+
+    prisma.recurringTransactionRule.findFirst.mockResolvedValue(rule);
+    accounts.getAssignableAccount
+      .mockResolvedValueOnce(
+        createAccount({ id: 'source-account', currency: 'EUR' }),
+      )
+      .mockResolvedValueOnce(
+        createAccount({ id: 'destination-account', currency: 'EUR' }),
+      );
+    prisma.recurringTransactionOccurrence.upsert.mockResolvedValue(
+      createOccurrenceModel(rule, {
+        status: RecurringOccurrenceStatus.OVERRIDDEN,
+        overrideAmount: new Prisma.Decimal('250'),
+        overridePostedAtDate: new Date('2026-04-20T00:00:00.000Z'),
+        overrideSourceAccountId: 'source-account',
+        overrideDestinationAccountId: 'destination-account',
+        overrideDescription: 'Broker move override',
+      }),
+    );
+    prisma.transaction.deleteMany.mockResolvedValue({ count: 2 });
+    prisma.transaction.create.mockResolvedValue({});
+    prisma.recurringTransactionRule.update.mockResolvedValue(rule);
+
+    await service.upsertOccurrence(OWNER_ID, rule.id, '2026-04', {
+      status: 'OVERRIDDEN',
+      amount: 250,
+      postedAtDate: '2026-04-20',
+      sourceAccountId: 'source-account',
+      destinationAccountId: 'destination-account',
+      description: 'Broker move override',
+    });
+
+    expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
+    const createCalls = prisma.transaction.create.mock.calls as Array<
+      [{ data: Record<string, unknown> }]
+    >;
+    expect(createCalls[0]?.[0]).toMatchObject({
+      data: {
+        recurringRuleId: rule.id,
+        direction: TransactionDirection.OUTFLOW,
+      },
+    });
+    expect(createCalls[1]?.[0]).toMatchObject({
+      data: {
+        recurringRuleId: rule.id,
+        direction: TransactionDirection.INFLOW,
+      },
+    });
+  });
+
+  it('rejects overrides whose posted date leaves the selected month', async () => {
+    const rule = createRecurringRule({
+      kind: TransactionKind.EXPENSE,
+      direction: TransactionDirection.OUTFLOW,
+      categoryId: null,
+      counterparty: null,
+    });
+
+    prisma.recurringTransactionRule.findFirst.mockResolvedValue(rule);
+
+    await expect(
+      service.upsertOccurrence(OWNER_ID, rule.id, '2026-04', {
+        status: 'OVERRIDDEN',
+        amount: 120,
+        postedAtDate: '2026-05-01',
+        accountId: 'account-1',
+        direction: 'OUTFLOW',
+        description: 'Bad override',
+      }),
+    ).rejects.toThrow('selected occurrence month');
+  });
+
   it('returns a month-bounded review with snapshot delta and reconciliation highlights', async () => {
     transactions.getCashflowSummary.mockResolvedValue([
       {
@@ -382,6 +552,11 @@ describe('RecurringService', () => {
         canCreateAdjustment: true,
       },
     ]);
+    prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([
+      createOccurrenceModel(createRecurringRule(), {
+        status: RecurringOccurrenceStatus.SKIPPED,
+      }),
+    ]);
 
     const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
 
@@ -395,5 +570,7 @@ describe('RecurringService', () => {
     expect(review.netWorthDelta).toBe(300);
     expect(review.reconciliationHighlights).toHaveLength(1);
     expect(review.reconciliationHighlights[0]?.accountName).toBe('Broker');
+    expect(review.recurringExceptions).toHaveLength(1);
+    expect(review.recurringExceptions[0]?.status).toBe('SKIPPED');
   });
 });

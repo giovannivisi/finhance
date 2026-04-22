@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type {
   MonthlyReviewResponse,
+  RecurringOccurrenceResponse,
   RecurringTransactionRuleResponse,
 } from '@finhance/shared';
 import type { AccountReconciliationModel } from '@accounts/accounts.service';
@@ -46,12 +47,45 @@ export function toRecurringTransactionRuleResponse(
   };
 }
 
+type RecurringOccurrenceWithRule =
+  Prisma.RecurringTransactionOccurrenceGetPayload<{
+    include: {
+      recurringRule: true;
+    };
+  }>;
+
+export function toRecurringOccurrenceResponse(
+  occurrence: RecurringOccurrenceWithRule,
+): RecurringOccurrenceResponse {
+  return {
+    id: occurrence.id,
+    recurringRuleId: occurrence.recurringRuleId,
+    recurringRuleName: occurrence.recurringRule.name,
+    kind: occurrence.recurringRule.kind,
+    occurrenceMonth: occurrence.occurrenceMonth.toISOString().slice(0, 7),
+    status: occurrence.status,
+    amount: occurrence.overrideAmount?.toNumber() ?? null,
+    postedAtDate: toDateOnly(occurrence.overridePostedAtDate),
+    accountId: occurrence.overrideAccountId,
+    direction: occurrence.overrideDirection,
+    categoryId: occurrence.overrideCategoryId,
+    counterparty: occurrence.overrideCounterparty,
+    sourceAccountId: occurrence.overrideSourceAccountId,
+    destinationAccountId: occurrence.overrideDestinationAccountId,
+    description: occurrence.overrideDescription,
+    notes: occurrence.overrideNotes,
+    createdAt: occurrence.createdAt.toISOString(),
+    updatedAt: occurrence.updatedAt.toISOString(),
+  };
+}
+
 export function toMonthlyReviewResponse(input: {
   month: string;
   cashflow: MonthlyReviewResponse['cashflow'];
   openingSnapshot: NetWorthSnapshot | null;
   closingSnapshot: NetWorthSnapshot | null;
   reconciliationHighlights: AccountReconciliationModel[];
+  recurringExceptions: RecurringOccurrenceWithRule[];
 }): MonthlyReviewResponse {
   const openingNetWorth =
     input.openingSnapshot?.netWorthTotal.toNumber() ?? null;
@@ -75,6 +109,9 @@ export function toMonthlyReviewResponse(input: {
     ),
     reconciliationHighlights: input.reconciliationHighlights.map(
       toAccountReconciliationResponse,
+    ),
+    recurringExceptions: input.recurringExceptions.map(
+      toRecurringOccurrenceResponse,
     ),
   };
 }

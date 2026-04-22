@@ -4,6 +4,7 @@ import Header from "@components/Header";
 import { api } from "@lib/api";
 import { formatCurrency } from "@lib/format";
 import { CATEGORY_TYPE_LABELS } from "@lib/categories";
+import { TRANSACTION_KIND_LABELS } from "@lib/transactions";
 
 export const dynamic = "force-dynamic";
 
@@ -307,6 +308,56 @@ export default async function ReviewPage({
                         </div>
                       )}
                     </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Recurring exceptions this month
+                    </h3>
+                    {review.recurringExceptions.length === 0 ? (
+                      <p className="mt-2 text-sm text-gray-500">
+                        No recurring skips or overrides were saved for this
+                        month.
+                      </p>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {review.recurringExceptions.map((item) => (
+                          <div
+                            key={`${item.recurringRuleId}:${item.occurrenceMonth}`}
+                            className="rounded-2xl bg-gray-50 px-4 py-3 text-sm"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  {item.recurringRuleName}
+                                </p>
+                                <p className="text-gray-500">
+                                  {TRANSACTION_KIND_LABELS[item.kind]}
+                                </p>
+                              </div>
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                                  item.status === "SKIPPED"
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-blue-100 text-blue-800"
+                                }`}
+                              >
+                                {item.status}
+                              </span>
+                            </div>
+                            {item.status === "OVERRIDDEN" ? (
+                              <p className="mt-1 text-gray-500">
+                                {item.description ?? "Override"}
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-gray-500">
+                                Skipped for {item.occurrenceMonth}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </article>
               ))

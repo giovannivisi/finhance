@@ -9,6 +9,7 @@ import { Prisma, TransactionDirection, TransactionKind } from '@prisma/client';
 import type {
   MaterializeRecurringRulesResponse,
   MonthlyReviewResponse,
+  RecurringOccurrenceResponse,
   RecurringTransactionRuleResponse,
 } from '@finhance/shared';
 
@@ -49,13 +50,44 @@ function createRuleModel(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+function createOccurrenceModel(
+  overrides: Partial<Record<string, unknown>> = {},
+) {
+  const now = new Date('2026-04-21T10:00:00.000Z');
+
+  return {
+    id: 'occurrence-1',
+    userId: OWNER_ID,
+    recurringRuleId: 'rule-1',
+    occurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+    status: 'SKIPPED',
+    overrideAmount: null,
+    overridePostedAtDate: null,
+    overrideAccountId: null,
+    overrideDirection: null,
+    overrideCategoryId: null,
+    overrideCounterparty: null,
+    overrideSourceAccountId: null,
+    overrideDestinationAccountId: null,
+    overrideDescription: null,
+    overrideNotes: null,
+    createdAt: now,
+    updatedAt: now,
+    recurringRule: createRuleModel(),
+    ...overrides,
+  };
+}
+
 describe('Recurring routes (e2e)', () => {
   let app: INestApplication;
   let recurring: {
     findAll: jest.Mock;
     findOne: jest.Mock;
+    findOccurrences: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    upsertOccurrence: jest.Mock;
+    clearOccurrence: jest.Mock;
     remove: jest.Mock;
     materialize: jest.Mock;
     getMonthlyReview: jest.Mock;
@@ -69,8 +101,11 @@ describe('Recurring routes (e2e)', () => {
     recurring = {
       findAll: jest.fn(),
       findOne: jest.fn(),
+      findOccurrences: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      upsertOccurrence: jest.fn(),
+      clearOccurrence: jest.fn(),
       remove: jest.fn(),
       materialize: jest.fn(),
       getMonthlyReview: jest.fn(),
@@ -139,6 +174,49 @@ describe('Recurring routes (e2e)', () => {
       });
   });
 
+  it('returns recurring occurrences through GET /recurring-rules/:id/occurrences', async () => {
+    recurring.findOccurrences.mockResolvedValue([createOccurrenceModel()]);
+
+    await request(httpServer())
+      .get('/recurring-rules/rule-1/occurrences')
+      .expect(200)
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<RecurringOccurrenceResponse[]>(response);
+        expect(body[0]?.status).toBe('SKIPPED');
+        expect(body[0]?.recurringRuleName).toBe('Salary');
+      });
+  });
+
+  it('writes recurring occurrence overrides through PUT /recurring-rules/:id/occurrences/:month', async () => {
+    recurring.upsertOccurrence.mockResolvedValue(
+      createOccurrenceModel({
+        status: 'OVERRIDDEN',
+        overrideAmount: new Prisma.Decimal('120'),
+        overridePostedAtDate: new Date('2026-04-20T00:00:00.000Z'),
+        overrideAccountId: 'account-1',
+        overrideDirection: TransactionDirection.INFLOW,
+        overrideDescription: 'Salary override',
+      }),
+    );
+
+    await request(httpServer())
+      .put('/recurring-rules/rule-1/occurrences/2026-04')
+      .send({
+        status: 'OVERRIDDEN',
+        amount: 120,
+        postedAtDate: '2026-04-20',
+        accountId: 'account-1',
+        direction: 'INFLOW',
+        description: 'Salary override',
+      })
+      .expect(200)
+      .expect((response: ResponseWithBody) => {
+        expect(bodyAs<RecurringOccurrenceResponse>(response).status).toBe(
+          'OVERRIDDEN',
+        );
+      });
+  });
+
   it('returns materialization counts through POST /recurring-rules/materialize', async () => {
     recurring.materialize.mockResolvedValue({
       createdCount: 2,
@@ -166,6 +244,7 @@ describe('Recurring routes (e2e)', () => {
       openingSnapshotDate: '2026-03-31',
       closingSnapshotDate: '2026-04-30',
       reconciliationHighlights: [],
+      recurringExceptions: [],
     } satisfies MonthlyReviewResponse);
 
     await request(httpServer())
