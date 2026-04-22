@@ -41,6 +41,7 @@ import { OperationLockService } from '@/request-safety/operation-lock.service';
 const ROME_TIME_ZONE = 'Europe/Rome';
 const ZERO = new Prisma.Decimal(0);
 const MAX_RECURRING_BACKFILL_MONTHS = 24;
+const RECURRING_MATERIALIZE_COOLDOWN_MS = 1000 * 15;
 const USER_VISIBLE_MATERIALIZATION_ERROR =
   'Unable to materialize this recurring rule. Review the rule configuration and try again.';
 const MONTH_KEY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
@@ -442,6 +443,9 @@ export class RecurringService {
         userId: ownerId,
         type: OperationType.RECURRING_MATERIALIZE,
         inProgressMessage: 'Recurring materialization already in progress.',
+        cooldownMs: RECURRING_MATERIALIZE_COOLDOWN_MS,
+        cooldownMessage: (remainingSeconds) =>
+          `Recurring materialization is cooling down. Try again in ${remainingSeconds}s.`,
       },
       async () => {
         const rules = await this.prisma.recurringTransactionRule.findMany({

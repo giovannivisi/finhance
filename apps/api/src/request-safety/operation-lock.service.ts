@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { OperationType, Prisma } from '@prisma/client';
 import { PrismaService } from '@prisma/prisma.service';
@@ -14,10 +15,15 @@ interface RunExclusiveOptions {
   inProgressMessage: string;
   cooldownMs?: number;
   cooldownMessage?: (remainingSeconds: number) => string;
+  staleLockMs?: number;
 }
+
+export const OPERATION_LOCK_DEFAULT_STALE_MS = 1000 * 60 * 10;
 
 @Injectable()
 export class OperationLockService {
+  private readonly logger = new Logger(OperationLockService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async runExclusive<T>(
@@ -40,10 +46,11 @@ export class OperationLockService {
   private async claim(
     options: RunExclusiveOptions,
     startedAt: Date,
-    attempt = 0,
   ): Promise<void> {
-    try {
-      await this.prisma.$transaction(
+    const staleLockMs = options.staleLockMs ?? OPERATION_LOCK_DEFAULT_STALE_MS;
+
+    await this.withRetry(() =>
+      this.prisma.$transaction(
         async (tx) => {
           const state = await tx.operationState.findUnique({
             where: {
@@ -55,7 +62,13 @@ export class OperationLockService {
           });
 
           if (state?.startedAt) {
-            throw new ConflictException(options.inProgressMessage);
+            const age = startedAt.getTime() - state.startedAt.getTime();
+            if (age < staleLockMs) {
+              throw new ConflictException(options.inProgressMessage);
+            }
+            this.logger.warn(
+              `Reaping stale ${options.type} lock for user ${options.userId} after ${age}ms`,
+            );
           }
 
           if (
@@ -101,14 +114,8 @@ export class OperationLockService {
         {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
         },
-      );
-    } catch (error) {
-      if (attempt < 2 && this.isRetryablePrismaError(error)) {
-        return this.claim(options, startedAt, attempt + 1);
-      }
-
-      throw error;
-    }
+      ),
+    );
   }
 
   private async complete(
@@ -116,30 +123,55 @@ export class OperationLockService {
     type: OperationType,
     completedAt: Date,
   ): Promise<void> {
-    await this.prisma.operationState.update({
-      where: {
-        userId_type: {
-          userId,
-          type,
+    await this.withRetry(() =>
+      this.prisma.operationState.update({
+        where: {
+          userId_type: {
+            userId,
+            type,
+          },
         },
-      },
-      data: {
-        startedAt: null,
-        lastSucceededAt: completedAt,
-      },
-    });
+        data: {
+          startedAt: null,
+          lastSucceededAt: completedAt,
+        },
+      }),
+    );
   }
 
   private async release(userId: string, type: OperationType): Promise<void> {
-    await this.prisma.operationState.updateMany({
-      where: {
-        userId,
-        type,
-      },
-      data: {
-        startedAt: null,
-      },
-    });
+    try {
+      await this.withRetry(() =>
+        this.prisma.operationState.updateMany({
+          where: {
+            userId,
+            type,
+          },
+          data: {
+            startedAt: null,
+          },
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to release operation lock ${type} for user ${userId}: ${this.describeError(error)}`,
+      );
+    }
+  }
+
+  private async withRetry<T>(
+    operation: () => Promise<T>,
+    attempt = 0,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt < 2 && this.isRetryablePrismaError(error)) {
+        return this.withRetry(operation, attempt + 1);
+      }
+
+      throw error;
+    }
   }
 
   private isRetryablePrismaError(error: unknown): boolean {
@@ -156,5 +188,12 @@ export class OperationLockService {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === code
     );
+  }
+
+  private describeError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
   }
 }

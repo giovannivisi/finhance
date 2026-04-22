@@ -50,14 +50,27 @@ export function getApiUrl(path: string): string {
 }
 
 export function createIdempotencyKey(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
+  if (typeof crypto === "undefined") {
+    throw new Error(
+      "Secure random source is unavailable; cannot generate idempotency key.",
+    );
+  }
+
+  if (typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
 
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  if (typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+      "",
+    );
+  }
+
+  throw new Error(
+    "Secure random source is unavailable; cannot generate idempotency key.",
+  );
 }
 
 function isFormDataBody(body: BodyInit | null | undefined): body is FormData {

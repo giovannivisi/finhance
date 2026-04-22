@@ -194,7 +194,8 @@ describe('Import routes (e2e)', () => {
     );
 
     prisma.importBatch.create.mockImplementation(
-      ({ data }: { data: Record<string, unknown> }) => createImportBatch(data),
+      ({ data }: { data: Record<string, unknown> }) =>
+        createImportBatch({ ...data, id: 'batch-1' }),
     );
     prisma.importBatch.update.mockImplementation(
       ({ data }: { data: Record<string, unknown> }) =>

@@ -2,6 +2,9 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { IdempotencyRequestStatus, Prisma } from '@prisma/client';
@@ -12,6 +15,13 @@ const IDEMPOTENCY_KEY_IN_PROGRESS_MESSAGE =
   'A request with this Idempotency-Key is already in progress.';
 const IDEMPOTENCY_KEY_CONFLICT_MESSAGE =
   'This Idempotency-Key was already used for a different request.';
+
+export const IDEMPOTENCY_MAX_CACHED_BODY_BYTES = 1024 * 1024;
+export const IDEMPOTENCY_COMPLETED_TTL_MS = 1000 * 60 * 60 * 24;
+export const IDEMPOTENCY_IN_PROGRESS_STALE_MS = 1000 * 60 * 10;
+export const IDEMPOTENCY_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
+
+const DANGEROUS_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 interface ExecuteJsonOptions<T> {
   userId: string;
@@ -33,9 +43,37 @@ interface IdempotencyReservation<T> {
 
 type IdempotencyClient = PrismaService | Prisma.TransactionClient;
 
+type RequestKey = {
+  userId: string;
+  method: string;
+  routePath: string;
+  idempotencyKey: string;
+};
+
 @Injectable()
-export class IdempotencyService {
+export class IdempotencyService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(IdempotencyService.name);
+  private cleanupTimer: NodeJS.Timeout | null = null;
+
   constructor(private readonly prisma: PrismaService) {}
+
+  onModuleInit(): void {
+    this.cleanupTimer = setInterval(() => {
+      void this.cleanupStaleRecords().catch((error) => {
+        this.logger.warn(
+          `Idempotency cleanup failed: ${this.describeError(error)}`,
+        );
+      });
+    }, IDEMPOTENCY_CLEANUP_INTERVAL_MS);
+    this.cleanupTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+  }
 
   async executeJson<T>(
     options: ExecuteJsonOptions<T>,
@@ -66,6 +104,40 @@ export class IdempotencyService {
       await this.releaseInProgressRequest(requestKey);
       throw error;
     }
+  }
+
+  async cleanupStaleRecords(now: Date = new Date()): Promise<{
+    completedDeleted: number;
+    inProgressDeleted: number;
+  }> {
+    const completedCutoff = new Date(
+      now.getTime() - IDEMPOTENCY_COMPLETED_TTL_MS,
+    );
+    const inProgressCutoff = new Date(
+      now.getTime() - IDEMPOTENCY_IN_PROGRESS_STALE_MS,
+    );
+
+    const completed = await this.prisma.idempotencyRequest.deleteMany({
+      where: {
+        status: IdempotencyRequestStatus.COMPLETED,
+        OR: [
+          { completedAt: { lt: completedCutoff } },
+          { completedAt: null, updatedAt: { lt: completedCutoff } },
+        ],
+      },
+    });
+
+    const inProgress = await this.prisma.idempotencyRequest.deleteMany({
+      where: {
+        status: IdempotencyRequestStatus.IN_PROGRESS,
+        updatedAt: { lt: inProgressCutoff },
+      },
+    });
+
+    return {
+      completedDeleted: completed.count,
+      inProgressDeleted: inProgress.count,
+    };
   }
 
   private requireIdempotencyKey(value: string | string[] | undefined): string {
@@ -116,7 +188,9 @@ export class IdempotencyService {
 
     if (typeof value === 'object') {
       const entries = Object.entries(value as Record<string, unknown>)
-        .filter(([, entry]) => entry !== undefined)
+        .filter(
+          ([key, entry]) => entry !== undefined && !DANGEROUS_KEYS.has(key),
+        )
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([key, entry]) => [key, this.normalizeValue(entry)]);
 
@@ -131,40 +205,23 @@ export class IdempotencyService {
   }
 
   private async reserveRequest<T>(
-    requestKey: {
-      userId: string;
-      method: string;
-      routePath: string;
-      idempotencyKey: string;
-    },
+    requestKey: RequestKey,
     fingerprint: string,
-    attempt = 0,
   ): Promise<IdempotencyReservation<T> | null> {
-    try {
-      return await this.prisma.$transaction(
+    return this.withRetry(() =>
+      this.prisma.$transaction(
         async (tx) =>
           this.reserveRequestTransaction<T>(tx, requestKey, fingerprint),
         {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
         },
-      );
-    } catch (error) {
-      if (attempt < 2 && this.isRetryablePrismaError(error)) {
-        return this.reserveRequest(requestKey, fingerprint, attempt + 1);
-      }
-
-      throw error;
-    }
+      ),
+    );
   }
 
   private async reserveRequestTransaction<T>(
     tx: IdempotencyClient,
-    requestKey: {
-      userId: string;
-      method: string;
-      routePath: string;
-      idempotencyKey: string;
-    },
+    requestKey: RequestKey,
     fingerprint: string,
   ): Promise<IdempotencyReservation<T> | null> {
     const existing = await tx.idempotencyRequest.findUnique({
@@ -204,45 +261,78 @@ export class IdempotencyService {
   }
 
   private async completeRequest<T>(
-    requestKey: {
-      userId: string;
-      method: string;
-      routePath: string;
-      idempotencyKey: string;
-    },
+    requestKey: RequestKey,
     result: {
       statusCode: number;
       body: T | undefined;
     },
   ): Promise<void> {
-    await this.prisma.idempotencyRequest.update({
-      where: {
-        userId_method_routePath_idempotencyKey: requestKey,
-      },
-      data: {
-        status: IdempotencyRequestStatus.COMPLETED,
-        responseStatusCode: result.statusCode,
-        responseJson:
-          result.body === undefined
-            ? Prisma.JsonNull
-            : (result.body as Prisma.InputJsonValue),
-        completedAt: new Date(),
-      },
-    });
+    const shouldStoreBody = this.shouldStoreBody(result.body);
+
+    await this.withRetry(() =>
+      this.prisma.idempotencyRequest.update({
+        where: {
+          userId_method_routePath_idempotencyKey: requestKey,
+        },
+        data: {
+          status: IdempotencyRequestStatus.COMPLETED,
+          responseStatusCode: result.statusCode,
+          responseJson: shouldStoreBody
+            ? (result.body as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          completedAt: new Date(),
+        },
+      }),
+    );
   }
 
-  private async releaseInProgressRequest(requestKey: {
-    userId: string;
-    method: string;
-    routePath: string;
-    idempotencyKey: string;
-  }): Promise<void> {
-    await this.prisma.idempotencyRequest.deleteMany({
-      where: {
-        ...requestKey,
-        status: IdempotencyRequestStatus.IN_PROGRESS,
-      },
-    });
+  private shouldStoreBody(body: unknown): boolean {
+    if (body === undefined) {
+      return false;
+    }
+
+    const serialized = JSON.stringify(body);
+    if (serialized === undefined) {
+      return false;
+    }
+
+    return (
+      Buffer.byteLength(serialized, 'utf8') <= IDEMPOTENCY_MAX_CACHED_BODY_BYTES
+    );
+  }
+
+  private async releaseInProgressRequest(
+    requestKey: RequestKey,
+  ): Promise<void> {
+    try {
+      await this.withRetry(() =>
+        this.prisma.idempotencyRequest.deleteMany({
+          where: {
+            ...requestKey,
+            status: IdempotencyRequestStatus.IN_PROGRESS,
+          },
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to release idempotency reservation after handler error: ${this.describeError(error)}`,
+      );
+    }
+  }
+
+  private async withRetry<T>(
+    operation: () => Promise<T>,
+    attempt = 0,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt < 2 && this.isRetryablePrismaError(error)) {
+        return this.withRetry(operation, attempt + 1);
+      }
+
+      throw error;
+    }
   }
 
   private isRetryablePrismaError(error: unknown): boolean {
@@ -259,5 +349,12 @@ export class IdempotencyService {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === code
     );
+  }
+
+  private describeError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return String(error);
   }
 }
