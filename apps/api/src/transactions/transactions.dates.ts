@@ -9,6 +9,11 @@ const ROME_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
   second: '2-digit',
 });
+const ROME_MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: ROME_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+});
 
 function extractPart(parts: Intl.DateTimeFormatPart[], type: string): number {
   const value = parts.find((part) => part.type === type)?.value;
@@ -80,6 +85,19 @@ function parseLocalDate(dateString: string): {
   return { year, month, day };
 }
 
+function parseLocalMonth(monthString: string): {
+  year: number;
+  month: number;
+} {
+  const [year, month] = monthString.split('-').map(Number);
+
+  if (!year || !month || month < 1 || month > 12) {
+    throw new Error(`Invalid local month ${monthString}.`);
+  }
+
+  return { year, month };
+}
+
 function addDays(
   dateString: string,
   amount: number,
@@ -98,6 +116,22 @@ function addDays(
   };
 }
 
+function addMonths(
+  monthString: string,
+  amount: number,
+): {
+  year: number;
+  month: number;
+} {
+  const { year, month } = parseLocalMonth(monthString);
+  const next = new Date(Date.UTC(year, month - 1 + amount, 1));
+
+  return {
+    year: next.getUTCFullYear(),
+    month: next.getUTCMonth() + 1,
+  };
+}
+
 export function romeDateToUtcStart(dateString: string): Date {
   const { year, month, day } = parseLocalDate(dateString);
   return romeDateTimeToUtc(year, month, day, 0, 0, 0, 0);
@@ -106,4 +140,44 @@ export function romeDateToUtcStart(dateString: string): Date {
 export function romeDateToUtcExclusiveEnd(dateString: string): Date {
   const next = addDays(dateString, 1);
   return romeDateTimeToUtc(next.year, next.month, next.day, 0, 0, 0, 0);
+}
+
+export function romeMonthToUtcStart(monthString: string): Date {
+  const { year, month } = parseLocalMonth(monthString);
+  return romeDateTimeToUtc(year, month, 1, 0, 0, 0, 0);
+}
+
+export function romeMonthToUtcExclusiveEnd(monthString: string): Date {
+  const next = addMonths(monthString, 1);
+  return romeDateTimeToUtc(next.year, next.month, 1, 0, 0, 0, 0);
+}
+
+export function addMonthsToRomeMonth(
+  monthString: string,
+  amount: number,
+): string {
+  const next = addMonths(monthString, amount);
+
+  return [next.year, String(next.month).padStart(2, '0')].join('-');
+}
+
+export function diffRomeMonths(from: string, to: string): number {
+  const fromMonth = parseLocalMonth(from);
+  const toMonth = parseLocalMonth(to);
+
+  return (
+    (toMonth.year - fromMonth.year) * 12 + (toMonth.month - fromMonth.month)
+  );
+}
+
+export function utcDateToRomeMonth(date: Date): string {
+  const parts = ROME_MONTH_FORMATTER.formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+
+  if (!year || !month) {
+    throw new Error('Unable to derive Europe/Rome month.');
+  }
+
+  return `${year}-${month}`;
 }

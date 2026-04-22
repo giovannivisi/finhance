@@ -1,4 +1,4 @@
-import { resolveClientIp } from '@/security/client-ip';
+import { isLoopbackIp, resolveClientIp } from '@/security/client-ip';
 
 describe('resolveClientIp', () => {
   it('prefers the first trusted proxy address when present', () => {
@@ -26,5 +26,20 @@ describe('resolveClientIp', () => {
         },
       }),
     ).toBe('192.0.2.55');
+  });
+
+  it('ignores raw x-forwarded-for when req.ip is available', () => {
+    expect(
+      resolveClientIp({
+        ip: '127.0.0.1',
+      }),
+    ).toBe('127.0.0.1');
+  });
+
+  it('detects supported loopback address formats', () => {
+    expect(isLoopbackIp('127.0.0.1')).toBe(true);
+    expect(isLoopbackIp('::1')).toBe(true);
+    expect(isLoopbackIp('::ffff:127.0.0.1')).toBe(true);
+    expect(isLoopbackIp('198.51.100.10')).toBe(false);
   });
 });

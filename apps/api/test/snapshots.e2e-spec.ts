@@ -70,6 +70,9 @@ function createDashboard(): DashboardResponse {
       netWorth: 100,
     },
     lastRefreshAt: '2026-04-17T10:00:00.000Z',
+    latestSnapshotDate: null,
+    latestSnapshotCapturedAt: null,
+    latestSnapshotIsPartial: null,
   };
 }
 

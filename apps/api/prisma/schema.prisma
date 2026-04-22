@@ -114,6 +114,8 @@ model NetWorthSnapshot {
 model Transaction {
   id                       String                    @id @default(cuid())
   userId                   String
+  importSource             ImportSource?
+  importKey                String?
   postedAt                 DateTime
   accountId                String
   categoryId               String?
@@ -127,12 +129,10 @@ model Transaction {
   transferGroupId          String?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
-  importSource             ImportSource?
-  importKey                String?
   recurringRuleId          String?
   recurringOccurrenceMonth DateTime?                 @db.Date
-  account                  Account                   @relation(fields: [accountId, userId], references: [id, userId])
-  category                 Category?                 @relation(fields: [categoryId, userId], references: [id, userId])
+  account                  Account                   @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
+  category                 Category?                 @relation(fields: [categoryId, userId], references: [id, userId], onUpdate: Cascade)
   recurringRule            RecurringTransactionRule? @relation(fields: [recurringRuleId], references: [id])
 
   @@unique([userId, importSource, importKey, direction])
@@ -206,13 +206,13 @@ model RecurringTransactionOccurrence {
 }
 
 model ImportBatch {
-  id          String            @id
+  id          String            @id @default(cuid())
   userId      String
   source      ImportSource
   status      ImportBatchStatus
   summaryJson Json
-  payloadJson Json?
   errorJson   Json
+  payloadJson Json?
   createdAt   DateTime          @default(now())
   appliedAt   DateTime?
 

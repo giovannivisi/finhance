@@ -9,6 +9,7 @@ import { TransactionsController } from '@transactions/transactions.controller';
 import { TransactionsService } from '@transactions/transactions.service';
 import type {
   CashflowSummaryResponse,
+  MonthlyCashflowResponse,
   TransactionResponse,
 } from '@finhance/shared';
 import {
@@ -358,7 +359,6 @@ describe('Transaction routes (e2e)', () => {
         );
       });
   });
-
   it('returns logical DTOs from GET /transactions', async () => {
     prisma.transaction.findMany.mockResolvedValue([createTransactionRow()]);
 
@@ -466,6 +466,145 @@ describe('Transaction routes (e2e)', () => {
           }),
         ]);
       });
+  });
+
+  it('returns owner-scoped monthly cashflow DTOs', async () => {
+    prisma.transaction.findMany
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'income-april',
+          postedAt: new Date('2026-04-02T09:00:00.000Z'),
+          kind: TransactionKind.INCOME,
+          direction: TransactionDirection.INFLOW,
+          amount: new Prisma.Decimal('100'),
+          currency: 'EUR',
+          categoryId: 'category-1',
+          category: createCategory({
+            id: 'category-1',
+            name: 'Salary',
+            type: CategoryType.INCOME,
+          }),
+        }),
+        createTransactionRow({
+          id: 'expense-april',
+          postedAt: new Date('2026-04-03T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('40'),
+          currency: 'EUR',
+          categoryId: 'category-expense',
+          category: createCategory({
+            id: 'category-expense',
+            name: 'Rent',
+            type: CategoryType.EXPENSE,
+          }),
+        }),
+      ])
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'transfer-out',
+          postedAt: new Date('2026-04-05T09:00:00.000Z'),
+          kind: TransactionKind.TRANSFER,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('25'),
+          currency: 'EUR',
+          categoryId: null,
+          category: null,
+          transferGroupId: 'transfer-1',
+        }),
+        createTransactionRow({
+          id: 'transfer-in',
+          postedAt: new Date('2026-04-05T09:00:00.000Z'),
+          kind: TransactionKind.TRANSFER,
+          direction: TransactionDirection.INFLOW,
+          amount: new Prisma.Decimal('25'),
+          currency: 'EUR',
+          accountId: 'account-2',
+          account: createAccount({ id: 'account-2' }),
+          categoryId: null,
+          category: null,
+          transferGroupId: 'transfer-1',
+        }),
+      ]);
+
+    await request(httpServer())
+      .get('/cashflow/monthly?from=2026-04&to=2026-05')
+      .expect(200)
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<MonthlyCashflowResponse>(response);
+        expect(body).toEqual([
+          {
+            currency: 'EUR',
+            averageMonthlyExpense: 20,
+            rangeExpenseCategories: [
+              {
+                categoryId: 'category-expense',
+                name: 'Rent',
+                total: 40,
+              },
+            ],
+            months: [
+              {
+                month: '2026-04',
+                incomeTotal: 100,
+                expenseTotal: 40,
+                netCashflow: 60,
+                adjustmentInTotal: 0,
+                adjustmentOutTotal: 0,
+                transferTotalExcluded: 25,
+                uncategorizedExpenseTotal: 0,
+                uncategorizedIncomeTotal: 0,
+                savingsRate: 0.6,
+                expenseCategories: [
+                  {
+                    categoryId: 'category-expense',
+                    name: 'Rent',
+                    total: 40,
+                  },
+                ],
+                incomeCategories: [
+                  {
+                    categoryId: 'category-1',
+                    name: 'Salary',
+                    total: 100,
+                  },
+                ],
+              },
+              {
+                month: '2026-05',
+                incomeTotal: 0,
+                expenseTotal: 0,
+                netCashflow: 0,
+                adjustmentInTotal: 0,
+                adjustmentOutTotal: 0,
+                transferTotalExcluded: 0,
+                uncategorizedExpenseTotal: 0,
+                uncategorizedIncomeTotal: 0,
+                savingsRate: null,
+                expenseCategories: [],
+                incomeCategories: [],
+              },
+            ],
+          },
+        ]);
+      });
+  });
+
+  it('rejects invalid monthly cashflow query formats', async () => {
+    await request(httpServer())
+      .get('/cashflow/monthly?from=2026-04-01&to=2026-05')
+      .expect(400);
+    await request(httpServer())
+      .get('/cashflow/monthly?from=2026-05&to=2026-04')
+      .expect(400);
+    await request(httpServer())
+      .get('/cashflow/monthly?from=2016-01&to=2026-04')
+      .expect(400);
+    await request(httpServer())
+      .get(
+        '/cashflow/monthly?from=2026-04&to=2026-05&includeArchivedAccounts=yes',
+      )
+      .expect(400);
   });
 
   it('rejects cashflow ranges longer than the configured cap', async () => {

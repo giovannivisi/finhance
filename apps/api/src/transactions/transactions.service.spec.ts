@@ -311,7 +311,6 @@ describe('TransactionsService', () => {
       'Generated recurring transactions',
     );
   });
-
   it('collapses transfer rows and filters archived accounts from the list', async () => {
     prisma.transaction.findMany.mockResolvedValue([
       createTransactionRow({
@@ -499,5 +498,333 @@ describe('TransactionsService', () => {
         archivedAt: null,
       },
     });
+  });
+
+  it('builds monthly cashflow buckets, zero-fills empty months, and counts transfers once', async () => {
+    prisma.transaction.findMany
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'income-april',
+          postedAt: new Date('2026-03-31T22:30:00.000Z'),
+          kind: TransactionKind.INCOME,
+          direction: TransactionDirection.INFLOW,
+          amount: new Prisma.Decimal('100'),
+          currency: 'EUR',
+          categoryId: 'category-income',
+          category: createCategory({
+            id: 'category-income',
+            name: 'Salary',
+            type: CategoryType.INCOME,
+          }),
+        }),
+        createTransactionRow({
+          id: 'expense-april',
+          postedAt: new Date('2026-04-10T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('40'),
+          currency: 'EUR',
+          categoryId: 'category-expense',
+          category: createCategory({
+            id: 'category-expense',
+            name: 'Rent',
+            type: CategoryType.EXPENSE,
+          }),
+        }),
+        createTransactionRow({
+          id: 'uncategorized-expense-april',
+          postedAt: new Date('2026-04-12T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('15'),
+          currency: 'EUR',
+          categoryId: null,
+          category: null,
+        }),
+        createTransactionRow({
+          id: 'adjustment-april',
+          postedAt: new Date('2026-04-15T09:00:00.000Z'),
+          kind: TransactionKind.ADJUSTMENT,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('7'),
+          currency: 'EUR',
+          categoryId: null,
+          category: null,
+        }),
+        createTransactionRow({
+          id: 'income-may-usd',
+          postedAt: new Date('2026-05-03T09:00:00.000Z'),
+          kind: TransactionKind.INCOME,
+          direction: TransactionDirection.INFLOW,
+          amount: new Prisma.Decimal('50'),
+          currency: 'USD',
+          accountId: 'account-usd',
+          account: createAccount({ id: 'account-usd', currency: 'USD' }),
+          categoryId: null,
+          category: null,
+        }),
+      ])
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'transfer-out',
+          postedAt: new Date('2026-04-20T09:00:00.000Z'),
+          kind: TransactionKind.TRANSFER,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('25'),
+          currency: 'EUR',
+          categoryId: null,
+          category: null,
+          transferGroupId: 'transfer-1',
+        }),
+        createTransactionRow({
+          id: 'transfer-in',
+          postedAt: new Date('2026-04-20T09:00:00.000Z'),
+          kind: TransactionKind.TRANSFER,
+          direction: TransactionDirection.INFLOW,
+          amount: new Prisma.Decimal('25'),
+          currency: 'EUR',
+          accountId: 'account-2',
+          account: createAccount({ id: 'account-2' }),
+          categoryId: null,
+          category: null,
+          transferGroupId: 'transfer-1',
+        }),
+      ]);
+
+    const summary = await service.getMonthlyCashflow(OWNER_ID, {
+      from: '2026-04',
+      to: '2026-05',
+    });
+
+    expect(summary).toEqual([
+      {
+        currency: 'EUR',
+        averageMonthlyExpense: 27.5,
+        rangeExpenseCategories: [
+          {
+            categoryId: 'category-expense',
+            name: 'Rent',
+            total: 40,
+          },
+          {
+            categoryId: null,
+            name: 'Uncategorized',
+            total: 15,
+          },
+        ],
+        months: [
+          {
+            month: '2026-04',
+            incomeTotal: 100,
+            expenseTotal: 55,
+            netCashflow: 45,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 7,
+            transferTotalExcluded: 25,
+            uncategorizedExpenseTotal: 15,
+            uncategorizedIncomeTotal: 0,
+            savingsRate: 0.45,
+            expenseCategories: [
+              {
+                categoryId: 'category-expense',
+                name: 'Rent',
+                total: 40,
+              },
+              {
+                categoryId: null,
+                name: 'Uncategorized',
+                total: 15,
+              },
+            ],
+            incomeCategories: [
+              {
+                categoryId: 'category-income',
+                name: 'Salary',
+                total: 100,
+              },
+            ],
+          },
+          {
+            month: '2026-05',
+            incomeTotal: 0,
+            expenseTotal: 0,
+            netCashflow: 0,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 0,
+            transferTotalExcluded: 0,
+            uncategorizedExpenseTotal: 0,
+            uncategorizedIncomeTotal: 0,
+            savingsRate: null,
+            expenseCategories: [],
+            incomeCategories: [],
+          },
+        ],
+      },
+      {
+        currency: 'USD',
+        averageMonthlyExpense: 0,
+        rangeExpenseCategories: [],
+        months: [
+          {
+            month: '2026-04',
+            incomeTotal: 0,
+            expenseTotal: 0,
+            netCashflow: 0,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 0,
+            transferTotalExcluded: 0,
+            uncategorizedExpenseTotal: 0,
+            uncategorizedIncomeTotal: 0,
+            savingsRate: null,
+            expenseCategories: [],
+            incomeCategories: [],
+          },
+          {
+            month: '2026-05',
+            incomeTotal: 50,
+            expenseTotal: 0,
+            netCashflow: 50,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 0,
+            transferTotalExcluded: 0,
+            uncategorizedExpenseTotal: 0,
+            uncategorizedIncomeTotal: 50,
+            savingsRate: 1,
+            expenseCategories: [],
+            incomeCategories: [
+              {
+                categoryId: null,
+                name: 'Uncategorized',
+                total: 50,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('applies Rome month bounds and repeated account filters to monthly cashflow queries', async () => {
+    prisma.transaction.findMany.mockResolvedValue([]);
+
+    await service.getMonthlyCashflow(OWNER_ID, {
+      from: '2026-04',
+      to: '2026-05',
+      accountIds: ['account-1', 'account-2', 'account-1'],
+      includeArchivedAccounts: false,
+    });
+
+    expect(
+      nthCallArg<{ where: Record<string, unknown> }>(
+        prisma.transaction.findMany,
+        0,
+      ).where,
+    ).toMatchObject({
+      userId: OWNER_ID,
+      kind: {
+        in: [
+          TransactionKind.INCOME,
+          TransactionKind.EXPENSE,
+          TransactionKind.ADJUSTMENT,
+        ],
+      },
+      accountId: {
+        in: ['account-1', 'account-2'],
+      },
+      account: {
+        archivedAt: null,
+      },
+      postedAt: {
+        gte: new Date('2026-03-31T22:00:00.000Z'),
+        lt: new Date('2026-05-31T22:00:00.000Z'),
+      },
+    });
+    expect(
+      nthCallArg<{ where: Record<string, unknown> }>(
+        prisma.transaction.findMany,
+        1,
+      ).where,
+    ).toMatchObject({
+      userId: OWNER_ID,
+      kind: TransactionKind.TRANSFER,
+      accountId: {
+        in: ['account-1', 'account-2'],
+      },
+    });
+  });
+
+  it('skips filtered one-sided transfer groups when computing excluded totals', async () => {
+    prisma.transaction.findMany
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'expense-april',
+          postedAt: new Date('2026-04-10T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('40'),
+          currency: 'EUR',
+          categoryId: 'category-expense',
+          category: createCategory({
+            id: 'category-expense',
+            name: 'Rent',
+            type: CategoryType.EXPENSE,
+          }),
+        }),
+      ])
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'transfer-out',
+          postedAt: new Date('2026-04-20T09:00:00.000Z'),
+          kind: TransactionKind.TRANSFER,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('25'),
+          currency: 'EUR',
+          categoryId: null,
+          category: null,
+          transferGroupId: 'transfer-1',
+        }),
+      ]);
+
+    const summary = await service.getMonthlyCashflow(OWNER_ID, {
+      from: '2026-04',
+      to: '2026-04',
+      accountIds: ['account-1'],
+    });
+
+    expect(summary).toEqual([
+      {
+        currency: 'EUR',
+        averageMonthlyExpense: 40,
+        rangeExpenseCategories: [
+          {
+            categoryId: 'category-expense',
+            name: 'Rent',
+            total: 40,
+          },
+        ],
+        months: [
+          {
+            month: '2026-04',
+            incomeTotal: 0,
+            expenseTotal: 40,
+            netCashflow: -40,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 0,
+            transferTotalExcluded: 0,
+            uncategorizedExpenseTotal: 0,
+            uncategorizedIncomeTotal: 0,
+            savingsRate: null,
+            expenseCategories: [
+              {
+                categoryId: 'category-expense',
+                name: 'Rent',
+                total: 40,
+              },
+            ],
+            incomeCategories: [],
+          },
+        ],
+      },
+    ]);
   });
 });

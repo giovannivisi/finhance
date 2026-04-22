@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./assets": "./src/assets.ts",
     "./accounts": "./src/accounts.ts",
+    "./imports": "./src/imports.ts",
     "./snapshots": "./src/snapshots.ts",
     "./transactions": "./src/transactions.ts"
   },

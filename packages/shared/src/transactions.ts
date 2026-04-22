@@ -96,3 +96,33 @@ export interface CashflowCurrencySummaryResponse {
 }
 
 export type CashflowSummaryResponse = CashflowCurrencySummaryResponse[];
+
+export interface MonthlyCashflowCategoryTotalResponse {
+  categoryId: string | null;
+  name: string;
+  total: number;
+}
+
+export interface MonthlyCashflowMonthResponse {
+  month: string;
+  incomeTotal: number;
+  expenseTotal: number;
+  netCashflow: number;
+  adjustmentInTotal: number;
+  adjustmentOutTotal: number;
+  transferTotalExcluded: number;
+  uncategorizedExpenseTotal: number;
+  uncategorizedIncomeTotal: number;
+  savingsRate: number | null;
+  expenseCategories: MonthlyCashflowCategoryTotalResponse[];
+  incomeCategories: MonthlyCashflowCategoryTotalResponse[];
+}
+
+export interface MonthlyCashflowCurrencyResponse {
+  currency: string;
+  averageMonthlyExpense: number;
+  rangeExpenseCategories: MonthlyCashflowCategoryTotalResponse[];
+  months: MonthlyCashflowMonthResponse[];
+}
+
+export type MonthlyCashflowResponse = MonthlyCashflowCurrencyResponse[];

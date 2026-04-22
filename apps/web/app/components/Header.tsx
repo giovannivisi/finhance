@@ -33,6 +33,9 @@ export default function Header() {
           <Link href="/categories" className="hover:text-gray-900">
             Categories
           </Link>
+          <Link href="/import" className="hover:text-gray-900">
+            Import
+          </Link>
         </nav>
       </div>
     </header>
