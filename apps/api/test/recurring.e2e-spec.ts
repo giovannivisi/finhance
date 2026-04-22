@@ -251,6 +251,15 @@ describe('Recurring routes (e2e)', () => {
       netWorthDelta: 200,
       openingSnapshotDate: '2026-03-31',
       closingSnapshotDate: '2026-04-30',
+      warnings: [],
+      netWorthExplanation: {
+        isComparableInEur: true,
+        cashflowContributionEur: 100,
+        valuationMovementEur: 100,
+        note: 'Safe EUR explanation.',
+      },
+      recurringComparison: [],
+      currencyInsights: [],
       reconciliationHighlights: [],
       recurringExceptions: [],
     } satisfies MonthlyReviewResponse);
