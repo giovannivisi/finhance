@@ -334,6 +334,31 @@ describe('Transaction routes (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects updates for generated recurring transactions through PUT /transactions/:id', async () => {
+    prisma.transaction.findFirst.mockResolvedValue(
+      createTransactionRow({
+        recurringRuleId: 'rule-1',
+        recurringOccurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+      }),
+    );
+
+    await request(httpServer())
+      .put('/transactions/transaction-1')
+      .send({
+        postedAt: '2026-04-17T09:00:00.000Z',
+        kind: 'INCOME',
+        amount: 100,
+        description: 'Salary',
+        accountId: 'account-1',
+        direction: 'INFLOW',
+      })
+      .expect(409)
+      .expect((response: ResponseWithBody) => {
+        expect(bodyAs<Record<string, unknown>>(response).message).toContain(
+          'Generated recurring transactions',
+        );
+      });
+  });
   it('returns logical DTOs from GET /transactions', async () => {
     prisma.transaction.findMany.mockResolvedValue([createTransactionRow()]);
 

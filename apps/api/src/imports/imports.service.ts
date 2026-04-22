@@ -169,6 +169,7 @@ export class ImportsService {
 
     const batch = await this.prisma.importBatch.create({
       data: {
+        id: randomUUID(),
         userId: ownerId,
         source: CSV_IMPORT_SOURCE,
         status,
@@ -176,7 +177,7 @@ export class ImportsService {
         errorJson: this.toJsonValue(analysis.issues),
         payloadJson: analysis.canApply
           ? this.toJsonValue(parsed.payload)
-          : null,
+          : Prisma.DbNull,
       },
     });
 

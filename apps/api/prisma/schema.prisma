@@ -10,28 +10,28 @@ datasource db {
 model Asset {
   id            String         @id @default(cuid())
   userId        String
-  accountId     String?
-  importSource  ImportSource?
-  importKey     String?
   name          String
-  kind          AssetKind?
-  liabilityKind LiabilityKind?
-  ticker        String?
-  exchange      String?
-  quantity      Decimal?       @db.Decimal(20, 10)
-  unitPrice     Decimal?       @db.Decimal(20, 10)
-  notes         String?
-  order         Int?           @default(0)
   type          AssetType
   balance       Decimal        @db.Decimal(20, 10)
   currency      String         @default("EUR")
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  kind          AssetKind?
+  notes         String?
+  order         Int?           @default(0)
+  ticker        String?
+  liabilityKind LiabilityKind?
+  exchange      String?
+  quantity      Decimal?       @db.Decimal(20, 10)
+  unitPrice     Decimal?       @db.Decimal(20, 10)
   lastPrice     Decimal?       @db.Decimal(20, 10)
   lastPriceAt   DateTime?
   lastFxRate    Decimal?       @db.Decimal(20, 10)
   lastFxRateAt  DateTime?
-  account       Account?       @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
+  accountId     String?
+  importSource  ImportSource?
+  importKey     String?
+  account       Account?       @relation(fields: [accountId, userId], references: [id, userId])
 
   @@unique([userId, type, kind, ticker, exchange])
   @@unique([userId, importSource, importKey])
@@ -40,42 +40,45 @@ model Asset {
 }
 
 model Account {
-  id                 String        @id @default(cuid())
-  userId             String
-  importSource       ImportSource?
-  importKey          String?
-  name               String
-  type               AccountType
-  currency           String        @default("EUR")
-  institution        String?
-  notes              String?
-  order              Int           @default(0)
-  openingBalance     Decimal       @default(0) @db.Decimal(20, 10)
-  openingBalanceDate DateTime?     @db.Date
-  archivedAt         DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  assets             Asset[]
-  transactions       Transaction[]
+  id                            String                     @id @default(cuid())
+  userId                        String
+  name                          String
+  type                          AccountType
+  currency                      String                     @default("EUR")
+  institution                   String?
+  notes                         String?
+  order                         Int                        @default(0)
+  archivedAt                    DateTime?
+  createdAt                     DateTime                   @default(now())
+  updatedAt                     DateTime                   @updatedAt
+  importSource                  ImportSource?
+  importKey                     String?
+  openingBalance                Decimal                    @default(0) @db.Decimal(20, 10)
+  openingBalanceDate            DateTime?                  @db.Date
+  assets                        Asset[]
+  recurringRules                RecurringTransactionRule[] @relation("StandardRecurringRuleAccount")
+  recurringTransferDestinations RecurringTransactionRule[] @relation("TransferRecurringRuleDestination")
+  recurringTransferSources      RecurringTransactionRule[] @relation("TransferRecurringRuleSource")
+  transactions                  Transaction[]
 
   @@unique([id, userId])
   @@unique([userId, importSource, importKey])
   @@index([userId, archivedAt, order, createdAt])
 }
 
-
 model Category {
-  id           String        @id @default(cuid())
-  userId       String
-  importSource ImportSource?
-  importKey    String?
-  name         String
-  type         CategoryType
-  order        Int           @default(0)
-  archivedAt   DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  transactions Transaction[]
+  id             String                     @id @default(cuid())
+  userId         String
+  name           String
+  type           CategoryType
+  order          Int                        @default(0)
+  archivedAt     DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  importSource   ImportSource?
+  importKey      String?
+  recurringRules RecurringTransactionRule[]
+  transactions   Transaction[]
 
   @@unique([id, userId])
   @@unique([userId, importSource, importKey])
@@ -85,9 +88,9 @@ model Category {
 model PortfolioState {
   userId                 String    @id
   lastRefreshSucceededAt DateTime?
-  refreshStartedAt       DateTime?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+  refreshStartedAt       DateTime?
 }
 
 model NetWorthSnapshot {
@@ -109,32 +112,97 @@ model NetWorthSnapshot {
 }
 
 model Transaction {
-  id              String               @id @default(cuid())
-  userId          String
-  importSource    ImportSource?
-  importKey       String?
-  postedAt        DateTime
-  accountId       String
-  categoryId      String?
-  amount          Decimal              @db.Decimal(20, 10)
-  currency        String
-  direction       TransactionDirection
-  kind            TransactionKind
-  description     String
-  notes           String?
-  counterparty    String?
-  transferGroupId String?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  account         Account              @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
-  category        Category?            @relation(fields: [categoryId, userId], references: [id, userId], onUpdate: Cascade)
+  id                       String                    @id @default(cuid())
+  userId                   String
+  importSource             ImportSource?
+  importKey                String?
+  postedAt                 DateTime
+  accountId                String
+  categoryId               String?
+  amount                   Decimal                   @db.Decimal(20, 10)
+  currency                 String
+  direction                TransactionDirection
+  kind                     TransactionKind
+  description              String
+  notes                    String?
+  counterparty             String?
+  transferGroupId          String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  recurringRuleId          String?
+  recurringOccurrenceMonth DateTime?                 @db.Date
+  account                  Account                   @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
+  category                 Category?                 @relation(fields: [categoryId, userId], references: [id, userId], onUpdate: Cascade)
+  recurringRule            RecurringTransactionRule? @relation(fields: [recurringRuleId], references: [id])
 
   @@unique([userId, importSource, importKey, direction])
+  @@unique([userId, recurringRuleId, recurringOccurrenceMonth, direction], map: "Transaction_userId_recurringRuleId_recurringOccurrenceMonth_dir")
   @@index([userId, postedAt])
   @@index([userId, kind, postedAt])
   @@index([userId, accountId, postedAt])
   @@index([userId, categoryId, postedAt])
   @@index([userId, transferGroupId])
+  @@index([userId, recurringRuleId, recurringOccurrenceMonth])
+}
+
+model RecurringTransactionRule {
+  id                         String                           @id @default(cuid())
+  userId                     String
+  name                       String
+  isActive                   Boolean                          @default(true)
+  kind                       TransactionKind
+  amount                     Decimal                          @db.Decimal(20, 10)
+  dayOfMonth                 Int
+  startDate                  DateTime                         @db.Date
+  endDate                    DateTime?                        @db.Date
+  accountId                  String?
+  direction                  TransactionDirection?
+  categoryId                 String?
+  counterparty               String?
+  sourceAccountId            String?
+  destinationAccountId       String?
+  description                String
+  notes                      String?
+  lastMaterializationError   String?
+  lastMaterializationErrorAt DateTime?
+  createdAt                  DateTime                         @default(now())
+  updatedAt                  DateTime                         @default(now()) @updatedAt
+  account                    Account?                         @relation("StandardRecurringRuleAccount", fields: [accountId, userId], references: [id, userId], onDelete: SetNull)
+  category                   Category?                        @relation(fields: [categoryId, userId], references: [id, userId], onDelete: SetNull)
+  destinationAccount         Account?                         @relation("TransferRecurringRuleDestination", fields: [destinationAccountId, userId], references: [id, userId], onDelete: SetNull)
+  occurrences                RecurringTransactionOccurrence[]
+  sourceAccount              Account?                         @relation("TransferRecurringRuleSource", fields: [sourceAccountId, userId], references: [id, userId], onDelete: SetNull)
+  transactions               Transaction[]
+
+  @@index([userId, accountId])
+  @@index([userId, sourceAccountId])
+  @@index([userId, destinationAccountId])
+  @@index([userId, isActive, dayOfMonth, startDate], map: "RecurringTransactionRule_userId_isActive_dayOfMonth_startDate_i")
+}
+
+model RecurringTransactionOccurrence {
+  id                           String                    @id @default(cuid())
+  userId                       String
+  recurringRuleId              String
+  occurrenceMonth              DateTime                  @db.Date
+  status                       RecurringOccurrenceStatus
+  overrideAmount               Decimal?                  @db.Decimal(20, 10)
+  overridePostedAtDate         DateTime?                 @db.Date
+  overrideAccountId            String?
+  overrideDirection            TransactionDirection?
+  overrideCategoryId           String?
+  overrideCounterparty         String?
+  overrideSourceAccountId      String?
+  overrideDestinationAccountId String?
+  overrideDescription          String?
+  overrideNotes                String?
+  createdAt                    DateTime                  @default(now())
+  updatedAt                    DateTime                  @default(now()) @updatedAt
+  recurringRule                RecurringTransactionRule  @relation(fields: [recurringRuleId], references: [id], onDelete: Cascade)
+
+  @@unique([recurringRuleId, occurrenceMonth])
+  @@index([userId, occurrenceMonth])
+  @@index([userId, recurringRuleId, occurrenceMonth])
 }
 
 model ImportBatch {
@@ -199,12 +267,17 @@ enum TransactionDirection {
   OUTFLOW
 }
 
-enum ImportSource {
-  CSV_TEMPLATE
+enum RecurringOccurrenceStatus {
+  SKIPPED
+  OVERRIDDEN
 }
 
 enum ImportBatchStatus {
   PREVIEW
   APPLIED
   FAILED
+}
+
+enum ImportSource {
+  CSV_TEMPLATE
 }

@@ -18,6 +18,12 @@ export default function Header() {
           <Link href="/transactions" className="hover:text-gray-900">
             Transactions
           </Link>
+          <Link href="/recurring" className="hover:text-gray-900">
+            Recurring
+          </Link>
+          <Link href="/review" className="hover:text-gray-900">
+            Review
+          </Link>
           <Link href="/history" className="hover:text-gray-900">
             History
           </Link>

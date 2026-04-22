@@ -406,7 +406,14 @@ describe('ImportsService', () => {
       },
     });
 
-    prisma.importBatch.findFirst.mockResolvedValue(createImportBatch());
+    const createdBatch = createImportBatch({
+      payloadJson: nthCallArg<ImportBatchCreateCall>(
+        prisma.importBatch.create,
+        0,
+      ).data.payloadJson,
+    });
+
+    prisma.importBatch.findFirst.mockResolvedValue(createdBatch);
     prisma.account.create
       .mockResolvedValueOnce(createImportedAccount({ id: 'account-checking' }))
       .mockResolvedValueOnce(

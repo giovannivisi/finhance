@@ -8,7 +8,12 @@ import type {
   CategoryResponse,
   TransactionResponse,
 } from "@finhance/shared";
+import RecurringOccurrenceForm from "@components/RecurringOccurrenceForm";
 import TransactionForm from "@components/TransactionForm";
+import {
+  recurringTransactionToOccurrenceFormValues,
+  type RecurringOccurrenceFormValues,
+} from "@lib/recurring-occurrence-form";
 import {
   createEmptyTransactionFormValues,
   transactionToFormValues,
@@ -55,9 +60,20 @@ export default function TransactionsPageClient({
     string | null
   >(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [recurringActionError, setRecurringActionError] = useState<
+    string | null
+  >(null);
   const [deletingTransactionId, setDeletingTransactionId] = useState<
     string | null
   >(null);
+  const [busyRecurringTransactionId, setBusyRecurringTransactionId] = useState<
+    string | null
+  >(null);
+  const [occurrenceDraft, setOccurrenceDraft] = useState<{
+    ruleId: string;
+    transactionId: string;
+    initialValues: RecurringOccurrenceFormValues;
+  } | null>(null);
 
   useEffect(() => {
     setFilters(initialFilters);
@@ -138,6 +154,7 @@ export default function TransactionsPageClient({
 
   async function handleDelete(transactionId: string) {
     setDeleteError(null);
+    setRecurringActionError(null);
     setDeletingTransactionId(transactionId);
 
     try {
@@ -170,6 +187,47 @@ export default function TransactionsPageClient({
     }
   }
 
+  async function handleSkipMonth(transaction: TransactionResponse) {
+    if (!transaction.recurringRuleId || !transaction.recurringOccurrenceMonth) {
+      setRecurringActionError("This recurring occurrence cannot be skipped.");
+      return;
+    }
+
+    setDeleteError(null);
+    setRecurringActionError(null);
+    setBusyRecurringTransactionId(transaction.id);
+
+    try {
+      const response = await fetch(
+        getApiUrl(
+          `/recurring-rules/${transaction.recurringRuleId}/occurrences/${transaction.recurringOccurrenceMonth.slice(0, 7)}`,
+        ),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "SKIPPED" }),
+        },
+      );
+
+      if (!response.ok) {
+        setRecurringActionError(await readApiError(response));
+        return;
+      }
+
+      if (occurrenceDraft?.transactionId === transaction.id) {
+        setOccurrenceDraft(null);
+      }
+
+      router.refresh();
+    } catch (error) {
+      setRecurringActionError(
+        error instanceof Error ? error.message : "Unable to skip this month.",
+      );
+    } finally {
+      setBusyRecurringTransactionId(null);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
@@ -186,7 +244,10 @@ export default function TransactionsPageClient({
 
           <button
             type="button"
-            onClick={() => setEditingTransactionId(null)}
+            onClick={() => {
+              setOccurrenceDraft(null);
+              setEditingTransactionId(null);
+            }}
             className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             New transaction
@@ -478,6 +539,12 @@ export default function TransactionsPageClient({
               </p>
             ) : null}
 
+            {recurringActionError ? (
+              <p role="alert" className="mt-4 text-sm text-red-600">
+                {recurringActionError}
+              </p>
+            ) : null}
+
             {transactions.length === 0 ? (
               <div className="mt-6 rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
                 No transactions match the current filters.
@@ -523,7 +590,16 @@ export default function TransactionsPageClient({
                             )}
                           </td>
                           <td className="py-3 pr-4">
-                            {TRANSACTION_KIND_LABELS[transaction.kind]}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>
+                                {TRANSACTION_KIND_LABELS[transaction.kind]}
+                              </span>
+                              {transaction.isRecurringGenerated ? (
+                                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                                  Recurring
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                           <td className="py-3 pr-4">
                             <p className="font-medium text-gray-900">
@@ -559,29 +635,78 @@ export default function TransactionsPageClient({
                           </td>
                           <td className="py-3">
                             <div className="flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setEditingTransactionId(transaction.id)
-                                }
-                                className="text-sm font-medium text-blue-600 hover:underline"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void handleDelete(transaction.id)
-                                }
-                                disabled={
-                                  deletingTransactionId === transaction.id
-                                }
-                                className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {deletingTransactionId === transaction.id
-                                  ? "Deleting..."
-                                  : "Delete"}
-                              </button>
+                              {transaction.isRecurringGenerated ? (
+                                <>
+                                  <span className="text-xs text-gray-500">
+                                    Locked
+                                  </span>
+                                  {transaction.recurringRuleId &&
+                                  transaction.recurringOccurrenceMonth ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setOccurrenceDraft({
+                                            ruleId:
+                                              transaction.recurringRuleId!,
+                                            transactionId: transaction.id,
+                                            initialValues:
+                                              recurringTransactionToOccurrenceFormValues(
+                                                transaction,
+                                              ),
+                                          })
+                                        }
+                                        className="text-sm font-medium text-blue-600 hover:underline"
+                                      >
+                                        Override month
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          void handleSkipMonth(transaction)
+                                        }
+                                        disabled={
+                                          busyRecurringTransactionId ===
+                                          transaction.id
+                                        }
+                                        className="text-sm font-medium text-amber-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        {busyRecurringTransactionId ===
+                                        transaction.id
+                                          ? "Skipping..."
+                                          : "Skip month"}
+                                      </button>
+                                    </>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOccurrenceDraft(null);
+                                      setEditingTransactionId(transaction.id);
+                                    }}
+                                    className="text-sm font-medium text-blue-600 hover:underline"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleDelete(transaction.id)
+                                    }
+                                    disabled={
+                                      deletingTransactionId === transaction.id
+                                    }
+                                    className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {deletingTransactionId === transaction.id
+                                      ? "Deleting..."
+                                      : "Delete"}
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -596,33 +721,57 @@ export default function TransactionsPageClient({
 
         <aside className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
           <h2 className="text-xl font-semibold text-gray-900">
-            {editingTransaction ? "Edit transaction" : "Create transaction"}
+            {occurrenceDraft
+              ? "Override recurring month"
+              : editingTransaction
+                ? "Edit transaction"
+                : "Create transaction"}
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            {editingTransaction
-              ? "Adjust cashflow data without affecting your holdings."
-              : "Create a new cashflow entry or transfer."}
+            {occurrenceDraft
+              ? "Override one generated occurrence without detaching it from the recurring rule."
+              : editingTransaction
+                ? editingTransaction.isRecurringGenerated
+                  ? "Generated recurring transactions are read-only in v1."
+                  : "Adjust cashflow data without affecting your holdings."
+                : "Create a new cashflow entry or transfer."}
           </p>
 
           <div className="mt-6">
-            <TransactionForm
-              mode={editingTransaction ? "edit" : "create"}
-              transactionId={editingTransaction?.id}
-              editingTransaction={editingTransaction}
-              accounts={accounts}
-              categories={categories}
-              initialValues={
-                editingTransaction
-                  ? transactionToFormValues(editingTransaction)
-                  : createEmptyTransactionFormValues()
-              }
-              onSuccess={() => setEditingTransactionId(null)}
-              onCancel={
-                editingTransaction
-                  ? () => setEditingTransactionId(null)
-                  : undefined
-              }
-            />
+            {occurrenceDraft ? (
+              <RecurringOccurrenceForm
+                ruleId={occurrenceDraft.ruleId}
+                accounts={accounts}
+                categories={categories}
+                initialValues={occurrenceDraft.initialValues}
+                onSuccess={() => setOccurrenceDraft(null)}
+                onCancel={() => setOccurrenceDraft(null)}
+              />
+            ) : editingTransaction?.isRecurringGenerated ? (
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                This transaction was generated by a recurring rule. Update or
+                disable the rule from the Recurring page instead.
+              </div>
+            ) : (
+              <TransactionForm
+                mode={editingTransaction ? "edit" : "create"}
+                transactionId={editingTransaction?.id}
+                editingTransaction={editingTransaction}
+                accounts={accounts}
+                categories={categories}
+                initialValues={
+                  editingTransaction
+                    ? transactionToFormValues(editingTransaction)
+                    : createEmptyTransactionFormValues()
+                }
+                onSuccess={() => setEditingTransactionId(null)}
+                onCancel={
+                  editingTransaction
+                    ? () => setEditingTransactionId(null)
+                    : undefined
+                }
+              />
+            )}
           </div>
         </aside>
       </section>
