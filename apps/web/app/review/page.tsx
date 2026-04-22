@@ -6,6 +6,7 @@ import type {
 } from "@finhance/shared";
 import Container from "@components/Container";
 import Header from "@components/Header";
+import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import ReviewCaptureSnapshotButton from "@components/ReviewCaptureSnapshotButton";
 import { api } from "@lib/api";
 import { formatCurrency } from "@lib/format";
@@ -68,14 +69,6 @@ export default async function ReviewPage({
   let errorMessage: string | null = null;
 
   try {
-    try {
-      await api("/recurring-rules/materialize", {
-        method: "POST",
-      });
-    } catch {
-      // Keep review available even if best-effort sync fails.
-    }
-
     review = await api<MonthlyReviewResponse>(
       `/monthly-review?month=${encodeURIComponent(month)}`,
     );
@@ -227,6 +220,23 @@ export default async function ReviewPage({
                     ? "Comparable in EUR"
                     : "Limited explanation"}
                 </span>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/70 bg-white/70 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Recurring sync
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-600">
+                      This review no longer creates transactions while the page
+                      renders. Sync due transactions only when you want any
+                      missing recurring entries materialized before reviewing
+                      the month.
+                    </p>
+                  </div>
+                  <RecurringMaterializeButton />
+                </div>
               </div>
 
               <div className="mt-4 grid gap-4 md:grid-cols-2">

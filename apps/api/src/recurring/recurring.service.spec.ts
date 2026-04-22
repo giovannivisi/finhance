@@ -881,4 +881,161 @@ describe('RecurringService', () => {
       },
     ]);
   });
+
+  it('treats partial snapshot boundaries as not comparable even when both snapshots exist', async () => {
+    transactions.getCashflowSummary.mockResolvedValue([
+      {
+        currency: 'EUR',
+        incomeTotal: 300,
+        expenseTotal: 100,
+        adjustmentInTotal: 0,
+        adjustmentOutTotal: 0,
+        netCashflow: 200,
+        byCategory: [],
+        byAccount: [],
+      },
+    ]);
+    transactions.getMonthlyCashflow.mockResolvedValue([
+      {
+        currency: 'EUR',
+        averageMonthlyExpense: 100,
+        rangeExpenseCategories: [],
+        months: [
+          {
+            month: '2026-04',
+            incomeTotal: 300,
+            expenseTotal: 100,
+            netCashflow: 200,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 0,
+            transferTotalExcluded: 0,
+            uncategorizedExpenseTotal: 0,
+            uncategorizedIncomeTotal: 0,
+            savingsRate: 2 / 3,
+            expenseCategories: [],
+            incomeCategories: [],
+          },
+        ],
+      },
+    ] satisfies MonthlyCashflowResponse);
+    prisma.netWorthSnapshot.findFirst
+      .mockResolvedValueOnce(
+        createSnapshot({
+          snapshotDate: new Date('2026-03-31T00:00:00.000Z'),
+          netWorthTotal: new Prisma.Decimal('1000'),
+          isPartial: true,
+          unavailableCount: 1,
+        }),
+      )
+      .mockResolvedValueOnce(
+        createSnapshot({
+          snapshotDate: new Date('2026-04-30T00:00:00.000Z'),
+          netWorthTotal: new Prisma.Decimal('1250'),
+        }),
+      );
+    accounts.findReconciliation.mockResolvedValue([]);
+    prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([]);
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([]);
+    prisma.transaction.findMany.mockResolvedValue([]);
+
+    const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
+
+    expect(review.netWorthExplanation).toEqual({
+      isComparableInEur: false,
+      cashflowContributionEur: null,
+      valuationMovementEur: null,
+      note: 'Snapshot boundaries are partial, so the EUR net worth delta cannot be decomposed safely.',
+    });
+  });
+
+  it('uses the materialized transaction currency for recurring comparison buckets', async () => {
+    transactions.getCashflowSummary.mockResolvedValue([
+      {
+        currency: 'USD',
+        incomeTotal: 0,
+        expenseTotal: 75,
+        adjustmentInTotal: 0,
+        adjustmentOutTotal: 0,
+        netCashflow: -75,
+        byCategory: [],
+        byAccount: [],
+      },
+    ]);
+    transactions.getMonthlyCashflow.mockResolvedValue([
+      {
+        currency: 'USD',
+        averageMonthlyExpense: 75,
+        rangeExpenseCategories: [],
+        months: [
+          {
+            month: '2026-04',
+            incomeTotal: 0,
+            expenseTotal: 75,
+            netCashflow: -75,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 0,
+            transferTotalExcluded: 0,
+            uncategorizedExpenseTotal: 0,
+            uncategorizedIncomeTotal: 0,
+            savingsRate: null,
+            expenseCategories: [],
+            incomeCategories: [],
+          },
+        ],
+      },
+    ] satisfies MonthlyCashflowResponse);
+    accounts.findAll.mockResolvedValue([
+      createAccount({
+        id: 'account-1',
+        currency: 'EUR',
+      }),
+    ]);
+    prisma.netWorthSnapshot.findFirst
+      .mockResolvedValueOnce(
+        createSnapshot({
+          snapshotDate: new Date('2026-03-31T00:00:00.000Z'),
+        }),
+      )
+      .mockResolvedValueOnce(
+        createSnapshot({
+          snapshotDate: new Date('2026-04-30T00:00:00.000Z'),
+        }),
+      );
+    accounts.findReconciliation.mockResolvedValue([]);
+    prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([]);
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([
+      createRecurringRule({
+        kind: TransactionKind.EXPENSE,
+        amount: new Prisma.Decimal('75'),
+        accountId: 'account-1',
+        direction: TransactionDirection.OUTFLOW,
+      }),
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([
+      {
+        recurringRuleId: 'rule-1',
+        kind: TransactionKind.EXPENSE,
+        currency: 'USD',
+        amount: new Prisma.Decimal('75'),
+        direction: TransactionDirection.OUTFLOW,
+      },
+    ]);
+
+    const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
+
+    expect(review.recurringComparison).toEqual([
+      {
+        currency: 'USD',
+        expectedIncomeTotal: 0,
+        actualIncomeTotal: 0,
+        expectedExpenseTotal: 75,
+        actualExpenseTotal: 75,
+        dueRuleCount: 1,
+        realizedRuleCount: 1,
+        skippedCount: 0,
+        overriddenCount: 0,
+        transferRulesExcludedCount: 0,
+      },
+    ]);
+  });
 });

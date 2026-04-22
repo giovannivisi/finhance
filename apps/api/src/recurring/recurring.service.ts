@@ -801,6 +801,15 @@ export class RecurringService {
       };
     }
 
+    if (openingSnapshot.isPartial || closingSnapshot.isPartial) {
+      return {
+        isComparableInEur: false,
+        cashflowContributionEur: null,
+        valuationMovementEur: null,
+        note: 'Snapshot boundaries are partial, so the EUR net worth delta cannot be decomposed safely.',
+      };
+    }
+
     const nonEurBuckets = cashflow.filter(
       (bucket) => bucket.currency !== 'EUR',
     );
@@ -942,6 +951,7 @@ export class RecurringService {
     rows: RecurringMonthTransactionRow[],
     accountsById: Map<string, Account>,
   ): string {
+    const rowCurrency = rows[0]?.currency ?? null;
     const accountId =
       rule.kind === TransactionKind.TRANSFER
         ? occurrence?.status === 'OVERRIDDEN'
@@ -955,7 +965,7 @@ export class RecurringService {
       ? (accountsById.get(accountId)?.currency ?? null)
       : null;
 
-    return accountCurrency ?? rows[0]?.currency ?? 'EUR';
+    return rowCurrency ?? accountCurrency ?? 'EUR';
   }
 
   private resolveRecurringComparisonDirection(

@@ -2,11 +2,11 @@ import type {
   AccountResponse,
   CashflowSummaryResponse,
   CategoryResponse,
-  MaterializeRecurringRulesResponse,
   TransactionResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
 import Header from "@components/Header";
+import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import TransactionsPageClient from "@components/TransactionsPageClient";
 import { api } from "@lib/api";
 
@@ -88,17 +88,6 @@ export default async function TransactionsPage({
   let errorMessage: string | null = null;
 
   try {
-    try {
-      await api<MaterializeRecurringRulesResponse>(
-        "/recurring-rules/materialize",
-        {
-          method: "POST",
-        },
-      );
-    } catch {
-      // Keep the existing transactions page usable even if best-effort sync fails.
-    }
-
     [transactions, cashflow, accounts, categories] = await Promise.all([
       api<TransactionResponse[]>(`/transactions${transactionsQueryString}`),
       api<CashflowSummaryResponse>(`/cashflow/summary${cashflowQueryString}`),
@@ -131,13 +120,31 @@ export default async function TransactionsPage({
             </div>
           </>
         ) : (
-          <TransactionsPageClient
-            transactions={transactions}
-            cashflow={cashflow}
-            accounts={accounts}
-            categories={categories}
-            initialFilters={filters}
-          />
+          <div className="space-y-6">
+            <section className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    Recurring sync
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    This page no longer creates transactions during render. Sync
+                    due transactions when you want the ledger and cashflow below
+                    to include any missing recurring entries.
+                  </p>
+                </div>
+                <RecurringMaterializeButton />
+              </div>
+            </section>
+
+            <TransactionsPageClient
+              transactions={transactions}
+              cashflow={cashflow}
+              accounts={accounts}
+              categories={categories}
+              initialFilters={filters}
+            />
+          </div>
         )}
       </Container>
     </>

@@ -1,4 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import type { MonthlyReviewResponse } from '@finhance/shared';
 import { FindMonthlyReviewQueryDto } from '@recurring/dto/find-monthly-review-query.dto';
@@ -16,6 +17,12 @@ export class MonthlyReviewController {
   }
 
   @Get()
+  @Throttle({
+    monthlyCashflow: {
+      limit: 5,
+      ttl: 60_000,
+    },
+  })
   async findOne(
     @Query() query: FindMonthlyReviewQueryDto,
   ): Promise<MonthlyReviewResponse> {

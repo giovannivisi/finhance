@@ -17,6 +17,7 @@ import {
   recurringRuleToFormValues,
 } from "@lib/recurring-rule-form";
 import { formatCurrency } from "@lib/format";
+import { requestRecurringMaterialization } from "@lib/recurring-materialization";
 import { TRANSACTION_KIND_LABELS } from "@lib/transactions";
 import { getApiUrl, readApiError } from "@lib/api";
 
@@ -103,19 +104,13 @@ export default function RecurringPageClient({
     setIsSyncing(true);
 
     try {
-      const response = await fetch(getApiUrl("/recurring-rules/materialize"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) {
-        setActionError(await readApiError(response));
+      const result = await requestRecurringMaterialization();
+      if (!result.ok) {
+        setActionError(result.error);
         return;
       }
 
-      setSyncSummary(
-        (await response.json()) as MaterializeRecurringRulesResponse,
-      );
+      setSyncSummary(result.summary);
       router.refresh();
     } catch (error) {
       setActionError(
