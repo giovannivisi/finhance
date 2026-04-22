@@ -106,6 +106,73 @@ export interface RecurringOccurrenceResponse {
   updatedAt: string;
 }
 
+export type MonthlyReviewWarningCode =
+  | "MISSING_OPENING_SNAPSHOT"
+  | "MISSING_CLOSING_SNAPSHOT"
+  | "PARTIAL_OPENING_SNAPSHOT"
+  | "PARTIAL_CLOSING_SNAPSHOT"
+  | "NON_EUR_CASHFLOW_NOT_COMPARABLE"
+  | "UNCATEGORIZED_EXPENSES"
+  | "UNCATEGORIZED_INCOME"
+  | "RECONCILIATION_ISSUES"
+  | "RECURRING_EXCEPTIONS_PRESENT";
+
+export type MonthlyReviewWarningSeverity = "INFO" | "WARNING";
+
+export interface MonthlyReviewWarningResponse {
+  code: MonthlyReviewWarningCode;
+  severity: MonthlyReviewWarningSeverity;
+  title: string;
+  detail: string;
+  count: number | null;
+  amount: number | null;
+  currency: string | null;
+}
+
+export interface MonthlyReviewNetWorthExplanationResponse {
+  isComparableInEur: boolean;
+  cashflowContributionEur: number | null;
+  valuationMovementEur: number | null;
+  note: string | null;
+}
+
+export interface MonthlyReviewRecurringComparisonResponse {
+  currency: string;
+  expectedIncomeTotal: number;
+  actualIncomeTotal: number;
+  expectedExpenseTotal: number;
+  actualExpenseTotal: number;
+  dueRuleCount: number;
+  realizedRuleCount: number;
+  skippedCount: number;
+  overriddenCount: number;
+  transferRulesExcludedCount: number;
+}
+
+export interface MonthlyReviewCategoryDriverResponse {
+  categoryId: string | null;
+  name: string;
+  total: number;
+}
+
+export interface MonthlyReviewAccountDriverResponse {
+  accountId: string;
+  name: string;
+  inflowTotal: number;
+  outflowTotal: number;
+  netCashflow: number;
+}
+
+export interface MonthlyReviewCurrencyInsightResponse {
+  currency: string;
+  savingsRate: number | null;
+  uncategorizedExpenseTotal: number;
+  uncategorizedIncomeTotal: number;
+  topExpenseCategories: MonthlyReviewCategoryDriverResponse[];
+  topIncomeCategories: MonthlyReviewCategoryDriverResponse[];
+  topAccounts: MonthlyReviewAccountDriverResponse[];
+}
+
 export interface MonthlyReviewResponse {
   month: string;
   cashflow: CashflowSummaryResponse;
@@ -114,6 +181,10 @@ export interface MonthlyReviewResponse {
   netWorthDelta: number | null;
   openingSnapshotDate: string | null;
   closingSnapshotDate: string | null;
+  warnings: MonthlyReviewWarningResponse[];
+  netWorthExplanation: MonthlyReviewNetWorthExplanationResponse;
+  recurringComparison: MonthlyReviewRecurringComparisonResponse[];
+  currencyInsights: MonthlyReviewCurrencyInsightResponse[];
   reconciliationHighlights: AccountReconciliationResponse[];
   recurringExceptions: RecurringOccurrenceResponse[];
 }

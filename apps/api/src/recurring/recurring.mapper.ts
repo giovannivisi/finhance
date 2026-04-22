@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import type {
+  MonthlyReviewCurrencyInsightResponse,
+  MonthlyReviewNetWorthExplanationResponse,
+  MonthlyReviewRecurringComparisonResponse,
   MonthlyReviewResponse,
+  MonthlyReviewWarningResponse,
   RecurringOccurrenceResponse,
   RecurringTransactionRuleResponse,
 } from '@finhance/shared';
@@ -89,6 +93,10 @@ export function toMonthlyReviewResponse(input: {
   cashflow: MonthlyReviewResponse['cashflow'];
   openingSnapshot: NetWorthSnapshot | null;
   closingSnapshot: NetWorthSnapshot | null;
+  warnings: MonthlyReviewWarningResponse[];
+  netWorthExplanation: MonthlyReviewNetWorthExplanationResponse;
+  recurringComparison: MonthlyReviewRecurringComparisonResponse[];
+  currencyInsights: MonthlyReviewCurrencyInsightResponse[];
   reconciliationHighlights: AccountReconciliationModel[];
   recurringExceptions: RecurringOccurrenceWithRule[];
 }): MonthlyReviewResponse {
@@ -112,6 +120,10 @@ export function toMonthlyReviewResponse(input: {
     closingSnapshotDate: toDateOnly(
       input.closingSnapshot?.snapshotDate ?? null,
     ),
+    warnings: input.warnings,
+    netWorthExplanation: input.netWorthExplanation,
+    recurringComparison: input.recurringComparison,
+    currencyInsights: input.currencyInsights,
     reconciliationHighlights: input.reconciliationHighlights.map(
       toAccountReconciliationResponse,
     ),

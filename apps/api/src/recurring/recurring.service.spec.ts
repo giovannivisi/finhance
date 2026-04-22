@@ -9,6 +9,7 @@ import {
   TransactionDirection,
   TransactionKind,
 } from '@prisma/client';
+import type { MonthlyCashflowResponse } from '@finhance/shared';
 import { RecurringService } from '@recurring/recurring.service';
 import { CategoriesService } from '@transactions/categories.service';
 import { TransactionsService } from '@transactions/transactions.service';
@@ -163,6 +164,7 @@ describe('RecurringService', () => {
   };
   let accounts: {
     getAssignableAccount: jest.Mock;
+    findAll: jest.Mock;
     findReconciliation: jest.Mock;
   };
   let categories: {
@@ -170,6 +172,7 @@ describe('RecurringService', () => {
   };
   let transactions: {
     getCashflowSummary: jest.Mock;
+    getMonthlyCashflow: jest.Mock;
   };
 
   beforeEach(() => {
@@ -201,6 +204,7 @@ describe('RecurringService', () => {
 
     accounts = {
       getAssignableAccount: jest.fn().mockResolvedValue(createAccount()),
+      findAll: jest.fn().mockResolvedValue([createAccount()]),
       findReconciliation: jest.fn().mockResolvedValue([]),
     };
 
@@ -210,6 +214,7 @@ describe('RecurringService', () => {
 
     transactions = {
       getCashflowSummary: jest.fn().mockResolvedValue([]),
+      getMonthlyCashflow: jest.fn().mockResolvedValue([]),
     };
 
     prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([]);
@@ -562,6 +567,29 @@ describe('RecurringService', () => {
         byAccount: [],
       },
     ]);
+    transactions.getMonthlyCashflow.mockResolvedValue([
+      {
+        currency: 'EUR',
+        averageMonthlyExpense: 800,
+        rangeExpenseCategories: [],
+        months: [
+          {
+            month: '2026-04',
+            incomeTotal: 2000,
+            expenseTotal: 800,
+            netCashflow: 1200,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 0,
+            transferTotalExcluded: 0,
+            uncategorizedExpenseTotal: 0,
+            uncategorizedIncomeTotal: 0,
+            savingsRate: 0.6,
+            expenseCategories: [],
+            incomeCategories: [],
+          },
+        ],
+      },
+    ] satisfies MonthlyCashflowResponse);
     prisma.netWorthSnapshot.findFirst
       .mockResolvedValueOnce(
         createSnapshot({
@@ -606,6 +634,10 @@ describe('RecurringService', () => {
         status: RecurringOccurrenceStatus.SKIPPED,
       }),
     ]);
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([
+      createRecurringRule(),
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([]);
 
     const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
 
@@ -614,12 +646,239 @@ describe('RecurringService', () => {
       to: '2026-04-30',
       includeArchivedAccounts: true,
     });
+    expect(transactions.getMonthlyCashflow).toHaveBeenCalledWith(OWNER_ID, {
+      from: '2026-04',
+      to: '2026-04',
+      includeArchivedAccounts: true,
+    });
     expect(review.openingNetWorth).toBe(1000);
     expect(review.closingNetWorth).toBe(1300);
     expect(review.netWorthDelta).toBe(300);
+    expect(review.netWorthExplanation).toEqual({
+      isComparableInEur: true,
+      cashflowContributionEur: 1200,
+      valuationMovementEur: -900,
+      note: 'Valuation movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
+    });
     expect(review.reconciliationHighlights).toHaveLength(1);
     expect(review.reconciliationHighlights[0]?.accountName).toBe('Broker');
     expect(review.recurringExceptions).toHaveLength(1);
     expect(review.recurringExceptions[0]?.status).toBe('SKIPPED');
+    expect(review.recurringComparison).toEqual([
+      {
+        currency: 'EUR',
+        expectedIncomeTotal: 100,
+        actualIncomeTotal: 0,
+        expectedExpenseTotal: 0,
+        actualExpenseTotal: 0,
+        dueRuleCount: 1,
+        realizedRuleCount: 0,
+        skippedCount: 1,
+        overriddenCount: 0,
+        transferRulesExcludedCount: 0,
+      },
+    ]);
+    expect(review.currencyInsights).toEqual([
+      {
+        currency: 'EUR',
+        savingsRate: 0.6,
+        uncategorizedExpenseTotal: 0,
+        uncategorizedIncomeTotal: 0,
+        topExpenseCategories: [],
+        topIncomeCategories: [],
+        topAccounts: [],
+      },
+    ]);
+    expect(review.warnings).toEqual([
+      {
+        code: 'RECONCILIATION_ISSUES',
+        severity: 'WARNING',
+        title: 'Reconciliation needs attention',
+        detail:
+          'One or more accounts still have mismatches or unsupported reconciliation state.',
+        count: 1,
+        amount: null,
+        currency: null,
+      },
+      {
+        code: 'RECURRING_EXCEPTIONS_PRESENT',
+        severity: 'INFO',
+        title: 'Recurring exceptions saved for this month',
+        detail:
+          'This month includes skipped or overridden recurring occurrences that change the expected schedule.',
+        count: 1,
+        amount: null,
+        currency: null,
+      },
+    ]);
+  });
+
+  it('adds snapshot, non-EUR, and uncategorized warnings when the review cannot be explained safely in EUR', async () => {
+    transactions.getCashflowSummary.mockResolvedValue([
+      {
+        currency: 'EUR',
+        incomeTotal: 100,
+        expenseTotal: 20,
+        adjustmentInTotal: 0,
+        adjustmentOutTotal: 0,
+        netCashflow: 80,
+        byCategory: [],
+        byAccount: [],
+      },
+      {
+        currency: 'USD',
+        incomeTotal: 0,
+        expenseTotal: 40,
+        adjustmentInTotal: 0,
+        adjustmentOutTotal: 0,
+        netCashflow: -40,
+        byCategory: [],
+        byAccount: [
+          {
+            accountId: 'account-usd',
+            name: 'USD account',
+            inflowTotal: 0,
+            outflowTotal: 40,
+            netCashflow: -40,
+          },
+        ],
+      },
+    ]);
+    transactions.getMonthlyCashflow.mockResolvedValue([
+      {
+        currency: 'USD',
+        averageMonthlyExpense: 40,
+        rangeExpenseCategories: [],
+        months: [
+          {
+            month: '2026-04',
+            incomeTotal: 0,
+            expenseTotal: 40,
+            netCashflow: -40,
+            adjustmentInTotal: 0,
+            adjustmentOutTotal: 0,
+            transferTotalExcluded: 0,
+            uncategorizedExpenseTotal: 10,
+            uncategorizedIncomeTotal: 0,
+            savingsRate: null,
+            expenseCategories: [
+              {
+                categoryId: 'category-rent',
+                name: 'Rent',
+                total: 30,
+              },
+              {
+                categoryId: null,
+                name: 'Uncategorized',
+                total: 10,
+              },
+            ],
+            incomeCategories: [],
+          },
+        ],
+      },
+    ] satisfies MonthlyCashflowResponse);
+    prisma.netWorthSnapshot.findFirst
+      .mockResolvedValueOnce(
+        createSnapshot({
+          isPartial: true,
+          unavailableCount: 2,
+        }),
+      )
+      .mockResolvedValueOnce(null);
+    accounts.findReconciliation.mockResolvedValue([]);
+    prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([]);
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([]);
+    prisma.transaction.findMany.mockResolvedValue([]);
+
+    const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
+
+    expect(review.netWorthExplanation).toEqual({
+      isComparableInEur: false,
+      cashflowContributionEur: null,
+      valuationMovementEur: null,
+      note: 'Add both opening and closing snapshot boundaries to explain the month in EUR.',
+    });
+    expect(review.currencyInsights).toEqual([
+      {
+        currency: 'EUR',
+        savingsRate: null,
+        uncategorizedExpenseTotal: 0,
+        uncategorizedIncomeTotal: 0,
+        topExpenseCategories: [],
+        topIncomeCategories: [],
+        topAccounts: [],
+      },
+      {
+        currency: 'USD',
+        savingsRate: null,
+        uncategorizedExpenseTotal: 10,
+        uncategorizedIncomeTotal: 0,
+        topExpenseCategories: [
+          {
+            categoryId: 'category-rent',
+            name: 'Rent',
+            total: 30,
+          },
+          {
+            categoryId: null,
+            name: 'Uncategorized',
+            total: 10,
+          },
+        ],
+        topIncomeCategories: [],
+        topAccounts: [
+          {
+            accountId: 'account-usd',
+            name: 'USD account',
+            inflowTotal: 0,
+            outflowTotal: 40,
+            netCashflow: -40,
+          },
+        ],
+      },
+    ]);
+    expect(review.warnings).toEqual([
+      {
+        code: 'PARTIAL_OPENING_SNAPSHOT',
+        severity: 'WARNING',
+        title: 'Opening snapshot is partial',
+        detail:
+          'The opening boundary excludes unavailable valuations, so month-over-month comparisons are incomplete.',
+        count: 2,
+        amount: null,
+        currency: null,
+      },
+      {
+        code: 'MISSING_CLOSING_SNAPSHOT',
+        severity: 'WARNING',
+        title: 'Closing snapshot missing',
+        detail:
+          'Capture a snapshot in this month to anchor the closing net worth boundary.',
+        count: null,
+        amount: null,
+        currency: null,
+      },
+      {
+        code: 'NON_EUR_CASHFLOW_NOT_COMPARABLE',
+        severity: 'INFO',
+        title: 'USD cashflow excluded from EUR explanation',
+        detail:
+          'This month includes non-EUR cashflow, so the net worth delta cannot be decomposed into one EUR story.',
+        count: null,
+        amount: -40,
+        currency: 'USD',
+      },
+      {
+        code: 'UNCATEGORIZED_EXPENSES',
+        severity: 'WARNING',
+        title: 'Uncategorized expenses in USD',
+        detail:
+          'Some expense transactions are still uncategorized, so category drivers are incomplete.',
+        count: null,
+        amount: 10,
+        currency: 'USD',
+      },
+    ]);
   });
 });
