@@ -600,6 +600,17 @@ export class RecurringService {
 
     const { account, category } = targets;
 
+    if (this.hasMismatchedExistingRows(existing, defaultSpec)) {
+      await this.replaceOccurrenceTransactions(
+        client,
+        ownerId,
+        rule,
+        monthKey,
+        defaultSpec,
+      );
+      return 0;
+    }
+
     if (existing[defaultSpec.direction]) {
       return 0;
     }
@@ -1009,6 +1020,19 @@ export class RecurringService {
     }
 
     return Number(!existing[spec.direction]);
+  }
+
+  private hasMismatchedExistingRows(
+    existing: ExistingOccurrenceMapEntry,
+    spec: MaterializedOccurrenceSpec,
+  ): boolean {
+    if (spec.kind === 'TRANSFER') {
+      return false;
+    }
+
+    return spec.direction === TransactionDirection.INFLOW
+      ? existing.OUTFLOW
+      : existing.INFLOW;
   }
 
   private buildExistingOccurrenceEntry(

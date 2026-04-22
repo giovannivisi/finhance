@@ -71,6 +71,8 @@ function createAsset(overrides: Partial<Asset> = {}): Asset {
     currency: 'USD',
     notes: null,
     order: 0,
+    importSource: null,
+    importKey: null,
     createdAt: now,
     updatedAt: now,
     lastPrice: null,
