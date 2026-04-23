@@ -103,6 +103,63 @@ export interface MonthlyCashflowCategoryTotalResponse {
   total: number;
 }
 
+export interface CashflowAnalyticsMonthPointResponse {
+  month: string;
+  incomeTotal: number;
+  expenseTotal: number;
+  netCashflow: number;
+  adjustmentInTotal: number;
+  adjustmentOutTotal: number;
+  uncategorizedExpenseTotal: number;
+  uncategorizedIncomeTotal: number;
+}
+
+export interface CashflowAnalyticsBreakdownItemResponse {
+  categoryId: string | null;
+  name: string;
+  total: number;
+}
+
+export interface CashflowAnalyticsCategoryTrendPointResponse {
+  month: string;
+  total: number;
+}
+
+export interface CashflowAnalyticsCategoryTrendResponse {
+  categoryId: string | null;
+  name: string;
+  total: number;
+  series: CashflowAnalyticsCategoryTrendPointResponse[];
+}
+
+export interface CashflowAnalyticsMonthOverMonthChangeResponse {
+  categoryId: string | null;
+  name: string;
+  previousTotal: number;
+  currentTotal: number;
+  delta: number;
+}
+
+export interface CashflowAnalyticsCurrencyResponse {
+  currency: string;
+  averageMonthlyExpense: number;
+  averageMonthlyIncome: number;
+  monthlySeries: CashflowAnalyticsMonthPointResponse[];
+  focusMonthExpenseBreakdown: CashflowAnalyticsBreakdownItemResponse[];
+  focusMonthIncomeBreakdown: CashflowAnalyticsBreakdownItemResponse[];
+  expenseCategoryTrends: CashflowAnalyticsCategoryTrendResponse[];
+  incomeCategoryTrends: CashflowAnalyticsCategoryTrendResponse[];
+  expenseMonthOverMonthChanges: CashflowAnalyticsMonthOverMonthChangeResponse[];
+  incomeMonthOverMonthChanges: CashflowAnalyticsMonthOverMonthChangeResponse[];
+}
+
+export interface CashflowAnalyticsResponse {
+  from: string;
+  to: string;
+  focusMonth: string;
+  currencies: CashflowAnalyticsCurrencyResponse[];
+}
+
 export interface MonthlyCashflowMonthResponse {
   month: string;
   incomeTotal: number;

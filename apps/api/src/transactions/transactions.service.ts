@@ -27,6 +27,12 @@ import {
   TransactionKind,
 } from '@prisma/client';
 import type {
+  CashflowAnalyticsBreakdownItemResponse,
+  CashflowAnalyticsCategoryTrendResponse,
+  CashflowAnalyticsCurrencyResponse,
+  CashflowAnalyticsMonthOverMonthChangeResponse,
+  CashflowAnalyticsMonthPointResponse,
+  CashflowAnalyticsResponse,
   CashflowSummaryResponse,
   CashflowCurrencySummaryResponse,
   MonthlyCashflowCategoryTotalResponse,
@@ -49,6 +55,9 @@ const MAX_TRANSACTION_LIMIT = 500;
 const DEFAULT_TRANSACTION_OFFSET = 0;
 const MAX_TRANSACTION_RANGE_DAYS = 3_650;
 const MAX_MONTHLY_CASHFLOW_RANGE_MONTHS = 24;
+const ANALYTICS_BREAKDOWN_LIMIT = 8;
+const ANALYTICS_TREND_LIMIT = 5;
+const ANALYTICS_DELTA_LIMIT = 5;
 const LOCAL_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const ROME_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Rome',
@@ -78,6 +87,14 @@ interface PreparedTransferTransactionInput {
   notes: string | null;
   sourceAccountId: string;
   destinationAccountId: string;
+}
+
+interface CashflowAnalyticsFilters {
+  from: string;
+  to: string;
+  accountId?: string;
+  categoryId?: string;
+  includeArchivedAccounts?: boolean;
 }
 
 type TransactionWriteClient = PrismaService | Prisma.TransactionClient;
@@ -387,6 +404,7 @@ export class TransactionsService {
             ],
           },
           ...(accountIds ? { accountId: { in: accountIds } } : {}),
+          ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
           ...(!includeArchivedAccounts
             ? {
                 account: {
@@ -401,28 +419,53 @@ export class TransactionsService {
           category: true,
         },
       }),
-      this.prisma.transaction.findMany({
-        where: {
-          userId: ownerId,
-          kind: TransactionKind.TRANSFER,
-          ...(accountIds ? { accountId: { in: accountIds } } : {}),
-          ...(!includeArchivedAccounts
-            ? {
-                account: {
-                  archivedAt: null,
-                },
-              }
-            : {}),
-          postedAt,
-        },
-        include: {
-          account: true,
-          category: true,
-        },
-      }),
+      filters.categoryId
+        ? Promise.resolve([])
+        : this.prisma.transaction.findMany({
+            where: {
+              userId: ownerId,
+              kind: TransactionKind.TRANSFER,
+              ...(accountIds ? { accountId: { in: accountIds } } : {}),
+              ...(!includeArchivedAccounts
+                ? {
+                    account: {
+                      archivedAt: null,
+                    },
+                  }
+                : {}),
+              postedAt,
+            },
+            include: {
+              account: true,
+              category: true,
+            },
+          }),
     ]);
 
     return this.buildMonthlyCashflow(monthKeys, standardRows, transferRows);
+  }
+
+  async getCashflowAnalytics(
+    ownerId: string,
+    filters: CashflowAnalyticsFilters,
+  ): Promise<CashflowAnalyticsResponse> {
+    const range = this.resolveRequiredMonthlyRange(filters.from, filters.to);
+    const monthlyCashflow = await this.getMonthlyCashflow(ownerId, {
+      from: range.from,
+      to: range.to,
+      accountIds: filters.accountId ? [filters.accountId] : undefined,
+      categoryId: filters.categoryId,
+      includeArchivedAccounts: filters.includeArchivedAccounts,
+    });
+
+    return {
+      from: range.from,
+      to: range.to,
+      focusMonth: range.to,
+      currencies: monthlyCashflow.map((bucket) =>
+        this.toCashflowAnalyticsCurrency(bucket, range.to),
+      ),
+    };
   }
 
   private async createTransfer(
@@ -1191,6 +1234,198 @@ export class TransactionsService {
         }),
       )
       .sort((left, right) => left.currency.localeCompare(right.currency));
+  }
+
+  private toCashflowAnalyticsCurrency(
+    bucket: MonthlyCashflowCurrencyResponse,
+    focusMonth: string,
+  ): CashflowAnalyticsCurrencyResponse {
+    const previousMonth = this.findPreviousMonth(bucket.months, focusMonth);
+
+    return {
+      currency: bucket.currency,
+      averageMonthlyExpense: bucket.averageMonthlyExpense,
+      averageMonthlyIncome: this.averageMonthlyIncome(bucket.months),
+      monthlySeries: bucket.months.map((month) =>
+        this.toCashflowAnalyticsMonthPoint(month),
+      ),
+      focusMonthExpenseBreakdown: this.toAnalyticsBreakdown(
+        this.findMonthOrThrow(bucket.months, focusMonth).expenseCategories,
+      ),
+      focusMonthIncomeBreakdown: this.toAnalyticsBreakdown(
+        this.findMonthOrThrow(bucket.months, focusMonth).incomeCategories,
+      ),
+      expenseCategoryTrends: this.buildCategoryTrends(
+        bucket.months,
+        'expenseCategories',
+      ),
+      incomeCategoryTrends: this.buildCategoryTrends(
+        bucket.months,
+        'incomeCategories',
+      ),
+      expenseMonthOverMonthChanges: previousMonth
+        ? this.buildMonthOverMonthChanges(
+            previousMonth.expenseCategories,
+            this.findMonthOrThrow(bucket.months, focusMonth).expenseCategories,
+          )
+        : [],
+      incomeMonthOverMonthChanges: previousMonth
+        ? this.buildMonthOverMonthChanges(
+            previousMonth.incomeCategories,
+            this.findMonthOrThrow(bucket.months, focusMonth).incomeCategories,
+          )
+        : [],
+    };
+  }
+
+  private toCashflowAnalyticsMonthPoint(
+    month: MonthlyCashflowMonthResponse,
+  ): CashflowAnalyticsMonthPointResponse {
+    return {
+      month: month.month,
+      incomeTotal: month.incomeTotal,
+      expenseTotal: month.expenseTotal,
+      netCashflow: month.netCashflow,
+      adjustmentInTotal: month.adjustmentInTotal,
+      adjustmentOutTotal: month.adjustmentOutTotal,
+      uncategorizedExpenseTotal: month.uncategorizedExpenseTotal,
+      uncategorizedIncomeTotal: month.uncategorizedIncomeTotal,
+    };
+  }
+
+  private averageMonthlyIncome(months: MonthlyCashflowMonthResponse[]): number {
+    if (months.length === 0) {
+      return 0;
+    }
+
+    return (
+      months.reduce((sum, month) => sum + month.incomeTotal, 0) / months.length
+    );
+  }
+
+  private findMonthOrThrow(
+    months: MonthlyCashflowMonthResponse[],
+    monthKey: string,
+  ): MonthlyCashflowMonthResponse {
+    const match = months.find((month) => month.month === monthKey);
+
+    if (!match) {
+      throw new Error(`Month ${monthKey} is missing from monthly cashflow.`);
+    }
+
+    return match;
+  }
+
+  private findPreviousMonth(
+    months: MonthlyCashflowMonthResponse[],
+    monthKey: string,
+  ): MonthlyCashflowMonthResponse | null {
+    const index = months.findIndex((month) => month.month === monthKey);
+
+    if (index <= 0) {
+      return null;
+    }
+
+    return months[index - 1] ?? null;
+  }
+
+  private toAnalyticsBreakdown(
+    items: MonthlyCashflowCategoryTotalResponse[],
+  ): CashflowAnalyticsBreakdownItemResponse[] {
+    return items.slice(0, ANALYTICS_BREAKDOWN_LIMIT).map((item) => ({
+      categoryId: item.categoryId,
+      name: item.name,
+      total: item.total,
+    }));
+  }
+
+  private buildCategoryTrends(
+    months: MonthlyCashflowMonthResponse[],
+    field: 'expenseCategories' | 'incomeCategories',
+  ): CashflowAnalyticsCategoryTrendResponse[] {
+    const totalsByCategory = new Map<
+      string,
+      {
+        categoryId: string | null;
+        name: string;
+        total: number;
+        series: Map<string, number>;
+      }
+    >();
+
+    for (const month of months) {
+      for (const item of month[field]) {
+        const key = item.categoryId ?? 'uncategorized';
+        const existing = totalsByCategory.get(key) ?? {
+          categoryId: item.categoryId,
+          name: item.name,
+          total: 0,
+          series: new Map<string, number>(),
+        };
+        existing.total += item.total;
+        existing.series.set(month.month, item.total);
+        totalsByCategory.set(key, existing);
+      }
+    }
+
+    return [...totalsByCategory.values()]
+      .sort((left, right) => {
+        if (right.total !== left.total) {
+          return right.total - left.total;
+        }
+
+        return left.name.localeCompare(right.name);
+      })
+      .slice(0, ANALYTICS_TREND_LIMIT)
+      .map((item) => ({
+        categoryId: item.categoryId,
+        name: item.name,
+        total: item.total,
+        series: months.map((month) => ({
+          month: month.month,
+          total: item.series.get(month.month) ?? 0,
+        })),
+      }));
+  }
+
+  private buildMonthOverMonthChanges(
+    previous: MonthlyCashflowCategoryTotalResponse[],
+    current: MonthlyCashflowCategoryTotalResponse[],
+  ): CashflowAnalyticsMonthOverMonthChangeResponse[] {
+    const previousByCategory = new Map(
+      previous.map((item) => [item.categoryId ?? 'uncategorized', item]),
+    );
+    const currentByCategory = new Map(
+      current.map((item) => [item.categoryId ?? 'uncategorized', item]),
+    );
+    const keys = new Set([
+      ...previousByCategory.keys(),
+      ...currentByCategory.keys(),
+    ]);
+
+    return [...keys]
+      .map((key) => {
+        const previousItem = previousByCategory.get(key) ?? null;
+        const currentItem = currentByCategory.get(key) ?? null;
+
+        return {
+          categoryId:
+            currentItem?.categoryId ?? previousItem?.categoryId ?? null,
+          name: currentItem?.name ?? previousItem?.name ?? 'Uncategorized',
+          previousTotal: previousItem?.total ?? 0,
+          currentTotal: currentItem?.total ?? 0,
+          delta: (currentItem?.total ?? 0) - (previousItem?.total ?? 0),
+        };
+      })
+      .sort((left, right) => {
+        const deltaDifference = Math.abs(right.delta) - Math.abs(left.delta);
+        if (deltaDifference !== 0) {
+          return deltaDifference;
+        }
+
+        return left.name.localeCompare(right.name);
+      })
+      .slice(0, ANALYTICS_DELTA_LIMIT);
   }
 
   private buildCashflowSummary(
