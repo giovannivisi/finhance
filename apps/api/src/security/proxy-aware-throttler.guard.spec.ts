@@ -13,7 +13,7 @@ describe('shouldApplyThrottler', () => {
   it('skips named throttlers unless the route opts in', () => {
     expect(
       shouldApplyThrottler({
-        throttlerName: 'monthlyCashflow',
+        throttlerName: 'analytics',
         hasExplicitThrottle: false,
       }),
     ).toBe(false);
@@ -22,7 +22,7 @@ describe('shouldApplyThrottler', () => {
   it('applies named throttlers when the route provides throttle metadata', () => {
     expect(
       shouldApplyThrottler({
-        throttlerName: 'monthlyCashflow',
+        throttlerName: 'imports',
         hasExplicitThrottle: true,
       }),
     ).toBe(true);

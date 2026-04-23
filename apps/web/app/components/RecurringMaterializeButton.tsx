@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { MaterializeRecurringRulesResponse } from "@finhance/shared";
+import CooldownNotice from "@components/CooldownNotice";
 import { requestRecurringMaterialization } from "@lib/recurring-materialization";
-import { shouldIgnoreRepeatedActionError } from "@lib/request-safety";
+import { getRepeatedActionNotice } from "@lib/request-safety";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function RecurringMaterializeButton({
@@ -15,6 +16,7 @@ export default function RecurringMaterializeButton({
   const router = useRouter();
   const [isRefreshing, startRefresh] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [summary, setSummary] =
     useState<MaterializeRecurringRulesResponse | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -23,13 +25,20 @@ export default function RecurringMaterializeButton({
   async function handleSync() {
     await actions.run("sync", async () => {
       setError(null);
+      setNotice(null);
       setSummary(null);
       setIsSyncing(true);
 
       const result = await requestRecurringMaterialization();
 
       if (!result.ok) {
-        if (shouldIgnoreRepeatedActionError(result.status)) {
+        const repeatedActionNotice = getRepeatedActionNotice({
+          status: result.status,
+          error: result.error,
+        });
+
+        if (repeatedActionNotice) {
+          setNotice(repeatedActionNotice);
           setIsSyncing(false);
           return;
         }
@@ -73,6 +82,13 @@ export default function RecurringMaterializeButton({
         <p role="alert" className="text-sm text-red-600">
           {error}
         </p>
+      ) : null}
+      {notice ? (
+        <CooldownNotice
+          key={notice}
+          notice={notice}
+          className="text-sm text-amber-700"
+        />
       ) : null}
     </div>
   );

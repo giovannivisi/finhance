@@ -13,21 +13,11 @@ import { LocalOnlyGuard } from '@/security/local-only.guard';
 import { ProxyAwareThrottlerGuard } from '@/security/proxy-aware-throttler.guard';
 import { RequestSafetyModule } from '@/request-safety/request-safety.module';
 import { IdempotencyInterceptor } from '@/request-safety/idempotency.interceptor';
+import { createThrottlerOptions } from '@/config/throttle.config';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60_000,
-        limit: 100,
-      },
-      {
-        name: 'monthlyCashflow',
-        ttl: 60_000,
-        limit: 5,
-      },
-    ]),
+    ThrottlerModule.forRoot(createThrottlerOptions()),
     PrismaModule,
     RequestSafetyModule,
     AccountsModule,

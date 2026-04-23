@@ -9,6 +9,8 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { createNamedThrottleOverride } from '@/config/throttle.config';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import {
   MaterializeRecurringRulesResponse,
@@ -119,6 +121,7 @@ export class RecurringController {
   }
 
   @Post('materialize')
+  @Throttle(createNamedThrottleOverride('operations'))
   async materialize(): Promise<MaterializeRecurringRulesResponse> {
     return this.recurringService.materialize(this.resolveOwnerId());
   }

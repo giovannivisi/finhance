@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { NetWorthSnapshotResponse } from "@finhance/shared";
 import { formatCurrency } from "@lib/format";
 import NetWorthHistoryChart from "@components/NetWorthHistoryChart";
-import { shouldIgnoreRepeatedActionError } from "@lib/request-safety";
+import { getRepeatedActionNotice } from "@lib/request-safety";
 import { requestSnapshotCapture } from "@lib/snapshot-capture";
 import { useSingleFlightActions } from "@lib/single-flight";
 
@@ -21,6 +21,7 @@ export default function HistoryPageClient({
 }) {
   const router = useRouter();
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const actions = useSingleFlightActions<"capture">();
   const baseCurrency = snapshots[0]?.baseCurrency ?? "EUR";
@@ -28,12 +29,19 @@ export default function HistoryPageClient({
   async function handleCapture() {
     await actions.run("capture", async () => {
       setCaptureError(null);
+      setCaptureNotice(null);
       setIsCapturing(true);
 
       try {
         const result = await requestSnapshotCapture();
         if (!result.ok) {
-          if (shouldIgnoreRepeatedActionError(result.status)) {
+          const repeatedActionNotice = getRepeatedActionNotice({
+            status: result.status,
+            error: result.error,
+          });
+
+          if (repeatedActionNotice) {
+            setCaptureNotice(repeatedActionNotice);
             return;
           }
 
@@ -80,6 +88,9 @@ export default function HistoryPageClient({
         <p role="alert" className="text-sm text-red-600">
           {captureError}
         </p>
+      ) : null}
+      {captureNotice ? (
+        <p className="text-sm text-amber-700">{captureNotice}</p>
       ) : null}
 
       {snapshots.length === 0 ? (

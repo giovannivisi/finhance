@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { createNamedThrottleOverride } from '@/config/throttle.config';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { CaptureSnapshotDto } from '@snapshots/dto/capture-snapshot.dto';
 import {
@@ -23,6 +25,7 @@ export class SnapshotsController {
   }
 
   @Post('capture')
+  @Throttle(createNamedThrottleOverride('operations'))
   async capture(
     @Body() _dto: CaptureSnapshotDto,
   ): Promise<SnapshotCaptureResponse> {

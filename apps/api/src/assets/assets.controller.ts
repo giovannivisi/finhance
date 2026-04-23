@@ -7,9 +7,11 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AssetsService } from '@assets/assets.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
+import { createNamedThrottleOverride } from '@/config/throttle.config';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import type {
   AssetResponse,
@@ -47,6 +49,7 @@ export class AssetsController {
   }
 
   @Post('refresh')
+  @Throttle(createNamedThrottleOverride('marketRefresh'))
   async refreshAssets(): Promise<RefreshAssetsResponse> {
     return this.assetsService.refreshAssets(this.resolveOwnerId());
   }
