@@ -12,7 +12,9 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
+import { createNamedThrottleOverride } from '@/config/throttle.config';
 import { LocalOnlyImportsGuard } from '@/security/local-only-imports.guard';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { IdempotencyService } from '@/request-safety/idempotency.service';
@@ -45,6 +47,7 @@ export class ImportsController {
   }
 
   @Post('csv/preview')
+  @Throttle(createNamedThrottleOverride('imports'))
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -96,6 +99,7 @@ export class ImportsController {
 
   @Post('csv/export')
   @HttpCode(200)
+  @Throttle(createNamedThrottleOverride('imports'))
   async export(@Res() response: Response): Promise<void> {
     const result = await this.importsService.exportCsvZip(
       this.resolveOwnerId(),
@@ -109,6 +113,7 @@ export class ImportsController {
   }
 
   @Post(':batchId/apply')
+  @Throttle(createNamedThrottleOverride('imports'))
   async apply(@Param('batchId') batchId: string): Promise<ImportBatchResponse> {
     return this.importsService.applyBatch(this.resolveOwnerId(), batchId);
   }

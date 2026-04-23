@@ -2,25 +2,33 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { shouldIgnoreRepeatedActionError } from "@lib/request-safety";
+import { getRepeatedActionNotice } from "@lib/request-safety";
 import { requestSnapshotCapture } from "@lib/snapshot-capture";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function ReviewCaptureSnapshotButton() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const actions = useSingleFlightActions<"capture">();
 
   async function handleCapture() {
     await actions.run("capture", async () => {
       setError(null);
+      setNotice(null);
       setIsCapturing(true);
 
       try {
         const result = await requestSnapshotCapture();
         if (!result.ok) {
-          if (shouldIgnoreRepeatedActionError(result.status)) {
+          const repeatedActionNotice = getRepeatedActionNotice({
+            status: result.status,
+            error: result.error,
+          });
+
+          if (repeatedActionNotice) {
+            setNotice(repeatedActionNotice);
             return;
           }
 
@@ -56,6 +64,7 @@ export default function ReviewCaptureSnapshotButton() {
           {error}
         </p>
       ) : null}
+      {notice ? <p className="text-sm text-amber-700">{notice}</p> : null}
     </div>
   );
 }

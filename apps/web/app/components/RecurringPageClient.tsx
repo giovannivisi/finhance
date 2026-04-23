@@ -9,6 +9,7 @@ import type {
   RecurringOccurrenceResponse,
   RecurringTransactionRuleResponse,
 } from "@finhance/shared";
+import CooldownNotice from "@components/CooldownNotice";
 import RecurringOccurrenceForm from "@components/RecurringOccurrenceForm";
 import RecurringRuleForm from "@components/RecurringRuleForm";
 import { createRecurringOccurrenceFormValuesFromRule } from "@lib/recurring-occurrence-form";
@@ -18,7 +19,7 @@ import {
 } from "@lib/recurring-rule-form";
 import { formatCurrency } from "@lib/format";
 import { requestRecurringMaterialization } from "@lib/recurring-materialization";
-import { shouldIgnoreRepeatedActionError } from "@lib/request-safety";
+import { getRepeatedActionNotice } from "@lib/request-safety";
 import { TRANSACTION_KIND_LABELS } from "@lib/transactions";
 import { api, apiMutation } from "@lib/api";
 import { useSingleFlightActions } from "@lib/single-flight";
@@ -48,6 +49,7 @@ export default function RecurringPageClient({
     [],
   );
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [syncSummary, setSyncSummary] =
     useState<MaterializeRecurringRulesResponse | null>(null);
   const [busyRuleId, setBusyRuleId] = useState<string | null>(null);
@@ -96,13 +98,20 @@ export default function RecurringPageClient({
   async function handleSync() {
     await actions.run("sync", async () => {
       setActionError(null);
+      setActionNotice(null);
       setSyncSummary(null);
       setIsSyncing(true);
 
       try {
         const result = await requestRecurringMaterialization();
         if (!result.ok) {
-          if (shouldIgnoreRepeatedActionError(result.status)) {
+          const repeatedActionNotice = getRepeatedActionNotice({
+            status: result.status,
+            error: result.error,
+          });
+
+          if (repeatedActionNotice) {
+            setActionNotice(repeatedActionNotice);
             return;
           }
           setActionError(result.error);
@@ -126,6 +135,7 @@ export default function RecurringPageClient({
   async function handleDisable(ruleId: string) {
     await actions.run(`disable:${ruleId}`, async () => {
       setActionError(null);
+      setActionNotice(null);
       setSyncSummary(null);
       setBusyRuleId(ruleId);
 
@@ -154,6 +164,7 @@ export default function RecurringPageClient({
   async function handleSkipOccurrence(ruleId: string, month: string) {
     await actions.run(`skip:${ruleId}:${month}`, async () => {
       setActionError(null);
+      setActionNotice(null);
       setSyncSummary(null);
       setBusyOccurrenceKey(`${ruleId}:${month}:skip`);
 
@@ -180,6 +191,7 @@ export default function RecurringPageClient({
   async function handleClearOccurrence(ruleId: string, month: string) {
     await actions.run(`clear:${ruleId}:${month}`, async () => {
       setActionError(null);
+      setActionNotice(null);
       setSyncSummary(null);
       setBusyOccurrenceKey(`${ruleId}:${month}:clear`);
 
@@ -207,6 +219,7 @@ export default function RecurringPageClient({
 
   function openOccurrenceManager(ruleId: string) {
     setActionError(null);
+    setActionNotice(null);
     setSyncSummary(null);
     setEditingRuleId(null);
     setOccurrenceRuleId(ruleId);
@@ -293,6 +306,13 @@ export default function RecurringPageClient({
           <p role="alert" className="text-sm text-red-600">
             {actionError}
           </p>
+        ) : null}
+        {actionNotice ? (
+          <CooldownNotice
+            key={actionNotice}
+            notice={actionNotice}
+            className="text-sm text-amber-700"
+          />
         ) : null}
 
         {syncSummary ? (

@@ -1,5 +1,5 @@
 import { fetchApiMutation, readApiError } from "./api.ts";
-import { shouldIgnoreRepeatedActionError } from "./request-safety.ts";
+import { getRepeatedActionNotice } from "./request-safety.ts";
 
 export type DashboardRefreshMode = "auto" | "manual";
 
@@ -13,11 +13,11 @@ export type DashboardRefreshResult =
       error: string;
     };
 
-export function shouldIgnoreDashboardRefreshError(
-  _mode: DashboardRefreshMode,
+export function getDashboardRefreshNotice(
   status: number | null,
-): boolean {
-  return shouldIgnoreRepeatedActionError(status);
+  error: string,
+): string | null {
+  return getRepeatedActionNotice({ status, error });
 }
 
 export async function requestDashboardRefresh(
