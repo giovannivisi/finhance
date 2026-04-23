@@ -13,6 +13,7 @@ import type { MonthlyCashflowResponse } from '@finhance/shared';
 import { RecurringService } from '@recurring/recurring.service';
 import { CategoriesService } from '@transactions/categories.service';
 import { TransactionsService } from '@transactions/transactions.service';
+import { OperationLockService } from '@/request-safety/operation-lock.service';
 
 const OWNER_ID = 'local-dev';
 const USER_VISIBLE_MATERIALIZATION_ERROR =
@@ -174,6 +175,9 @@ describe('RecurringService', () => {
     getCashflowSummary: jest.Mock;
     getMonthlyCashflow: jest.Mock;
   };
+  let operationLocks: {
+    runExclusive: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date('2026-04-21T10:00:00.000Z'));
@@ -216,6 +220,9 @@ describe('RecurringService', () => {
       getCashflowSummary: jest.fn().mockResolvedValue([]),
       getMonthlyCashflow: jest.fn().mockResolvedValue([]),
     };
+    operationLocks = {
+      runExclusive: jest.fn((_options: unknown, work: () => unknown) => work()),
+    };
 
     prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([]);
     prisma.recurringTransactionOccurrence.findFirst.mockResolvedValue(null);
@@ -228,6 +235,7 @@ describe('RecurringService', () => {
       accounts as unknown as AccountsService,
       categories as unknown as CategoriesService,
       transactions as unknown as TransactionsService,
+      operationLocks as unknown as OperationLockService,
     );
   });
 

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from '@prisma/prisma.module';
 import { AccountsModule } from '@accounts/accounts.module';
@@ -11,6 +11,8 @@ import { SnapshotsModule } from '@snapshots/snapshots.module';
 import { TransactionsModule } from '@transactions/transactions.module';
 import { LocalOnlyGuard } from '@/security/local-only.guard';
 import { ProxyAwareThrottlerGuard } from '@/security/proxy-aware-throttler.guard';
+import { RequestSafetyModule } from '@/request-safety/request-safety.module';
+import { IdempotencyInterceptor } from '@/request-safety/idempotency.interceptor';
 
 @Module({
   imports: [
@@ -18,7 +20,7 @@ import { ProxyAwareThrottlerGuard } from '@/security/proxy-aware-throttler.guard
       {
         name: 'default',
         ttl: 60_000,
-        limit: 30,
+        limit: 100,
       },
       {
         name: 'monthlyCashflow',
@@ -27,6 +29,7 @@ import { ProxyAwareThrottlerGuard } from '@/security/proxy-aware-throttler.guard
       },
     ]),
     PrismaModule,
+    RequestSafetyModule,
     AccountsModule,
     AssetsModule,
     RecurringModule,
@@ -43,6 +46,10 @@ import { ProxyAwareThrottlerGuard } from '@/security/proxy-aware-throttler.guard
     {
       provide: APP_GUARD,
       useClass: ProxyAwareThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: IdempotencyInterceptor,
     },
   ],
 })

@@ -7,6 +7,7 @@ import { ImportsService } from '@imports/imports.service';
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { IdempotencyService } from '@/request-safety/idempotency.service';
 import { AccountType, ImportBatchStatus, ImportSource } from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
@@ -193,7 +194,8 @@ describe('Import routes (e2e)', () => {
     );
 
     prisma.importBatch.create.mockImplementation(
-      ({ data }: { data: Record<string, unknown> }) => createImportBatch(data),
+      ({ data }: { data: Record<string, unknown> }) =>
+        createImportBatch({ ...data, id: 'batch-1' }),
     );
     prisma.importBatch.update.mockImplementation(
       ({ data }: { data: Record<string, unknown> }) =>
@@ -220,6 +222,22 @@ describe('Import routes (e2e)', () => {
             resolveOwnerId: () => OWNER_ID,
           },
         },
+        {
+          provide: IdempotencyService,
+          useValue: {
+            executeJson: jest.fn(
+              async (options: {
+                handler: () => Promise<{
+                  statusCode: number;
+                  body: unknown;
+                }>;
+              }) => ({
+                ...(await options.handler()),
+                replayed: false,
+              }),
+            ),
+          },
+        },
       ],
     }).compile();
 
@@ -235,7 +253,9 @@ describe('Import routes (e2e)', () => {
   });
 
   afterEach(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
   it('accepts multipart preview uploads on POST /imports/csv/preview', async () => {

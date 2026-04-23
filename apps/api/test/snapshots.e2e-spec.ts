@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AssetsService } from '@assets/assets.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { OperationLockService } from '@/request-safety/operation-lock.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { SnapshotsController } from '@snapshots/snapshots.controller';
 import { SnapshotsService } from '@snapshots/snapshots.service';
@@ -153,6 +154,17 @@ describe('Snapshot routes (e2e)', () => {
         SnapshotsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AssetsService, useValue: assets },
+        {
+          provide: OperationLockService,
+          useValue: {
+            runExclusive: jest.fn(
+              async <T>(
+                _options: unknown,
+                work: () => Promise<T>,
+              ): Promise<T> => work(),
+            ),
+          },
+        },
         {
           provide: RequestOwnerResolver,
           useValue: {

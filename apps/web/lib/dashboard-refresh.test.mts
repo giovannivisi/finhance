@@ -73,11 +73,11 @@ test("requestDashboardRefresh returns network failures as errors", async () => {
   }
 });
 
-test("shouldIgnoreDashboardRefreshError is silent only for auto 409/429", () => {
+test("shouldIgnoreDashboardRefreshError is silent for expected repeat-action statuses", () => {
   assert.equal(shouldIgnoreDashboardRefreshError("auto", 409), true);
   assert.equal(shouldIgnoreDashboardRefreshError("auto", 429), true);
+  assert.equal(shouldIgnoreDashboardRefreshError("manual", 409), true);
+  assert.equal(shouldIgnoreDashboardRefreshError("manual", 429), true);
   assert.equal(shouldIgnoreDashboardRefreshError("auto", 500), false);
-  assert.equal(shouldIgnoreDashboardRefreshError("manual", 409), false);
-  assert.equal(shouldIgnoreDashboardRefreshError("manual", 429), false);
   assert.equal(shouldIgnoreDashboardRefreshError("auto", null), false);
 });

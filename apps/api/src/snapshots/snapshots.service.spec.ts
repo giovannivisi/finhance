@@ -1,4 +1,5 @@
 import { SnapshotsService } from '@snapshots/snapshots.service';
+import { OperationLockService } from '@/request-safety/operation-lock.service';
 import type { DashboardResponse } from '@finhance/shared';
 import { Prisma } from '@prisma/client';
 
@@ -105,6 +106,9 @@ describe('SnapshotsService', () => {
   let assets: {
     getDashboard: jest.Mock;
   };
+  let operationLocks: {
+    runExclusive: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -122,7 +126,15 @@ describe('SnapshotsService', () => {
       getDashboard: jest.fn(),
     };
 
-    service = new SnapshotsService(prisma as never, assets as never);
+    operationLocks = {
+      runExclusive: jest.fn((_options: unknown, work: () => unknown) => work()),
+    };
+
+    service = new SnapshotsService(
+      prisma as never,
+      assets as never,
+      operationLocks as unknown as OperationLockService,
+    );
   });
 
   afterEach(() => {

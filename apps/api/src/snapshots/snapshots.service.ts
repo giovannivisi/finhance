@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { OperationType } from '@prisma/client';
 import { AssetsService } from '@assets/assets.service';
 import { PrismaService } from '@prisma/prisma.service';
+import { OperationLockService } from '@/request-safety/operation-lock.service';
 import type {
   DashboardAssetResponse,
   DashboardResponse,
@@ -20,11 +22,21 @@ export class SnapshotsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly assetsService: AssetsService,
+    private readonly operationLockService: OperationLockService,
   ) {}
 
   async capture(ownerId: string): Promise<NetWorthSnapshot> {
-    const dashboard = await this.assetsService.getDashboard(ownerId);
-    return this.captureFromDashboard(ownerId, dashboard);
+    return this.operationLockService.runExclusive(
+      {
+        userId: ownerId,
+        type: OperationType.SNAPSHOT_CAPTURE,
+        inProgressMessage: 'Snapshot capture already in progress.',
+      },
+      async () => {
+        const dashboard = await this.assetsService.getDashboard(ownerId);
+        return this.captureFromDashboard(ownerId, dashboard);
+      },
+    );
   }
 
   async captureFromDashboard(

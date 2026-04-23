@@ -15,6 +15,7 @@ import HeaderAddButton from "@components/HeaderAddButton";
 import SectionHeader from "@components/SectionHeader";
 import DisclosureIcon from "@components/DisclosureIcon";
 import AllocationChart from "@components/AllocationChart";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 function getValuationLabel(asset: DashboardAssetResponse): string {
   switch (asset.valuationSource) {
@@ -54,6 +55,7 @@ export default function DashboardClient({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
   const autoRefreshAttemptedRef = useRef(false);
+  const actions = useSingleFlightActions<"refresh">();
   const sortedCategories = useMemo(
     () => Object.keys(grouped).sort(),
     [grouped],
@@ -110,21 +112,26 @@ export default function DashboardClient({
   }
 
   async function handleRefresh() {
-    setRefreshError(null);
-    setIsRefreshing(true);
+    await actions.run("refresh", async () => {
+      setRefreshError(null);
+      setIsRefreshing(true);
 
-    try {
-      const result = await requestDashboardRefresh();
+      try {
+        const result = await requestDashboardRefresh();
 
-      if (!result.ok) {
-        setRefreshError(result.error);
-        return;
+        if (!result.ok) {
+          if (shouldIgnoreDashboardRefreshError("manual", result.status)) {
+            return;
+          }
+          setRefreshError(result.error);
+          return;
+        }
+
+        router.refresh();
+      } finally {
+        setIsRefreshing(false);
       }
-
-      router.refresh();
-    } finally {
-      setIsRefreshing(false);
-    }
+    });
   }
 
   const refreshStatus =

@@ -16,7 +16,8 @@ import {
   normalizeExchangeInput,
   type AssetFormValues,
 } from "@lib/asset-form";
-import { api, getApiUrl, readApiError } from "@lib/api";
+import { api, apiMutation } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 interface AssetFormProps {
   assetId?: string;
@@ -38,6 +39,7 @@ export default function AssetForm({
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const actions = useSingleFlightActions<"submit">();
 
   const config = getKindConfig(form.type, form.kind);
   const isAsset = form.type === "ASSET";
@@ -125,49 +127,42 @@ export default function AssetForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    await actions.run("submit", async () => {
+      setError(null);
 
-    const result = buildAssetPayload(form);
-    if (!result.payload) {
-      setError(result.error ?? "Unable to validate this asset.");
-      return;
-    }
-
-    if (!isCreateMode && !assetId) {
-      setError("Missing asset id for this edit.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch(
-        getApiUrl(isCreateMode ? "/assets" : `/assets/${assetId}`),
-        {
-          method: isCreateMode ? "POST" : "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result.payload),
-        },
-      );
-
-      if (!response.ok) {
-        setError(await readApiError(response));
+      const result = buildAssetPayload(form);
+      if (!result.payload) {
+        setError(result.error ?? "Unable to validate this asset.");
         return;
       }
 
-      onSuccess?.();
-      router.refresh();
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : isCreateMode
-            ? "Error creating asset."
-            : "Error updating asset.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+      if (!isCreateMode && !assetId) {
+        setError("Missing asset id for this edit.");
+        return;
+      }
+
+      setIsSubmitting(true);
+
+      try {
+        await apiMutation(isCreateMode ? "/assets" : `/assets/${assetId}`, {
+          method: isCreateMode ? "POST" : "PUT",
+          body: JSON.stringify(result.payload),
+        });
+
+        onSuccess?.();
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : isCreateMode
+              ? "Error creating asset."
+              : "Error updating asset.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    });
   }
 
   return (

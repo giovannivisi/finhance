@@ -1,9 +1,6 @@
 import { fetchApiMutation, readApiError } from "./api.ts";
-import { shouldIgnoreRepeatedActionError } from "./request-safety.ts";
 
-export type DashboardRefreshMode = "auto" | "manual";
-
-export type DashboardRefreshResult =
+export type SnapshotCaptureResult =
   | {
       ok: true;
     }
@@ -13,21 +10,15 @@ export type DashboardRefreshResult =
       error: string;
     };
 
-export function shouldIgnoreDashboardRefreshError(
-  _mode: DashboardRefreshMode,
-  status: number | null,
-): boolean {
-  return shouldIgnoreRepeatedActionError(status);
-}
-
-export async function requestDashboardRefresh(
+export async function requestSnapshotCapture(
   fetchImpl: typeof fetch = fetch,
-): Promise<DashboardRefreshResult> {
+): Promise<SnapshotCaptureResult> {
   try {
     const response = await fetchApiMutation(
-      "/assets/refresh",
+      "/snapshots/capture",
       {
         method: "POST",
+        body: JSON.stringify({}),
       },
       fetchImpl,
     );
@@ -48,7 +39,7 @@ export async function requestDashboardRefresh(
       error:
         error instanceof Error
           ? error.message
-          : "Unable to refresh asset quotes.",
+          : "Unable to capture this snapshot.",
     };
   }
 }

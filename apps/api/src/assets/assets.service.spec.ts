@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
-import { REFRESH_COOLDOWN_MS } from '@assets/assets.types';
+import { OperationLockService } from '@/request-safety/operation-lock.service';
 import { AssetKind, AssetType, Prisma } from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
@@ -19,28 +19,6 @@ type AssetUpdateCall = {
     quantity: Prisma.Decimal;
     balance: Prisma.Decimal;
     unitPrice: Prisma.Decimal;
-  };
-};
-
-type PortfolioStateCreateCall = {
-  data: {
-    userId: string;
-    refreshStartedAt: unknown;
-  };
-};
-
-type PortfolioStateSuccessUpdateCall = {
-  where: { userId: string };
-  data: {
-    lastRefreshSucceededAt: unknown;
-    refreshStartedAt: null;
-  };
-};
-
-type PortfolioStateReleaseUpdateCall = {
-  where: { userId: string };
-  data: {
-    refreshStartedAt: null;
   };
 };
 
@@ -78,21 +56,6 @@ function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-function createPortfolioState(
-  overrides: Partial<Record<string, unknown>> = {},
-) {
-  const now = new Date();
-
-  return {
-    userId: OWNER_ID,
-    lastRefreshSucceededAt: null,
-    refreshStartedAt: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
 describe('AssetsService', () => {
   let service: AssetsService;
   let prisma: {
@@ -120,6 +83,9 @@ describe('AssetsService', () => {
   };
   let accounts: {
     assertAccountAssignmentAllowed: jest.Mock;
+  };
+  let operationLocks: {
+    runExclusive: jest.Mock;
   };
 
   beforeEach(() => {
@@ -169,11 +135,15 @@ describe('AssetsService', () => {
     accounts = {
       assertAccountAssignmentAllowed: jest.fn(),
     };
+    operationLocks = {
+      runExclusive: jest.fn((_options: unknown, work: () => unknown) => work()),
+    };
 
     service = new AssetsService(
       prisma as never,
       prices as never,
       accounts as never,
+      operationLocks as unknown as OperationLockService,
     );
   });
 
@@ -388,8 +358,6 @@ describe('AssetsService', () => {
       lastFxRateAt: null,
     });
 
-    prisma.portfolioState.findUnique.mockResolvedValue(null);
-    prisma.portfolioState.create.mockResolvedValue(createPortfolioState());
     prisma.asset.findMany
       .mockResolvedValueOnce([refreshAsset, usdCash])
       .mockResolvedValueOnce([
@@ -420,25 +388,12 @@ describe('AssetsService', () => {
 
     const response = await service.refreshAssets(OWNER_ID);
 
-    const createCall = firstCallArg<PortfolioStateCreateCall>(
-      prisma.portfolioState.create,
-    );
-    expect(createCall).toEqual({
-      data: {
+    expect(operationLocks.runExclusive).toHaveBeenCalledWith(
+      expect.objectContaining({
         userId: OWNER_ID,
-        refreshStartedAt: expect.any(Date) as unknown,
-      },
-    });
-    const successUpdateCall = firstCallArg<PortfolioStateSuccessUpdateCall>(
-      prisma.portfolioState.update,
+      }),
+      expect.any(Function),
     );
-    expect(successUpdateCall).toEqual({
-      where: { userId: OWNER_ID },
-      data: {
-        lastRefreshSucceededAt: expect.any(Date) as unknown,
-        refreshStartedAt: null,
-      },
-    });
     expect(prisma.asset.findMany).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -453,10 +408,8 @@ describe('AssetsService', () => {
   });
 
   it('rejects refreshes during the success-based cooldown window', async () => {
-    prisma.portfolioState.findUnique.mockResolvedValue(
-      createPortfolioState({
-        lastRefreshSucceededAt: new Date(Date.now() - 1_000),
-      }),
+    operationLocks.runExclusive.mockRejectedValueOnce(
+      new Error('Refresh is cooling down. Try again in 1s.'),
     );
 
     await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow(
@@ -466,10 +419,8 @@ describe('AssetsService', () => {
   });
 
   it('rejects refreshes while another refresh is still in flight', async () => {
-    prisma.portfolioState.findUnique.mockResolvedValue(
-      createPortfolioState({
-        refreshStartedAt: new Date(Date.now() - 1_000),
-      }),
+    operationLocks.runExclusive.mockRejectedValueOnce(
+      new Error('Refresh already in progress.'),
     );
 
     await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow(
@@ -478,43 +429,17 @@ describe('AssetsService', () => {
     expect(prisma.asset.findMany).not.toHaveBeenCalled();
   });
 
-  it('clears the lock and skips cooldown when refresh work fails', async () => {
+  it('surfaces refresh work failures after claiming the shared operation lock', async () => {
     const asset = createAsset();
-    prisma.portfolioState.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(createPortfolioState());
     prisma.asset.findMany.mockResolvedValueOnce([asset]);
     prices.getMarketPrice.mockRejectedValue(new Error('quote down'));
 
     await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow('quote down');
-
-    const createCall = firstCallArg<PortfolioStateCreateCall>(
-      prisma.portfolioState.create,
-    );
-    expect(createCall).toEqual({
-      data: {
-        userId: OWNER_ID,
-        refreshStartedAt: expect.any(Date) as unknown,
-      },
-    });
-    const releaseUpdateCall = firstCallArg<PortfolioStateReleaseUpdateCall>(
-      prisma.portfolioState.update,
-    );
-    expect(releaseUpdateCall).toEqual({
-      where: { userId: OWNER_ID },
-      data: {
-        refreshStartedAt: null,
-      },
-    });
+    expect(operationLocks.runExclusive).toHaveBeenCalledTimes(1);
   });
 
-  it('reclaims stale in-flight locks', async () => {
+  it('uses the shared operation lock before refreshing asset quotes', async () => {
     const refreshAsset = createAsset();
-    prisma.portfolioState.findUnique.mockResolvedValue(
-      createPortfolioState({
-        refreshStartedAt: new Date(Date.now() - REFRESH_COOLDOWN_MS - 1_000),
-      }),
-    );
     prisma.asset.findMany
       .mockResolvedValueOnce([refreshAsset])
       .mockResolvedValueOnce([
@@ -531,9 +456,7 @@ describe('AssetsService', () => {
 
     await service.refreshAssets(OWNER_ID);
 
-    expect(prisma.portfolioState.findUnique).toHaveBeenCalledWith({
-      where: { userId: OWNER_ID },
-    });
+    expect(operationLocks.runExclusive).toHaveBeenCalledTimes(1);
     expect(prisma.asset.findMany).toHaveBeenCalled();
   });
 

@@ -1,5 +1,8 @@
 import {
   BadRequestException,
+  ConflictException,
+  HttpException,
+  HttpStatus,
   INestApplication,
   ValidationPipe,
 } from '@nestjs/common';
@@ -19,40 +22,21 @@ import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { SnapshotsService } from '@snapshots/snapshots.service';
+import { OperationLockService } from '@/request-safety/operation-lock.service';
 import {
   Asset,
   AssetKind,
   AssetType,
   NetWorthSnapshot,
-  PortfolioState,
   Prisma,
 } from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
 type ResponseWithBody = { body: unknown };
-type RefreshSuccessStateUpdateCall = {
-  where: { userId: string };
-  data: {
-    lastRefreshSucceededAt: unknown;
-    refreshStartedAt: null;
-  };
-};
-
-type RefreshReleaseStateUpdateCall = {
-  where: { userId: string };
-  data: {
-    refreshStartedAt: null;
-  };
-};
 type HttpServer = Parameters<typeof request>[0];
 
 function bodyAs<T>(response: ResponseWithBody): T {
   return response.body as T;
-}
-
-function firstCallArg<T>(mockFn: jest.Mock): T {
-  const calls = mockFn.mock.calls as unknown[][];
-  return calls[0]?.[0] as T;
 }
 
 function createAsset(overrides: Partial<Asset> = {}): Asset {
@@ -82,21 +66,6 @@ function createAsset(overrides: Partial<Asset> = {}): Asset {
     lastPriceAt: null,
     lastFxRate: null,
     lastFxRateAt: null,
-    ...overrides,
-  };
-}
-
-function createPortfolioState(
-  overrides: Partial<PortfolioState> = {},
-): PortfolioState {
-  const now = new Date();
-
-  return {
-    userId: OWNER_ID,
-    lastRefreshSucceededAt: null,
-    refreshStartedAt: null,
-    createdAt: now,
-    updatedAt: now,
     ...overrides,
   };
 }
@@ -152,6 +121,11 @@ function expectAssetResponseDto(
   expect(body).not.toHaveProperty('updatedAt');
 }
 
+type RunExclusiveFn = <T>(
+  options: unknown,
+  work: () => Promise<T>,
+) => Promise<T>;
+
 describe('Asset routes (e2e)', () => {
   let app: INestApplication;
   let prisma: {
@@ -163,13 +137,9 @@ describe('Asset routes (e2e)', () => {
       create: jest.Mock;
       delete: jest.Mock;
     };
-    portfolioState: {
-      findUnique: jest.Mock;
-      create: jest.Mock;
-      update: jest.Mock;
-    };
     $transaction: jest.Mock;
   };
+  let operationLock: { runExclusive: jest.Mock };
   let prices: {
     normalizeCurrency: jest.Mock;
     normalizeTicker: jest.Mock;
@@ -200,24 +170,15 @@ describe('Asset routes (e2e)', () => {
         create: jest.fn(),
         delete: jest.fn(),
       },
-      portfolioState: {
-        findUnique: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-      },
       $transaction: jest.fn(),
     };
 
     prisma.$transaction.mockImplementation(
       async (
-        callback: (tx: {
-          asset: typeof prisma.asset;
-          portfolioState: typeof prisma.portfolioState;
-        }) => Promise<unknown>,
+        callback: (tx: { asset: typeof prisma.asset }) => Promise<unknown>,
       ) =>
         callback({
           asset: prisma.asset,
-          portfolioState: prisma.portfolioState,
         }),
     );
 
@@ -244,6 +205,11 @@ describe('Asset routes (e2e)', () => {
       captureFromDashboard: jest.fn(),
     };
 
+    const passThrough: RunExclusiveFn = async (_options, work) => work();
+    operationLock = {
+      runExclusive: jest.fn(passThrough),
+    };
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [AssetsController, DashboardController],
       providers: [
@@ -253,6 +219,10 @@ describe('Asset routes (e2e)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: PricesService, useValue: prices },
         { provide: SnapshotsService, useValue: snapshots },
+        {
+          provide: OperationLockService,
+          useValue: operationLock,
+        },
         {
           provide: RequestOwnerResolver,
           useValue: {
@@ -287,14 +257,10 @@ describe('Asset routes (e2e)', () => {
 
     prisma.$transaction.mockImplementation(
       async (
-        callback: (tx: {
-          asset: typeof transactionAsset;
-          portfolioState: typeof prisma.portfolioState;
-        }) => Promise<unknown>,
+        callback: (tx: { asset: typeof transactionAsset }) => Promise<unknown>,
       ) =>
         callback({
           asset: transactionAsset,
-          portfolioState: prisma.portfolioState,
         }),
     );
 
@@ -488,8 +454,6 @@ describe('Asset routes (e2e)', () => {
 
   it('refreshes stored quotes through POST /assets/refresh', async () => {
     const asset = createAsset();
-    prisma.portfolioState.findUnique.mockResolvedValue(null);
-    prisma.portfolioState.create.mockResolvedValue(createPortfolioState());
     prisma.asset.findMany.mockResolvedValueOnce([asset]).mockResolvedValueOnce([
       createAsset({
         lastPrice: new Prisma.Decimal('50'),
@@ -511,35 +475,22 @@ describe('Asset routes (e2e)', () => {
         expect(body.staleCount).toBe(0);
       });
 
-    const successUpdateCall = firstCallArg<RefreshSuccessStateUpdateCall>(
-      prisma.portfolioState.update,
-    );
-    expect(successUpdateCall).toEqual({
-      where: { userId: OWNER_ID },
-      data: {
-        lastRefreshSucceededAt: expect.any(Date) as unknown,
-        refreshStartedAt: null,
-      },
-    });
+    expect(operationLock.runExclusive).toHaveBeenCalledTimes(1);
   });
 
   it('returns 429 after a recent successful refresh', async () => {
-    prisma.portfolioState.findUnique.mockResolvedValue(
-      createPortfolioState({
-        lastRefreshSucceededAt: new Date(Date.now() - 1_000),
-      }),
-    );
+    operationLock.runExclusive.mockImplementationOnce(() => {
+      throw new HttpException(
+        'Refresh is cooling down. Try again in 10s.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    });
 
     await request(httpServer()).post('/assets/refresh').expect(429);
   });
 
   it('allows immediate retry after a failed refresh', async () => {
     const asset = createAsset();
-    prisma.portfolioState.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(createPortfolioState())
-      .mockResolvedValueOnce(createPortfolioState());
-    prisma.portfolioState.create.mockResolvedValue(createPortfolioState());
     prisma.asset.findMany
       .mockResolvedValueOnce([asset])
       .mockResolvedValueOnce([asset])
@@ -566,23 +517,13 @@ describe('Asset routes (e2e)', () => {
         expect(body.updatedCount).toBe(1);
       });
 
-    const releaseUpdateCall = firstCallArg<RefreshReleaseStateUpdateCall>(
-      prisma.portfolioState.update,
-    );
-    expect(releaseUpdateCall).toEqual({
-      where: { userId: OWNER_ID },
-      data: {
-        refreshStartedAt: null,
-      },
-    });
+    expect(operationLock.runExclusive).toHaveBeenCalledTimes(2);
   });
 
   it('returns 409 while a refresh is already in flight', async () => {
-    prisma.portfolioState.findUnique.mockResolvedValue(
-      createPortfolioState({
-        refreshStartedAt: new Date(Date.now() - 1_000),
-      }),
-    );
+    operationLock.runExclusive.mockImplementationOnce(() => {
+      throw new ConflictException('Refresh already in progress.');
+    });
 
     await request(httpServer()).post('/assets/refresh').expect(409);
   });

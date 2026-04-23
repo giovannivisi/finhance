@@ -89,3 +89,61 @@ test("requestRecurringMaterialization returns network failures as errors", async
     restoreApiUrl();
   }
 });
+
+test("requestRecurringMaterialization reuses the same in-flight request", async () => {
+  setApiUrlForTest();
+  try {
+    let callCount = 0;
+    let resolveFetch: ((response: Response) => void) | null = null;
+
+    const fetchImpl = () => {
+      callCount += 1;
+
+      return new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+    };
+
+    const firstRequest = requestRecurringMaterialization(
+      fetchImpl as typeof fetch,
+    );
+    const secondRequest = requestRecurringMaterialization(
+      fetchImpl as typeof fetch,
+    );
+
+    assert.equal(callCount, 1);
+
+    resolveFetch?.(
+      new Response(
+        JSON.stringify({
+          createdCount: 4,
+          processedRuleCount: 4,
+          failedRuleCount: 0,
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+          },
+        },
+      ),
+    );
+
+    const [firstResult, secondResult] = await Promise.all([
+      firstRequest,
+      secondRequest,
+    ]);
+
+    assert.deepEqual(firstResult, secondResult);
+    assert.deepEqual(firstResult, {
+      ok: true,
+      summary: {
+        createdCount: 4,
+        processedRuleCount: 4,
+        failedRuleCount: 0,
+      },
+    });
+  } finally {
+    restoreApiUrl();
+  }
+});

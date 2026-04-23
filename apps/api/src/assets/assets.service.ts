@@ -1,8 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  HttpException,
-  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -16,6 +14,7 @@ import {
   AssetKind,
   AssetType,
   LiabilityKind,
+  OperationType,
   Prisma,
 } from '@prisma/client';
 import { toAssetResponse } from '@assets/assets.mapper';
@@ -25,6 +24,7 @@ import {
   REFRESH_COOLDOWN_MS,
   VALUATION_STALE_MS,
 } from '@assets/assets.types';
+import { OperationLockService } from '@/request-safety/operation-lock.service';
 import type {
   DashboardAssetResponse,
   DashboardResponse,
@@ -65,6 +65,7 @@ export class AssetsService {
     private readonly prisma: PrismaService,
     private readonly pricesService: PricesService,
     private readonly accountsService: AccountsService,
+    private readonly operationLockService: OperationLockService,
   ) {}
 
   async findAll(ownerId: string): Promise<Asset[]> {
@@ -111,147 +112,151 @@ export class AssetsService {
 
   async refreshAssets(ownerId: string): Promise<RefreshAssetsResponse> {
     const refreshedAt = new Date();
-    await this.claimRefreshLock(ownerId, refreshedAt);
+    return this.operationLockService.runExclusive(
+      {
+        userId: ownerId,
+        type: OperationType.ASSET_REFRESH,
+        startedAt: refreshedAt,
+        inProgressMessage: 'Refresh already in progress.',
+        cooldownMs: REFRESH_COOLDOWN_MS,
+        cooldownMessage: (remainingSeconds) =>
+          `Refresh is cooling down. Try again in ${remainingSeconds}s.`,
+      },
+      async () => {
+        const assets = await this.prisma.asset.findMany({
+          where: { userId: ownerId },
+          orderBy: { createdAt: 'asc' },
+        });
 
-    try {
-      const assets = await this.prisma.asset.findMany({
-        where: { userId: ownerId },
-        orderBy: { createdAt: 'asc' },
-      });
+        const quoteKeys = new Map<string, Asset>();
+        const fxCurrencies = new Set<string>();
 
-      const quoteKeys = new Map<string, Asset>();
-      const fxCurrencies = new Set<string>();
+        for (const asset of assets) {
+          if (this.isMarketAsset(asset)) {
+            try {
+              const symbol = this.pricesService.buildMarketSymbol({
+                kind: asset.kind,
+                ticker: asset.ticker ?? '',
+                exchange: asset.exchange,
+                quoteCurrency: asset.currency,
+              });
+              quoteKeys.set(symbol, asset);
+            } catch {
+              continue;
+            }
+          }
 
-      for (const asset of assets) {
-        if (this.isMarketAsset(asset)) {
-          try {
-            const symbol = this.pricesService.buildMarketSymbol({
-              kind: asset.kind,
-              ticker: asset.ticker ?? '',
-              exchange: asset.exchange,
-              quoteCurrency: asset.currency,
-            });
-            quoteKeys.set(symbol, asset);
-          } catch {
-            continue;
+          if (asset.currency !== BASE_CURRENCY) {
+            fxCurrencies.add(asset.currency);
           }
         }
 
-        if (asset.currency !== BASE_CURRENCY) {
-          fxCurrencies.add(asset.currency);
-        }
-      }
+        const quoteResults = new Map<string, Prisma.Decimal | null>();
+        const fxResults = new Map<string, Prisma.Decimal | null>();
 
-      const quoteResults = new Map<string, Prisma.Decimal | null>();
-      const fxResults = new Map<string, Prisma.Decimal | null>();
+        await Promise.all(
+          Array.from(quoteKeys.keys()).map(async (symbol) => {
+            const sample = quoteKeys.get(symbol);
+            if (!sample?.kind || !sample.ticker) {
+              quoteResults.set(symbol, null);
+              return;
+            }
 
-      await Promise.all(
-        Array.from(quoteKeys.keys()).map(async (symbol) => {
-          const sample = quoteKeys.get(symbol);
-          if (!sample?.kind || !sample.ticker) {
-            quoteResults.set(symbol, null);
-            return;
-          }
+            quoteResults.set(
+              symbol,
+              await this.pricesService.getMarketPrice(
+                {
+                  kind: sample.kind,
+                  ticker: sample.ticker,
+                  exchange: sample.exchange,
+                  quoteCurrency: sample.currency,
+                },
+                { forceRefresh: true },
+              ),
+            );
+          }),
+        );
 
-          quoteResults.set(
-            symbol,
-            await this.pricesService.getMarketPrice(
-              {
-                kind: sample.kind,
-                ticker: sample.ticker,
-                exchange: sample.exchange,
-                quoteCurrency: sample.currency,
-              },
-              { forceRefresh: true },
-            ),
-          );
-        }),
-      );
+        await Promise.all(
+          Array.from(fxCurrencies).map(async (currency) => {
+            fxResults.set(
+              currency,
+              await this.pricesService.getFxRate(currency, BASE_CURRENCY, {
+                forceRefresh: true,
+              }),
+            );
+          }),
+        );
 
-      await Promise.all(
-        Array.from(fxCurrencies).map(async (currency) => {
-          fxResults.set(
-            currency,
-            await this.pricesService.getFxRate(currency, BASE_CURRENCY, {
-              forceRefresh: true,
-            }),
-          );
-        }),
-      );
+        let updatedCount = 0;
 
-      let updatedCount = 0;
+        for (const asset of assets) {
+          const data: Prisma.AssetUpdateInput = {};
+          let shouldUpdate = false;
 
-      for (const asset of assets) {
-        const data: Prisma.AssetUpdateInput = {};
-        let shouldUpdate = false;
-
-        if (this.isMarketAsset(asset)) {
-          try {
-            const symbol = this.pricesService.buildMarketSymbol({
-              kind: asset.kind,
-              ticker: asset.ticker ?? '',
-              exchange: asset.exchange,
-              quoteCurrency: asset.currency,
-            });
-            const price = quoteResults.get(symbol) ?? null;
-            if (price) {
-              data.lastPrice = price;
-              data.lastPriceAt = refreshedAt;
+          if (this.isMarketAsset(asset)) {
+            try {
+              const symbol = this.pricesService.buildMarketSymbol({
+                kind: asset.kind,
+                ticker: asset.ticker ?? '',
+                exchange: asset.exchange,
+                quoteCurrency: asset.currency,
+              });
+              const price = quoteResults.get(symbol) ?? null;
+              if (price) {
+                data.lastPrice = price;
+                data.lastPriceAt = refreshedAt;
+                shouldUpdate = true;
+              }
+            } catch {
+              data.lastPrice = null;
+              data.lastPriceAt = null;
               shouldUpdate = true;
             }
-          } catch {
+          } else if (asset.lastPrice !== null || asset.lastPriceAt !== null) {
             data.lastPrice = null;
             data.lastPriceAt = null;
             shouldUpdate = true;
           }
-        } else if (asset.lastPrice !== null || asset.lastPriceAt !== null) {
-          data.lastPrice = null;
-          data.lastPriceAt = null;
-          shouldUpdate = true;
-        }
 
-        if (asset.currency === BASE_CURRENCY) {
-          if (asset.lastFxRate !== null || asset.lastFxRateAt !== null) {
-            data.lastFxRate = null;
-            data.lastFxRateAt = null;
-            shouldUpdate = true;
+          if (asset.currency === BASE_CURRENCY) {
+            if (asset.lastFxRate !== null || asset.lastFxRateAt !== null) {
+              data.lastFxRate = null;
+              data.lastFxRateAt = null;
+              shouldUpdate = true;
+            }
+          } else {
+            const fxRate = fxResults.get(asset.currency) ?? null;
+            if (fxRate) {
+              data.lastFxRate = fxRate;
+              data.lastFxRateAt = refreshedAt;
+              shouldUpdate = true;
+            }
           }
-        } else {
-          const fxRate = fxResults.get(asset.currency) ?? null;
-          if (fxRate) {
-            data.lastFxRate = fxRate;
-            data.lastFxRateAt = refreshedAt;
-            shouldUpdate = true;
+
+          if (!shouldUpdate) {
+            continue;
           }
+
+          await this.prisma.asset.update({
+            where: { id: asset.id },
+            data,
+          });
+          updatedCount += 1;
         }
 
-        if (!shouldUpdate) {
-          continue;
-        }
+        const dashboard = await this.getDashboard(ownerId);
+        const staleCount = dashboard.assets.filter(
+          (asset) => asset.isStale || asset.valuationSource === 'UNAVAILABLE',
+        ).length;
 
-        await this.prisma.asset.update({
-          where: { id: asset.id },
-          data,
-        });
-        updatedCount += 1;
-      }
-
-      const dashboard = await this.getDashboard(ownerId);
-      const staleCount = dashboard.assets.filter(
-        (asset) => asset.isStale || asset.valuationSource === 'UNAVAILABLE',
-      ).length;
-
-      await this.completeRefresh(ownerId, refreshedAt);
-
-      return {
-        refreshedAt: refreshedAt.toISOString(),
-        updatedCount,
-        staleCount,
-      };
-    } catch (error) {
-      await this.releaseRefreshLock(ownerId);
-      throw error;
-    }
+        return {
+          refreshedAt: refreshedAt.toISOString(),
+          updatedCount,
+          staleCount,
+        };
+      },
+    );
   }
 
   async create(ownerId: string, dto: CreateAssetDto): Promise<Asset> {
@@ -352,99 +357,6 @@ export class AssetsService {
   async remove(ownerId: string, id: string): Promise<void> {
     await this.findOne(ownerId, id);
     await this.prisma.asset.delete({ where: { id } });
-  }
-
-  private async claimRefreshLock(
-    ownerId: string,
-    refreshStartedAt: Date,
-    attempt = 0,
-  ): Promise<void> {
-    try {
-      await this.prisma.$transaction(
-        async (tx) => {
-          const state = await tx.portfolioState.findUnique({
-            where: { userId: ownerId },
-          });
-
-          if (
-            state?.refreshStartedAt &&
-            state.refreshStartedAt.getTime() + REFRESH_COOLDOWN_MS >
-              refreshStartedAt.getTime()
-          ) {
-            throw new HttpException(
-              'Refresh already in progress.',
-              HttpStatus.CONFLICT,
-            );
-          }
-
-          if (state?.lastRefreshSucceededAt) {
-            const nextAllowedAt =
-              state.lastRefreshSucceededAt.getTime() + REFRESH_COOLDOWN_MS;
-
-            if (nextAllowedAt > refreshStartedAt.getTime()) {
-              const remainingSeconds = Math.max(
-                1,
-                Math.ceil((nextAllowedAt - refreshStartedAt.getTime()) / 1000),
-              );
-              throw new HttpException(
-                `Refresh is cooling down. Try again in ${remainingSeconds}s.`,
-                HttpStatus.TOO_MANY_REQUESTS,
-              );
-            }
-
-            await tx.portfolioState.update({
-              where: { userId: ownerId },
-              data: {
-                refreshStartedAt,
-              },
-            });
-            return;
-          }
-
-          await tx.portfolioState.create({
-            data: {
-              userId: ownerId,
-              refreshStartedAt,
-            },
-          });
-        },
-        {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        },
-      );
-    } catch (error) {
-      if (
-        attempt < 2 &&
-        (this.isPrismaError(error, 'P2002') ||
-          this.isPrismaError(error, 'P2034'))
-      ) {
-        return this.claimRefreshLock(ownerId, refreshStartedAt, attempt + 1);
-      }
-
-      throw error;
-    }
-  }
-
-  private async completeRefresh(
-    ownerId: string,
-    refreshedAt: Date,
-  ): Promise<void> {
-    await this.prisma.portfolioState.update({
-      where: { userId: ownerId },
-      data: {
-        lastRefreshSucceededAt: refreshedAt,
-        refreshStartedAt: null,
-      },
-    });
-  }
-
-  private async releaseRefreshLock(ownerId: string): Promise<void> {
-    await this.prisma.portfolioState.update({
-      where: { userId: ownerId },
-      data: {
-        refreshStartedAt: null,
-      },
-    });
   }
 
   private async mergeOrCreateMarketAsset(
