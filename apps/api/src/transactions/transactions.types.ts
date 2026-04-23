@@ -46,5 +46,6 @@ export interface MonthlyCashflowFilters {
   from: string;
   to: string;
   accountIds?: string[];
+  categoryId?: string;
   includeArchivedAccounts?: boolean;
 }

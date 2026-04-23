@@ -2,7 +2,7 @@ import { Transform } from 'class-transformer';
 import type { TransformFnParams } from 'class-transformer';
 import { IsBoolean, IsOptional, IsString, Matches } from 'class-validator';
 
-const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const LOCAL_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function trimOptionalStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() || undefined : value;
@@ -31,18 +31,16 @@ function booleanValue({ value }: TransformFnParams): unknown {
   return value;
 }
 
-export class CashflowSummaryQueryDto {
-  @IsOptional()
+export class CashflowAnalyticsQueryDto {
   @IsString()
-  @Matches(LOCAL_DATE_PATTERN)
+  @Matches(LOCAL_MONTH_PATTERN)
   @Transform(trimOptionalStringValue)
-  from?: string;
+  from!: string;
 
-  @IsOptional()
   @IsString()
-  @Matches(LOCAL_DATE_PATTERN)
+  @Matches(LOCAL_MONTH_PATTERN)
   @Transform(trimOptionalStringValue)
-  to?: string;
+  to!: string;
 
   @IsOptional()
   @IsString()

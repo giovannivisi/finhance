@@ -8,6 +8,7 @@ import { CashflowController } from '@transactions/cashflow.controller';
 import { TransactionsController } from '@transactions/transactions.controller';
 import { TransactionsService } from '@transactions/transactions.service';
 import type {
+  CashflowAnalyticsResponse,
   CashflowSummaryResponse,
   MonthlyCashflowResponse,
   TransactionResponse,
@@ -590,6 +591,130 @@ describe('Transaction routes (e2e)', () => {
       });
   });
 
+  it('returns owner-scoped cashflow analytics DTOs', async () => {
+    prisma.transaction.findMany
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'income-april',
+          postedAt: new Date('2026-04-02T09:00:00.000Z'),
+          kind: TransactionKind.INCOME,
+          direction: TransactionDirection.INFLOW,
+          amount: new Prisma.Decimal('100'),
+          currency: 'EUR',
+          categoryId: 'category-income',
+          category: createCategory({
+            id: 'category-income',
+            name: 'Salary',
+            type: CategoryType.INCOME,
+          }),
+        }),
+        createTransactionRow({
+          id: 'expense-may',
+          postedAt: new Date('2026-05-03T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('40'),
+          currency: 'EUR',
+          categoryId: 'category-expense',
+          category: createCategory({
+            id: 'category-expense',
+            name: 'Rent',
+            type: CategoryType.EXPENSE,
+          }),
+        }),
+      ])
+      .mockResolvedValueOnce([]);
+
+    await request(httpServer())
+      .get('/cashflow/analytics?from=2026-04&to=2026-05')
+      .expect(200)
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<CashflowAnalyticsResponse>(response);
+        expect(body).toEqual({
+          from: '2026-04',
+          to: '2026-05',
+          focusMonth: '2026-05',
+          currencies: [
+            {
+              currency: 'EUR',
+              averageMonthlyExpense: 20,
+              averageMonthlyIncome: 50,
+              monthlySeries: [
+                {
+                  month: '2026-04',
+                  incomeTotal: 100,
+                  expenseTotal: 0,
+                  netCashflow: 100,
+                  adjustmentInTotal: 0,
+                  adjustmentOutTotal: 0,
+                  uncategorizedExpenseTotal: 0,
+                  uncategorizedIncomeTotal: 0,
+                },
+                {
+                  month: '2026-05',
+                  incomeTotal: 0,
+                  expenseTotal: 40,
+                  netCashflow: -40,
+                  adjustmentInTotal: 0,
+                  adjustmentOutTotal: 0,
+                  uncategorizedExpenseTotal: 0,
+                  uncategorizedIncomeTotal: 0,
+                },
+              ],
+              focusMonthExpenseBreakdown: [
+                {
+                  categoryId: 'category-expense',
+                  name: 'Rent',
+                  total: 40,
+                },
+              ],
+              focusMonthIncomeBreakdown: [],
+              expenseCategoryTrends: [
+                {
+                  categoryId: 'category-expense',
+                  name: 'Rent',
+                  total: 40,
+                  series: [
+                    { month: '2026-04', total: 0 },
+                    { month: '2026-05', total: 40 },
+                  ],
+                },
+              ],
+              incomeCategoryTrends: [
+                {
+                  categoryId: 'category-income',
+                  name: 'Salary',
+                  total: 100,
+                  series: [
+                    { month: '2026-04', total: 100 },
+                    { month: '2026-05', total: 0 },
+                  ],
+                },
+              ],
+              expenseMonthOverMonthChanges: [
+                {
+                  categoryId: 'category-expense',
+                  name: 'Rent',
+                  previousTotal: 0,
+                  currentTotal: 40,
+                  delta: 40,
+                },
+              ],
+              incomeMonthOverMonthChanges: [
+                {
+                  categoryId: 'category-income',
+                  name: 'Salary',
+                  previousTotal: 100,
+                  currentTotal: 0,
+                  delta: -100,
+                },
+              ],
+            },
+          ],
+        });
+      });
+  });
+
   it('rejects invalid monthly cashflow query formats', async () => {
     await request(httpServer())
       .get('/cashflow/monthly?from=2026-04-01&to=2026-05')
@@ -603,6 +728,14 @@ describe('Transaction routes (e2e)', () => {
     await request(httpServer())
       .get(
         '/cashflow/monthly?from=2026-04&to=2026-05&includeArchivedAccounts=yes',
+      )
+      .expect(400);
+    await request(httpServer())
+      .get('/cashflow/analytics?from=2026-04-01&to=2026-05')
+      .expect(400);
+    await request(httpServer())
+      .get(
+        '/cashflow/summary?from=2026-04-01&to=2026-05-31&includeArchivedAccounts=yes',
       )
       .expect(400);
   });

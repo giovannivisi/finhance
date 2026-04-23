@@ -2,10 +2,12 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { createNamedThrottleOverride } from '@/config/throttle.config';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { CashflowAnalyticsQueryDto } from '@transactions/dto/cashflow-analytics-query.dto';
 import { CashflowMonthlyQueryDto } from '@transactions/dto/cashflow-monthly-query.dto';
 import { CashflowSummaryQueryDto } from '@transactions/dto/cashflow-summary-query.dto';
 import { TransactionsService } from '@transactions/transactions.service';
 import type {
+  CashflowAnalyticsResponse,
   CashflowSummaryResponse,
   MonthlyCashflowResponse,
 } from '@finhance/shared';
@@ -32,6 +34,23 @@ export class CashflowController {
       accountIds: query.accountId,
       includeArchivedAccounts: query.includeArchivedAccounts,
     });
+  }
+
+  @Get('analytics')
+  @Throttle(createNamedThrottleOverride('analytics'))
+  async getAnalytics(
+    @Query() query: CashflowAnalyticsQueryDto,
+  ): Promise<CashflowAnalyticsResponse> {
+    return this.transactionsService.getCashflowAnalytics(
+      this.resolveOwnerId(),
+      {
+        from: query.from,
+        to: query.to,
+        accountId: query.accountId,
+        categoryId: query.categoryId,
+        includeArchivedAccounts: query.includeArchivedAccounts,
+      },
+    );
   }
 
   @Get('summary')

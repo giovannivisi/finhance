@@ -827,4 +827,233 @@ describe('TransactionsService', () => {
       },
     ]);
   });
+
+  it('builds analytics from monthly cashflow with trends and month-over-month deltas', async () => {
+    prisma.transaction.findMany
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'income-april',
+          postedAt: new Date('2026-04-02T09:00:00.000Z'),
+          kind: TransactionKind.INCOME,
+          direction: TransactionDirection.INFLOW,
+          amount: new Prisma.Decimal('100'),
+          currency: 'EUR',
+          categoryId: 'category-income',
+          category: createCategory({
+            id: 'category-income',
+            name: 'Salary',
+            type: CategoryType.INCOME,
+          }),
+        }),
+        createTransactionRow({
+          id: 'expense-april-rent',
+          postedAt: new Date('2026-04-03T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('40'),
+          currency: 'EUR',
+          categoryId: 'category-rent',
+          category: createCategory({
+            id: 'category-rent',
+            name: 'Rent',
+            type: CategoryType.EXPENSE,
+          }),
+        }),
+        createTransactionRow({
+          id: 'expense-april-groceries',
+          postedAt: new Date('2026-04-05T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('10'),
+          currency: 'EUR',
+          categoryId: 'category-groceries',
+          category: createCategory({
+            id: 'category-groceries',
+            name: 'Groceries',
+            type: CategoryType.EXPENSE,
+          }),
+        }),
+        createTransactionRow({
+          id: 'adjustment-april',
+          postedAt: new Date('2026-04-07T09:00:00.000Z'),
+          kind: TransactionKind.ADJUSTMENT,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('5'),
+          currency: 'EUR',
+          categoryId: null,
+          category: null,
+        }),
+        createTransactionRow({
+          id: 'income-may',
+          postedAt: new Date('2026-05-02T09:00:00.000Z'),
+          kind: TransactionKind.INCOME,
+          direction: TransactionDirection.INFLOW,
+          amount: new Prisma.Decimal('120'),
+          currency: 'EUR',
+          categoryId: 'category-income',
+          category: createCategory({
+            id: 'category-income',
+            name: 'Salary',
+            type: CategoryType.INCOME,
+          }),
+        }),
+        createTransactionRow({
+          id: 'expense-may-rent',
+          postedAt: new Date('2026-05-03T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('50'),
+          currency: 'EUR',
+          categoryId: 'category-rent',
+          category: createCategory({
+            id: 'category-rent',
+            name: 'Rent',
+            type: CategoryType.EXPENSE,
+          }),
+        }),
+        createTransactionRow({
+          id: 'expense-may-uncategorized',
+          postedAt: new Date('2026-05-04T09:00:00.000Z'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          amount: new Prisma.Decimal('15'),
+          currency: 'EUR',
+          categoryId: null,
+          category: null,
+        }),
+      ])
+      .mockResolvedValueOnce([]);
+
+    const summary = await service.getCashflowAnalytics(OWNER_ID, {
+      from: '2026-04',
+      to: '2026-05',
+      includeArchivedAccounts: true,
+    });
+
+    expect(summary).toEqual({
+      from: '2026-04',
+      to: '2026-05',
+      focusMonth: '2026-05',
+      currencies: [
+        {
+          currency: 'EUR',
+          averageMonthlyExpense: 57.5,
+          averageMonthlyIncome: 110,
+          monthlySeries: [
+            {
+              month: '2026-04',
+              incomeTotal: 100,
+              expenseTotal: 50,
+              netCashflow: 50,
+              adjustmentInTotal: 0,
+              adjustmentOutTotal: 5,
+              uncategorizedExpenseTotal: 0,
+              uncategorizedIncomeTotal: 0,
+            },
+            {
+              month: '2026-05',
+              incomeTotal: 120,
+              expenseTotal: 65,
+              netCashflow: 55,
+              adjustmentInTotal: 0,
+              adjustmentOutTotal: 0,
+              uncategorizedExpenseTotal: 15,
+              uncategorizedIncomeTotal: 0,
+            },
+          ],
+          focusMonthExpenseBreakdown: [
+            {
+              categoryId: 'category-rent',
+              name: 'Rent',
+              total: 50,
+            },
+            {
+              categoryId: null,
+              name: 'Uncategorized',
+              total: 15,
+            },
+          ],
+          focusMonthIncomeBreakdown: [
+            {
+              categoryId: 'category-income',
+              name: 'Salary',
+              total: 120,
+            },
+          ],
+          expenseCategoryTrends: [
+            {
+              categoryId: 'category-rent',
+              name: 'Rent',
+              total: 90,
+              series: [
+                { month: '2026-04', total: 40 },
+                { month: '2026-05', total: 50 },
+              ],
+            },
+            {
+              categoryId: null,
+              name: 'Uncategorized',
+              total: 15,
+              series: [
+                { month: '2026-04', total: 0 },
+                { month: '2026-05', total: 15 },
+              ],
+            },
+            {
+              categoryId: 'category-groceries',
+              name: 'Groceries',
+              total: 10,
+              series: [
+                { month: '2026-04', total: 10 },
+                { month: '2026-05', total: 0 },
+              ],
+            },
+          ],
+          incomeCategoryTrends: [
+            {
+              categoryId: 'category-income',
+              name: 'Salary',
+              total: 220,
+              series: [
+                { month: '2026-04', total: 100 },
+                { month: '2026-05', total: 120 },
+              ],
+            },
+          ],
+          expenseMonthOverMonthChanges: [
+            {
+              categoryId: null,
+              name: 'Uncategorized',
+              previousTotal: 0,
+              currentTotal: 15,
+              delta: 15,
+            },
+            {
+              categoryId: 'category-groceries',
+              name: 'Groceries',
+              previousTotal: 10,
+              currentTotal: 0,
+              delta: -10,
+            },
+            {
+              categoryId: 'category-rent',
+              name: 'Rent',
+              previousTotal: 40,
+              currentTotal: 50,
+              delta: 10,
+            },
+          ],
+          incomeMonthOverMonthChanges: [
+            {
+              categoryId: 'category-income',
+              name: 'Salary',
+              previousTotal: 100,
+              currentTotal: 120,
+              delta: 20,
+            },
+          ],
+        },
+      ],
+    });
+  });
 });

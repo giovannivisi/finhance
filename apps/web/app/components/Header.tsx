@@ -8,6 +8,7 @@ import { isRedundantTabNavigation } from "@lib/navigation";
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
   { href: "/transactions", label: "Transactions" },
+  { href: "/analytics", label: "Analytics" },
   { href: "/recurring", label: "Recurring" },
   { href: "/review", label: "Review" },
   { href: "/history", label: "History" },
