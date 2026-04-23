@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { createNamedThrottleOverride } from '@/config/throttle.config';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { CashflowMonthlyQueryDto } from '@transactions/dto/cashflow-monthly-query.dto';
 import { CashflowSummaryQueryDto } from '@transactions/dto/cashflow-summary-query.dto';
@@ -21,12 +22,7 @@ export class CashflowController {
   }
 
   @Get('monthly')
-  @Throttle({
-    monthlyCashflow: {
-      limit: 5,
-      ttl: 60_000,
-    },
-  })
+  @Throttle(createNamedThrottleOverride('analytics'))
   async getMonthly(
     @Query() query: CashflowMonthlyQueryDto,
   ): Promise<MonthlyCashflowResponse> {

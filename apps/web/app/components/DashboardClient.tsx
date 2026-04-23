@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardAssetResponse } from "@finhance/shared";
 import CreateAssetModal from "@/components/CreateAssetModal";
+import CooldownNotice from "@components/CooldownNotice";
 import EditAssetModal from "@components/EditAssetModal";
 import DeleteAssetButton from "@components/DeleteAssetButton";
 import {
+  getDashboardRefreshNotice,
   requestDashboardRefresh,
-  shouldIgnoreDashboardRefreshError,
 } from "@lib/dashboard-refresh";
 import { formatCurrency } from "@lib/format";
 import HeaderAddButton from "@components/HeaderAddButton";
@@ -52,6 +53,7 @@ export default function DashboardClient({
     {},
   );
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
   const autoRefreshAttemptedRef = useRef(false);
@@ -94,7 +96,7 @@ export default function DashboardClient({
         return;
       }
 
-      if (shouldIgnoreDashboardRefreshError("auto", result.status)) {
+      if (getDashboardRefreshNotice(result.status, result.error)) {
         return;
       }
 
@@ -114,13 +116,16 @@ export default function DashboardClient({
   async function handleRefresh() {
     await actions.run("refresh", async () => {
       setRefreshError(null);
+      setRefreshNotice(null);
       setIsRefreshing(true);
 
       try {
         const result = await requestDashboardRefresh();
 
         if (!result.ok) {
-          if (shouldIgnoreDashboardRefreshError("manual", result.status)) {
+          const notice = getDashboardRefreshNotice(result.status, result.error);
+          if (notice) {
+            setRefreshNotice(notice);
             return;
           }
           setRefreshError(result.error);
@@ -151,6 +156,13 @@ export default function DashboardClient({
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm text-gray-500">{refreshStatus}</p>
+          {refreshNotice ? (
+            <CooldownNotice
+              key={refreshNotice}
+              notice={refreshNotice}
+              className="mt-1 text-sm text-amber-700"
+            />
+          ) : null}
           {refreshError ? (
             <p className="mt-1 text-sm text-red-600">{refreshError}</p>
           ) : null}

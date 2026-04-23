@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getDashboardRefreshNotice,
   requestDashboardRefresh,
-  shouldIgnoreDashboardRefreshError,
 } from "./dashboard-refresh.ts";
 
 const ORIGINAL_API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -73,11 +73,18 @@ test("requestDashboardRefresh returns network failures as errors", async () => {
   }
 });
 
-test("shouldIgnoreDashboardRefreshError is silent for expected repeat-action statuses", () => {
-  assert.equal(shouldIgnoreDashboardRefreshError("auto", 409), true);
-  assert.equal(shouldIgnoreDashboardRefreshError("auto", 429), true);
-  assert.equal(shouldIgnoreDashboardRefreshError("manual", 409), true);
-  assert.equal(shouldIgnoreDashboardRefreshError("manual", 429), true);
-  assert.equal(shouldIgnoreDashboardRefreshError("auto", 500), false);
-  assert.equal(shouldIgnoreDashboardRefreshError("auto", null), false);
+test("getDashboardRefreshNotice only calms known refresh lock and cooldown messages", () => {
+  assert.equal(
+    getDashboardRefreshNotice(409, "Refresh already in progress."),
+    "Refresh already in progress.",
+  );
+  assert.equal(
+    getDashboardRefreshNotice(429, "Refresh is cooling down. Try again in 5s."),
+    "Refresh is cooling down. Try again in 5s.",
+  );
+  assert.equal(
+    getDashboardRefreshNotice(429, "ThrottlerException: Too Many Requests"),
+    null,
+  );
+  assert.equal(getDashboardRefreshNotice(null, "Network down"), null);
 });
