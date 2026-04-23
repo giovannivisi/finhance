@@ -18,13 +18,17 @@ import {
   createEmptyTransactionFormValues,
   transactionToFormValues,
 } from "@lib/transaction-form";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation } from "@lib/api";
 import { formatCurrency } from "@lib/format";
 import { CATEGORY_TYPE_LABELS } from "@lib/categories";
 import {
   TRANSACTION_KIND_LABELS,
   formatTransactionAmount,
 } from "@lib/transactions";
+import {
+  useSingleFlightActions,
+  useSingleFlightNavigation,
+} from "@lib/single-flight";
 
 interface TransactionPageFilters {
   from: string;
@@ -74,6 +78,8 @@ export default function TransactionsPageClient({
     transactionId: string;
     initialValues: RecurringOccurrenceFormValues;
   } | null>(null);
+  const actions = useSingleFlightActions<string>();
+  const navigation = useSingleFlightNavigation();
 
   useEffect(() => {
     setFilters(initialFilters);
@@ -91,6 +97,10 @@ export default function TransactionsPageClient({
     transactions.find(
       (transaction) => transaction.id === editingTransactionId,
     ) ?? null;
+  const currentFilterTarget = useMemo(() => {
+    const queryString = buildQueryString(initialFilters);
+    return queryString ? `/transactions?${queryString}` : "/transactions";
+  }, [initialFilters]);
 
   function updateFilter<Field extends keyof TransactionPageFilters>(
     field: Field,
@@ -135,7 +145,17 @@ export default function TransactionsPageClient({
   function handleFilterSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const queryString = buildQueryString(filters);
-    router.push(queryString ? `/transactions?${queryString}` : "/transactions");
+    const target = queryString
+      ? `/transactions?${queryString}`
+      : "/transactions";
+
+    if (target === currentFilterTarget) {
+      return;
+    }
+
+    navigation.run(() => {
+      router.push(target);
+    });
   }
 
   function handleClearFilters() {
@@ -149,83 +169,79 @@ export default function TransactionsPageClient({
     };
 
     setFilters(cleared);
-    router.push("/transactions");
-  }
-
-  async function handleDelete(transactionId: string) {
-    setDeleteError(null);
-    setRecurringActionError(null);
-    setDeletingTransactionId(transactionId);
-
-    try {
-      const response = await fetch(
-        getApiUrl(`/transactions/${transactionId}`),
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-
-      if (!response.ok) {
-        setDeleteError(await readApiError(response));
-        return;
-      }
-
-      if (editingTransactionId === transactionId) {
-        setEditingTransactionId(null);
-      }
-
-      router.refresh();
-    } catch (error) {
-      setDeleteError(
-        error instanceof Error
-          ? error.message
-          : "Unable to delete this transaction.",
-      );
-    } finally {
-      setDeletingTransactionId(null);
-    }
-  }
-
-  async function handleSkipMonth(transaction: TransactionResponse) {
-    if (!transaction.recurringRuleId || !transaction.recurringOccurrenceMonth) {
-      setRecurringActionError("This recurring occurrence cannot be skipped.");
+    if (currentFilterTarget === "/transactions") {
       return;
     }
 
-    setDeleteError(null);
-    setRecurringActionError(null);
-    setBusyRecurringTransactionId(transaction.id);
+    navigation.run(() => {
+      router.push("/transactions");
+    });
+  }
 
-    try {
-      const response = await fetch(
-        getApiUrl(
-          `/recurring-rules/${transaction.recurringRuleId}/occurrences/${transaction.recurringOccurrenceMonth.slice(0, 7)}`,
-        ),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "SKIPPED" }),
-        },
-      );
+  async function handleDelete(transactionId: string) {
+    await actions.run(`delete:${transactionId}`, async () => {
+      setDeleteError(null);
+      setRecurringActionError(null);
+      setDeletingTransactionId(transactionId);
 
-      if (!response.ok) {
-        setRecurringActionError(await readApiError(response));
+      try {
+        await apiMutation<void>(`/transactions/${transactionId}`, {
+          method: "DELETE",
+        });
+
+        if (editingTransactionId === transactionId) {
+          setEditingTransactionId(null);
+        }
+
+        router.refresh();
+      } catch (error) {
+        setDeleteError(
+          error instanceof Error
+            ? error.message
+            : "Unable to delete this transaction.",
+        );
+      } finally {
+        setDeletingTransactionId(null);
+      }
+    });
+  }
+
+  async function handleSkipMonth(transaction: TransactionResponse) {
+    await actions.run(`skip:${transaction.id}`, async () => {
+      if (
+        !transaction.recurringRuleId ||
+        !transaction.recurringOccurrenceMonth
+      ) {
+        setRecurringActionError("This recurring occurrence cannot be skipped.");
         return;
       }
 
-      if (occurrenceDraft?.transactionId === transaction.id) {
-        setOccurrenceDraft(null);
-      }
+      setDeleteError(null);
+      setRecurringActionError(null);
+      setBusyRecurringTransactionId(transaction.id);
 
-      router.refresh();
-    } catch (error) {
-      setRecurringActionError(
-        error instanceof Error ? error.message : "Unable to skip this month.",
-      );
-    } finally {
-      setBusyRecurringTransactionId(null);
-    }
+      try {
+        await apiMutation(
+          `/recurring-rules/${transaction.recurringRuleId}/occurrences/${transaction.recurringOccurrenceMonth.slice(0, 7)}`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ status: "SKIPPED" }),
+          },
+        );
+
+        if (occurrenceDraft?.transactionId === transaction.id) {
+          setOccurrenceDraft(null);
+        }
+
+        router.refresh();
+      } catch (error) {
+        setRecurringActionError(
+          error instanceof Error ? error.message : "Unable to skip this month.",
+        );
+      } finally {
+        setBusyRecurringTransactionId(null);
+      }
+    });
   }
 
   return (
@@ -347,14 +363,16 @@ export default function TransactionsPageClient({
             <div className="flex gap-3">
               <button
                 type="submit"
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                disabled={navigation.isRunning}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Apply
+                {navigation.isRunning ? "Applying..." : "Apply"}
               </button>
               <button
                 type="button"
                 onClick={handleClearFilters}
-                className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                disabled={navigation.isRunning}
+                className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Clear
               </button>

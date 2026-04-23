@@ -7,6 +7,7 @@ import type {
 import Container from "@components/Container";
 import Header from "@components/Header";
 import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
+import ReviewMonthPicker from "@components/ReviewMonthPicker";
 import ReviewCaptureSnapshotButton from "@components/ReviewCaptureSnapshotButton";
 import { api } from "@lib/api";
 import { formatCurrency } from "@lib/format";
@@ -125,29 +126,7 @@ export default async function ReviewPage({
                 </p>
               </div>
 
-              <form action="/review" className="flex items-end gap-3">
-                <div className="flex flex-col gap-1">
-                  <label
-                    htmlFor="review-month"
-                    className="text-sm font-medium text-gray-600"
-                  >
-                    Month
-                  </label>
-                  <input
-                    id="review-month"
-                    name="month"
-                    type="month"
-                    defaultValue={review.month}
-                    className="rounded-lg border px-3 py-2"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  Load
-                </button>
-              </form>
+              <ReviewMonthPicker currentMonth={review.month} />
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-3">

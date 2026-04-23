@@ -14,7 +14,8 @@ import {
   TRANSACTION_DIRECTION_LABELS,
   TRANSACTION_KIND_LABELS,
 } from "@lib/transactions";
-import { getApiUrl, readApiError } from "@lib/api";
+import { apiMutation } from "@lib/api";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 interface RecurringOccurrenceFormProps {
   ruleId: string;
@@ -60,6 +61,7 @@ export default function RecurringOccurrenceForm({
     useState<RecurringOccurrenceFormValues>(initialValues);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const actions = useSingleFlightActions<"submit">();
 
   useEffect(() => {
     setForm(initialValues);
@@ -101,44 +103,40 @@ export default function RecurringOccurrenceForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
+    await actions.run("submit", async () => {
+      setError(null);
 
-    const result = buildRecurringOccurrencePayload(form);
-    if (!result.payload) {
-      setError(result.error ?? "Unable to validate this recurring occurrence.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch(
-        getApiUrl(
-          `/recurring-rules/${ruleId}/occurrences/${form.occurrenceMonth}`,
-        ),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(result.payload),
-        },
-      );
-
-      if (!response.ok) {
-        setError(await readApiError(response));
+      const result = buildRecurringOccurrencePayload(form);
+      if (!result.payload) {
+        setError(
+          result.error ?? "Unable to validate this recurring occurrence.",
+        );
         return;
       }
 
-      onSuccess?.();
-      router.refresh();
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Unable to save this recurring override.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+      setIsSubmitting(true);
+
+      try {
+        await apiMutation(
+          `/recurring-rules/${ruleId}/occurrences/${form.occurrenceMonth}`,
+          {
+            method: "PUT",
+            body: JSON.stringify(result.payload),
+          },
+        );
+
+        onSuccess?.();
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Unable to save this recurring override.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    });
   }
 
   const isTransfer = form.kind === "TRANSFER";

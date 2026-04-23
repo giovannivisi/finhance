@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Headers,
   HttpCode,
   Param,
   Post,
@@ -9,10 +10,12 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { LocalOnlyImportsGuard } from '@/security/local-only-imports.guard';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { IdempotencyService } from '@/request-safety/idempotency.service';
 import { ImportsService } from '@imports/imports.service';
 import type {
   ImportBatchResponse,
@@ -34,6 +37,7 @@ export class ImportsController {
   constructor(
     private readonly importsService: ImportsService,
     private readonly requestOwnerResolver: RequestOwnerResolver,
+    private readonly idempotencyService: IdempotencyService,
   ) {}
 
   private resolveOwnerId(): string {
@@ -58,12 +62,36 @@ export class ImportsController {
     ),
   )
   async preview(
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @UploadedFiles() files: UploadedImportFiles,
   ): Promise<ImportPreviewResponse> {
-    return this.importsService.previewCsv(
-      this.resolveOwnerId(),
-      this.toUploadMap(files ?? {}),
-    );
+    const uploadMap = this.toUploadMap(files ?? {});
+    const result = await this.idempotencyService.executeJson({
+      userId: this.resolveOwnerId(),
+      method: 'POST',
+      routePath: '/imports/csv/preview',
+      idempotencyKey,
+      fingerprint: {
+        files: Object.fromEntries(
+          Object.entries(uploadMap).map(([type, file]) => [
+            type,
+            {
+              originalName: file.originalName,
+              sha256: createHash('sha256').update(file.buffer).digest('hex'),
+            },
+          ]),
+        ),
+      },
+      handler: async () => ({
+        statusCode: 201,
+        body: await this.importsService.previewCsv(
+          this.resolveOwnerId(),
+          uploadMap,
+        ),
+      }),
+    });
+
+    return result.body as ImportPreviewResponse;
   }
 
   @Post('csv/export')

@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { NetWorthSnapshotResponse } from "@finhance/shared";
-import { getApiUrl, readApiError } from "@lib/api";
 import { formatCurrency } from "@lib/format";
 import NetWorthHistoryChart from "@components/NetWorthHistoryChart";
+import { shouldIgnoreRepeatedActionError } from "@lib/request-safety";
+import { requestSnapshotCapture } from "@lib/snapshot-capture";
+import { useSingleFlightActions } from "@lib/single-flight";
 
 const DATETIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "medium",
@@ -20,32 +22,36 @@ export default function HistoryPageClient({
   const router = useRouter();
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const actions = useSingleFlightActions<"capture">();
   const baseCurrency = snapshots[0]?.baseCurrency ?? "EUR";
 
   async function handleCapture() {
-    setCaptureError(null);
-    setIsCapturing(true);
+    await actions.run("capture", async () => {
+      setCaptureError(null);
+      setIsCapturing(true);
 
-    try {
-      const response = await fetch(getApiUrl("/snapshots/capture"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
+      try {
+        const result = await requestSnapshotCapture();
+        if (!result.ok) {
+          if (shouldIgnoreRepeatedActionError(result.status)) {
+            return;
+          }
 
-      if (!response.ok) {
-        setCaptureError(await readApiError(response));
-        return;
+          setCaptureError(result.error);
+          return;
+        }
+
+        router.refresh();
+      } catch (error) {
+        setCaptureError(
+          error instanceof Error
+            ? error.message
+            : "Unable to capture snapshot.",
+        );
+      } finally {
+        setIsCapturing(false);
       }
-
-      router.refresh();
-    } catch (error) {
-      setCaptureError(
-        error instanceof Error ? error.message : "Unable to capture snapshot.",
-      );
-    } finally {
-      setIsCapturing(false);
-    }
+    });
   }
 
   return (

@@ -93,6 +93,35 @@ model PortfolioState {
   refreshStartedAt       DateTime?
 }
 
+model IdempotencyRequest {
+  userId             String
+  method             String
+  routePath          String
+  idempotencyKey     String
+  requestFingerprint String
+  status             IdempotencyRequestStatus
+  responseStatusCode Int?
+  responseJson       Json?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  completedAt        DateTime?
+
+  @@id([userId, method, routePath, idempotencyKey])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model OperationState {
+  userId          String
+  type            OperationType
+  startedAt       DateTime?
+  lastSucceededAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@id([userId, type])
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
 model NetWorthSnapshot {
   id               String   @id @default(cuid())
   userId           String
@@ -280,4 +309,15 @@ enum ImportBatchStatus {
 
 enum ImportSource {
   CSV_TEMPLATE
+}
+
+enum IdempotencyRequestStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum OperationType {
+  ASSET_REFRESH
+  SNAPSHOT_CAPTURE
+  RECURRING_MATERIALIZE
 }
