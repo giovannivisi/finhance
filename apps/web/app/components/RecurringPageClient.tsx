@@ -18,6 +18,7 @@ import {
 } from "@lib/recurring-rule-form";
 import { formatCurrency } from "@lib/format";
 import { requestRecurringMaterialization } from "@lib/recurring-materialization";
+import { shouldIgnoreRepeatedActionError } from "@lib/request-safety";
 import { TRANSACTION_KIND_LABELS } from "@lib/transactions";
 import { api, apiMutation } from "@lib/api";
 import { useSingleFlightActions } from "@lib/single-flight";
@@ -101,6 +102,9 @@ export default function RecurringPageClient({
       try {
         const result = await requestRecurringMaterialization();
         if (!result.ok) {
+          if (shouldIgnoreRepeatedActionError(result.status)) {
+            return;
+          }
           setActionError(result.error);
           return;
         }

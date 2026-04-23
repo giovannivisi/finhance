@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { MaterializeRecurringRulesResponse } from "@finhance/shared";
 import { requestRecurringMaterialization } from "@lib/recurring-materialization";
+import { shouldIgnoreRepeatedActionError } from "@lib/request-safety";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function RecurringMaterializeButton({
@@ -28,6 +29,10 @@ export default function RecurringMaterializeButton({
       const result = await requestRecurringMaterialization();
 
       if (!result.ok) {
+        if (shouldIgnoreRepeatedActionError(result.status)) {
+          setIsSyncing(false);
+          return;
+        }
         setError(result.error);
         setIsSyncing(false);
         return;

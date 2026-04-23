@@ -18,6 +18,11 @@ import { IdempotencyInterceptor } from '@/request-safety/idempotency.interceptor
   imports: [
     ThrottlerModule.forRoot([
       {
+        name: 'default',
+        ttl: 60_000,
+        limit: 100,
+      },
+      {
         name: 'monthlyCashflow',
         ttl: 60_000,
         limit: 5,

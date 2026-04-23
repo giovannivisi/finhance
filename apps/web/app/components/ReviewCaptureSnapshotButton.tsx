@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiMutation } from "@lib/api";
+import { shouldIgnoreRepeatedActionError } from "@lib/request-safety";
+import { requestSnapshotCapture } from "@lib/snapshot-capture";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function ReviewCaptureSnapshotButton() {
@@ -17,10 +18,15 @@ export default function ReviewCaptureSnapshotButton() {
       setIsCapturing(true);
 
       try {
-        await apiMutation("/snapshots/capture", {
-          method: "POST",
-          body: JSON.stringify({}),
-        });
+        const result = await requestSnapshotCapture();
+        if (!result.ok) {
+          if (shouldIgnoreRepeatedActionError(result.status)) {
+            return;
+          }
+
+          setError(result.error);
+          return;
+        }
 
         router.refresh();
       } catch (captureError) {

@@ -291,14 +291,7 @@ export class IdempotencyService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
 
-    const serialized = JSON.stringify(body);
-    if (serialized === undefined) {
-      return false;
-    }
-
-    return (
-      Buffer.byteLength(serialized, 'utf8') <= IDEMPOTENCY_MAX_CACHED_BODY_BYTES
-    );
+    return JSON.stringify(body) !== undefined;
   }
 
   private async releaseInProgressRequest(

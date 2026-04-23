@@ -13,10 +13,20 @@ const THROTTLER_TTL = 'THROTTLER:TTL';
 const THROTTLER_BLOCK_DURATION = 'THROTTLER:BLOCK_DURATION';
 const THROTTLER_TRACKER = 'THROTTLER:TRACKER';
 const THROTTLER_KEY_GENERATOR = 'THROTTLER:KEY_GENERATOR';
+const DEFAULT_THROTTLER_NAME = 'default';
 
 type ThrottleNumeric =
   | number
   | ((context: ExecutionContext) => number | Promise<number>);
+
+export function shouldApplyThrottler(input: {
+  throttlerName: string | undefined;
+  hasExplicitThrottle: boolean;
+}): boolean {
+  return (
+    input.throttlerName === DEFAULT_THROTTLER_NAME || input.hasExplicitThrottle
+  );
+}
 
 @Injectable()
 export class ProxyAwareThrottlerGuard extends ThrottlerGuard {
@@ -61,7 +71,12 @@ export class ProxyAwareThrottlerGuard extends ThrottlerGuard {
           routeOrClassGetTracker !== undefined ||
           routeOrClassGetKeyGenerator !== undefined;
 
-        if (!hasExplicitThrottle) {
+        if (
+          !shouldApplyThrottler({
+            throttlerName: suffix,
+            hasExplicitThrottle,
+          })
+        ) {
           return true;
         }
 

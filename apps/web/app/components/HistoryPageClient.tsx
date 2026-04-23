@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { NetWorthSnapshotResponse } from "@finhance/shared";
-import { apiMutation } from "@lib/api";
 import { formatCurrency } from "@lib/format";
 import NetWorthHistoryChart from "@components/NetWorthHistoryChart";
+import { shouldIgnoreRepeatedActionError } from "@lib/request-safety";
+import { requestSnapshotCapture } from "@lib/snapshot-capture";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 const DATETIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
@@ -30,10 +31,15 @@ export default function HistoryPageClient({
       setIsCapturing(true);
 
       try {
-        await apiMutation("/snapshots/capture", {
-          method: "POST",
-          body: JSON.stringify({}),
-        });
+        const result = await requestSnapshotCapture();
+        if (!result.ok) {
+          if (shouldIgnoreRepeatedActionError(result.status)) {
+            return;
+          }
+
+          setCaptureError(result.error);
+          return;
+        }
 
         router.refresh();
       } catch (error) {

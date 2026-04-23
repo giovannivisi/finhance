@@ -120,6 +120,9 @@ export default function DashboardClient({
         const result = await requestDashboardRefresh();
 
         if (!result.ok) {
+          if (shouldIgnoreDashboardRefreshError("manual", result.status)) {
+            return;
+          }
           setRefreshError(result.error);
           return;
         }
