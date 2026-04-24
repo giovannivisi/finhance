@@ -260,6 +260,8 @@ describe('Recurring routes (e2e)', () => {
       },
       recurringComparison: [],
       currencyInsights: [],
+      budgetSummary: [],
+      budgetHighlights: [],
       reconciliationHighlights: [],
       recurringExceptions: [],
     } satisfies MonthlyReviewResponse);

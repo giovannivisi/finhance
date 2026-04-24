@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
+import { BudgetsService } from '@budgets/budgets.service';
 import { Prisma } from '@prisma/client';
 import {
   CategoryType,
@@ -175,6 +176,9 @@ describe('RecurringService', () => {
     getCashflowSummary: jest.Mock;
     getMonthlyCashflow: jest.Mock;
   };
+  let budgets: {
+    findMonthly: jest.Mock;
+  };
   let operationLocks: {
     runExclusive: jest.Mock;
   };
@@ -220,6 +224,13 @@ describe('RecurringService', () => {
       getCashflowSummary: jest.fn().mockResolvedValue([]),
       getMonthlyCashflow: jest.fn().mockResolvedValue([]),
     };
+    budgets = {
+      findMonthly: jest.fn().mockResolvedValue({
+        month: '2026-04',
+        includeArchivedCategories: true,
+        currencies: [],
+      }),
+    };
     operationLocks = {
       runExclusive: jest.fn((_options: unknown, work: () => unknown) => work()),
     };
@@ -233,6 +244,7 @@ describe('RecurringService', () => {
     service = new RecurringService(
       prisma as never,
       accounts as unknown as AccountsService,
+      budgets as unknown as BudgetsService,
       categories as unknown as CategoriesService,
       transactions as unknown as TransactionsService,
       operationLocks as unknown as OperationLockService,
@@ -646,6 +658,26 @@ describe('RecurringService', () => {
       createRecurringRule(),
     ]);
     prisma.transaction.findMany.mockResolvedValue([]);
+    budgets.findMonthly.mockResolvedValue({
+      month: '2026-04',
+      includeArchivedCategories: true,
+      currencies: [
+        {
+          currency: 'EUR',
+          budgetTotal: 900,
+          spentTotal: 800,
+          remainingTotal: 100,
+          overBudgetTotal: 0,
+          overBudgetCount: 0,
+          budgetedCategoryCount: 1,
+          unbudgetedExpenseTotal: 0,
+          uncategorizedExpenseTotal: 0,
+          items: [],
+          overBudgetHighlights: [],
+          unbudgetedCategories: [],
+        },
+      ],
+    });
 
     const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
 
@@ -697,6 +729,23 @@ describe('RecurringService', () => {
         topAccounts: [],
       },
     ]);
+    expect(review.budgetSummary).toEqual([
+      {
+        currency: 'EUR',
+        budgetTotal: 900,
+        spentTotal: 800,
+        remainingTotal: 100,
+        overBudgetTotal: 0,
+        overBudgetCount: 0,
+        budgetedCategoryCount: 1,
+        unbudgetedExpenseTotal: 0,
+        uncategorizedExpenseTotal: 0,
+        items: [],
+        overBudgetHighlights: [],
+        unbudgetedCategories: [],
+      },
+    ]);
+    expect(review.budgetHighlights).toEqual([]);
     expect(review.warnings).toEqual([
       {
         code: 'RECONCILIATION_ISSUES',
@@ -846,6 +895,8 @@ describe('RecurringService', () => {
         ],
       },
     ]);
+    expect(review.budgetSummary).toEqual([]);
+    expect(review.budgetHighlights).toEqual([]);
     expect(review.warnings).toEqual([
       {
         code: 'PARTIAL_OPENING_SNAPSHOT',
@@ -954,6 +1005,8 @@ describe('RecurringService', () => {
       valuationMovementEur: null,
       note: 'Snapshot boundaries are partial, so the EUR net worth delta cannot be decomposed safely.',
     });
+    expect(review.budgetSummary).toEqual([]);
+    expect(review.budgetHighlights).toEqual([]);
   });
 
   it('uses the materialized transaction currency for recurring comparison buckets', async () => {
@@ -1045,5 +1098,7 @@ describe('RecurringService', () => {
         transferRulesExcludedCount: 0,
       },
     ]);
+    expect(review.budgetSummary).toEqual([]);
+    expect(review.budgetHighlights).toEqual([]);
   });
 });

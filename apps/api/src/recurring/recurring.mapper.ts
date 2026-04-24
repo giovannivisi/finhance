@@ -97,6 +97,8 @@ export function toMonthlyReviewResponse(input: {
   netWorthExplanation: MonthlyReviewNetWorthExplanationResponse;
   recurringComparison: MonthlyReviewRecurringComparisonResponse[];
   currencyInsights: MonthlyReviewCurrencyInsightResponse[];
+  budgetSummary: MonthlyReviewResponse['budgetSummary'];
+  budgetHighlights: MonthlyReviewResponse['budgetHighlights'];
   reconciliationHighlights: AccountReconciliationModel[];
   recurringExceptions: RecurringOccurrenceWithRule[];
 }): MonthlyReviewResponse {
@@ -124,6 +126,8 @@ export function toMonthlyReviewResponse(input: {
     netWorthExplanation: input.netWorthExplanation,
     recurringComparison: input.recurringComparison,
     currencyInsights: input.currencyInsights,
+    budgetSummary: input.budgetSummary,
+    budgetHighlights: input.budgetHighlights,
     reconciliationHighlights: input.reconciliationHighlights.map(
       toAccountReconciliationResponse,
     ),

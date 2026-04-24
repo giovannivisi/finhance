@@ -4,6 +4,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from '@prisma/prisma.module';
 import { AccountsModule } from '@accounts/accounts.module';
 import { AssetsModule } from '@assets/assets.module';
+import { BudgetsModule } from '@budgets/budgets.module';
 import { RecurringModule } from '@recurring/recurring.module';
 import { ImportsModule } from '@imports/imports.module';
 import { DashboardModule } from '@/dashboard/dashboard.module';
@@ -22,6 +23,7 @@ import { createThrottlerOptions } from '@/config/throttle.config';
     RequestSafetyModule,
     AccountsModule,
     AssetsModule,
+    BudgetsModule,
     RecurringModule,
     ImportsModule,
     DashboardModule,

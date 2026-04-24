@@ -72,4 +72,12 @@ test("getReviewWarningLink maps warning codes to the right follow-through page",
       label: "Open recurring rules",
     },
   );
+  assert.deepEqual(getReviewWarningLink("OVER_BUDGET_CATEGORIES", "2026-04"), {
+    href: "/budgets?month=2026-04",
+    label: "Open budgets",
+  });
+  assert.deepEqual(getReviewWarningLink("UNBUDGETED_EXPENSES", "2026-04"), {
+    href: "/budgets?month=2026-04",
+    label: "Open budgets",
+  });
 });
