@@ -28,6 +28,9 @@ CREATE TABLE "CategoryBudgetOverride" (
 );
 
 -- CreateIndex
+CREATE UNIQUE INDEX "CategoryBudget_id_userId_key" ON "CategoryBudget"("id", "userId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "CategoryBudget_userId_categoryId_currency_startMonth_key" ON "CategoryBudget"("userId", "categoryId", "currency", "startMonth");
 
 -- CreateIndex
@@ -49,4 +52,4 @@ CREATE INDEX "CategoryBudgetOverride_userId_categoryBudgetId_month_idx" ON "Cate
 ALTER TABLE "CategoryBudget" ADD CONSTRAINT "CategoryBudget_categoryId_userId_fkey" FOREIGN KEY ("categoryId", "userId") REFERENCES "Category"("id", "userId") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CategoryBudgetOverride" ADD CONSTRAINT "CategoryBudgetOverride_categoryBudgetId_fkey" FOREIGN KEY ("categoryBudgetId") REFERENCES "CategoryBudget"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CategoryBudgetOverride" ADD CONSTRAINT "CategoryBudgetOverride_categoryBudgetId_userId_fkey" FOREIGN KEY ("categoryBudgetId", "userId") REFERENCES "CategoryBudget"("id", "userId") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -46,6 +46,8 @@ type ExpenseTransactionRow = Prisma.TransactionGetPayload<{
   };
 }>;
 
+type BudgetTransactionClient = PrismaService | Prisma.TransactionClient;
+
 interface HistoricalCategoryContext {
   previousMonthExpense: number | null;
   averageExpenseLast3Months: number | null;
@@ -279,41 +281,53 @@ export class BudgetsService {
     ownerId: string,
     dto: CreateCategoryBudgetDto,
   ): Promise<CategoryBudgetResponse> {
-    const category = await this.requireExpenseCategory(
-      ownerId,
-      dto.categoryId,
-      {
-        requireActive: true,
-      },
+    return this.withSerializableRetry(() =>
+      this.prisma.$transaction(
+        async (tx) => {
+          const category = await this.requireExpenseCategory(
+            ownerId,
+            dto.categoryId,
+            {
+              requireActive: true,
+            },
+          );
+          const currency = this.requireCurrency(dto.currency);
+          const startMonth = this.requireMonthKey(dto.startMonth, 'startMonth');
+          const endMonth = this.optionalMonthKey(dto.endMonth, 'endMonth');
+
+          this.assertMonthRange(startMonth, endMonth, 'startMonth', 'endMonth');
+          await this.assertNoOverlappingBudgets(
+            {
+              ownerId,
+              categoryId: category.id,
+              currency,
+              startMonth,
+              endMonth,
+            },
+            tx,
+          );
+
+          const budget = await tx.categoryBudget.create({
+            data: {
+              userId: ownerId,
+              categoryId: category.id,
+              currency,
+              amount: this.toDecimal(dto.amount),
+              startMonth: this.monthKeyToValue(startMonth),
+              endMonth: endMonth ? this.monthKeyToValue(endMonth) : null,
+            },
+            include: {
+              category: true,
+            },
+          });
+
+          return toCategoryBudgetResponse(budget);
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      ),
     );
-    const currency = this.requireCurrency(dto.currency);
-    const startMonth = this.requireMonthKey(dto.startMonth, 'startMonth');
-    const endMonth = this.optionalMonthKey(dto.endMonth, 'endMonth');
-
-    this.assertMonthRange(startMonth, endMonth, 'startMonth', 'endMonth');
-    await this.assertNoOverlappingBudgets({
-      ownerId,
-      categoryId: category.id,
-      currency,
-      startMonth,
-      endMonth,
-    });
-
-    const budget = await this.prisma.categoryBudget.create({
-      data: {
-        userId: ownerId,
-        categoryId: category.id,
-        currency,
-        amount: this.toDecimal(dto.amount),
-        startMonth: this.monthKeyToValue(startMonth),
-        endMonth: endMonth ? this.monthKeyToValue(endMonth) : null,
-      },
-      include: {
-        category: true,
-      },
-    });
-
-    return toCategoryBudgetResponse(budget);
   }
 
   async update(
@@ -321,105 +335,120 @@ export class BudgetsService {
     id: string,
     dto: UpdateCategoryBudgetDto,
   ): Promise<CategoryBudgetResponse> {
-    const budget = await this.requireBudget(ownerId, id);
-    const startMonth = this.toMonthKey(budget.startMonth);
-    const currentEndMonth = this.toOptionalMonthKey(budget.endMonth);
-    const effectiveMonth = this.requireMonthKey(
-      dto.effectiveMonth,
-      'effectiveMonth',
+    return this.withSerializableRetry(() =>
+      this.prisma.$transaction(
+        async (tx) => {
+          const budget = await this.requireBudget(ownerId, id, tx);
+          const startMonth = this.toMonthKey(budget.startMonth);
+          const currentEndMonth = this.toOptionalMonthKey(budget.endMonth);
+          const effectiveMonth = this.requireMonthKey(
+            dto.effectiveMonth,
+            'effectiveMonth',
+          );
+          const nextEndMonth =
+            dto.endMonth === undefined
+              ? currentEndMonth
+              : this.optionalMonthKey(dto.endMonth, 'endMonth');
+
+          this.assertMonthWithinBudgetCoverage(
+            effectiveMonth,
+            startMonth,
+            currentEndMonth,
+            'effectiveMonth',
+          );
+          this.assertMonthRange(
+            effectiveMonth,
+            nextEndMonth,
+            'effectiveMonth',
+            'endMonth',
+          );
+
+          if (effectiveMonth <= startMonth) {
+            await this.assertNoOverlappingBudgets(
+              {
+                ownerId,
+                categoryId: budget.categoryId,
+                currency: budget.currency,
+                startMonth,
+                endMonth: nextEndMonth,
+                excludeBudgetId: budget.id,
+              },
+              tx,
+            );
+
+            const updated = await tx.categoryBudget.update({
+              where: { id: budget.id },
+              data: {
+                amount: this.toDecimal(dto.amount),
+                endMonth: nextEndMonth
+                  ? this.monthKeyToValue(nextEndMonth)
+                  : null,
+              },
+              include: {
+                category: true,
+              },
+            });
+
+            return toCategoryBudgetResponse(updated);
+          }
+
+          await this.assertNoOverlappingBudgets(
+            {
+              ownerId,
+              categoryId: budget.categoryId,
+              currency: budget.currency,
+              startMonth: effectiveMonth,
+              endMonth: nextEndMonth,
+              excludeBudgetId: budget.id,
+            },
+            tx,
+          );
+
+          const previousEndMonth = addMonthsToRomeMonth(effectiveMonth, -1);
+          const created = await tx.categoryBudget.create({
+            data: {
+              userId: ownerId,
+              categoryId: budget.categoryId,
+              currency: budget.currency,
+              amount: this.toDecimal(dto.amount),
+              startMonth: this.monthKeyToValue(effectiveMonth),
+              endMonth: nextEndMonth
+                ? this.monthKeyToValue(nextEndMonth)
+                : null,
+            },
+            include: {
+              category: true,
+            },
+          });
+
+          await tx.categoryBudget.update({
+            where: { id: budget.id },
+            data: {
+              endMonth: this.monthKeyToValue(previousEndMonth),
+            },
+          });
+
+          await tx.categoryBudgetOverride.updateMany({
+            where: {
+              userId: ownerId,
+              categoryBudgetId: budget.id,
+              month: {
+                gte: this.monthKeyToValue(effectiveMonth),
+              },
+            },
+            data: {
+              categoryBudgetId: created.id,
+              userId: ownerId,
+            },
+          });
+
+          return toCategoryBudgetResponse(created);
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      ),
     );
-    const nextEndMonth =
-      dto.endMonth === undefined
-        ? currentEndMonth
-        : this.optionalMonthKey(dto.endMonth, 'endMonth');
-
-    this.assertMonthWithinBudgetCoverage(
-      effectiveMonth,
-      startMonth,
-      currentEndMonth,
-      'effectiveMonth',
-    );
-    this.assertMonthRange(
-      effectiveMonth,
-      nextEndMonth,
-      'effectiveMonth',
-      'endMonth',
-    );
-
-    if (effectiveMonth <= startMonth) {
-      await this.assertNoOverlappingBudgets({
-        ownerId,
-        categoryId: budget.categoryId,
-        currency: budget.currency,
-        startMonth,
-        endMonth: nextEndMonth,
-        excludeBudgetId: budget.id,
-      });
-
-      const updated = await this.prisma.categoryBudget.update({
-        where: { id: budget.id },
-        data: {
-          amount: this.toDecimal(dto.amount),
-          endMonth: nextEndMonth ? this.monthKeyToValue(nextEndMonth) : null,
-        },
-        include: {
-          category: true,
-        },
-      });
-
-      return toCategoryBudgetResponse(updated);
-    }
-
-    await this.assertNoOverlappingBudgets({
-      ownerId,
-      categoryId: budget.categoryId,
-      currency: budget.currency,
-      startMonth: effectiveMonth,
-      endMonth: nextEndMonth,
-      excludeBudgetId: budget.id,
-    });
-
-    const previousEndMonth = addMonthsToRomeMonth(effectiveMonth, -1);
-
-    const successor = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.categoryBudget.create({
-        data: {
-          userId: ownerId,
-          categoryId: budget.categoryId,
-          currency: budget.currency,
-          amount: this.toDecimal(dto.amount),
-          startMonth: this.monthKeyToValue(effectiveMonth),
-          endMonth: nextEndMonth ? this.monthKeyToValue(nextEndMonth) : null,
-        },
-        include: {
-          category: true,
-        },
-      });
-
-      await tx.categoryBudget.update({
-        where: { id: budget.id },
-        data: {
-          endMonth: this.monthKeyToValue(previousEndMonth),
-        },
-      });
-
-      await tx.categoryBudgetOverride.updateMany({
-        where: {
-          categoryBudgetId: budget.id,
-          month: {
-            gte: this.monthKeyToValue(effectiveMonth),
-          },
-        },
-        data: {
-          categoryBudgetId: created.id,
-          userId: ownerId,
-        },
-      });
-
-      return created;
-    });
-
-    return toCategoryBudgetResponse(successor);
   }
 
   async remove(
@@ -461,6 +490,7 @@ export class BudgetsService {
 
       await tx.categoryBudgetOverride.deleteMany({
         where: {
+          userId: ownerId,
           categoryBudgetId: budget.id,
           month: {
             gte: this.monthKeyToValue(normalizedEffectiveMonth),
@@ -483,6 +513,7 @@ export class BudgetsService {
 
     const overrides = await this.prisma.categoryBudgetOverride.findMany({
       where: {
+        userId: ownerId,
         categoryBudgetId: budget.id,
         ...(range
           ? {
@@ -548,6 +579,7 @@ export class BudgetsService {
 
     await this.prisma.categoryBudgetOverride.deleteMany({
       where: {
+        userId: ownerId,
         categoryBudgetId: budget.id,
         month: this.monthKeyToValue(monthKey),
       },
@@ -557,15 +589,20 @@ export class BudgetsService {
   private async requireBudget(
     ownerId: string,
     id: string,
+    client: BudgetTransactionClient = this.prisma,
   ): Promise<CategoryBudgetModel> {
-    const budget = await this.prisma.categoryBudget.findFirst({
+    const budget = await client.categoryBudget.findFirst({
       where: {
         id,
         userId: ownerId,
       },
       include: {
         category: true,
-        overrides: true,
+        overrides: {
+          where: {
+            userId: ownerId,
+          },
+        },
       },
     });
 
@@ -598,15 +635,18 @@ export class BudgetsService {
     return category;
   }
 
-  private async assertNoOverlappingBudgets(input: {
-    ownerId: string;
-    categoryId: string;
-    currency: string;
-    startMonth: string;
-    endMonth: string | null;
-    excludeBudgetId?: string;
-  }): Promise<void> {
-    const overlapping = await this.prisma.categoryBudget.findFirst({
+  private async assertNoOverlappingBudgets(
+    input: {
+      ownerId: string;
+      categoryId: string;
+      currency: string;
+      startMonth: string;
+      endMonth: string | null;
+      excludeBudgetId?: string;
+    },
+    client: BudgetTransactionClient = this.prisma,
+  ): Promise<void> {
+    const overlapping = await client.categoryBudget.findFirst({
       where: {
         userId: input.ownerId,
         categoryId: input.categoryId,
@@ -927,5 +967,29 @@ export class BudgetsService {
 
   private categoryCurrencyKey(categoryId: string, currency: string): string {
     return `${categoryId}:${currency}`;
+  }
+
+  private async withSerializableRetry<T>(
+    operation: () => Promise<T>,
+    attempt = 0,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt < 2 && this.isRetryablePrismaError(error)) {
+        return this.withSerializableRetry(operation, attempt + 1);
+      }
+
+      throw error;
+    }
+  }
+
+  private isRetryablePrismaError(
+    error: unknown,
+  ): error is Prisma.PrismaClientKnownRequestError {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === 'P2002' || error.code === 'P2034')
+    );
   }
 }

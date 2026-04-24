@@ -310,6 +310,7 @@ describe('BudgetsService', () => {
     });
     expect(prisma.categoryBudgetOverride.updateMany).toHaveBeenCalledWith({
       where: {
+        userId: OWNER_ID,
         categoryBudgetId: 'budget-1',
         month: {
           gte: new Date('2026-05-31T22:00:00.000Z'),
@@ -337,6 +338,7 @@ describe('BudgetsService', () => {
     });
     expect(prisma.categoryBudgetOverride.deleteMany).toHaveBeenCalledWith({
       where: {
+        userId: OWNER_ID,
         categoryBudgetId: 'budget-1',
         month: {
           gte: new Date('2026-05-31T22:00:00.000Z'),

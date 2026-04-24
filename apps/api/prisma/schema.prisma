@@ -99,6 +99,7 @@ model CategoryBudget {
   category   Category                 @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
   overrides  CategoryBudgetOverride[]
 
+  @@unique([id, userId])
   @@unique([userId, categoryId, currency, startMonth])
   @@index([userId, startMonth, endMonth])
   @@index([userId, categoryId, currency, startMonth, endMonth])
@@ -113,7 +114,7 @@ model CategoryBudgetOverride {
   note             String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
-  categoryBudget   CategoryBudget @relation(fields: [categoryBudgetId], references: [id], onDelete: Cascade)
+  categoryBudget   CategoryBudget @relation(fields: [categoryBudgetId, userId], references: [id, userId], onDelete: Cascade)
 
   @@unique([categoryBudgetId, month])
   @@index([userId, month])
