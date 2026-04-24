@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
 import type { AccountReconciliationModel } from '@accounts/accounts.service';
+import { BudgetsService } from '@budgets/budgets.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { CategoriesService } from '@transactions/categories.service';
 import { TransactionsService } from '@transactions/transactions.service';
@@ -23,6 +24,8 @@ import {
 import type {
   CashflowSummaryResponse,
   MaterializeRecurringRulesResponse,
+  MonthlyBudgetCurrencySummaryResponse,
+  MonthlyBudgetItemResponse,
   MonthlyCashflowMonthResponse,
   MonthlyCashflowResponse,
   MonthlyReviewCurrencyInsightResponse,
@@ -183,6 +186,7 @@ export class RecurringService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accountsService: AccountsService,
+    private readonly budgetsService: BudgetsService,
     private readonly categoriesService: CategoriesService,
     private readonly transactionsService: TransactionsService,
     private readonly operationLockService: OperationLockService,
@@ -698,6 +702,7 @@ export class RecurringService {
     const [
       cashflow,
       monthlyCashflow,
+      budgetView,
       openingSnapshot,
       closingSnapshot,
       accounts,
@@ -715,6 +720,9 @@ export class RecurringService {
         from: month,
         to: month,
         includeArchivedAccounts: true,
+      }),
+      this.budgetsService.findMonthly(ownerId, month, {
+        includeArchivedCategories: true,
       }),
       this.findLatestSnapshotOnOrBefore(ownerId, range.openingSnapshotCutoff),
       this.findLatestSnapshotOnOrBefore(ownerId, range.closingSnapshotCutoff),
@@ -785,6 +793,9 @@ export class RecurringService {
       monthlyCashflow,
       month,
     );
+    const budgetHighlights = this.buildMonthlyReviewBudgetHighlights(
+      budgetView.currencies,
+    );
     const warnings = this.buildMonthlyReviewWarnings({
       cashflow,
       openingSnapshot,
@@ -793,6 +804,7 @@ export class RecurringService {
       reconciliationHighlights,
       recurringExceptions,
       currencyInsights,
+      budgetSummary: budgetView.currencies,
     });
 
     return toMonthlyReviewResponse({
@@ -804,6 +816,8 @@ export class RecurringService {
       netWorthExplanation,
       recurringComparison,
       currencyInsights,
+      budgetSummary: budgetView.currencies,
+      budgetHighlights,
       reconciliationHighlights,
       recurringExceptions,
     });
@@ -1109,6 +1123,7 @@ export class RecurringService {
     reconciliationHighlights: AccountReconciliationModel[];
     recurringExceptions: RecurringOccurrenceModel[];
     currencyInsights: MonthlyReviewCurrencyInsightResponse[];
+    budgetSummary: MonthlyBudgetCurrencySummaryResponse[];
   }): MonthlyReviewWarningResponse[] {
     const warnings: MonthlyReviewWarningResponse[] = [];
 
@@ -1206,6 +1221,37 @@ export class RecurringService {
       }
     }
 
+    for (const summary of input.budgetSummary) {
+      if (summary.overBudgetCount > 0) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'OVER_BUDGET_CATEGORIES',
+            severity: 'WARNING',
+            title: `${summary.overBudgetCount} over-budget categor${
+              summary.overBudgetCount === 1 ? 'y' : 'ies'
+            } in ${summary.currency}`,
+            detail:
+              'Budgeted expense categories exceeded their monthly limits.',
+            count: summary.overBudgetCount,
+          }),
+        );
+      }
+
+      if (summary.unbudgetedExpenseTotal > 0) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'UNBUDGETED_EXPENSES',
+            severity: 'WARNING',
+            title: `Unbudgeted expense in ${summary.currency}`,
+            detail:
+              'Some categorized expenses were recorded without a matching budget for this month.',
+            amount: summary.unbudgetedExpenseTotal,
+            currency: summary.currency,
+          }),
+        );
+      }
+    }
+
     if (input.reconciliationHighlights.length > 0) {
       warnings.push(
         this.createMonthlyReviewWarning({
@@ -1233,6 +1279,21 @@ export class RecurringService {
     }
 
     return warnings;
+  }
+
+  private buildMonthlyReviewBudgetHighlights(
+    summaries: MonthlyBudgetCurrencySummaryResponse[],
+  ): MonthlyBudgetItemResponse[] {
+    return summaries
+      .flatMap((summary) => summary.items)
+      .filter((item) => item.status === 'OVER_BUDGET')
+      .sort(
+        (left, right) =>
+          right.spentAmount -
+          right.budgetAmount -
+          (left.spentAmount - left.budgetAmount),
+      )
+      .slice(0, 5);
   }
 
   private createMonthlyReviewWarning(input: {

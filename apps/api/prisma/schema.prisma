@@ -77,12 +77,48 @@ model Category {
   updatedAt      DateTime                   @updatedAt
   importSource   ImportSource?
   importKey      String?
+  budgets        CategoryBudget[]
   recurringRules RecurringTransactionRule[]
   transactions   Transaction[]
 
   @@unique([id, userId])
   @@unique([userId, importSource, importKey])
   @@index([userId, type, archivedAt, order, createdAt])
+}
+
+model CategoryBudget {
+  id         String                   @id @default(cuid())
+  userId     String
+  categoryId String
+  currency   String
+  amount     Decimal                  @db.Decimal(20, 10)
+  startMonth DateTime                 @db.Date
+  endMonth   DateTime?                @db.Date
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+  category   Category                 @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
+  overrides  CategoryBudgetOverride[]
+
+  @@unique([id, userId])
+  @@unique([userId, categoryId, currency, startMonth])
+  @@index([userId, startMonth, endMonth])
+  @@index([userId, categoryId, currency, startMonth, endMonth])
+}
+
+model CategoryBudgetOverride {
+  id               String         @id @default(cuid())
+  userId           String
+  categoryBudgetId String
+  month            DateTime       @db.Date
+  amount           Decimal        @db.Decimal(20, 10)
+  note             String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  categoryBudget   CategoryBudget @relation(fields: [categoryBudgetId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([categoryBudgetId, month])
+  @@index([userId, month])
+  @@index([userId, categoryBudgetId, month])
 }
 
 model PortfolioState {

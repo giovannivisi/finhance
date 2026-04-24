@@ -401,6 +401,141 @@ export default async function ReviewPage({
 
           <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
             <h2 className="text-xl font-semibold text-gray-900">
+              Budget status
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Compare planned expense limits with categorized spend in{" "}
+              {review.month}.
+            </p>
+
+            {review.budgetSummary.length === 0 ? (
+              <div className="mt-4 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+                No budget data is available for this month.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {review.budgetSummary.map((summary) => (
+                    <article
+                      key={summary.currency}
+                      className="rounded-2xl border border-gray-200 p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {summary.currency}
+                          </h3>
+                          <p className="mt-1 text-sm text-gray-500">
+                            {summary.budgetedCategoryCount} budgeted categor
+                            {summary.budgetedCategoryCount === 1 ? "y" : "ies"}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/budgets?month=${encodeURIComponent(review.month)}`}
+                          className="text-sm font-medium text-blue-700 hover:underline"
+                        >
+                          Open budgets
+                        </Link>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl bg-gray-50 p-4">
+                          <p className="text-xs uppercase tracking-wide text-gray-500">
+                            Spent vs budget
+                          </p>
+                          <p className="mt-1 text-lg font-semibold text-gray-900">
+                            {formatCurrency(
+                              summary.spentTotal,
+                              summary.currency,
+                            )}{" "}
+                            /{" "}
+                            {formatCurrency(
+                              summary.budgetTotal,
+                              summary.currency,
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-gray-50 p-4">
+                          <p className="text-xs uppercase tracking-wide text-gray-500">
+                            Remaining
+                          </p>
+                          <p className="mt-1 text-lg font-semibold text-gray-900">
+                            {formatCurrency(
+                              summary.remainingTotal,
+                              summary.currency,
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-3 text-sm text-gray-600">
+                        <span>
+                          Over budget: {summary.overBudgetCount} categor
+                          {summary.overBudgetCount === 1 ? "y" : "ies"}
+                        </span>
+                        <span>
+                          Unbudgeted:{" "}
+                          {formatCurrency(
+                            summary.unbudgetedExpenseTotal,
+                            summary.currency,
+                          )}
+                        </span>
+                        <span>
+                          Uncategorized:{" "}
+                          {formatCurrency(
+                            summary.uncategorizedExpenseTotal,
+                            summary.currency,
+                          )}
+                        </span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+
+                {review.budgetHighlights.length > 0 ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <h3 className="text-sm font-semibold text-amber-950">
+                      Most important over-budget categories
+                    </h3>
+                    <div className="mt-3 space-y-2">
+                      {review.budgetHighlights.map((item) => (
+                        <div
+                          key={item.budgetId}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white/80 px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {item.categoryName}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
+                              {formatCurrency(item.spentAmount, item.currency)}{" "}
+                              spent against{" "}
+                              {formatCurrency(item.budgetAmount, item.currency)}
+                            </p>
+                          </div>
+                          <span className="font-medium text-amber-900">
+                            {formatCurrency(
+                              item.spentAmount - item.budgetAmount,
+                              item.currency,
+                            )}{" "}
+                            over
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                    No budgeted categories are over limit in this review month.
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+            <h2 className="text-xl font-semibold text-gray-900">
               Recurring vs actual
             </h2>
             <p className="mt-1 text-sm text-gray-500">

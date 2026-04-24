@@ -1,5 +1,9 @@
 import type { AccountReconciliationResponse } from "./accounts.js";
 import type {
+  MonthlyBudgetCurrencySummaryResponse,
+  MonthlyBudgetItemResponse,
+} from "./budgets.js";
+import type {
   CashflowSummaryResponse,
   TransactionDirection,
   TransactionKind,
@@ -114,8 +118,10 @@ export type MonthlyReviewWarningCode =
   | "NON_EUR_CASHFLOW_NOT_COMPARABLE"
   | "UNCATEGORIZED_EXPENSES"
   | "UNCATEGORIZED_INCOME"
+  | "OVER_BUDGET_CATEGORIES"
   | "RECONCILIATION_ISSUES"
-  | "RECURRING_EXCEPTIONS_PRESENT";
+  | "RECURRING_EXCEPTIONS_PRESENT"
+  | "UNBUDGETED_EXPENSES";
 
 export type MonthlyReviewWarningSeverity = "INFO" | "WARNING";
 
@@ -185,6 +191,8 @@ export interface MonthlyReviewResponse {
   netWorthExplanation: MonthlyReviewNetWorthExplanationResponse;
   recurringComparison: MonthlyReviewRecurringComparisonResponse[];
   currencyInsights: MonthlyReviewCurrencyInsightResponse[];
+  budgetSummary: MonthlyBudgetCurrencySummaryResponse[];
+  budgetHighlights: MonthlyBudgetItemResponse[];
   reconciliationHighlights: AccountReconciliationResponse[];
   recurringExceptions: RecurringOccurrenceResponse[];
 }

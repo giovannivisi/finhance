@@ -23,5 +23,24 @@
   "packageManager": "pnpm@9.0.0",
   "engines": {
     "node": ">=18"
+  },
+  "pnpm": {
+    "overrides": {
+      "@nestjs/common": "11.1.18",
+      "@nestjs/core": "11.1.18",
+      "@nestjs/platform-express": "11.1.18",
+      "@nestjs/testing": "11.1.18",
+      "ajv@6.12.6": "6.15.0",
+      "body-parser@2.2.0": "2.2.2",
+      "brace-expansion@1.1.12": "1.1.14",
+      "defu@6.1.4": "6.1.7",
+      "effect@3.18.4": "3.20.0",
+      "flatted@3.3.3": "3.4.2",
+      "js-yaml@4.1.0": "4.1.1",
+      "minimatch@3.1.2": "3.1.5",
+      "multer@2.1.0": "2.1.1",
+      "path-to-regexp@8.3.0": "8.4.0",
+      "qs@6.14.0": "6.15.1"
+    }
   }
 }

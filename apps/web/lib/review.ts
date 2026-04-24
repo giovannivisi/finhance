@@ -70,6 +70,12 @@ export function getReviewWarningLink(
       return { href: "/accounts", label: "Open accounts" };
     case "RECURRING_EXCEPTIONS_PRESENT":
       return { href: "/recurring", label: "Open recurring rules" };
+    case "OVER_BUDGET_CATEGORIES":
+    case "UNBUDGETED_EXPENSES":
+      return {
+        href: `/budgets?month=${encodeURIComponent(month)}`,
+        label: "Open budgets",
+      };
     default:
       return null;
   }
