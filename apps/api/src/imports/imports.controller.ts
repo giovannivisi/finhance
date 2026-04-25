@@ -31,7 +31,7 @@ type UploadedImportFiles = Partial<
 >;
 
 const MAX_IMPORT_UPLOAD_FILE_BYTES = 1024 * 1024;
-const MAX_IMPORT_UPLOAD_FILES = 4;
+const MAX_IMPORT_UPLOAD_FILES = 8;
 
 @Controller('imports')
 @UseGuards(LocalOnlyImportsGuard)
@@ -55,6 +55,10 @@ export class ImportsController {
         { name: 'categories', maxCount: 1 },
         { name: 'assets', maxCount: 1 },
         { name: 'transactions', maxCount: 1 },
+        { name: 'recurringRules', maxCount: 1 },
+        { name: 'recurringExceptions', maxCount: 1 },
+        { name: 'budgets', maxCount: 1 },
+        { name: 'budgetOverrides', maxCount: 1 },
       ],
       {
         limits: {

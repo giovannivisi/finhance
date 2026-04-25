@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type {
-  AccountReconciliationIssueCode,
   MonthlyReviewResponse,
   MonthlyReviewWarningResponse,
 } from "@finhance/shared";
@@ -24,14 +23,6 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   year: "numeric",
   month: "2-digit",
 });
-
-const RECONCILIATION_ISSUE_LABELS: Record<
-  AccountReconciliationIssueCode,
-  string
-> = {
-  FX_UNAVAILABLE: "FX unavailable",
-  TRANSFER_GROUP_INCOMPLETE: "Broken transfer",
-};
 
 function getMonthParam(
   value: string | string[] | undefined,
@@ -101,7 +92,7 @@ export default async function ReviewPage({
     review.cashflow.map((bucket) => [bucket.currency, bucket]),
   );
   const reconciliationIssueCount = review.reconciliationHighlights.reduce(
-    (sum, item) => sum + Math.max(item.issueCodes.length, 1),
+    (sum, item) => sum + Math.max(item.diagnostics.length, 1),
     0,
   );
   const offerSnapshotCapture = shouldOfferSnapshotCapture(
@@ -369,6 +360,9 @@ export default async function ReviewPage({
                               ? "Unavailable"
                               : formatCurrency(item.delta, item.currency)}
                           </p>
+                          <p className="mt-1 text-gray-500">
+                            {item.adjustmentGuidance.message}
+                          </p>
                         </div>
                         <span
                           className={`rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -380,18 +374,33 @@ export default async function ReviewPage({
                           {item.status}
                         </span>
                       </div>
-                      {item.issueCodes.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {item.issueCodes.map((issueCode) => (
-                            <span
-                              key={`${item.accountId}:${issueCode}`}
-                              className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-gray-700 ring-1 ring-gray-200"
+                      <div className="mt-3 space-y-2">
+                        {item.diagnostics.length === 0 ? (
+                          <p className="text-xs text-gray-500">
+                            No structural diagnostics were recorded for this
+                            account.
+                          </p>
+                        ) : (
+                          item.diagnostics.map((diagnostic) => (
+                            <div
+                              key={`${item.accountId}:${diagnostic.code}`}
+                              className="rounded-2xl bg-white px-3 py-2 text-xs ring-1 ring-gray-200"
                             >
-                              {RECONCILIATION_ISSUE_LABELS[issueCode]}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="font-medium text-gray-900">
+                                  {diagnostic.summary}
+                                </p>
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-700">
+                                  {diagnostic.code}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-gray-600">
+                                {diagnostic.likelyCause}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

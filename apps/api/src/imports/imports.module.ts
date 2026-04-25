@@ -4,9 +4,10 @@ import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { ImportsController } from '@imports/imports.controller';
 import { ImportsService } from '@imports/imports.service';
 import { PricesModule } from '@prices/prices.module';
+import { RecurringModule } from '@recurring/recurring.module';
 
 @Module({
-  imports: [PricesModule],
+  imports: [PricesModule, RecurringModule],
   controllers: [ImportsController],
   providers: [ImportsService, RequestOwnerResolver, LocalOnlyImportsGuard],
 })

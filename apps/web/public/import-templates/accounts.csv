@@ -1,1 +1,1 @@
-importKey,name,type,currency,institution,notes,order,archived
+importKey,name,type,currency,institution,notes,order,openingBalance,openingBalanceDate,archived

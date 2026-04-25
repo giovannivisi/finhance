@@ -14,6 +14,16 @@ const TEMPLATE_LINKS: Array<{ file: ImportFileType; href: string }> = [
   { file: "categories", href: "/import-templates/categories.csv" },
   { file: "assets", href: "/import-templates/assets.csv" },
   { file: "transactions", href: "/import-templates/transactions.csv" },
+  { file: "recurringRules", href: "/import-templates/recurringRules.csv" },
+  {
+    file: "recurringExceptions",
+    href: "/import-templates/recurringExceptions.csv",
+  },
+  { file: "budgets", href: "/import-templates/budgets.csv" },
+  {
+    file: "budgetOverrides",
+    href: "/import-templates/budgetOverrides.csv",
+  },
 ];
 
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
@@ -217,8 +227,8 @@ export default function ImportsPageClient({
                 Export ZIP
               </h2>
               <p className="mt-1 text-sm text-gray-500">
-                Download accounts, categories, assets, and transactions in the
-                same CSV template format used by import.
+                Download the full CSV round-trip package, including opening
+                balances, recurring definitions, and budgets.
               </p>
             </div>
 

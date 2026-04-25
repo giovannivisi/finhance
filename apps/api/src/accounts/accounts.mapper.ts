@@ -38,12 +38,15 @@ export function toAccountReconciliationResponse(
     accountName: model.account.name,
     accountType: model.account.type,
     currency: model.account.currency,
+    baselineMode: model.baselineMode,
     trackedBalance: decimalToNumber(model.trackedBalance),
     expectedBalance: decimalToNumber(model.expectedBalance),
     delta: decimalToNumber(model.delta),
     assetCount: model.assetCount,
     transactionCount: model.transactionCount,
     issueCodes: model.issueCodes,
+    diagnostics: model.diagnostics,
     canCreateAdjustment: model.canCreateAdjustment,
+    adjustmentGuidance: model.adjustmentGuidance,
   };
 }

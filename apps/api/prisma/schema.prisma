@@ -87,19 +87,22 @@ model Category {
 }
 
 model CategoryBudget {
-  id         String                   @id @default(cuid())
-  userId     String
-  categoryId String
-  currency   String
-  amount     Decimal                  @db.Decimal(20, 10)
-  startMonth DateTime                 @db.Date
-  endMonth   DateTime?                @db.Date
-  createdAt  DateTime                 @default(now())
-  updatedAt  DateTime                 @updatedAt
-  category   Category                 @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
-  overrides  CategoryBudgetOverride[]
+  id           String                   @id @default(cuid())
+  userId       String
+  importSource ImportSource?
+  importKey    String?
+  categoryId   String
+  currency     String
+  amount       Decimal                  @db.Decimal(20, 10)
+  startMonth   DateTime                 @db.Date
+  endMonth     DateTime?                @db.Date
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  category     Category                 @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
+  overrides    CategoryBudgetOverride[]
 
   @@unique([id, userId])
+  @@unique([userId, importSource, importKey])
   @@unique([userId, categoryId, currency, startMonth])
   @@index([userId, startMonth, endMonth])
   @@index([userId, categoryId, currency, startMonth, endMonth])
@@ -213,6 +216,8 @@ model Transaction {
 model RecurringTransactionRule {
   id                         String                           @id @default(cuid())
   userId                     String
+  importSource               ImportSource?
+  importKey                  String?
   name                       String
   isActive                   Boolean                          @default(true)
   kind                       TransactionKind
@@ -239,6 +244,7 @@ model RecurringTransactionRule {
   sourceAccount              Account?                         @relation("TransferRecurringRuleSource", fields: [sourceAccountId, userId], references: [id, userId], onDelete: SetNull)
   transactions               Transaction[]
 
+  @@unique([userId, importSource, importKey])
   @@index([userId, accountId])
   @@index([userId, sourceAccountId])
   @@index([userId, destinationAccountId])

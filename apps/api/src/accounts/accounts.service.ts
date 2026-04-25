@@ -24,6 +24,9 @@ import {
   TransactionKind,
 } from '@prisma/client';
 import type {
+  AccountReconciliationAdjustmentGuidanceResponse,
+  AccountReconciliationBaselineMode,
+  AccountReconciliationDiagnosticResponse,
   AccountReconciliationIssueCode,
   AccountReconciliationStatus,
 } from '@finhance/shared';
@@ -43,13 +46,16 @@ interface PreparedAccountInput {
 export interface AccountReconciliationModel {
   account: Account;
   status: AccountReconciliationStatus;
+  baselineMode: AccountReconciliationBaselineMode;
   trackedBalance: Prisma.Decimal | null;
   expectedBalance: Prisma.Decimal | null;
   delta: Prisma.Decimal | null;
   assetCount: number;
   transactionCount: number;
   issueCodes: AccountReconciliationIssueCode[];
+  diagnostics: AccountReconciliationDiagnosticResponse[];
   canCreateAdjustment: boolean;
+  adjustmentGuidance: AccountReconciliationAdjustmentGuidanceResponse;
 }
 
 type AccountTransactionClient = Prisma.TransactionClient;
@@ -468,6 +474,8 @@ export class AccountsService {
     fxRates: Map<string, Prisma.Decimal | null>,
   ): AccountReconciliationModel {
     const issueCodes = new Set<AccountReconciliationIssueCode>();
+    const baselineMode: AccountReconciliationBaselineMode =
+      account.openingBalanceDate === null ? 'FULL_HISTORY' : 'OPENING_BALANCE';
     let trackedBalance = ZERO;
     let expectedBalance = account.openingBalance;
 
@@ -503,16 +511,32 @@ export class AccountsService {
     }
 
     if (issueCodes.has('FX_UNAVAILABLE')) {
+      const diagnostics = this.buildReconciliationDiagnostics({
+        account,
+        issueCodes: [...issueCodes],
+        delta: null,
+        assetCount: assets.length,
+        transactionCount: transactions.length,
+      });
       return {
         account,
         status: 'UNSUPPORTED',
+        baselineMode,
         trackedBalance: null,
         expectedBalance: null,
         delta: null,
         assetCount: assets.length,
         transactionCount: transactions.length,
         issueCodes: [...issueCodes],
+        diagnostics,
         canCreateAdjustment: false,
+        adjustmentGuidance: this.buildAdjustmentGuidance({
+          account,
+          status: 'UNSUPPORTED',
+          delta: null,
+          issueCodes: [...issueCodes],
+          canCreateAdjustment: false,
+        }),
       };
     }
 
@@ -521,21 +545,170 @@ export class AccountsService {
       issueCodes.has('TRANSFER_GROUP_INCOMPLETE') || !delta.eq(ZERO)
         ? 'MISMATCH'
         : 'CLEAN';
+    const issueCodeList = [...issueCodes];
+    const diagnostics = this.buildReconciliationDiagnostics({
+      account,
+      issueCodes: issueCodeList,
+      delta,
+      assetCount: assets.length,
+      transactionCount: transactions.length,
+    });
+    const canCreateAdjustment =
+      account.archivedAt === null &&
+      status === 'MISMATCH' &&
+      !delta.eq(ZERO) &&
+      !issueCodes.has('TRANSFER_GROUP_INCOMPLETE');
 
     return {
       account,
       status,
+      baselineMode,
       trackedBalance,
       expectedBalance,
       delta,
       assetCount: assets.length,
       transactionCount: transactions.length,
-      issueCodes: [...issueCodes],
-      canCreateAdjustment:
-        account.archivedAt === null &&
-        status === 'MISMATCH' &&
-        !delta.eq(ZERO) &&
-        !issueCodes.has('TRANSFER_GROUP_INCOMPLETE'),
+      issueCodes: issueCodeList,
+      diagnostics,
+      canCreateAdjustment,
+      adjustmentGuidance: this.buildAdjustmentGuidance({
+        account,
+        status,
+        delta,
+        issueCodes: issueCodeList,
+        canCreateAdjustment,
+      }),
+    };
+  }
+
+  private buildReconciliationDiagnostics(input: {
+    account: Account;
+    issueCodes: AccountReconciliationIssueCode[];
+    delta: Prisma.Decimal | null;
+    assetCount: number;
+    transactionCount: number;
+  }): AccountReconciliationDiagnosticResponse[] {
+    const diagnostics: AccountReconciliationDiagnosticResponse[] = [];
+    const issueCodes = new Set(input.issueCodes);
+
+    if (
+      input.account.openingBalanceDate === null &&
+      (input.assetCount > 0 || input.transactionCount > 0)
+    ) {
+      diagnostics.push({
+        code: 'BASELINE_MISSING',
+        severity: 'WARNING',
+        summary: 'This account has no opening-balance baseline.',
+        likelyCause:
+          'Reconciliation is relying on the full transaction history to reach the expected balance.',
+        recommendedAction:
+          'Set an opening balance date once the current account state is trustworthy, or confirm the full history is complete.',
+      });
+    }
+
+    if (issueCodes.has('FX_UNAVAILABLE')) {
+      diagnostics.push({
+        code: 'FX_UNAVAILABLE',
+        severity: 'WARNING',
+        summary: 'Cross-currency assets could not be converted.',
+        likelyCause:
+          'At least one assigned asset needs an FX rate that is missing right now.',
+        recommendedAction:
+          'Refresh prices or simplify the account to a single currency before trusting this reconciliation result.',
+      });
+    }
+
+    if (issueCodes.has('TRANSFER_GROUP_INCOMPLETE')) {
+      diagnostics.push({
+        code: 'TRANSFER_GROUP_INCOMPLETE',
+        severity: 'WARNING',
+        summary: 'A transfer is missing its matching counterpart row.',
+        likelyCause:
+          'One side of a transfer was deleted, filtered out by a baseline, or never imported correctly.',
+        recommendedAction:
+          'Review recent transfers and restore the missing pair before using a reconciliation adjustment.',
+      });
+    }
+
+    if (
+      input.account.openingBalanceDate !== null &&
+      input.delta !== null &&
+      !input.delta.eq(ZERO) &&
+      !issueCodes.has('FX_UNAVAILABLE') &&
+      !issueCodes.has('TRANSFER_GROUP_INCOMPLETE')
+    ) {
+      diagnostics.push({
+        code: 'BASELINE_POSSIBLY_STALE',
+        severity: 'INFO',
+        summary: 'The opening-balance baseline may no longer match reality.',
+        likelyCause:
+          'A post-baseline transaction, asset balance, or manual baseline value is out of sync with the tracked account state.',
+        recommendedAction:
+          'Compare recent account activity and the opening balance before deciding whether a reconciliation adjustment is appropriate.',
+      });
+    }
+
+    return diagnostics;
+  }
+
+  private buildAdjustmentGuidance(input: {
+    account: Account;
+    status: AccountReconciliationStatus;
+    delta: Prisma.Decimal | null;
+    issueCodes: AccountReconciliationIssueCode[];
+    canCreateAdjustment: boolean;
+  }): AccountReconciliationAdjustmentGuidanceResponse {
+    if (input.account.archivedAt !== null) {
+      return {
+        status: 'BLOCKED',
+        message: 'Archived accounts cannot receive reconciliation adjustments.',
+      };
+    }
+
+    if (input.status === 'UNSUPPORTED') {
+      return {
+        status: 'BLOCKED',
+        message:
+          'Reconciliation is unsupported until the structural issues are resolved.',
+      };
+    }
+
+    if (!input.delta || input.delta.eq(ZERO)) {
+      return {
+        status: 'BLOCKED',
+        message:
+          'No adjustment is needed because the account already reconciles.',
+      };
+    }
+
+    if (input.issueCodes.includes('TRANSFER_GROUP_INCOMPLETE')) {
+      return {
+        status: 'SUSPICIOUS',
+        message:
+          'A broken transfer is skewing the expected balance. Fix the transfer pair before using an adjustment.',
+      };
+    }
+
+    if (input.account.openingBalanceDate === null) {
+      return {
+        status: 'SUSPICIOUS',
+        message:
+          'This account has no opening-balance baseline, so an adjustment could hide missing historical data.',
+      };
+    }
+
+    if (input.canCreateAdjustment) {
+      return {
+        status: 'SAFE',
+        message:
+          'An adjustment is reasonable here once you confirm the mismatch is real and not caused by a stale baseline or missing activity.',
+      };
+    }
+
+    return {
+      status: 'BLOCKED',
+      message:
+        'This account cannot create a reconciliation adjustment right now.',
     };
   }
 

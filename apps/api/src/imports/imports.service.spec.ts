@@ -2,6 +2,7 @@ import { ConflictException } from '@nestjs/common';
 import { ImportsService } from '@imports/imports.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { PricesService } from '@prices/prices.service';
+import { RecurringService } from '@recurring/recurring.service';
 import {
   AccountType,
   AssetKind,
@@ -59,6 +60,8 @@ function createImportedAccount(
     institution: null,
     notes: null,
     order: 0,
+    openingBalance: new Prisma.Decimal('0'),
+    openingBalanceDate: null,
     archivedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -87,6 +90,8 @@ function createImportedTransaction(
     notes: null,
     counterparty: 'Employer',
     transferGroupId: null,
+    recurringRuleId: null,
+    recurringOccurrenceMonth: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -197,6 +202,22 @@ describe('ImportsService', () => {
       create: jest.Mock;
       update: jest.Mock;
     };
+    recurringTransactionRule: {
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    recurringTransactionOccurrence: {
+      upsert: jest.Mock;
+    };
+    categoryBudget: {
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    categoryBudgetOverride: {
+      upsert: jest.Mock;
+    };
     importBatch: {
       findMany: jest.Mock;
       findFirst: jest.Mock;
@@ -208,6 +229,9 @@ describe('ImportsService', () => {
   let prices: {
     normalizeCurrency: jest.Mock;
     normalizeTicker: jest.Mock;
+  };
+  let recurring: {
+    materialize: jest.Mock;
   };
 
   beforeEach(() => {
@@ -232,6 +256,22 @@ describe('ImportsService', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      recurringTransactionRule: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      recurringTransactionOccurrence: {
+        upsert: jest.fn(),
+      },
+      categoryBudget: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      categoryBudgetOverride: {
+        upsert: jest.fn(),
+      },
       importBatch: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
@@ -248,6 +288,10 @@ describe('ImportsService', () => {
           asset: typeof prisma.asset;
           category: typeof prisma.category;
           transaction: typeof prisma.transaction;
+          recurringTransactionRule: typeof prisma.recurringTransactionRule;
+          recurringTransactionOccurrence: typeof prisma.recurringTransactionOccurrence;
+          categoryBudget: typeof prisma.categoryBudget;
+          categoryBudgetOverride: typeof prisma.categoryBudgetOverride;
           importBatch: typeof prisma.importBatch;
         }) => Promise<unknown>,
       ) =>
@@ -256,6 +300,10 @@ describe('ImportsService', () => {
           asset: prisma.asset,
           category: prisma.category,
           transaction: prisma.transaction,
+          recurringTransactionRule: prisma.recurringTransactionRule,
+          recurringTransactionOccurrence: prisma.recurringTransactionOccurrence,
+          categoryBudget: prisma.categoryBudget,
+          categoryBudgetOverride: prisma.categoryBudgetOverride,
           importBatch: prisma.importBatch,
         }),
     );
@@ -275,9 +323,18 @@ describe('ImportsService', () => {
       normalizeTicker: jest.fn((ticker: string) => ticker.trim().toUpperCase()),
     };
 
+    recurring = {
+      materialize: jest.fn().mockResolvedValue({
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+      }),
+    };
+
     service = new ImportsService(
       prisma as unknown as PrismaService,
       prices as unknown as PricesService,
+      recurring as unknown as RecurringService,
     );
   });
 
@@ -317,12 +374,18 @@ describe('ImportsService', () => {
           institution: null,
           notes: null,
           order: 0,
+          openingBalance: null,
+          openingBalanceDate: null,
           archived: false,
         },
       ],
       categories: [],
       assets: [],
       transactions: [],
+      recurringRules: [],
+      recurringExceptions: [],
+      budgets: [],
+      budgetOverrides: [],
     });
   });
 
@@ -553,12 +616,16 @@ describe('ImportsService', () => {
       'categories.csv',
       'assets.csv',
       'transactions.csv',
+      'recurringRules.csv',
+      'recurringExceptions.csv',
+      'budgets.csv',
+      'budgetOverrides.csv',
     ]);
     expect(entries.get('accounts.csv')).toContain(
-      'importKey,name,type,currency,institution,notes,order,archived',
+      'importKey,name,type,currency,institution,notes,order,openingBalance,openingBalanceDate,archived',
     );
     expect(entries.get('accounts.csv')).toContain(
-      'manual-account-account-manual,Main checking,BANK,EUR,Local Bank,Primary account,0,true',
+      'manual-account-account-manual,Main checking,BANK,EUR,Local Bank,Primary account,0,0,,true',
     );
     expect(entries.get('categories.csv')).toContain(
       'manual-category-category-manual,Consulting,INCOME,0,true',
@@ -854,6 +921,7 @@ describe('ImportsService', () => {
     const restartedService = new ImportsService(
       prisma as unknown as PrismaService,
       prices as unknown as PricesService,
+      recurring as unknown as RecurringService,
     );
 
     const result = await restartedService.applyBatch(OWNER_ID, preview.id);
@@ -919,12 +987,18 @@ describe('ImportsService', () => {
           institution: null,
           notes: '+SUM',
           order: 0,
+          openingBalance: null,
+          openingBalanceDate: null,
           archived: false,
         },
       ],
       categories: [],
       assets: [],
       transactions: [],
+      recurringRules: [],
+      recurringExceptions: [],
+      budgets: [],
+      budgetOverrides: [],
     });
   });
 });

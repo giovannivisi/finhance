@@ -21,6 +21,8 @@ import {
   Asset,
   AssetKind,
   AssetType,
+  CategoryBudget,
+  CategoryBudgetOverride,
   Category,
   CategoryType,
   ImportBatch,
@@ -28,19 +30,27 @@ import {
   ImportSource,
   LiabilityKind,
   Prisma,
+  RecurringOccurrenceStatus,
+  RecurringTransactionOccurrence,
+  RecurringTransactionRule,
   Transaction,
   TransactionDirection,
   TransactionKind,
 } from '@prisma/client';
+import { RecurringService } from '@recurring/recurring.service';
 import { IMPORT_TEMPLATE_HEADERS } from '@imports/imports.types';
 import type {
   AccountImportRow,
   AssetImportRow,
+  BudgetImportRow,
+  BudgetOverrideImportRow,
   CategoryImportRow,
   ImportAnalysisResult,
   ImportAnalysisState,
   ImportPayload,
   ImportUploadFile,
+  RecurringExceptionImportRow,
+  RecurringRuleImportRow,
   TransactionImportRow,
 } from '@imports/imports.types';
 type ImportDbClient = PrismaService | Prisma.TransactionClient;
@@ -55,12 +65,25 @@ type ExportTransactionRecord = Prisma.TransactionGetPayload<{
     category: true;
   };
 }>;
+type ExportRecurringRuleRecord = Prisma.RecurringTransactionRuleGetPayload<{
+  include: {
+    occurrences: true;
+  };
+}>;
+type ExportBudgetRecord = Prisma.CategoryBudgetGetPayload<{
+  include: {
+    overrides: true;
+    category: true;
+  };
+}>;
 
 interface ExportState {
   accounts: Account[];
   categories: Category[];
   assets: ExportAssetRecord[];
   transactions: ExportTransactionRecord[];
+  recurringRules: ExportRecurringRuleRecord[];
+  budgets: ExportBudgetRecord[];
 }
 
 interface ExportArchiveResult {
@@ -77,6 +100,28 @@ interface StoredPreviewPayload {
   ownerId: string;
   payload: ImportPayload;
   expiresAt: number;
+}
+
+interface AccountImportRef {
+  id: string;
+  currency: string;
+  archived: boolean;
+  openingBalanceDate: string | null;
+}
+
+interface CategoryImportRef {
+  id: string;
+  type: CategoryType;
+  archived: boolean;
+}
+
+interface RecurringRuleImportRef {
+  id: string;
+  kind: TransactionKind;
+}
+
+interface BudgetImportRef {
+  id: string;
 }
 
 const CSV_IMPORT_SOURCE = ImportSource.CSV_TEMPLATE;
@@ -111,6 +156,10 @@ const EXPORT_FILE_NAMES: Record<ImportFileType, string> = {
   categories: 'categories.csv',
   assets: 'assets.csv',
   transactions: 'transactions.csv',
+  recurringRules: 'recurringRules.csv',
+  recurringExceptions: 'recurringExceptions.csv',
+  budgets: 'budgets.csv',
+  budgetOverrides: 'budgetOverrides.csv',
 };
 const CRC32_TABLE = buildCrc32Table();
 
@@ -123,6 +172,7 @@ export class ImportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricesService: PricesService,
+    private readonly recurringService: RecurringService,
   ) {}
 
   async listRecent(ownerId: string): Promise<ImportBatchResponse[]> {
@@ -262,6 +312,13 @@ export class ImportsService {
         });
       });
 
+      if (
+        previewPayload.recurringRules.length > 0 ||
+        previewPayload.recurringExceptions.length > 0
+      ) {
+        await this.recurringService.materialize(ownerId);
+      }
+
       this.previewPayloads.delete(batchId);
       return this.toImportBatchResponse(appliedBatch);
     } catch (error) {
@@ -312,6 +369,10 @@ export class ImportsService {
       categories: [],
       assets: [],
       transactions: [],
+      recurringRules: [],
+      recurringExceptions: [],
+      budgets: [],
+      budgetOverrides: [],
     };
     const issues: ImportRowIssueResponse[] = [];
 
@@ -376,6 +437,38 @@ export class ImportsService {
             this.parseTransactionRow.bind(this),
           );
           break;
+        case 'recurringRules':
+          payload.recurringRules = this.parseRows(
+            fileType,
+            records,
+            issues,
+            this.parseRecurringRuleRow.bind(this),
+          );
+          break;
+        case 'recurringExceptions':
+          payload.recurringExceptions = this.parseRows(
+            fileType,
+            records,
+            issues,
+            this.parseRecurringExceptionRow.bind(this),
+          );
+          break;
+        case 'budgets':
+          payload.budgets = this.parseRows(
+            fileType,
+            records,
+            issues,
+            this.parseBudgetRow.bind(this),
+          );
+          break;
+        case 'budgetOverrides':
+          payload.budgetOverrides = this.parseRows(
+            fileType,
+            records,
+            issues,
+            this.parseBudgetOverrideRow.bind(this),
+          );
+          break;
       }
     }
 
@@ -420,11 +513,14 @@ export class ImportsService {
 
     const headers = rows[0].map((value) => value.trim());
     const expectedHeaders = [...IMPORT_TEMPLATE_HEADERS[file]];
+    const optionalHeaders =
+      file === 'accounts' ? ['openingBalance', 'openingBalanceDate'] : [];
     const unknownHeaders = headers.filter(
       (header) => !expectedHeaders.includes(header),
     );
     const missingHeaders = expectedHeaders.filter(
-      (header) => !headers.includes(header),
+      (header) =>
+        !headers.includes(header) && !optionalHeaders.includes(header),
     );
 
     if (unknownHeaders.length > 0 || missingHeaders.length > 0) {
@@ -563,6 +659,13 @@ export class ImportsService {
       institution: this.optionalText(values.institution),
       notes: this.optionalText(values.notes),
       order: this.optionalInteger(values.order),
+      openingBalance: this.optionalSignedDecimal(values.openingBalance),
+      openingBalanceDate: this.optionalDateOnlyString(
+        values.openingBalanceDate,
+        'accounts',
+        rowNumber,
+        'openingBalanceDate',
+      ),
       archived: this.optionalBoolean(values.archived),
     };
   }
@@ -863,6 +966,205 @@ export class ImportsService {
     };
   }
 
+  private parseRecurringRuleRow(
+    rowNumber: number,
+    values: CsvRecord,
+  ): RecurringRuleImportRow {
+    const kind = this.parseEnumValue<TransactionKind>(
+      values.kind,
+      Object.values(TransactionKind),
+      'recurringRules',
+      rowNumber,
+      'kind',
+    );
+
+    return {
+      rowNumber,
+      importKey: this.requiredText(
+        values.importKey,
+        'recurringRules',
+        rowNumber,
+        'importKey',
+      ),
+      name: this.requiredText(values.name, 'recurringRules', rowNumber, 'name'),
+      isActive: this.optionalBoolean(values.isActive),
+      kind,
+      amount: this.requiredDecimal(
+        values.amount,
+        'recurringRules',
+        rowNumber,
+        'amount',
+      ),
+      dayOfMonth: this.requiredDayOfMonth(values.dayOfMonth),
+      startDate: this.requiredDateOnlyString(
+        values.startDate,
+        'recurringRules',
+        rowNumber,
+        'startDate',
+      ),
+      endDate: this.optionalDateOnlyString(
+        values.endDate,
+        'recurringRules',
+        rowNumber,
+        'endDate',
+      ),
+      accountImportKey: this.optionalText(values.accountImportKey),
+      direction: values.direction
+        ? this.parseEnumValue<TransactionDirection>(
+            values.direction,
+            Object.values(TransactionDirection),
+            'recurringRules',
+            rowNumber,
+            'direction',
+          )
+        : null,
+      categoryImportKey: this.optionalText(values.categoryImportKey),
+      counterparty: this.optionalText(
+        values.counterparty,
+        MAX_COUNTERPARTY_LENGTH,
+      ),
+      sourceAccountImportKey: this.optionalText(values.sourceAccountImportKey),
+      destinationAccountImportKey: this.optionalText(
+        values.destinationAccountImportKey,
+      ),
+      description: this.requiredText(
+        values.description,
+        'recurringRules',
+        rowNumber,
+        'description',
+        MAX_DESCRIPTION_LENGTH,
+      ),
+      notes: this.optionalText(values.notes),
+    };
+  }
+
+  private parseRecurringExceptionRow(
+    rowNumber: number,
+    values: CsvRecord,
+  ): RecurringExceptionImportRow {
+    return {
+      rowNumber,
+      recurringRuleImportKey: this.requiredText(
+        values.recurringRuleImportKey,
+        'recurringExceptions',
+        rowNumber,
+        'recurringRuleImportKey',
+      ),
+      month: this.requiredMonthKey(
+        values.month,
+        'recurringExceptions',
+        rowNumber,
+        'month',
+      ),
+      status: this.parseEnumValue<RecurringOccurrenceStatus>(
+        values.status,
+        Object.values(RecurringOccurrenceStatus),
+        'recurringExceptions',
+        rowNumber,
+        'status',
+      ),
+      amount: this.optionalDecimal(values.amount),
+      postedAtDate: this.optionalDateOnlyString(
+        values.postedAtDate,
+        'recurringExceptions',
+        rowNumber,
+        'postedAtDate',
+      ),
+      accountImportKey: this.optionalText(values.accountImportKey),
+      direction: values.direction
+        ? this.parseEnumValue<TransactionDirection>(
+            values.direction,
+            Object.values(TransactionDirection),
+            'recurringExceptions',
+            rowNumber,
+            'direction',
+          )
+        : null,
+      categoryImportKey: this.optionalText(values.categoryImportKey),
+      counterparty: this.optionalText(
+        values.counterparty,
+        MAX_COUNTERPARTY_LENGTH,
+      ),
+      sourceAccountImportKey: this.optionalText(values.sourceAccountImportKey),
+      destinationAccountImportKey: this.optionalText(
+        values.destinationAccountImportKey,
+      ),
+      description: this.optionalText(
+        values.description,
+        MAX_DESCRIPTION_LENGTH,
+      ),
+      notes: this.optionalText(values.notes),
+    };
+  }
+
+  private parseBudgetRow(
+    rowNumber: number,
+    values: CsvRecord,
+  ): BudgetImportRow {
+    return {
+      rowNumber,
+      importKey: this.requiredText(
+        values.importKey,
+        'budgets',
+        rowNumber,
+        'importKey',
+      ),
+      categoryImportKey: this.requiredText(
+        values.categoryImportKey,
+        'budgets',
+        rowNumber,
+        'categoryImportKey',
+      ),
+      currency: this.parseRequiredCurrency(values.currency),
+      amount: this.requiredDecimal(
+        values.amount,
+        'budgets',
+        rowNumber,
+        'amount',
+      ),
+      startMonth: this.requiredMonthKey(
+        values.startMonth,
+        'budgets',
+        rowNumber,
+        'startMonth',
+      ),
+      endMonth: this.optionalMonthKey(
+        values.endMonth,
+        'budgets',
+        rowNumber,
+        'endMonth',
+      ),
+    };
+  }
+
+  private parseBudgetOverrideRow(
+    rowNumber: number,
+    values: CsvRecord,
+  ): BudgetOverrideImportRow {
+    return {
+      rowNumber,
+      budgetImportKey: this.requiredText(
+        values.budgetImportKey,
+        'budgetOverrides',
+        rowNumber,
+        'budgetImportKey',
+      ),
+      month: this.requiredMonthKey(
+        values.month,
+        'budgetOverrides',
+        rowNumber,
+        'month',
+      ),
+      amount: this.requiredDecimal(
+        values.amount,
+        'budgetOverrides',
+        rowNumber,
+        'amount',
+      ),
+      note: this.optionalText(values.note),
+    };
+  }
+
   private async analyzePayload(
     db: ImportDbClient,
     ownerId: string,
@@ -900,8 +1202,56 @@ export class ImportsService {
       duplicateRowKeys,
       state,
     );
+    const stagedRecurringRules = this.buildStagedRecurringRuleRefs(
+      payload,
+      issues,
+      duplicateRowKeys,
+      state,
+    );
+    const stagedBudgets = this.buildStagedBudgetRefs(
+      payload,
+      issues,
+      duplicateRowKeys,
+      state,
+    );
 
     this.validateCategories(payload, state, issues, duplicateRowKeys, summary);
+    this.summarizeAccounts(payload, state, issues, duplicateRowKeys, summary);
+    this.validateBudgets(
+      payload,
+      state,
+      stagedCategories,
+      issues,
+      duplicateRowKeys,
+      summary,
+    );
+    this.validateRecurringRules(
+      payload,
+      state,
+      stagedAccounts,
+      stagedCategories,
+      issues,
+      duplicateRowKeys,
+      summary,
+    );
+    this.validateRecurringExceptions(
+      payload,
+      state,
+      stagedAccounts,
+      stagedCategories,
+      stagedRecurringRules,
+      issues,
+      duplicateRowKeys,
+      summary,
+    );
+    this.validateBudgetOverrides(
+      payload,
+      state,
+      stagedBudgets,
+      issues,
+      duplicateRowKeys,
+      summary,
+    );
     this.validateAssets(
       payload,
       state,
@@ -919,7 +1269,6 @@ export class ImportsService {
       duplicateRowKeys,
       summary,
     );
-    this.summarizeAccounts(payload, state, issues, duplicateRowKeys, summary);
 
     issues.sort((left, right) => {
       if (left.file !== right.file) {
@@ -994,6 +1343,8 @@ export class ImportsService {
       importedCategories,
       importedAssets,
       importedTransactions,
+      importedRecurringRules,
+      importedBudgets,
       activeCategories,
       marketAssets,
     ] = await Promise.all([
@@ -1021,6 +1372,24 @@ export class ImportsService {
           importSource: CSV_IMPORT_SOURCE,
         },
       }),
+      db.recurringTransactionRule.findMany({
+        where: {
+          userId: ownerId,
+          importSource: CSV_IMPORT_SOURCE,
+        },
+        include: {
+          occurrences: true,
+        },
+      }),
+      db.categoryBudget.findMany({
+        where: {
+          userId: ownerId,
+          importSource: CSV_IMPORT_SOURCE,
+        },
+        include: {
+          overrides: true,
+        },
+      }),
       db.category.findMany({
         where: {
           userId: ownerId,
@@ -1046,6 +1415,19 @@ export class ImportsService {
     const importedCategoriesByKey = new Map<string, Category>();
     const importedAssetsByKey = new Map<string, Asset>();
     const importedTransactionsByKey = new Map<string, Transaction[]>();
+    const importedRecurringRulesByKey = new Map<
+      string,
+      RecurringTransactionRule
+    >();
+    const importedRecurringExceptionsByRuleMonthKey = new Map<
+      string,
+      RecurringTransactionOccurrence
+    >();
+    const importedBudgetsByKey = new Map<string, CategoryBudget>();
+    const importedBudgetOverridesByBudgetMonthKey = new Map<
+      string,
+      CategoryBudgetOverride
+    >();
     const accountImportKeyById = new Map<string, string>();
     const categoryImportKeyById = new Map<string, string>();
     const marketAssetsByKey = new Map<string, Asset[]>();
@@ -1080,6 +1462,36 @@ export class ImportsService {
       importedTransactionsByKey.set(row.importKey, existing);
     }
 
+    for (const rule of importedRecurringRules) {
+      if (!rule.importKey) {
+        continue;
+      }
+
+      importedRecurringRulesByKey.set(rule.importKey, rule);
+
+      for (const occurrence of rule.occurrences) {
+        importedRecurringExceptionsByRuleMonthKey.set(
+          `${rule.importKey}:${occurrence.occurrenceMonth.toISOString().slice(0, 7)}`,
+          occurrence,
+        );
+      }
+    }
+
+    for (const budget of importedBudgets) {
+      if (!budget.importKey) {
+        continue;
+      }
+
+      importedBudgetsByKey.set(budget.importKey, budget);
+
+      for (const override of budget.overrides) {
+        importedBudgetOverridesByBudgetMonthKey.set(
+          `${budget.importKey}:${override.month.toISOString().slice(0, 7)}`,
+          override,
+        );
+      }
+    }
+
     for (const asset of marketAssets) {
       if (!asset.kind || !asset.ticker || asset.exchange === null) {
         continue;
@@ -1096,6 +1508,10 @@ export class ImportsService {
       importedCategoriesByKey,
       importedAssetsByKey,
       importedTransactionsByKey,
+      importedRecurringRulesByKey,
+      importedRecurringExceptionsByRuleMonthKey,
+      importedBudgetsByKey,
+      importedBudgetOverridesByBudgetMonthKey,
       accountImportKeyById,
       categoryImportKeyById,
       activeCategories,
@@ -1108,13 +1524,16 @@ export class ImportsService {
     issues: ImportRowIssueResponse[],
     duplicateRowKeys: Map<ImportFileType, Set<string>>,
     state: ImportAnalysisState,
-  ): Map<string, { currency: string; archived: boolean }> {
-    const refs = new Map<string, { currency: string; archived: boolean }>();
+  ): Map<string, AccountImportRef> {
+    const refs = new Map<string, AccountImportRef>();
 
     for (const [key, account] of state.importedAccountsByKey.entries()) {
       refs.set(key, {
+        id: account.id,
         currency: account.currency,
         archived: account.archivedAt !== null,
+        openingBalanceDate:
+          account.openingBalanceDate?.toISOString().slice(0, 10) ?? null,
       });
     }
 
@@ -1125,9 +1544,13 @@ export class ImportsService {
         continue;
       }
 
+      const existing = state.importedAccountsByKey.get(row.importKey);
+
       refs.set(row.importKey, {
+        id: existing?.id ?? row.importKey,
         currency: row.currency,
         archived: row.archived,
+        openingBalanceDate: row.openingBalanceDate,
       });
     }
 
@@ -1139,11 +1562,12 @@ export class ImportsService {
     issues: ImportRowIssueResponse[],
     duplicateRowKeys: Map<ImportFileType, Set<string>>,
     state: ImportAnalysisState,
-  ): Map<string, { type: CategoryType; archived: boolean }> {
-    const refs = new Map<string, { type: CategoryType; archived: boolean }>();
+  ): Map<string, CategoryImportRef> {
+    const refs = new Map<string, CategoryImportRef>();
 
     for (const [key, category] of state.importedCategoriesByKey.entries()) {
       refs.set(key, {
+        id: category.id,
         type: category.type,
         archived: category.archivedAt !== null,
       });
@@ -1156,9 +1580,119 @@ export class ImportsService {
         continue;
       }
 
+      const existing = state.importedCategoriesByKey.get(row.importKey);
+
       refs.set(row.importKey, {
+        id: existing?.id ?? row.importKey,
         type: row.type,
         archived: row.archived,
+      });
+    }
+
+    return refs;
+  }
+
+  private buildStagedRecurringRuleRefs(
+    payload: ImportPayload,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    state: ImportAnalysisState,
+  ): Map<
+    string,
+    {
+      kind: TransactionKind;
+      dayOfMonth: number;
+      startDate: string;
+      endDate: string | null;
+    }
+  > {
+    const refs = new Map<
+      string,
+      {
+        kind: TransactionKind;
+        dayOfMonth: number;
+        startDate: string;
+        endDate: string | null;
+      }
+    >();
+
+    for (const [key, rule] of state.importedRecurringRulesByKey.entries()) {
+      refs.set(key, {
+        kind: rule.kind,
+        dayOfMonth: rule.dayOfMonth,
+        startDate: rule.startDate.toISOString().slice(0, 10),
+        endDate: rule.endDate?.toISOString().slice(0, 10) ?? null,
+      });
+    }
+
+    for (const row of payload.recurringRules) {
+      if (
+        this.rowHasErrors(
+          'recurringRules',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      refs.set(row.importKey, {
+        kind: row.kind,
+        dayOfMonth: row.dayOfMonth,
+        startDate: row.startDate,
+        endDate: row.endDate,
+      });
+    }
+
+    return refs;
+  }
+
+  private buildStagedBudgetRefs(
+    payload: ImportPayload,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    state: ImportAnalysisState,
+  ): Map<
+    string,
+    {
+      categoryId: string;
+      currency: string;
+      startMonth: string;
+      endMonth: string | null;
+    }
+  > {
+    const refs = new Map<
+      string,
+      {
+        categoryId: string;
+        currency: string;
+        startMonth: string;
+        endMonth: string | null;
+      }
+    >();
+
+    for (const [key, budget] of state.importedBudgetsByKey.entries()) {
+      refs.set(key, {
+        categoryId: budget.categoryId,
+        currency: budget.currency,
+        startMonth: budget.startMonth.toISOString().slice(0, 7),
+        endMonth: budget.endMonth?.toISOString().slice(0, 7) ?? null,
+      });
+    }
+
+    for (const row of payload.budgets) {
+      if (
+        this.rowHasErrors('budgets', row.rowNumber, issues, duplicateRowKeys)
+      ) {
+        continue;
+      }
+
+      refs.set(row.importKey, {
+        categoryId: row.categoryImportKey,
+        currency: row.currency,
+        startMonth: row.startMonth,
+        endMonth: row.endMonth,
       });
     }
 
@@ -1176,6 +1710,22 @@ export class ImportsService {
       if (
         this.rowHasErrors('accounts', row.rowNumber, issues, duplicateRowKeys)
       ) {
+        continue;
+      }
+
+      if (
+        row.openingBalance !== null &&
+        !new Prisma.Decimal(row.openingBalance).eq(ZERO) &&
+        !row.openingBalanceDate
+      ) {
+        issues.push(
+          this.issue(
+            'accounts',
+            row.rowNumber,
+            'openingBalanceDate',
+            'openingBalanceDate is required when openingBalance is not zero.',
+          ),
+        );
         continue;
       }
 
@@ -1270,7 +1820,7 @@ export class ImportsService {
   private validateAssets(
     payload: ImportPayload,
     state: ImportAnalysisState,
-    accountRefs: Map<string, { currency: string; archived: boolean }>,
+    accountRefs: Map<string, AccountImportRef>,
     issues: ImportRowIssueResponse[],
     duplicateRowKeys: Map<ImportFileType, Set<string>>,
     summary: ImportBatchSummaryResponse,
@@ -1363,8 +1913,8 @@ export class ImportsService {
   private validateTransactions(
     payload: ImportPayload,
     state: ImportAnalysisState,
-    accountRefs: Map<string, { currency: string; archived: boolean }>,
-    categoryRefs: Map<string, { type: CategoryType; archived: boolean }>,
+    accountRefs: Map<string, AccountImportRef>,
+    categoryRefs: Map<string, CategoryImportRef>,
     issues: ImportRowIssueResponse[],
     duplicateRowKeys: Map<ImportFileType, Set<string>>,
     summary: ImportBatchSummaryResponse,
@@ -1425,6 +1975,35 @@ export class ImportsService {
           );
         }
 
+        const postedAtDateKey = row.postedAt.slice(0, 10);
+        if (
+          source?.openingBalanceDate &&
+          postedAtDateKey < source.openingBalanceDate
+        ) {
+          issues.push(
+            this.issue(
+              'transactions',
+              row.rowNumber,
+              'postedAt',
+              `Transactions before ${source.openingBalanceDate} are not allowed for account ${row.sourceAccountImportKey}.`,
+            ),
+          );
+        }
+
+        if (
+          destination?.openingBalanceDate &&
+          postedAtDateKey < destination.openingBalanceDate
+        ) {
+          issues.push(
+            this.issue(
+              'transactions',
+              row.rowNumber,
+              'postedAt',
+              `Transactions before ${destination.openingBalanceDate} are not allowed for account ${row.destinationAccountImportKey}.`,
+            ),
+          );
+        }
+
         if (
           existingRows.length > 0 &&
           (existingRows.length !== 2 ||
@@ -1478,6 +2057,20 @@ export class ImportsService {
             row.rowNumber,
             'accountImportKey',
             `No imported account with key "${row.accountImportKey}" exists in this batch or current data.`,
+          ),
+        );
+      }
+      const account = accountRefs.get(row.accountImportKey);
+      if (
+        account?.openingBalanceDate &&
+        row.postedAt.slice(0, 10) < account.openingBalanceDate
+      ) {
+        issues.push(
+          this.issue(
+            'transactions',
+            row.rowNumber,
+            'postedAt',
+            `Transactions before ${account.openingBalanceDate} are not allowed for account ${row.accountImportKey}.`,
           ),
         );
       }
@@ -1563,21 +2156,877 @@ export class ImportsService {
     }
   }
 
+  private validateBudgets(
+    payload: ImportPayload,
+    state: ImportAnalysisState,
+    categoryRefs: Map<string, CategoryImportRef>,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    summary: ImportBatchSummaryResponse,
+  ): void {
+    const rangesByCategoryCurrency = new Map<
+      string,
+      Array<{
+        importKey: string;
+        startMonth: string;
+        endMonth: string | null;
+      }>
+    >();
+
+    for (const [importKey, budget] of state.importedBudgetsByKey.entries()) {
+      const key = `${budget.categoryId}:${budget.currency}`;
+      const existing = rangesByCategoryCurrency.get(key) ?? [];
+      existing.push({
+        importKey,
+        startMonth: budget.startMonth.toISOString().slice(0, 7),
+        endMonth: budget.endMonth?.toISOString().slice(0, 7) ?? null,
+      });
+      rangesByCategoryCurrency.set(key, existing);
+    }
+
+    for (const row of payload.budgets) {
+      if (
+        this.rowHasErrors('budgets', row.rowNumber, issues, duplicateRowKeys)
+      ) {
+        continue;
+      }
+
+      const category = categoryRefs.get(row.categoryImportKey);
+      if (!category) {
+        issues.push(
+          this.issue(
+            'budgets',
+            row.rowNumber,
+            'categoryImportKey',
+            `No imported category with key "${row.categoryImportKey}" exists in this batch or current data.`,
+          ),
+        );
+      } else if (category.type !== CategoryType.EXPENSE) {
+        issues.push(
+          this.issue(
+            'budgets',
+            row.rowNumber,
+            'categoryImportKey',
+            'Budgets can only target EXPENSE categories.',
+          ),
+        );
+      }
+
+      if (row.endMonth && row.startMonth > row.endMonth) {
+        issues.push(
+          this.issue(
+            'budgets',
+            row.rowNumber,
+            'endMonth',
+            'endMonth must be on or after startMonth.',
+          ),
+        );
+      }
+
+      if (category) {
+        const overlapKey = `${category.id}:${row.currency}`;
+        const ranges = rangesByCategoryCurrency.get(overlapKey) ?? [];
+        const conflicting = ranges.find(
+          (entry) =>
+            entry.importKey !== row.importKey &&
+            this.monthRangesOverlap(
+              row.startMonth,
+              row.endMonth,
+              entry.startMonth,
+              entry.endMonth,
+            ),
+        );
+
+        if (conflicting) {
+          issues.push(
+            this.issue(
+              'budgets',
+              row.rowNumber,
+              'startMonth',
+              'Another budget already covers this category, currency, and month range.',
+            ),
+          );
+        }
+      }
+
+      if (
+        this.rowHasErrors('budgets', row.rowNumber, issues, duplicateRowKeys)
+      ) {
+        continue;
+      }
+
+      if (category) {
+        const overlapKey = `${category.id}:${row.currency}`;
+        const ranges = rangesByCategoryCurrency.get(overlapKey) ?? [];
+        ranges.push({
+          importKey: row.importKey,
+          startMonth: row.startMonth,
+          endMonth: row.endMonth,
+        });
+        rangesByCategoryCurrency.set(overlapKey, ranges);
+      }
+
+      const existing = state.importedBudgetsByKey.get(row.importKey);
+      const action = !existing
+        ? 'createCount'
+        : this.equalBudgetRow(existing, row, state.categoryImportKeyById)
+          ? 'unchangedCount'
+          : 'updateCount';
+      this.bumpSummary(summary, 'budgets', action);
+    }
+  }
+
+  private validateBudgetOverrides(
+    payload: ImportPayload,
+    state: ImportAnalysisState,
+    budgetRefs: Map<
+      string,
+      {
+        categoryId: string;
+        currency: string;
+        startMonth: string;
+        endMonth: string | null;
+      }
+    >,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    summary: ImportBatchSummaryResponse,
+  ): void {
+    for (const row of payload.budgetOverrides) {
+      if (
+        this.rowHasErrors(
+          'budgetOverrides',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      const budget = budgetRefs.get(row.budgetImportKey);
+      if (!budget) {
+        issues.push(
+          this.issue(
+            'budgetOverrides',
+            row.rowNumber,
+            'budgetImportKey',
+            `No imported budget with key "${row.budgetImportKey}" exists in this batch or current data.`,
+          ),
+        );
+      } else if (
+        !this.monthIsWithinCoverage(
+          row.month,
+          budget.startMonth,
+          budget.endMonth,
+        )
+      ) {
+        issues.push(
+          this.issue(
+            'budgetOverrides',
+            row.rowNumber,
+            'month',
+            'Budget override month must stay inside the parent budget range.',
+          ),
+        );
+      }
+
+      if (
+        this.rowHasErrors(
+          'budgetOverrides',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      const existing =
+        state.importedBudgetOverridesByBudgetMonthKey.get(
+          `${row.budgetImportKey}:${row.month}`,
+        ) ?? null;
+      const action = !existing
+        ? 'createCount'
+        : this.equalBudgetOverrideRow(existing, row)
+          ? 'unchangedCount'
+          : 'updateCount';
+      this.bumpSummary(summary, 'budgetOverrides', action);
+    }
+  }
+
+  private validateRecurringRules(
+    payload: ImportPayload,
+    state: ImportAnalysisState,
+    accountRefs: Map<string, AccountImportRef>,
+    categoryRefs: Map<string, CategoryImportRef>,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    summary: ImportBatchSummaryResponse,
+  ): void {
+    for (const row of payload.recurringRules) {
+      if (
+        this.rowHasErrors(
+          'recurringRules',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      if (row.endDate && row.endDate < row.startDate) {
+        issues.push(
+          this.issue(
+            'recurringRules',
+            row.rowNumber,
+            'endDate',
+            'endDate must be on or after startDate.',
+          ),
+        );
+      }
+
+      if (row.kind === TransactionKind.TRANSFER) {
+        if (!row.sourceAccountImportKey || !row.destinationAccountImportKey) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'sourceAccountImportKey',
+              'Transfer recurring rules require sourceAccountImportKey and destinationAccountImportKey.',
+            ),
+          );
+        }
+
+        if (
+          row.accountImportKey ||
+          row.direction ||
+          row.categoryImportKey ||
+          row.counterparty
+        ) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'kind',
+              'Transfer recurring rules must leave account, direction, category, and counterparty empty.',
+            ),
+          );
+        }
+
+        if (
+          row.sourceAccountImportKey &&
+          row.destinationAccountImportKey &&
+          row.sourceAccountImportKey === row.destinationAccountImportKey
+        ) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'destinationAccountImportKey',
+              'Transfers require two different accounts.',
+            ),
+          );
+        }
+
+        const source = row.sourceAccountImportKey
+          ? accountRefs.get(row.sourceAccountImportKey)
+          : null;
+        const destination = row.destinationAccountImportKey
+          ? accountRefs.get(row.destinationAccountImportKey)
+          : null;
+
+        if (row.sourceAccountImportKey && !source) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'sourceAccountImportKey',
+              `No imported account with key "${row.sourceAccountImportKey}" exists in this batch or current data.`,
+            ),
+          );
+        }
+
+        if (row.destinationAccountImportKey && !destination) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'destinationAccountImportKey',
+              `No imported account with key "${row.destinationAccountImportKey}" exists in this batch or current data.`,
+            ),
+          );
+        }
+
+        if (source && destination && source.currency !== destination.currency) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'destinationAccountImportKey',
+              'Transfer recurring rules require source and destination accounts with the same currency.',
+            ),
+          );
+        }
+      } else {
+        if (!row.accountImportKey) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'accountImportKey',
+              'Standard recurring rules require accountImportKey.',
+            ),
+          );
+        } else if (!accountRefs.has(row.accountImportKey)) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'accountImportKey',
+              `No imported account with key "${row.accountImportKey}" exists in this batch or current data.`,
+            ),
+          );
+        }
+
+        if (!row.direction) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'direction',
+              'Standard recurring rules require direction.',
+            ),
+          );
+        }
+
+        if (
+          row.kind === TransactionKind.EXPENSE &&
+          row.direction !== TransactionDirection.OUTFLOW
+        ) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'direction',
+              'Expense recurring rules must use the OUTFLOW direction.',
+            ),
+          );
+        }
+
+        if (
+          row.kind === TransactionKind.INCOME &&
+          row.direction !== TransactionDirection.INFLOW
+        ) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'direction',
+              'Income recurring rules must use the INFLOW direction.',
+            ),
+          );
+        }
+
+        if (row.kind === TransactionKind.ADJUSTMENT && row.categoryImportKey) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'categoryImportKey',
+              'Adjustment recurring rules cannot be assigned to categories.',
+            ),
+          );
+        }
+
+        if (row.categoryImportKey) {
+          const category = categoryRefs.get(row.categoryImportKey);
+          if (!category) {
+            issues.push(
+              this.issue(
+                'recurringRules',
+                row.rowNumber,
+                'categoryImportKey',
+                `No imported category with key "${row.categoryImportKey}" exists in this batch or current data.`,
+              ),
+            );
+          } else if (
+            (row.kind === TransactionKind.EXPENSE &&
+              category.type !== CategoryType.EXPENSE) ||
+            (row.kind === TransactionKind.INCOME &&
+              category.type !== CategoryType.INCOME)
+          ) {
+            issues.push(
+              this.issue(
+                'recurringRules',
+                row.rowNumber,
+                'categoryImportKey',
+                `Category ${row.categoryImportKey} does not match the ${row.kind} recurring rule type.`,
+              ),
+            );
+          }
+        }
+      }
+
+      const accountsToCheck = [
+        row.accountImportKey,
+        row.sourceAccountImportKey,
+        row.destinationAccountImportKey,
+      ].filter(Boolean) as string[];
+      for (const accountImportKey of accountsToCheck) {
+        const account = accountRefs.get(accountImportKey);
+        if (
+          account &&
+          !this.ruleStartRespectsAccountBaseline(
+            row.startDate,
+            row.dayOfMonth,
+            account,
+          )
+        ) {
+          issues.push(
+            this.issue(
+              'recurringRules',
+              row.rowNumber,
+              'startDate',
+              `Recurring rules for ${accountImportKey} cannot create occurrences before that account's opening-balance cutoff.`,
+            ),
+          );
+          break;
+        }
+      }
+
+      if (
+        this.rowHasErrors(
+          'recurringRules',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      const existing = state.importedRecurringRulesByKey.get(row.importKey);
+      const action = !existing
+        ? 'createCount'
+        : this.equalRecurringRuleRow(
+              existing,
+              row,
+              state.accountImportKeyById,
+              state.categoryImportKeyById,
+            )
+          ? 'unchangedCount'
+          : 'updateCount';
+      this.bumpSummary(summary, 'recurringRules', action);
+    }
+  }
+
+  private validateRecurringExceptions(
+    payload: ImportPayload,
+    state: ImportAnalysisState,
+    accountRefs: Map<string, AccountImportRef>,
+    categoryRefs: Map<string, CategoryImportRef>,
+    recurringRuleRefs: Map<
+      string,
+      {
+        kind: TransactionKind;
+        dayOfMonth: number;
+        startDate: string;
+        endDate: string | null;
+      }
+    >,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    summary: ImportBatchSummaryResponse,
+  ): void {
+    for (const row of payload.recurringExceptions) {
+      if (
+        this.rowHasErrors(
+          'recurringExceptions',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      const rule = recurringRuleRefs.get(row.recurringRuleImportKey);
+      if (!rule) {
+        issues.push(
+          this.issue(
+            'recurringExceptions',
+            row.rowNumber,
+            'recurringRuleImportKey',
+            `No imported recurring rule with key "${row.recurringRuleImportKey}" exists in this batch or current data.`,
+          ),
+        );
+      } else if (
+        !this.recurringRuleAppliesToMonth(
+          rule.startDate,
+          rule.endDate,
+          rule.dayOfMonth,
+          row.month,
+        )
+      ) {
+        issues.push(
+          this.issue(
+            'recurringExceptions',
+            row.rowNumber,
+            'month',
+            'This recurring rule does not apply to the selected month.',
+          ),
+        );
+      }
+
+      if (row.status === RecurringOccurrenceStatus.OVERRIDDEN) {
+        if (!row.amount) {
+          issues.push(
+            this.issue(
+              'recurringExceptions',
+              row.rowNumber,
+              'amount',
+              'Override rows require amount.',
+            ),
+          );
+        }
+
+        if (!row.postedAtDate) {
+          issues.push(
+            this.issue(
+              'recurringExceptions',
+              row.rowNumber,
+              'postedAtDate',
+              'Override rows require postedAtDate.',
+            ),
+          );
+        } else if (row.postedAtDate.slice(0, 7) !== row.month) {
+          issues.push(
+            this.issue(
+              'recurringExceptions',
+              row.rowNumber,
+              'postedAtDate',
+              'postedAtDate must stay inside the selected occurrence month.',
+            ),
+          );
+        }
+
+        if (!row.description) {
+          issues.push(
+            this.issue(
+              'recurringExceptions',
+              row.rowNumber,
+              'description',
+              'Override rows require description.',
+            ),
+          );
+        }
+
+        if (rule?.kind === TransactionKind.TRANSFER) {
+          const source = row.sourceAccountImportKey
+            ? accountRefs.get(row.sourceAccountImportKey)
+            : null;
+          const destination = row.destinationAccountImportKey
+            ? accountRefs.get(row.destinationAccountImportKey)
+            : null;
+
+          if (!row.sourceAccountImportKey || !row.destinationAccountImportKey) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'sourceAccountImportKey',
+                'Transfer overrides require sourceAccountImportKey and destinationAccountImportKey.',
+              ),
+            );
+          }
+
+          if (
+            row.sourceAccountImportKey &&
+            row.destinationAccountImportKey &&
+            row.sourceAccountImportKey === row.destinationAccountImportKey
+          ) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'destinationAccountImportKey',
+                'Transfers require two different accounts.',
+              ),
+            );
+          }
+
+          if (
+            row.accountImportKey ||
+            row.direction ||
+            row.categoryImportKey ||
+            row.counterparty
+          ) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'status',
+                'Transfer overrides must leave standard transaction fields empty.',
+              ),
+            );
+          }
+
+          if (row.sourceAccountImportKey && !source) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'sourceAccountImportKey',
+                `No imported account with key "${row.sourceAccountImportKey}" exists in this batch or current data.`,
+              ),
+            );
+          }
+
+          if (row.destinationAccountImportKey && !destination) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'destinationAccountImportKey',
+                `No imported account with key "${row.destinationAccountImportKey}" exists in this batch or current data.`,
+              ),
+            );
+          }
+
+          if (
+            source &&
+            destination &&
+            source.currency !== destination.currency
+          ) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'destinationAccountImportKey',
+                'Transfer overrides require source and destination accounts with the same currency.',
+              ),
+            );
+          }
+
+          if (
+            row.postedAtDate &&
+            source?.openingBalanceDate &&
+            row.postedAtDate < source.openingBalanceDate
+          ) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'postedAtDate',
+                `Recurring occurrences for ${row.sourceAccountImportKey} cannot be dated before ${source.openingBalanceDate}.`,
+              ),
+            );
+          }
+
+          if (
+            row.postedAtDate &&
+            destination?.openingBalanceDate &&
+            row.postedAtDate < destination.openingBalanceDate
+          ) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'postedAtDate',
+                `Recurring occurrences for ${row.destinationAccountImportKey} cannot be dated before ${destination.openingBalanceDate}.`,
+              ),
+            );
+          }
+        } else {
+          if (!row.accountImportKey) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'accountImportKey',
+                'Standard overrides require accountImportKey.',
+              ),
+            );
+          } else if (!accountRefs.has(row.accountImportKey)) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'accountImportKey',
+                `No imported account with key "${row.accountImportKey}" exists in this batch or current data.`,
+              ),
+            );
+          }
+
+          if (!row.direction) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'direction',
+                'Standard overrides require direction.',
+              ),
+            );
+          }
+
+          if (
+            rule?.kind === TransactionKind.EXPENSE &&
+            row.direction !== TransactionDirection.OUTFLOW
+          ) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'direction',
+                'Expense recurring overrides must use the OUTFLOW direction.',
+              ),
+            );
+          }
+
+          if (
+            rule?.kind === TransactionKind.INCOME &&
+            row.direction !== TransactionDirection.INFLOW
+          ) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'direction',
+                'Income recurring overrides must use the INFLOW direction.',
+              ),
+            );
+          }
+
+          if (
+            rule?.kind === TransactionKind.ADJUSTMENT &&
+            row.categoryImportKey
+          ) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'categoryImportKey',
+                'Adjustment recurring overrides cannot be assigned to categories.',
+              ),
+            );
+          }
+
+          if (row.categoryImportKey) {
+            const category = categoryRefs.get(row.categoryImportKey);
+            if (!category) {
+              issues.push(
+                this.issue(
+                  'recurringExceptions',
+                  row.rowNumber,
+                  'categoryImportKey',
+                  `No imported category with key "${row.categoryImportKey}" exists in this batch or current data.`,
+                ),
+              );
+            } else if (
+              (rule?.kind === TransactionKind.EXPENSE &&
+                category.type !== CategoryType.EXPENSE) ||
+              (rule?.kind === TransactionKind.INCOME &&
+                category.type !== CategoryType.INCOME)
+            ) {
+              issues.push(
+                this.issue(
+                  'recurringExceptions',
+                  row.rowNumber,
+                  'categoryImportKey',
+                  `Category ${row.categoryImportKey} does not match the recurring rule type.`,
+                ),
+              );
+            }
+          }
+
+          if (
+            row.postedAtDate &&
+            row.accountImportKey &&
+            accountRefs.get(row.accountImportKey)?.openingBalanceDate &&
+            row.postedAtDate <
+              (accountRefs.get(row.accountImportKey)?.openingBalanceDate ?? '')
+          ) {
+            issues.push(
+              this.issue(
+                'recurringExceptions',
+                row.rowNumber,
+                'postedAtDate',
+                `Recurring occurrences for ${row.accountImportKey} cannot be dated before ${accountRefs.get(row.accountImportKey)?.openingBalanceDate}.`,
+              ),
+            );
+          }
+        }
+      }
+
+      if (
+        this.rowHasErrors(
+          'recurringExceptions',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      const existing =
+        state.importedRecurringExceptionsByRuleMonthKey.get(
+          `${row.recurringRuleImportKey}:${row.month}`,
+        ) ?? null;
+      const action = !existing
+        ? 'createCount'
+        : this.equalRecurringExceptionRow(
+              existing,
+              row,
+              state.accountImportKeyById,
+              state.categoryImportKeyById,
+            )
+          ? 'unchangedCount'
+          : 'updateCount';
+      this.bumpSummary(summary, 'recurringExceptions', action);
+    }
+  }
+
   private async applyPayload(
     db: ImportDbClient,
     ownerId: string,
     payload: ImportPayload,
     state: ImportAnalysisState,
   ): Promise<void> {
-    const accountRefs = new Map<string, { id: string; currency: string }>();
-    const categoryRefs = new Map<string, { id: string; type: CategoryType }>();
+    const accountRefs = new Map<string, AccountImportRef>();
+    const categoryRefs = new Map<string, CategoryImportRef>();
+    const budgetRefs = new Map<string, BudgetImportRef>();
+    const recurringRuleRefs = new Map<string, RecurringRuleImportRef>();
 
     for (const [key, account] of state.importedAccountsByKey.entries()) {
-      accountRefs.set(key, { id: account.id, currency: account.currency });
+      accountRefs.set(key, {
+        id: account.id,
+        currency: account.currency,
+        archived: account.archivedAt !== null,
+        openingBalanceDate:
+          account.openingBalanceDate?.toISOString().slice(0, 10) ?? null,
+      });
     }
 
     for (const [key, category] of state.importedCategoriesByKey.entries()) {
-      categoryRefs.set(key, { id: category.id, type: category.type });
+      categoryRefs.set(key, {
+        id: category.id,
+        type: category.type,
+        archived: category.archivedAt !== null,
+      });
+    }
+
+    for (const [key, budget] of state.importedBudgetsByKey.entries()) {
+      budgetRefs.set(key, { id: budget.id });
+    }
+
+    for (const [key, rule] of state.importedRecurringRulesByKey.entries()) {
+      recurringRuleRefs.set(key, {
+        id: rule.id,
+        kind: rule.kind,
+      });
     }
 
     for (const row of payload.accounts) {
@@ -1594,6 +3043,12 @@ export class ImportsService {
               institution: row.institution,
               notes: row.notes,
               order: targetOrder,
+              openingBalance: row.openingBalance
+                ? new Prisma.Decimal(row.openingBalance)
+                : ZERO,
+              openingBalanceDate: row.openingBalanceDate
+                ? new Date(`${row.openingBalanceDate}T00:00:00.000Z`)
+                : null,
               archivedAt: row.archived ? new Date() : null,
               importSource: CSV_IMPORT_SOURCE,
               importKey: row.importKey,
@@ -1608,6 +3063,12 @@ export class ImportsService {
               institution: row.institution,
               notes: row.notes,
               order: targetOrder,
+              openingBalance: row.openingBalance
+                ? new Prisma.Decimal(row.openingBalance)
+                : ZERO,
+              openingBalanceDate: row.openingBalanceDate
+                ? new Date(`${row.openingBalanceDate}T00:00:00.000Z`)
+                : null,
               archivedAt: row.archived ? new Date() : null,
               importSource: CSV_IMPORT_SOURCE,
               importKey: row.importKey,
@@ -1617,6 +3078,9 @@ export class ImportsService {
       accountRefs.set(row.importKey, {
         id: saved.id,
         currency: saved.currency,
+        archived: saved.archivedAt !== null,
+        openingBalanceDate:
+          saved.openingBalanceDate?.toISOString().slice(0, 10) ?? null,
       });
     }
 
@@ -1651,6 +3115,191 @@ export class ImportsService {
       categoryRefs.set(row.importKey, {
         id: saved.id,
         type: saved.type,
+        archived: saved.archivedAt !== null,
+      });
+    }
+
+    for (const row of payload.budgets) {
+      const existing = state.importedBudgetsByKey.get(row.importKey);
+      const categoryId = categoryRefs.get(row.categoryImportKey)?.id;
+
+      if (!categoryId) {
+        throw new ConflictException(
+          `Budget import ${row.importKey} could not resolve its category.`,
+        );
+      }
+
+      const data = {
+        userId: ownerId,
+        categoryId,
+        currency: row.currency,
+        amount: new Prisma.Decimal(row.amount),
+        startMonth: new Date(`${row.startMonth}-01T00:00:00.000Z`),
+        endMonth: row.endMonth
+          ? new Date(`${row.endMonth}-01T00:00:00.000Z`)
+          : null,
+        importSource: CSV_IMPORT_SOURCE,
+        importKey: row.importKey,
+      };
+
+      const saved = existing
+        ? await db.categoryBudget.update({
+            where: { id: existing.id },
+            data,
+          })
+        : await db.categoryBudget.create({
+            data,
+          });
+
+      budgetRefs.set(row.importKey, { id: saved.id });
+    }
+
+    for (const row of payload.budgetOverrides) {
+      const budgetId = budgetRefs.get(row.budgetImportKey)?.id;
+
+      if (!budgetId) {
+        throw new ConflictException(
+          `Budget override import ${row.budgetImportKey} could not resolve its budget.`,
+        );
+      }
+
+      await db.categoryBudgetOverride.upsert({
+        where: {
+          categoryBudgetId_month: {
+            categoryBudgetId: budgetId,
+            month: new Date(`${row.month}-01T00:00:00.000Z`),
+          },
+        },
+        create: {
+          userId: ownerId,
+          categoryBudgetId: budgetId,
+          month: new Date(`${row.month}-01T00:00:00.000Z`),
+          amount: new Prisma.Decimal(row.amount),
+          note: row.note,
+        },
+        update: {
+          amount: new Prisma.Decimal(row.amount),
+          note: row.note,
+        },
+      });
+    }
+
+    for (const row of payload.recurringRules) {
+      const existing = state.importedRecurringRulesByKey.get(row.importKey);
+      const accountId = row.accountImportKey
+        ? (accountRefs.get(row.accountImportKey)?.id ?? null)
+        : null;
+      const categoryId = row.categoryImportKey
+        ? (categoryRefs.get(row.categoryImportKey)?.id ?? null)
+        : null;
+      const sourceAccountId = row.sourceAccountImportKey
+        ? (accountRefs.get(row.sourceAccountImportKey)?.id ?? null)
+        : null;
+      const destinationAccountId = row.destinationAccountImportKey
+        ? (accountRefs.get(row.destinationAccountImportKey)?.id ?? null)
+        : null;
+
+      const data = {
+        userId: ownerId,
+        importSource: CSV_IMPORT_SOURCE,
+        importKey: row.importKey,
+        name: row.name,
+        isActive: row.isActive,
+        kind: row.kind,
+        amount: new Prisma.Decimal(row.amount),
+        dayOfMonth: row.dayOfMonth,
+        startDate: new Date(`${row.startDate}T00:00:00.000Z`),
+        endDate: row.endDate ? new Date(`${row.endDate}T00:00:00.000Z`) : null,
+        accountId,
+        direction: row.direction,
+        categoryId,
+        counterparty: row.counterparty,
+        sourceAccountId,
+        destinationAccountId,
+        description: row.description,
+        notes: row.notes,
+        lastMaterializationError: null,
+        lastMaterializationErrorAt: null,
+      };
+
+      const saved = existing
+        ? await db.recurringTransactionRule.update({
+            where: { id: existing.id },
+            data,
+          })
+        : await db.recurringTransactionRule.create({
+            data,
+          });
+
+      recurringRuleRefs.set(row.importKey, {
+        id: saved.id,
+        kind: saved.kind,
+      });
+    }
+
+    for (const row of payload.recurringExceptions) {
+      const recurringRule = recurringRuleRefs.get(row.recurringRuleImportKey);
+
+      if (!recurringRule) {
+        throw new ConflictException(
+          `Recurring exception import ${row.recurringRuleImportKey} could not resolve its recurring rule.`,
+        );
+      }
+
+      const occurrenceMonth = new Date(`${row.month}-01T00:00:00.000Z`);
+      const accountId = row.accountImportKey
+        ? (accountRefs.get(row.accountImportKey)?.id ?? null)
+        : null;
+      const categoryId = row.categoryImportKey
+        ? (categoryRefs.get(row.categoryImportKey)?.id ?? null)
+        : null;
+      const sourceAccountId = row.sourceAccountImportKey
+        ? (accountRefs.get(row.sourceAccountImportKey)?.id ?? null)
+        : null;
+      const destinationAccountId = row.destinationAccountImportKey
+        ? (accountRefs.get(row.destinationAccountImportKey)?.id ?? null)
+        : null;
+
+      await db.recurringTransactionOccurrence.upsert({
+        where: {
+          recurringRuleId_occurrenceMonth: {
+            recurringRuleId: recurringRule.id,
+            occurrenceMonth,
+          },
+        },
+        create: {
+          userId: ownerId,
+          recurringRuleId: recurringRule.id,
+          occurrenceMonth,
+          status: row.status,
+          overrideAmount: row.amount ? new Prisma.Decimal(row.amount) : null,
+          overridePostedAtDate: row.postedAtDate
+            ? new Date(`${row.postedAtDate}T00:00:00.000Z`)
+            : null,
+          overrideAccountId: accountId,
+          overrideDirection: row.direction,
+          overrideCategoryId: categoryId,
+          overrideCounterparty: row.counterparty,
+          overrideSourceAccountId: sourceAccountId,
+          overrideDestinationAccountId: destinationAccountId,
+          overrideDescription: row.description,
+          overrideNotes: row.notes,
+        },
+        update: {
+          status: row.status,
+          overrideAmount: row.amount ? new Prisma.Decimal(row.amount) : null,
+          overridePostedAtDate: row.postedAtDate
+            ? new Date(`${row.postedAtDate}T00:00:00.000Z`)
+            : null,
+          overrideAccountId: accountId,
+          overrideDirection: row.direction,
+          overrideCategoryId: categoryId,
+          overrideCounterparty: row.counterparty,
+          overrideSourceAccountId: sourceAccountId,
+          overrideDestinationAccountId: destinationAccountId,
+          overrideDescription: row.description,
+          overrideNotes: row.notes,
+        },
       });
     }
 
@@ -1891,6 +3540,8 @@ export class ImportsService {
   ): Promise<void> {
     await this.backfillAccountExportImportKeys(db, ownerId);
     await this.backfillCategoryExportImportKeys(db, ownerId);
+    await this.backfillRecurringRuleExportImportKeys(db, ownerId);
+    await this.backfillBudgetExportImportKeys(db, ownerId);
     await this.backfillAssetExportImportKeys(db, ownerId);
     await this.backfillTransactionExportImportKeys(db, ownerId);
   }
@@ -1976,6 +3627,60 @@ export class ImportsService {
     }
   }
 
+  private async backfillRecurringRuleExportImportKeys(
+    db: ImportDbClient,
+    ownerId: string,
+  ): Promise<void> {
+    const rows = await db.recurringTransactionRule.findMany({
+      where: { userId: ownerId },
+    });
+
+    for (const row of rows) {
+      const importKey = row.importKey ?? `manual-recurring-rule-${row.id}`;
+      if (
+        row.importSource === CSV_IMPORT_SOURCE &&
+        row.importKey === importKey
+      ) {
+        continue;
+      }
+
+      await db.recurringTransactionRule.update({
+        where: { id: row.id },
+        data: {
+          importSource: CSV_IMPORT_SOURCE,
+          importKey,
+        },
+      });
+    }
+  }
+
+  private async backfillBudgetExportImportKeys(
+    db: ImportDbClient,
+    ownerId: string,
+  ): Promise<void> {
+    const rows = await db.categoryBudget.findMany({
+      where: { userId: ownerId },
+    });
+
+    for (const row of rows) {
+      const importKey = row.importKey ?? `manual-budget-${row.id}`;
+      if (
+        row.importSource === CSV_IMPORT_SOURCE &&
+        row.importKey === importKey
+      ) {
+        continue;
+      }
+
+      await db.categoryBudget.update({
+        where: { id: row.id },
+        data: {
+          importSource: CSV_IMPORT_SOURCE,
+          importKey,
+        },
+      });
+    }
+  }
+
   private async backfillTransactionExportImportKeys(
     db: ImportDbClient,
     ownerId: string,
@@ -2046,7 +3751,14 @@ export class ImportsService {
     db: ImportDbClient,
     ownerId: string,
   ): Promise<ExportState> {
-    const [accounts, categories, assets, transactions] = await Promise.all([
+    const [
+      accounts,
+      categories,
+      assets,
+      transactions,
+      recurringRules,
+      budgets,
+    ] = await Promise.all([
       db.account.findMany({
         where: { userId: ownerId },
         orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
@@ -2070,6 +3782,25 @@ export class ImportsService {
         },
         orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       }),
+      db.recurringTransactionRule.findMany({
+        where: { userId: ownerId },
+        include: {
+          occurrences: {
+            orderBy: [{ occurrenceMonth: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+        orderBy: [{ dayOfMonth: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      }),
+      db.categoryBudget.findMany({
+        where: { userId: ownerId },
+        include: {
+          category: true,
+          overrides: {
+            orderBy: [{ month: 'asc' }, { createdAt: 'asc' }],
+          },
+        },
+        orderBy: [{ startMonth: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      }),
     ]);
 
     return {
@@ -2077,12 +3808,16 @@ export class ImportsService {
       categories,
       assets,
       transactions,
+      recurringRules,
+      budgets,
     };
   }
 
   private buildExportFiles(state: ExportState): ZipFileEntry[] {
     const accountImportKeys = new Map<string, string>();
     const categoryImportKeys = new Map<string, string>();
+    const recurringRuleImportKeys = new Map<string, string>();
+    const budgetImportKeys = new Map<string, string>();
 
     for (const account of state.accounts) {
       const importKey = account.importKey;
@@ -2106,6 +3841,28 @@ export class ImportsService {
       categoryImportKeys.set(category.id, importKey);
     }
 
+    for (const rule of state.recurringRules) {
+      const importKey = rule.importKey;
+      if (!importKey) {
+        throw new ConflictException(
+          `Recurring rule ${rule.id} could not be exported without an import key.`,
+        );
+      }
+
+      recurringRuleImportKeys.set(rule.id, importKey);
+    }
+
+    for (const budget of state.budgets) {
+      const importKey = budget.importKey;
+      if (!importKey) {
+        throw new ConflictException(
+          `Budget ${budget.id} could not be exported without an import key.`,
+        );
+      }
+
+      budgetImportKeys.set(budget.id, importKey);
+    }
+
     const accountCsv = this.serializeCsv(
       [...IMPORT_TEMPLATE_HEADERS.accounts],
       state.accounts.map((account) => this.toExportAccountRow(account)),
@@ -2123,10 +3880,39 @@ export class ImportsService {
     const transactionCsv = this.serializeCsv(
       [...IMPORT_TEMPLATE_HEADERS.transactions],
       this.toExportTransactionRows(
-        state.transactions,
+        state.transactions.filter((row) => row.recurringRuleId === null),
         accountImportKeys,
         categoryImportKeys,
       ),
+    );
+    const recurringRuleCsv = this.serializeCsv(
+      [...IMPORT_TEMPLATE_HEADERS.recurringRules],
+      state.recurringRules.map((rule) =>
+        this.toExportRecurringRuleRow(
+          rule,
+          accountImportKeys,
+          categoryImportKeys,
+        ),
+      ),
+    );
+    const recurringExceptionCsv = this.serializeCsv(
+      [...IMPORT_TEMPLATE_HEADERS.recurringExceptions],
+      this.toExportRecurringExceptionRows(
+        state.recurringRules,
+        recurringRuleImportKeys,
+        accountImportKeys,
+        categoryImportKeys,
+      ),
+    );
+    const budgetCsv = this.serializeCsv(
+      [...IMPORT_TEMPLATE_HEADERS.budgets],
+      state.budgets.map((budget) =>
+        this.toExportBudgetRow(budget, categoryImportKeys),
+      ),
+    );
+    const budgetOverrideCsv = this.serializeCsv(
+      [...IMPORT_TEMPLATE_HEADERS.budgetOverrides],
+      this.toExportBudgetOverrideRows(state.budgets, budgetImportKeys),
     );
 
     return [
@@ -2145,6 +3931,22 @@ export class ImportsService {
       {
         name: EXPORT_FILE_NAMES.transactions,
         data: Buffer.from(transactionCsv, 'utf8'),
+      },
+      {
+        name: EXPORT_FILE_NAMES.recurringRules,
+        data: Buffer.from(recurringRuleCsv, 'utf8'),
+      },
+      {
+        name: EXPORT_FILE_NAMES.recurringExceptions,
+        data: Buffer.from(recurringExceptionCsv, 'utf8'),
+      },
+      {
+        name: EXPORT_FILE_NAMES.budgets,
+        data: Buffer.from(budgetCsv, 'utf8'),
+      },
+      {
+        name: EXPORT_FILE_NAMES.budgetOverrides,
+        data: Buffer.from(budgetOverrideCsv, 'utf8'),
       },
     ];
   }
@@ -2225,6 +4027,9 @@ export class ImportsService {
       institution: account.institution ?? '',
       notes: account.notes ?? '',
       order: this.serializeInteger(account.order),
+      openingBalance: account.openingBalance.toString(),
+      openingBalanceDate:
+        account.openingBalanceDate?.toISOString().slice(0, 10) ?? '',
       archived: this.serializeBoolean(account.archivedAt !== null),
     };
   }
@@ -2418,6 +4223,146 @@ export class ImportsService {
         `Transfer ${transferGroupId} references a destination account that cannot be exported.`,
       ),
     };
+  }
+
+  private toExportRecurringRuleRow(
+    rule: ExportRecurringRuleRecord,
+    accountImportKeys: Map<string, string>,
+    categoryImportKeys: Map<string, string>,
+  ): CsvRecord {
+    if (!rule.importKey) {
+      throw new ConflictException(
+        `Recurring rule ${rule.id} could not be exported without an import key.`,
+      );
+    }
+
+    return {
+      importKey: rule.importKey,
+      name: rule.name,
+      isActive: this.serializeBoolean(rule.isActive),
+      kind: rule.kind,
+      amount: rule.amount.toString(),
+      dayOfMonth: String(rule.dayOfMonth),
+      startDate: rule.startDate.toISOString().slice(0, 10),
+      endDate: rule.endDate?.toISOString().slice(0, 10) ?? '',
+      accountImportKey: rule.accountId
+        ? this.requireExportImportKey(
+            accountImportKeys.get(rule.accountId),
+            `Recurring rule ${rule.id} references an account that cannot be exported.`,
+          )
+        : '',
+      direction: rule.direction ?? '',
+      categoryImportKey: rule.categoryId
+        ? this.requireExportImportKey(
+            categoryImportKeys.get(rule.categoryId),
+            `Recurring rule ${rule.id} references a category that cannot be exported.`,
+          )
+        : '',
+      counterparty: rule.counterparty ?? '',
+      sourceAccountImportKey: rule.sourceAccountId
+        ? this.requireExportImportKey(
+            accountImportKeys.get(rule.sourceAccountId),
+            `Recurring rule ${rule.id} references a source account that cannot be exported.`,
+          )
+        : '',
+      destinationAccountImportKey: rule.destinationAccountId
+        ? this.requireExportImportKey(
+            accountImportKeys.get(rule.destinationAccountId),
+            `Recurring rule ${rule.id} references a destination account that cannot be exported.`,
+          )
+        : '',
+      description: rule.description,
+      notes: rule.notes ?? '',
+    };
+  }
+
+  private toExportRecurringExceptionRows(
+    rules: ExportRecurringRuleRecord[],
+    recurringRuleImportKeys: Map<string, string>,
+    accountImportKeys: Map<string, string>,
+    categoryImportKeys: Map<string, string>,
+  ): CsvRecord[] {
+    return rules.flatMap((rule) =>
+      rule.occurrences.map((occurrence) => ({
+        recurringRuleImportKey: this.requireExportImportKey(
+          recurringRuleImportKeys.get(rule.id),
+          `Recurring exception ${occurrence.id} is missing its recurring rule import key.`,
+        ),
+        month: occurrence.occurrenceMonth.toISOString().slice(0, 7),
+        status: occurrence.status,
+        amount: occurrence.overrideAmount?.toString() ?? '',
+        postedAtDate:
+          occurrence.overridePostedAtDate?.toISOString().slice(0, 10) ?? '',
+        accountImportKey: occurrence.overrideAccountId
+          ? this.requireExportImportKey(
+              accountImportKeys.get(occurrence.overrideAccountId),
+              `Recurring exception ${occurrence.id} references an account that cannot be exported.`,
+            )
+          : '',
+        direction: occurrence.overrideDirection ?? '',
+        categoryImportKey: occurrence.overrideCategoryId
+          ? this.requireExportImportKey(
+              categoryImportKeys.get(occurrence.overrideCategoryId),
+              `Recurring exception ${occurrence.id} references a category that cannot be exported.`,
+            )
+          : '',
+        counterparty: occurrence.overrideCounterparty ?? '',
+        sourceAccountImportKey: occurrence.overrideSourceAccountId
+          ? this.requireExportImportKey(
+              accountImportKeys.get(occurrence.overrideSourceAccountId),
+              `Recurring exception ${occurrence.id} references a source account that cannot be exported.`,
+            )
+          : '',
+        destinationAccountImportKey: occurrence.overrideDestinationAccountId
+          ? this.requireExportImportKey(
+              accountImportKeys.get(occurrence.overrideDestinationAccountId),
+              `Recurring exception ${occurrence.id} references a destination account that cannot be exported.`,
+            )
+          : '',
+        description: occurrence.overrideDescription ?? '',
+        notes: occurrence.overrideNotes ?? '',
+      })),
+    );
+  }
+
+  private toExportBudgetRow(
+    budget: ExportBudgetRecord,
+    categoryImportKeys: Map<string, string>,
+  ): CsvRecord {
+    if (!budget.importKey) {
+      throw new ConflictException(
+        `Budget ${budget.id} could not be exported without an import key.`,
+      );
+    }
+
+    return {
+      importKey: budget.importKey,
+      categoryImportKey: this.requireExportImportKey(
+        categoryImportKeys.get(budget.categoryId),
+        `Budget ${budget.id} references a category that cannot be exported.`,
+      ),
+      currency: budget.currency,
+      amount: budget.amount.toString(),
+      startMonth: budget.startMonth.toISOString().slice(0, 7),
+      endMonth: budget.endMonth?.toISOString().slice(0, 7) ?? '',
+    };
+  }
+
+  private toExportBudgetOverrideRows(
+    budgets: ExportBudgetRecord[],
+    budgetImportKeys: Map<string, string>,
+  ): CsvRecord[] {
+    return budgets.flatMap((budget) =>
+      budget.overrides.map((override) => ({
+        budgetImportKey: this.requireExportImportKey(
+          budgetImportKeys.get(budget.id),
+          `Budget override ${override.id} is missing its budget import key.`,
+        ),
+        month: override.month.toISOString().slice(0, 7),
+        amount: override.amount.toString(),
+        note: override.note ?? '',
+      })),
+    );
   }
 
   private resolveTransferRowsForExport<T extends Transaction>(
@@ -2634,30 +4579,44 @@ export class ImportsService {
   ): Map<ImportFileType, Set<string>> {
     const duplicates = new Map<ImportFileType, Set<string>>();
 
-    const collect = <T extends { importKey: string; rowNumber: number }>(
+    const collect = <T extends { rowNumber: number }>(
       file: ImportFileType,
       rows: T[],
+      keySelector: (row: T) => string,
     ) => {
       const seen = new Map<string, number>();
       const fileDuplicates = new Set<string>();
 
       for (const row of rows) {
-        const previous = seen.get(row.importKey);
+        const key = keySelector(row);
+        const previous = seen.get(key);
         if (previous) {
           fileDuplicates.add(String(previous));
           fileDuplicates.add(String(row.rowNumber));
         } else {
-          seen.set(row.importKey, row.rowNumber);
+          seen.set(key, row.rowNumber);
         }
       }
 
       duplicates.set(file, fileDuplicates);
     };
 
-    collect('accounts', payload.accounts);
-    collect('categories', payload.categories);
-    collect('assets', payload.assets);
-    collect('transactions', payload.transactions);
+    collect('accounts', payload.accounts, (row) => row.importKey);
+    collect('categories', payload.categories, (row) => row.importKey);
+    collect('assets', payload.assets, (row) => row.importKey);
+    collect('transactions', payload.transactions, (row) => row.importKey);
+    collect('recurringRules', payload.recurringRules, (row) => row.importKey);
+    collect(
+      'recurringExceptions',
+      payload.recurringExceptions,
+      (row) => `${row.recurringRuleImportKey}:${row.month}`,
+    );
+    collect('budgets', payload.budgets, (row) => row.importKey);
+    collect(
+      'budgetOverrides',
+      payload.budgetOverrides,
+      (row) => `${row.budgetImportKey}:${row.month}`,
+    );
     return duplicates;
   }
 
@@ -2854,6 +4813,186 @@ export class ImportsService {
     return date.toISOString();
   }
 
+  private requiredDateOnlyString(
+    value: string | undefined,
+    _file: ImportFileType,
+    _rowNumber: number,
+    field: string,
+  ): string {
+    const normalized = value?.trim() ?? '';
+    if (!normalized) {
+      throw new BadRequestException(`${field} is required.`);
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+      throw new BadRequestException(
+        `${field} must be a valid YYYY-MM-DD date.`,
+      );
+    }
+
+    const date = new Date(`${normalized}T00:00:00.000Z`);
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== normalized
+    ) {
+      throw new BadRequestException(
+        `${field} must be a valid YYYY-MM-DD date.`,
+      );
+    }
+
+    return normalized;
+  }
+
+  private optionalDateOnlyString(
+    value: string | undefined,
+    file: ImportFileType,
+    rowNumber: number,
+    field: string,
+  ): string | null {
+    const normalized = value?.trim() ?? '';
+    if (!normalized) {
+      return null;
+    }
+
+    return this.requiredDateOnlyString(normalized, file, rowNumber, field);
+  }
+
+  private requiredMonthKey(
+    value: string | undefined,
+    _file: ImportFileType,
+    _rowNumber: number,
+    field: string,
+  ): string {
+    const normalized = value?.trim() ?? '';
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(normalized)) {
+      throw new BadRequestException(`${field} must be a valid YYYY-MM month.`);
+    }
+
+    return normalized;
+  }
+
+  private optionalMonthKey(
+    value: string | undefined,
+    file: ImportFileType,
+    rowNumber: number,
+    field: string,
+  ): string | null {
+    const normalized = value?.trim() ?? '';
+    if (!normalized) {
+      return null;
+    }
+
+    return this.requiredMonthKey(normalized, file, rowNumber, field);
+  }
+
+  private optionalSignedDecimal(value: string | undefined): string | null {
+    const normalized = value?.trim() ?? '';
+    if (!normalized) {
+      return null;
+    }
+
+    try {
+      return new Prisma.Decimal(normalized).toString();
+    } catch {
+      throw new BadRequestException('Expected a decimal value.');
+    }
+  }
+
+  private requiredDayOfMonth(value: string | undefined): number {
+    const normalized = value?.trim() ?? '';
+    if (!/^\d+$/.test(normalized)) {
+      throw new BadRequestException(
+        'dayOfMonth must be an integer between 1 and 31.',
+      );
+    }
+
+    const dayOfMonth = Number(normalized);
+    if (dayOfMonth < 1 || dayOfMonth > 31) {
+      throw new BadRequestException(
+        'dayOfMonth must be an integer between 1 and 31.',
+      );
+    }
+
+    return dayOfMonth;
+  }
+
+  private monthRangesOverlap(
+    leftStart: string,
+    leftEnd: string | null,
+    rightStart: string,
+    rightEnd: string | null,
+  ): boolean {
+    const normalizedLeftEnd = leftEnd ?? '9999-12';
+    const normalizedRightEnd = rightEnd ?? '9999-12';
+
+    return leftStart <= normalizedRightEnd && rightStart <= normalizedLeftEnd;
+  }
+
+  private monthIsWithinCoverage(
+    month: string,
+    startMonth: string,
+    endMonth: string | null,
+  ): boolean {
+    return month >= startMonth && (!endMonth || month <= endMonth);
+  }
+
+  private monthKeyFromDateKey(dateKey: string): string {
+    return dateKey.slice(0, 7);
+  }
+
+  private getOccurrenceDateKey(monthKey: string, dayOfMonth: number): string {
+    const [year, month] = monthKey.split('-').map(Number);
+    const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const clampedDay = Math.min(dayOfMonth, lastDayOfMonth);
+
+    return `${monthKey}-${String(clampedDay).padStart(2, '0')}`;
+  }
+
+  private getFirstOccurrenceDateKey(
+    startDateKey: string,
+    dayOfMonth: number,
+  ): string {
+    const monthKey = this.monthKeyFromDateKey(startDateKey);
+    const occurrenceDateKey = this.getOccurrenceDateKey(monthKey, dayOfMonth);
+    if (occurrenceDateKey >= startDateKey) {
+      return occurrenceDateKey;
+    }
+
+    const [year, month] = monthKey.split('-').map(Number);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const nextMonthKey = `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
+    return this.getOccurrenceDateKey(nextMonthKey, dayOfMonth);
+  }
+
+  private ruleStartRespectsAccountBaseline(
+    startDateKey: string,
+    dayOfMonth: number,
+    account: AccountImportRef,
+  ): boolean {
+    if (!account.openingBalanceDate) {
+      return true;
+    }
+
+    return (
+      this.getFirstOccurrenceDateKey(startDateKey, dayOfMonth) >=
+      account.openingBalanceDate
+    );
+  }
+
+  private recurringRuleAppliesToMonth(
+    startDateKey: string,
+    endDateKey: string | null,
+    dayOfMonth: number,
+    monthKey: string,
+  ): boolean {
+    const occurrenceDateKey = this.getOccurrenceDateKey(monthKey, dayOfMonth);
+    return (
+      occurrenceDateKey >= startDateKey &&
+      (!endDateKey || occurrenceDateKey <= endDateKey)
+    );
+  }
+
   private isMarketKind(kind: AssetKind | null): kind is AssetKind {
     return kind !== null && MARKET_ASSET_KINDS.has(kind);
   }
@@ -2928,6 +5067,9 @@ export class ImportsService {
       (existing.institution ?? null) === row.institution &&
       (existing.notes ?? null) === row.notes &&
       existing.order === targetOrder &&
+      this.equalDecimal(existing.openingBalance, row.openingBalance ?? '0') &&
+      (existing.openingBalanceDate?.toISOString().slice(0, 10) ?? null) ===
+        row.openingBalanceDate &&
       (existing.archivedAt !== null) === row.archived
     );
   }
@@ -3029,6 +5171,110 @@ export class ImportsService {
       (inflow.notes ?? null) === row.notes &&
       this.equalDecimal(outflow.amount, row.amount) &&
       this.equalDecimal(inflow.amount, row.amount)
+    );
+  }
+
+  private equalRecurringRuleRow(
+    existing: RecurringTransactionRule,
+    row: RecurringRuleImportRow,
+    accountImportKeyById: Map<string, string>,
+    categoryImportKeyById: Map<string, string>,
+  ): boolean {
+    const existingAccountImportKey = existing.accountId
+      ? (accountImportKeyById.get(existing.accountId) ?? null)
+      : null;
+    const existingCategoryImportKey = existing.categoryId
+      ? (categoryImportKeyById.get(existing.categoryId) ?? null)
+      : null;
+    const existingSourceAccountImportKey = existing.sourceAccountId
+      ? (accountImportKeyById.get(existing.sourceAccountId) ?? null)
+      : null;
+    const existingDestinationAccountImportKey = existing.destinationAccountId
+      ? (accountImportKeyById.get(existing.destinationAccountId) ?? null)
+      : null;
+
+    return (
+      existing.name === row.name &&
+      existing.isActive === row.isActive &&
+      existing.kind === row.kind &&
+      this.equalDecimal(existing.amount, row.amount) &&
+      existing.dayOfMonth === row.dayOfMonth &&
+      existing.startDate.toISOString().slice(0, 10) === row.startDate &&
+      (existing.endDate?.toISOString().slice(0, 10) ?? null) === row.endDate &&
+      existingAccountImportKey === row.accountImportKey &&
+      (existing.direction ?? null) === row.direction &&
+      existingCategoryImportKey === row.categoryImportKey &&
+      (existing.counterparty ?? null) === row.counterparty &&
+      existingSourceAccountImportKey === row.sourceAccountImportKey &&
+      existingDestinationAccountImportKey === row.destinationAccountImportKey &&
+      existing.description === row.description &&
+      (existing.notes ?? null) === row.notes
+    );
+  }
+
+  private equalRecurringExceptionRow(
+    existing: RecurringTransactionOccurrence,
+    row: RecurringExceptionImportRow,
+    accountImportKeyById: Map<string, string>,
+    categoryImportKeyById: Map<string, string>,
+  ): boolean {
+    const existingAccountImportKey = existing.overrideAccountId
+      ? (accountImportKeyById.get(existing.overrideAccountId) ?? null)
+      : null;
+    const existingCategoryImportKey = existing.overrideCategoryId
+      ? (categoryImportKeyById.get(existing.overrideCategoryId) ?? null)
+      : null;
+    const existingSourceAccountImportKey = existing.overrideSourceAccountId
+      ? (accountImportKeyById.get(existing.overrideSourceAccountId) ?? null)
+      : null;
+    const existingDestinationAccountImportKey =
+      existing.overrideDestinationAccountId
+        ? (accountImportKeyById.get(existing.overrideDestinationAccountId) ??
+          null)
+        : null;
+
+    return (
+      existing.occurrenceMonth.toISOString().slice(0, 7) === row.month &&
+      existing.status === row.status &&
+      this.equalDecimal(existing.overrideAmount, row.amount) &&
+      (existing.overridePostedAtDate?.toISOString().slice(0, 10) ?? null) ===
+        row.postedAtDate &&
+      existingAccountImportKey === row.accountImportKey &&
+      (existing.overrideDirection ?? null) === row.direction &&
+      existingCategoryImportKey === row.categoryImportKey &&
+      (existing.overrideCounterparty ?? null) === row.counterparty &&
+      existingSourceAccountImportKey === row.sourceAccountImportKey &&
+      existingDestinationAccountImportKey === row.destinationAccountImportKey &&
+      (existing.overrideDescription ?? null) === row.description &&
+      (existing.overrideNotes ?? null) === row.notes
+    );
+  }
+
+  private equalBudgetRow(
+    existing: CategoryBudget,
+    row: BudgetImportRow,
+    categoryImportKeyById: Map<string, string>,
+  ): boolean {
+    const existingCategoryImportKey =
+      categoryImportKeyById.get(existing.categoryId) ?? null;
+
+    return (
+      existingCategoryImportKey === row.categoryImportKey &&
+      existing.currency === row.currency &&
+      this.equalDecimal(existing.amount, row.amount) &&
+      existing.startMonth.toISOString().slice(0, 7) === row.startMonth &&
+      (existing.endMonth?.toISOString().slice(0, 7) ?? null) === row.endMonth
+    );
+  }
+
+  private equalBudgetOverrideRow(
+    existing: CategoryBudgetOverride,
+    row: BudgetOverrideImportRow,
+  ): boolean {
+    return (
+      existing.month.toISOString().slice(0, 7) === row.month &&
+      this.equalDecimal(existing.amount, row.amount) &&
+      (existing.note ?? null) === row.note
     );
   }
 
