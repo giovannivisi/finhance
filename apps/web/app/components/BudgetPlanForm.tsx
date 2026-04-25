@@ -19,6 +19,11 @@ interface BudgetPlanFormProps {
   defaultMonth: string;
   preferredCategoryId?: string;
   preferredCurrency?: string;
+  quickFillSuggestions?: Array<{
+    key: "previous" | "average";
+    label: string;
+    amount: number;
+  }>;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -70,6 +75,7 @@ export default function BudgetPlanForm({
   defaultMonth,
   preferredCategoryId,
   preferredCurrency,
+  quickFillSuggestions = [],
   onSuccess,
   onCancel,
 }: BudgetPlanFormProps) {
@@ -341,6 +347,28 @@ export default function BudgetPlanForm({
           </div>
         </div>
       )}
+
+      {quickFillSuggestions.length > 0 ? (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <p className="text-sm font-medium text-gray-700">
+            Quick-fill from recent spending
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {quickFillSuggestions.map((suggestion) => (
+              <button
+                key={suggestion.key}
+                type="button"
+                onClick={() =>
+                  updateField("amount", suggestion.amount.toFixed(2))
+                }
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {suggestion.label}: {suggestion.amount.toFixed(2)}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <p role="alert" className="text-sm text-red-600">

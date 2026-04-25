@@ -7,7 +7,8 @@ export type WorkflowPage =
   | "setup"
   | "review"
   | "analytics"
-  | "budgets";
+  | "budgets"
+  | "import";
 
 export interface WorkflowCard {
   code: "SETUP" | "REVIEW" | "ANALYTICS" | "BUDGETS";
@@ -50,7 +51,7 @@ export function getWorkflowCards(input: {
     cards.push({
       code: "REVIEW",
       title: "Review this month",
-      detail: `Explain what happened in ${input.month} and which warnings still need attention.`,
+      detail: `Explain what happened in ${input.month}, what still needs attention, and which warnings are worth acting on first.`,
       href: `/review?month=${encodeURIComponent(input.month)}`,
       actionLabel: "Open review",
     });
@@ -60,7 +61,7 @@ export function getWorkflowCards(input: {
     cards.push({
       code: "ANALYTICS",
       title: "Check the trend context",
-      detail: `Open a six-month analytics range ending in ${input.month} to see whether this month is noise or pattern.`,
+      detail: `Open a six-month analytics range ending in ${input.month} to see whether this month is a one-off or part of a broader pattern.`,
       href: buildAnalyticsFocusLink(input.month),
       actionLabel: "Open analytics",
     });
@@ -70,7 +71,7 @@ export function getWorkflowCards(input: {
     cards.push({
       code: "BUDGETS",
       title: "Compare plan versus spend",
-      detail: `Use budgets to see how ${input.month} spending tracked against your current monthly limits.`,
+      detail: `Use budgets to compare ${input.month} spending with your current monthly limits and uncovered categories.`,
       href: `/budgets?month=${encodeURIComponent(input.month)}`,
       actionLabel: "Open budgets",
     });

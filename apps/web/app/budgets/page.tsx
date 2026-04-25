@@ -9,7 +9,11 @@ import Container from "@components/Container";
 import Header from "@components/Header";
 import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
-import { buildBudgetsQueryString, getBudgetFilters } from "@lib/budgets";
+import {
+  buildBudgetMonthNavigationLink,
+  buildBudgetsQueryString,
+  getBudgetFilters,
+} from "@lib/budgets";
 import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
@@ -81,8 +85,32 @@ export default async function BudgetsPage({
                     visibility into uncovered spend.
                   </p>
                 </div>
-                <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
-                  Month {budgetView.month}
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={buildBudgetMonthNavigationLink({
+                      month: budgetView.month,
+                      delta: -1,
+                      includeArchivedCategories:
+                        filters.includeArchivedCategories,
+                    })}
+                    className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Previous month
+                  </Link>
+                  <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
+                    Month {budgetView.month}
+                  </div>
+                  <Link
+                    href={buildBudgetMonthNavigationLink({
+                      month: budgetView.month,
+                      delta: 1,
+                      includeArchivedCategories:
+                        filters.includeArchivedCategories,
+                    })}
+                    className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Next month
+                  </Link>
                 </div>
               </div>
 
