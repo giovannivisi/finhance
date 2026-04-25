@@ -1,4 +1,3 @@
-import Header from "@components/Header";
 import Container from "@components/Container";
 import ImportsPageClient from "@components/ImportsPageClient";
 import WorkflowSection from "@components/WorkflowSection";
@@ -36,16 +35,18 @@ export default async function ImportPage() {
 
   return (
     <>
-      <Header />
       <Container>
         {!batches ? (
           <>
-            <h1 className="text-3xl font-semibold text-gray-900">Import</h1>
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
-              <p className="font-medium">
+            <h1>Import</h1>
+            <div
+              className="glass-card"
+              style={{ padding: "24px", borderColor: "var(--color-expense)" }}
+            >
+              <p style={{ fontWeight: 600 }}>
                 The web app could not reach the API.
               </p>
-              <p className="mt-2 text-sm text-amber-900/80">
+              <p style={{ color: "var(--text-secondary)" }}>
                 {errorMessage ?? "Start the API and refresh the page."}
               </p>
             </div>

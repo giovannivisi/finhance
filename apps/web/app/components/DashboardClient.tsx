@@ -172,14 +172,31 @@ export default function DashboardClient({
           type="button"
           onClick={handleRefresh}
           disabled={isRefreshing}
-          className="text-sm px-3 py-1.5 rounded-lg bg-white shadow hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          style={{
+            fontSize: "14px",
+            padding: "8px 16px",
+            borderRadius: "8px",
+            background: "var(--color-primary)",
+            color: "white",
+            opacity: isRefreshing ? 0.6 : 1,
+            cursor: isRefreshing ? "not-allowed" : "pointer",
+          }}
         >
           {isRefreshing ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
-      <div className="bg-white shadow rounded-2xl p-10 flex items-center justify-center mx-auto my-6">
-        <div className="w-[520px] h-[520px]">
+      <div
+        className="glass-card"
+        style={{
+          padding: "40px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          margin: "24px auto",
+        }}
+      >
+        <div style={{ width: "520px", height: "520px" }}>
           <AllocationChart
             size={520}
             data={kindTotalsArray.map((kindTotal) => ({
@@ -190,14 +207,24 @@ export default function DashboardClient({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 mt-6">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "24px",
+          marginTop: "24px",
+        }}
+      >
         {kindTotalsArray.map(({ kind, total }) => (
           <div
             key={kind}
-            className="bg-white shadow rounded-2xl p-6 text-center"
+            className="glass-card"
+            style={{ padding: "24px", textAlign: "center" }}
           >
-            <p className="text-md font-medium text-gray-700">{kind}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">
+            <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
+              {kind}
+            </p>
+            <p style={{ fontSize: "24px", fontWeight: 700, marginTop: "8px" }}>
               {formatCurrency(total, baseCurrency)}
             </p>
           </div>
@@ -250,15 +277,35 @@ export default function DashboardClient({
                         return (
                           <li
                             key={asset.id}
-                            className="bg-white shadow rounded-2xl p-4 flex items-center justify-between"
+                            className="glass-card"
+                            style={{
+                              padding: "16px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                            }}
                           >
-                            <div className="flex flex-col">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900">
-                                  {asset.name}
-                                </p>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "8px",
+                                }}
+                              >
+                                <p style={{ fontWeight: 600 }}>{asset.name}</p>
                                 {asset.ticker ? (
-                                  <span className="text-xs text-gray-500">
+                                  <span
+                                    style={{
+                                      fontSize: "12px",
+                                      color: "var(--text-secondary)",
+                                    }}
+                                  >
                                     ({asset.ticker})
                                   </span>
                                 ) : null}

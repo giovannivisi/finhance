@@ -5,7 +5,7 @@ import type {
   SetupStatusResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
-import Header from "@components/Header";
+
 import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import ReviewBudgetStatusChart from "@components/ReviewBudgetStatusChart";
 import ReviewMonthPicker from "@components/ReviewMonthPicker";
@@ -97,7 +97,6 @@ export default async function ReviewPage({
   if (!review) {
     return (
       <>
-        <Header />
         <Container>
           <h1 className="text-3xl font-semibold text-gray-900">Review</h1>
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
@@ -130,7 +129,6 @@ export default async function ReviewPage({
 
   return (
     <>
-      <Header />
       <Container>
         <div className="space-y-8">
           <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">

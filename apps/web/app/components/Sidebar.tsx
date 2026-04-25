@@ -5,31 +5,36 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { isRedundantTabNavigation } from "@lib/navigation";
 
-const NAV_ITEMS = [
+const PRIMARY_NAV = [
   { href: "/", label: "Dashboard" },
   { href: "/transactions", label: "Transactions" },
+  { href: "/accounts", label: "Accounts" },
+  { href: "/history", label: "History" },
+] as const;
+
+const SECONDARY_NAV = [
   { href: "/analytics", label: "Analytics" },
   { href: "/budgets", label: "Budgets" },
   { href: "/recurring", label: "Recurring" },
   { href: "/review", label: "Review" },
-  { href: "/history", label: "History" },
-  { href: "/accounts", label: "Accounts" },
   { href: "/categories", label: "Categories" },
   { href: "/import", label: "Import" },
 ] as const;
 
-function HeaderLink({
+function SidebarLink({
   href,
   label,
   currentPath,
   pendingPath,
   onNavigate,
+  isSecondary = false,
 }: {
   href: string;
   label: string;
   currentPath: string;
   pendingPath: string | null;
   onNavigate: (href: string) => void;
+  isSecondary?: boolean;
 }) {
   const isCurrent = isRedundantTabNavigation({
     currentPath,
@@ -52,61 +57,72 @@ function HeaderLink({
           event.preventDefault();
           return;
         }
-
         event.preventDefault();
         onNavigate(href);
       }}
-      className={
-        isCurrent
-          ? "text-gray-900"
-          : "hover:text-gray-900 transition-colors disabled:pointer-events-none"
-      }
+      className={`sidebar-link ${isSecondary ? "sidebar-link-secondary" : "sidebar-link-primary"} ${isCurrent ? "active" : ""}`}
     >
       {label}
     </Link>
   );
 }
 
-export default function Header() {
+export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [showMore, setShowMore] = useState(false);
 
   const currentPath = pathname ?? "/";
   const activePendingPath = isPending ? pendingPath : null;
 
   function handleNavigate(nextPath: string) {
     setPendingPath(nextPath);
+    setShowMore(false);
     startTransition(() => {
       router.push(nextPath);
     });
   }
 
   return (
-    <header className="w-full bg-white shadow-sm">
-      <div className="flex w-full items-center justify-between gap-6 px-8 py-6">
-        <HeaderLink
-          href="/"
-          label="finhance"
-          currentPath={currentPath}
-          pendingPath={activePendingPath}
-          onNavigate={handleNavigate}
-        />
+    <aside className="layout-sidebar">
+      <nav className="sidebar-nav-primary">
+        {PRIMARY_NAV.map((item) => (
+          <SidebarLink
+            key={item.href}
+            href={item.href}
+            label={item.label}
+            currentPath={currentPath}
+            pendingPath={activePendingPath}
+            onNavigate={handleNavigate}
+          />
+        ))}
+      </nav>
 
-        <nav className="flex items-center gap-4 text-sm font-medium text-gray-600">
-          {NAV_ITEMS.map((item) => (
-            <HeaderLink
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              currentPath={currentPath}
-              pendingPath={activePendingPath}
-              onNavigate={handleNavigate}
-            />
-          ))}
-        </nav>
+      <div className="sidebar-nav-secondary-container">
+        <button
+          className={`sidebar-link sidebar-link-primary ${showMore ? "active" : ""}`}
+          onClick={() => setShowMore(!showMore)}
+        >
+          More
+        </button>
+        {showMore && (
+          <nav className="sidebar-nav-secondary">
+            {SECONDARY_NAV.map((item) => (
+              <SidebarLink
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                currentPath={currentPath}
+                pendingPath={activePendingPath}
+                onNavigate={handleNavigate}
+                isSecondary={true}
+              />
+            ))}
+          </nav>
+        )}
       </div>
-    </header>
+    </aside>
   );
 }

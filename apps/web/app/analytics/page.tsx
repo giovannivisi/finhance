@@ -8,7 +8,7 @@ import type {
 import AnalyticsCategoryBarChart from "@components/AnalyticsCategoryBarChart";
 import AnalyticsTrendChart from "@components/AnalyticsTrendChart";
 import Container from "@components/Container";
-import Header from "@components/Header";
+
 import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
 import {
@@ -89,7 +89,6 @@ export default async function AnalyticsPage({
 
   return (
     <>
-      <Header />
       <Container>
         {!analytics || !accounts || !categories ? (
           <>

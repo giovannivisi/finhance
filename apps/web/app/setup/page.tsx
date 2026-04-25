@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { SetupStatusResponse } from "@finhance/shared";
 import Container from "@components/Container";
-import Header from "@components/Header";
+
 import { api } from "@lib/api";
 import { getPrimarySetupAction, getSetupProgressLabel } from "@lib/setup";
 
@@ -33,7 +33,6 @@ export default async function SetupPage() {
   if (!setup) {
     return (
       <>
-        <Header />
         <Container>
           <h1 className="text-3xl font-semibold text-gray-900">Setup</h1>
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
@@ -51,7 +50,6 @@ export default async function SetupPage() {
 
   return (
     <>
-      <Header />
       <Container>
         <div className="space-y-8">
           <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">

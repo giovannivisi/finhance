@@ -6,7 +6,7 @@ import type {
 } from "@finhance/shared";
 import BudgetsPageClient from "@components/BudgetsPageClient";
 import Container from "@components/Container";
-import Header from "@components/Header";
+
 import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
 import {
@@ -58,7 +58,6 @@ export default async function BudgetsPage({
 
   return (
     <>
-      <Header />
       <Container>
         {!budgetView || !categories ? (
           <>

@@ -5,6 +5,9 @@ export const metadata = {
   description: "Finance dashboard",
 };
 
+import Sidebar from "@components/Sidebar";
+import TopHeader from "@components/TopHeader";
+
 export default function RootLayout({
   children,
 }: {
@@ -12,7 +15,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-gray-50 text-gray-900">{children}</body>
+      <body>
+        <div className="layout-app">
+          <TopHeader />
+          <Sidebar />
+          <main className="layout-main">{children}</main>
+        </div>
+      </body>
     </html>
   );
 }

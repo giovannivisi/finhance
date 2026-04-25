@@ -4,7 +4,7 @@ import type {
   RecurringTransactionRuleResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
-import Header from "@components/Header";
+
 import RecurringPageClient from "@components/RecurringPageClient";
 import { api } from "@lib/api";
 
@@ -31,7 +31,6 @@ export default async function RecurringPage() {
 
   return (
     <>
-      <Header />
       <Container>
         {!rules || !accounts || !categories ? (
           <>

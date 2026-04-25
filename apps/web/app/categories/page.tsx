@@ -1,4 +1,3 @@
-import Header from "@components/Header";
 import Container from "@components/Container";
 import CategoriesPageClient from "@components/CategoriesPageClient";
 import { api } from "@lib/api";
@@ -23,7 +22,6 @@ export default async function CategoriesPage() {
 
   return (
     <>
-      <Header />
       <Container>
         {!categories ? (
           <>

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import Container from "@components/Container";
-import Header from "@components/Header";
 import type {
   DashboardAssetResponse,
   DashboardResponse,
@@ -50,7 +49,6 @@ export default async function Home() {
   if (!dashboard) {
     return (
       <>
-        <Header />
         <Container>
           <h2 className="text-2xl font-semibold">Dashboard unavailable</h2>
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
@@ -109,13 +107,15 @@ export default async function Home() {
 
   return (
     <>
-      <Header />
       <Container>
         <h2 className="text-2xl font-semibold">Summary</h2>
 
         {setup && !setup.isComplete ? (
-          <section className="mb-6 rounded-3xl border border-blue-200 bg-blue-50 p-6 text-blue-950">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+          <section
+            className="glass-card mb-6"
+            style={{ padding: "24px", borderColor: "var(--color-primary)" }}
+          >
+            <div className="flex justify-between items-center gap-4">
               <div>
                 <p className="text-sm font-medium uppercase tracking-wide text-blue-700">
                   Setup checklist
@@ -129,10 +129,7 @@ export default async function Home() {
                   workflows with fewer surprises.
                 </p>
               </div>
-              <Link
-                href="/setup"
-                className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-100"
-              >
+              <Link href="/setup" className="btn-primary">
                 Open setup
               </Link>
             </div>
@@ -145,8 +142,20 @@ export default async function Home() {
               }
 
               return (
-                <div className="mt-5 rounded-2xl bg-white/70 p-4">
-                  <p className="text-sm font-medium text-blue-700">
+                <div
+                  className="glass-card mt-4"
+                  style={{
+                    padding: "16px",
+                    background: "var(--bg-card-hover)",
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-secondary)",
+                      textTransform: "uppercase",
+                    }}
+                  >
                     Best next action
                   </p>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
@@ -158,10 +167,7 @@ export default async function Home() {
                         {primaryAction.detail}
                       </p>
                     </div>
-                    <Link
-                      href={primaryAction.href}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                    >
+                    <Link href={primaryAction.href} className="btn-primary">
                       {primaryAction.actionLabel}
                     </Link>
                   </div>
@@ -171,25 +177,65 @@ export default async function Home() {
           </section>
         ) : null}
 
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white shadow rounded-2xl p-4 text-center">
-            <p className="text-sm text-gray-500">Assets</p>
-            <p className="text-green-600 text-xl font-bold">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: "16px",
+            marginBottom: "24px",
+          }}
+        >
+          <div
+            className="glass-card"
+            style={{ padding: "24px", textAlign: "center" }}
+          >
+            <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
+              Assets
+            </p>
+            <p
+              style={{
+                color: "var(--color-income)",
+                fontSize: "24px",
+                fontWeight: 700,
+              }}
+            >
               {formatCurrency(dashboard.summary.assets, dashboard.baseCurrency)}
             </p>
           </div>
-          <div className="bg-white shadow rounded-2xl p-4 text-center">
-            <p className="text-sm text-gray-500">Liabilities</p>
-            <p className="text-red-600 text-xl font-bold">
+          <div
+            className="glass-card"
+            style={{ padding: "24px", textAlign: "center" }}
+          >
+            <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
+              Liabilities
+            </p>
+            <p
+              style={{
+                color: "var(--color-expense)",
+                fontSize: "24px",
+                fontWeight: 700,
+              }}
+            >
               {formatCurrency(
                 dashboard.summary.liabilities,
                 dashboard.baseCurrency,
               )}
             </p>
           </div>
-          <div className="bg-white shadow rounded-2xl p-4 text-center">
-            <p className="text-sm text-gray-500">Net Worth</p>
-            <p className="text-black text-xl font-bold">
+          <div
+            className="glass-card"
+            style={{ padding: "24px", textAlign: "center" }}
+          >
+            <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
+              Net Worth
+            </p>
+            <p
+              style={{
+                color: "var(--text-primary)",
+                fontSize: "24px",
+                fontWeight: 700,
+              }}
+            >
               {formatCurrency(
                 dashboard.summary.netWorth,
                 dashboard.baseCurrency,
@@ -212,8 +258,8 @@ export default async function Home() {
         />
 
         {budgetView ? (
-          <section className="mt-10 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="glass-card mt-6" style={{ padding: "32px" }}>
+            <div className="flex justify-between items-center gap-3">
               <div>
                 <h3 className="text-2xl font-semibold text-gray-900">
                   Budgets
@@ -236,11 +282,19 @@ export default async function Home() {
                 No budgets or expense activity for {budgetView.month}.
               </div>
             ) : (
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+                  gap: "16px",
+                  marginTop: "20px",
+                }}
+              >
                 {budgetView.currencies.map((currency) => (
                   <div
                     key={currency.currency}
-                    className="rounded-2xl border border-gray-200 p-4"
+                    className="glass-card"
+                    style={{ padding: "24px" }}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <h4 className="text-lg font-semibold text-gray-900">
@@ -251,12 +305,31 @@ export default async function Home() {
                       </span>
                     </div>
 
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm">
-                        <p className="text-xs uppercase tracking-wide text-gray-500">
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "12px",
+                        marginTop: "16px",
+                      }}
+                    >
+                      <div
+                        className="glass-card"
+                        style={{
+                          padding: "16px",
+                          background: "var(--bg-card-hover)",
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontSize: "10px",
+                            textTransform: "uppercase",
+                            color: "var(--text-secondary)",
+                          }}
+                        >
                           Spent vs budget
                         </p>
-                        <p className="mt-1 font-semibold text-gray-900">
+                        <p style={{ fontWeight: 600, marginTop: "4px" }}>
                           {formatCurrency(
                             currency.spentTotal,
                             currency.currency,
@@ -268,11 +341,23 @@ export default async function Home() {
                           )}
                         </p>
                       </div>
-                      <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm">
-                        <p className="text-xs uppercase tracking-wide text-gray-500">
+                      <div
+                        className="glass-card"
+                        style={{
+                          padding: "16px",
+                          background: "var(--bg-card-hover)",
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontSize: "10px",
+                            textTransform: "uppercase",
+                            color: "var(--text-secondary)",
+                          }}
+                        >
                           Remaining
                         </p>
-                        <p className="mt-1 font-semibold text-gray-900">
+                        <p style={{ fontWeight: 600, marginTop: "4px" }}>
                           {formatCurrency(
                             currency.remainingTotal,
                             currency.currency,
@@ -289,7 +374,16 @@ export default async function Home() {
                         {currency.overBudgetHighlights.map((item) => (
                           <div
                             key={item.budgetId}
-                            className="flex items-center justify-between gap-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-900"
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "8px 12px",
+                              background: "rgba(244, 63, 94, 0.1)",
+                              borderRadius: "8px",
+                              color: "var(--color-expense)",
+                              marginTop: "8px",
+                            }}
                           >
                             <span>{item.categoryName}</span>
                             <span className="font-medium">

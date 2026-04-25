@@ -5,7 +5,7 @@ import type {
   TransactionResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
-import Header from "@components/Header";
+
 import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import TransactionsPageClient from "@components/TransactionsPageClient";
 import { api } from "@lib/api";
@@ -103,7 +103,6 @@ export default async function TransactionsPage({
 
   return (
     <>
-      <Header />
       <Container>
         {!transactions || !cashflow || !accounts || !categories ? (
           <>

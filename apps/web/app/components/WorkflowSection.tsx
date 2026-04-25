@@ -15,24 +15,31 @@ export default function WorkflowSection({
   }
 
   return (
-    <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-      <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
-      <p className="mt-1 text-sm text-gray-500">{description}</p>
+    <section
+      className="glass-card"
+      style={{ padding: "32px", marginTop: "24px" }}
+    >
+      <h2 style={{ marginBottom: "8px" }}>{title}</h2>
+      <p style={{ marginBottom: "24px" }}>{description}</p>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: "20px",
+        }}
+      >
         {cards.map((card) => (
           <article
             key={card.code}
-            className="rounded-2xl border border-gray-200 p-5"
+            className="glass-card"
+            style={{ padding: "24px", background: "var(--bg-card-hover)" }}
           >
-            <h3 className="text-lg font-semibold text-gray-900">
-              {card.title}
-            </h3>
-            <p className="mt-2 text-sm text-gray-600">{card.detail}</p>
-            <Link
-              href={card.href}
-              className="mt-4 inline-flex rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-            >
+            <h3>{card.title}</h3>
+            <p style={{ fontSize: "14px", marginBottom: "16px" }}>
+              {card.detail}
+            </p>
+            <Link href={card.href} className="btn-primary">
               {card.actionLabel}
             </Link>
           </article>
