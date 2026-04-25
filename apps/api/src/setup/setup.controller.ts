@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { SetupService } from '@/setup/setup.service';
 import type { SetupStatusResponse } from '@finhance/shared';
@@ -11,9 +11,14 @@ export class SetupController {
   ) {}
 
   @Get('status')
-  async getStatus(): Promise<SetupStatusResponse> {
+  async getStatus(
+    @Query('includeWarnings') includeWarnings?: string,
+  ): Promise<SetupStatusResponse> {
     return this.setupService.getStatus(
       this.requestOwnerResolver.resolveOwnerId(),
+      {
+        includeWarnings: includeWarnings !== 'false',
+      },
     );
   }
 }

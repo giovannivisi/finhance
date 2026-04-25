@@ -112,4 +112,22 @@ describe('SetupService', () => {
       'NO_SNAPSHOT_YET',
     ]);
   });
+
+  it('skips reconciliation work when warnings are excluded', async () => {
+    prisma.account.count.mockResolvedValue(1);
+    prisma.category.findMany.mockResolvedValue([
+      { type: 'INCOME' },
+      { type: 'EXPENSE' },
+    ]);
+
+    const result = await service.getStatus(OWNER_ID, {
+      includeWarnings: false,
+    });
+
+    expect(result.isComplete).toBe(true);
+    expect(result.warnings.map((warning) => warning.code)).toEqual([
+      'NO_SNAPSHOT_YET',
+    ]);
+    expect(accounts.findReconciliation).not.toHaveBeenCalled();
+  });
 });

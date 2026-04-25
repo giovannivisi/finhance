@@ -112,4 +112,26 @@ describe('Setup routes (e2e)', () => {
         expect(body.hasSnapshot).toBe(true);
       });
   });
+
+  it('skips reconciliation warnings when GET /setup/status asks for a lightweight response', async () => {
+    prisma.account.count.mockResolvedValue(1);
+    prisma.category.findMany.mockResolvedValue([
+      { type: 'INCOME' },
+      { type: 'EXPENSE' },
+    ]);
+
+    await request(httpServer())
+      .get('/setup/status?includeWarnings=false')
+      .expect(200)
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<{
+          warnings: Array<{ code: string }>;
+        }>(response);
+
+        expect(body.warnings.map((warning) => warning.code)).toEqual([
+          'NO_SNAPSHOT_YET',
+        ]);
+        expect(accounts.findReconciliation).not.toHaveBeenCalled();
+      });
+  });
 });

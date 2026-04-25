@@ -8,7 +8,14 @@ import type {
   SetupStepResponse,
   SetupWarningResponse,
 } from '@finhance/shared';
-import { utcDateToRomeMonth } from '@transactions/transactions.dates';
+import {
+  romeMonthToUtcStart,
+  utcDateToRomeMonth,
+} from '@transactions/transactions.dates';
+
+interface GetSetupStatusOptions {
+  includeWarnings?: boolean;
+}
 
 @Injectable()
 export class SetupService {
@@ -17,9 +24,13 @@ export class SetupService {
     private readonly accountsService: AccountsService,
   ) {}
 
-  async getStatus(ownerId: string): Promise<SetupStatusResponse> {
+  async getStatus(
+    ownerId: string,
+    options?: GetSetupStatusOptions,
+  ): Promise<SetupStatusResponse> {
     const currentMonth = utcDateToRomeMonth(new Date());
-    const monthValue = new Date(`${currentMonth}-01T00:00:00.000Z`);
+    const monthValue = romeMonthToUtcStart(currentMonth);
+    const includeWarnings = options?.includeWarnings ?? true;
 
     const [
       activeAccountCount,
@@ -55,9 +66,11 @@ export class SetupService {
         where: { userId: ownerId },
         orderBy: [{ snapshotDate: 'desc' }, { capturedAt: 'desc' }],
       }),
-      this.accountsService.findReconciliation(ownerId, {
-        includeArchived: false,
-      }),
+      includeWarnings
+        ? this.accountsService.findReconciliation(ownerId, {
+            includeArchived: false,
+          })
+        : Promise.resolve([]),
     ]);
 
     const activeIncomeCategoryCount = activeCategories.filter(

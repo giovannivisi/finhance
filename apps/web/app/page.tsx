@@ -37,7 +37,9 @@ export default async function Home() {
 
   if (dashboard) {
     try {
-      setup = await api<SetupStatusResponse>("/setup/status");
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
     } catch {
       setup = null;
     }
