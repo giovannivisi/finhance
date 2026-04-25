@@ -43,13 +43,22 @@ export default function AccountsPageClient({
   const router = useRouter();
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [reconciliationError, setReconciliationError] = useState<string | null>(
     null,
   );
-  const [archivingAccountId, setArchivingAccountId] = useState<string | null>(
-    null,
-  );
+  const [pendingArchiveAccountId, setPendingArchiveAccountId] = useState<
+    string | null
+  >(null);
+  const [pendingUnarchiveAccountId, setPendingUnarchiveAccountId] = useState<
+    string | null
+  >(null);
+  const [pendingDeleteAccountId, setPendingDeleteAccountId] = useState<
+    string | null
+  >(null);
+  const [pendingBaselineAccountId, setPendingBaselineAccountId] = useState<
+    string | null
+  >(null);
   const [adjustingAccountId, setAdjustingAccountId] = useState<string | null>(
     null,
   );
@@ -78,9 +87,9 @@ export default function AccountsPageClient({
 
   async function handleArchive(accountId: string) {
     await actions.run(`archive:${accountId}`, async () => {
-      setArchiveError(null);
+      setActionError(null);
       setReconciliationError(null);
-      setArchivingAccountId(accountId);
+      setPendingArchiveAccountId(accountId);
 
       try {
         await apiMutation<void>(`/accounts/${accountId}`, {
@@ -93,18 +102,103 @@ export default function AccountsPageClient({
 
         router.refresh();
       } catch (error) {
-        setArchiveError(
+        setActionError(
           error instanceof Error ? error.message : "Unable to archive account.",
         );
       } finally {
-        setArchivingAccountId(null);
+        setPendingArchiveAccountId(null);
+      }
+    });
+  }
+
+  async function handleUnarchive(accountId: string) {
+    await actions.run(`unarchive:${accountId}`, async () => {
+      setActionError(null);
+      setReconciliationError(null);
+      setPendingUnarchiveAccountId(accountId);
+
+      try {
+        await apiMutation<void>(`/accounts/${accountId}/unarchive`, {
+          method: "POST",
+        });
+        router.refresh();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to unarchive account.",
+        );
+      } finally {
+        setPendingUnarchiveAccountId(null);
+      }
+    });
+  }
+
+  async function handleDeletePermanently(accountId: string) {
+    await actions.run(`delete:${accountId}`, async () => {
+      setActionError(null);
+      setReconciliationError(null);
+      setPendingDeleteAccountId(accountId);
+
+      const confirmed = confirm(
+        "Delete this archived account permanently? This cannot be undone.",
+      );
+      if (!confirmed) {
+        setPendingDeleteAccountId(null);
+        return;
+      }
+
+      try {
+        await apiMutation<void>(`/accounts/${accountId}/permanent`, {
+          method: "DELETE",
+        });
+
+        if (editingAccountId === accountId) {
+          setEditingAccountId(null);
+        }
+
+        router.refresh();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to delete this account permanently.",
+        );
+      } finally {
+        setPendingDeleteAccountId(null);
+      }
+    });
+  }
+
+  async function handleEstablishBaseline(accountId: string) {
+    await actions.run(`baseline:${accountId}`, async () => {
+      setActionError(null);
+      setReconciliationError(null);
+      setPendingBaselineAccountId(accountId);
+
+      try {
+        await apiMutation<void>(
+          `/accounts/${accountId}/opening-balance-baseline`,
+          {
+            method: "POST",
+          },
+        );
+        router.refresh();
+      } catch (error) {
+        setReconciliationError(
+          error instanceof Error
+            ? error.message
+            : "Unable to establish an opening balance baseline.",
+        );
+      } finally {
+        setPendingBaselineAccountId(null);
       }
     });
   }
 
   async function handleCreateAdjustment(accountId: string) {
     await actions.run(`adjust:${accountId}`, async () => {
-      setArchiveError(null);
+      setActionError(null);
       setReconciliationError(null);
       setAdjustingAccountId(accountId);
 
@@ -157,9 +251,9 @@ export default function AccountsPageClient({
           </div>
         </div>
 
-        {archiveError ? (
+        {actionError ? (
           <p role="alert" className="text-sm text-red-600">
-            {archiveError}
+            {actionError}
           </p>
         ) : null}
 
@@ -250,14 +344,43 @@ export default function AccountsPageClient({
                           <button
                             type="button"
                             onClick={() => void handleArchive(account.id)}
-                            disabled={archivingAccountId === account.id}
+                            disabled={pendingArchiveAccountId === account.id}
                             className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {archivingAccountId === account.id
+                            {pendingArchiveAccountId === account.id
                               ? "Archiving..."
                               : "Archive"}
                           </button>
-                        ) : null}
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleUnarchive(account.id)}
+                              disabled={
+                                pendingUnarchiveAccountId === account.id
+                              }
+                              className="text-sm font-medium text-blue-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {pendingUnarchiveAccountId === account.id
+                                ? "Unarchiving..."
+                                : "Unarchive"}
+                            </button>
+                            {account.canDeletePermanently ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleDeletePermanently(account.id)
+                                }
+                                disabled={pendingDeleteAccountId === account.id}
+                                className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {pendingDeleteAccountId === account.id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </button>
+                            ) : null}
+                          </>
+                        )}
                       </div>
                     </div>
                     {reconciliation ? (
@@ -342,6 +465,33 @@ export default function AccountsPageClient({
                           </p>
                         </div>
 
+                        {reconciliation.openingBalanceBaselineGuidance ? (
+                          <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+                            <p className="font-medium">
+                              Opening balance baseline
+                            </p>
+                            <p className="mt-1">
+                              {reconciliation.openingBalanceBaselineGuidance}
+                            </p>
+                            {reconciliation.canEstablishOpeningBalanceBaseline ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleEstablishBaseline(account.id)
+                                }
+                                disabled={
+                                  pendingBaselineAccountId === account.id
+                                }
+                                className="mt-3 text-sm font-medium text-blue-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {pendingBaselineAccountId === account.id
+                                  ? "Setting baseline..."
+                                  : "Set opening balance from current state"}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+
                         {reconciliation.diagnostics.length > 0 ? (
                           <div className="mt-4 space-y-3">
                             {reconciliation.diagnostics.map((diagnostic) => (
@@ -373,6 +523,13 @@ export default function AccountsPageClient({
                             account.
                           </p>
                         )}
+
+                        {account.archivedAt && account.deleteBlockReason ? (
+                          <p className="mt-4 text-sm text-gray-500">
+                            Permanent delete blocked:{" "}
+                            {account.deleteBlockReason}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                   </article>

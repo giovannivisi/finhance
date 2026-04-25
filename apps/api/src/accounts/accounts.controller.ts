@@ -42,7 +42,13 @@ export class AccountsController {
     const accounts = await this.accountsService.findAll(this.resolveOwnerId(), {
       includeArchived: includeArchived === 'true',
     });
-    return accounts.map(toAccountResponse);
+    const deletionStates = await this.accountsService.getDeletionStates(
+      this.resolveOwnerId(),
+      accounts.map((account) => account.id),
+    );
+    return accounts.map((account) =>
+      toAccountResponse(account, deletionStates.get(account.id)),
+    );
   }
 
   @Get('reconciliation')
@@ -64,7 +70,12 @@ export class AccountsController {
       this.resolveOwnerId(),
       dto,
     );
-    return toAccountResponse(account);
+    const deletionState = (
+      await this.accountsService.getDeletionStates(this.resolveOwnerId(), [
+        account.id,
+      ])
+    ).get(account.id);
+    return toAccountResponse(account, deletionState);
   }
 
   @Post(':id/reconciliation/adjust')
@@ -79,13 +90,42 @@ export class AccountsController {
     return toTransactionResponse(transaction);
   }
 
+  @Post(':id/opening-balance-baseline')
+  async establishOpeningBalanceBaseline(
+    @Param('id') id: string,
+  ): Promise<AccountResponse> {
+    const account = await this.accountsService.establishOpeningBalanceBaseline(
+      this.resolveOwnerId(),
+      id,
+    );
+    const deletionState = (
+      await this.accountsService.getDeletionStates(this.resolveOwnerId(), [id])
+    ).get(id);
+    return toAccountResponse(account, deletionState);
+  }
+
+  @Post(':id/unarchive')
+  async unarchive(@Param('id') id: string): Promise<AccountResponse> {
+    const account = await this.accountsService.unarchive(
+      this.resolveOwnerId(),
+      id,
+    );
+    const deletionState = (
+      await this.accountsService.getDeletionStates(this.resolveOwnerId(), [id])
+    ).get(id);
+    return toAccountResponse(account, deletionState);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string): Promise<AccountResponse> {
     const account = await this.accountsService.findOne(
       this.resolveOwnerId(),
       id,
     );
-    return toAccountResponse(account);
+    const deletionState = (
+      await this.accountsService.getDeletionStates(this.resolveOwnerId(), [id])
+    ).get(id);
+    return toAccountResponse(account, deletionState);
   }
 
   @Put(':id')
@@ -98,12 +138,21 @@ export class AccountsController {
       id,
       dto,
     );
-    return toAccountResponse(account);
+    const deletionState = (
+      await this.accountsService.getDeletionStates(this.resolveOwnerId(), [id])
+    ).get(id);
+    return toAccountResponse(account, deletionState);
   }
 
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id') id: string): Promise<void> {
     return this.accountsService.remove(this.resolveOwnerId(), id);
+  }
+
+  @Delete(':id/permanent')
+  @HttpCode(204)
+  async permanentlyDelete(@Param('id') id: string): Promise<void> {
+    return this.accountsService.permanentlyDelete(this.resolveOwnerId(), id);
   }
 }

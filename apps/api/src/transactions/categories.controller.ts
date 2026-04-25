@@ -38,7 +38,13 @@ export class CategoriesController {
         includeArchived: query.includeArchived ?? false,
       },
     );
-    return categories.map(toCategoryResponse);
+    const deletionStates = await this.categoriesService.getDeletionStates(
+      this.resolveOwnerId(),
+      categories.map((category) => category.id),
+    );
+    return categories.map((category) =>
+      toCategoryResponse(category, deletionStates.get(category.id)),
+    );
   }
 
   @Post()
@@ -47,7 +53,26 @@ export class CategoriesController {
       this.resolveOwnerId(),
       dto,
     );
-    return toCategoryResponse(category);
+    const deletionState = (
+      await this.categoriesService.getDeletionStates(this.resolveOwnerId(), [
+        category.id,
+      ])
+    ).get(category.id);
+    return toCategoryResponse(category, deletionState);
+  }
+
+  @Post(':id/unarchive')
+  async unarchive(@Param('id') id: string): Promise<CategoryResponse> {
+    const category = await this.categoriesService.unarchive(
+      this.resolveOwnerId(),
+      id,
+    );
+    const deletionState = (
+      await this.categoriesService.getDeletionStates(this.resolveOwnerId(), [
+        id,
+      ])
+    ).get(id);
+    return toCategoryResponse(category, deletionState);
   }
 
   @Get(':id')
@@ -56,7 +81,12 @@ export class CategoriesController {
       this.resolveOwnerId(),
       id,
     );
-    return toCategoryResponse(category);
+    const deletionState = (
+      await this.categoriesService.getDeletionStates(this.resolveOwnerId(), [
+        id,
+      ])
+    ).get(id);
+    return toCategoryResponse(category, deletionState);
   }
 
   @Put(':id')
@@ -69,12 +99,23 @@ export class CategoriesController {
       id,
       dto,
     );
-    return toCategoryResponse(category);
+    const deletionState = (
+      await this.categoriesService.getDeletionStates(this.resolveOwnerId(), [
+        id,
+      ])
+    ).get(id);
+    return toCategoryResponse(category, deletionState);
   }
 
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id') id: string): Promise<void> {
     return this.categoriesService.remove(this.resolveOwnerId(), id);
+  }
+
+  @Delete(':id/permanent')
+  @HttpCode(204)
+  async permanentlyDelete(@Param('id') id: string): Promise<void> {
+    return this.categoriesService.permanentlyDelete(this.resolveOwnerId(), id);
   }
 }

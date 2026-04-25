@@ -28,6 +28,8 @@ export interface AccountResponse {
   openingBalance: number;
   openingBalanceDate: string | null;
   archivedAt: string | null;
+  canDeletePermanently: boolean;
+  deleteBlockReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -82,5 +84,7 @@ export interface AccountReconciliationResponse {
   issueCodes: AccountReconciliationIssueCode[];
   diagnostics: AccountReconciliationDiagnosticResponse[];
   canCreateAdjustment: boolean;
+  canEstablishOpeningBalanceBaseline: boolean;
+  openingBalanceBaselineGuidance: string | null;
   adjustmentGuidance: AccountReconciliationAdjustmentGuidanceResponse;
 }

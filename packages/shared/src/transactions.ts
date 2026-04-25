@@ -12,6 +12,8 @@ export interface CategoryResponse {
   type: CategoryType;
   order: number;
   archivedAt: string | null;
+  canDeletePermanently: boolean;
+  deleteBlockReason: string | null;
   createdAt: string;
   updatedAt: string;
 }

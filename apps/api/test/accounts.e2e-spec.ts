@@ -132,6 +132,8 @@ function expectAccountResponseDto(
     openingBalanceDate:
       account.openingBalanceDate?.toISOString().slice(0, 10) ?? null,
     archivedAt: account.archivedAt?.toISOString() ?? null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
     createdAt: account.createdAt.toISOString(),
     updatedAt: account.updatedAt.toISOString(),
   });
@@ -154,6 +156,9 @@ describe('Account routes (e2e)', () => {
     transaction: {
       findMany: jest.Mock;
       findFirst: jest.Mock;
+    };
+    recurringTransactionRule: {
+      findMany: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -185,8 +190,15 @@ describe('Account routes (e2e)', () => {
         findMany: jest.fn(),
         findFirst: jest.fn(),
       },
+      recurringTransactionRule: {
+        findMany: jest.fn(),
+      },
       $transaction: jest.fn(),
     };
+
+    prisma.asset.findMany.mockResolvedValue([]);
+    prisma.transaction.findMany.mockResolvedValue([]);
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([]);
 
     prisma.$transaction.mockImplementation(
       async (
@@ -194,12 +206,14 @@ describe('Account routes (e2e)', () => {
           account: typeof prisma.account;
           asset: typeof prisma.asset;
           transaction: typeof prisma.transaction;
+          recurringTransactionRule: typeof prisma.recurringTransactionRule;
         }) => Promise<unknown>,
       ) =>
         callback({
           account: prisma.account,
           asset: prisma.asset,
           transaction: prisma.transaction,
+          recurringTransactionRule: prisma.recurringTransactionRule,
         }),
     );
 
@@ -361,6 +375,9 @@ describe('Account routes (e2e)', () => {
               'No adjustment is needed because the account already reconciles.',
           },
           canCreateAdjustment: false,
+          canEstablishOpeningBalanceBaseline: false,
+          openingBalanceBaselineGuidance:
+            'This account already has an opening-balance baseline.',
         });
         expect(prisma.account.findMany).toHaveBeenCalledWith({
           where: { userId: OWNER_ID, archivedAt: null },

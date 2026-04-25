@@ -22,10 +22,16 @@ export default function CategoriesPageClient({
     null,
   );
   const [showArchived, setShowArchived] = useState(false);
-  const [archiveError, setArchiveError] = useState<string | null>(null);
-  const [archivingCategoryId, setArchivingCategoryId] = useState<string | null>(
-    null,
-  );
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingArchiveCategoryId, setPendingArchiveCategoryId] = useState<
+    string | null
+  >(null);
+  const [pendingUnarchiveCategoryId, setPendingUnarchiveCategoryId] = useState<
+    string | null
+  >(null);
+  const [pendingDeleteCategoryId, setPendingDeleteCategoryId] = useState<
+    string | null
+  >(null);
   const actions = useSingleFlightActions<string>();
 
   const editingCategory =
@@ -41,8 +47,8 @@ export default function CategoriesPageClient({
 
   async function handleArchive(categoryId: string) {
     await actions.run(`archive:${categoryId}`, async () => {
-      setArchiveError(null);
-      setArchivingCategoryId(categoryId);
+      setActionError(null);
+      setPendingArchiveCategoryId(categoryId);
 
       try {
         await apiMutation<void>(`/categories/${categoryId}`, {
@@ -55,13 +61,70 @@ export default function CategoriesPageClient({
 
         router.refresh();
       } catch (error) {
-        setArchiveError(
+        setActionError(
           error instanceof Error
             ? error.message
             : "Unable to archive category.",
         );
       } finally {
-        setArchivingCategoryId(null);
+        setPendingArchiveCategoryId(null);
+      }
+    });
+  }
+
+  async function handleUnarchive(categoryId: string) {
+    await actions.run(`unarchive:${categoryId}`, async () => {
+      setActionError(null);
+      setPendingUnarchiveCategoryId(categoryId);
+
+      try {
+        await apiMutation<void>(`/categories/${categoryId}/unarchive`, {
+          method: "POST",
+        });
+        router.refresh();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to unarchive category.",
+        );
+      } finally {
+        setPendingUnarchiveCategoryId(null);
+      }
+    });
+  }
+
+  async function handleDeletePermanently(categoryId: string) {
+    await actions.run(`delete:${categoryId}`, async () => {
+      setActionError(null);
+      setPendingDeleteCategoryId(categoryId);
+
+      const confirmed = confirm(
+        "Delete this archived category permanently? This cannot be undone.",
+      );
+      if (!confirmed) {
+        setPendingDeleteCategoryId(null);
+        return;
+      }
+
+      try {
+        await apiMutation<void>(`/categories/${categoryId}/permanent`, {
+          method: "DELETE",
+        });
+
+        if (editingCategoryId === categoryId) {
+          setEditingCategoryId(null);
+        }
+
+        router.refresh();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Unable to delete this category permanently.",
+        );
+      } finally {
+        setPendingDeleteCategoryId(null);
       }
     });
   }
@@ -98,9 +161,9 @@ export default function CategoriesPageClient({
           </div>
         </div>
 
-        {archiveError ? (
+        {actionError ? (
           <p role="alert" className="text-sm text-red-600">
-            {archiveError}
+            {actionError}
           </p>
         ) : null}
 
@@ -149,16 +212,49 @@ export default function CategoriesPageClient({
                       <button
                         type="button"
                         onClick={() => void handleArchive(category.id)}
-                        disabled={archivingCategoryId === category.id}
+                        disabled={pendingArchiveCategoryId === category.id}
                         className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {archivingCategoryId === category.id
+                        {pendingArchiveCategoryId === category.id
                           ? "Archiving..."
                           : "Archive"}
                       </button>
-                    ) : null}
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleUnarchive(category.id)}
+                          disabled={pendingUnarchiveCategoryId === category.id}
+                          className="text-sm font-medium text-blue-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {pendingUnarchiveCategoryId === category.id
+                            ? "Unarchiving..."
+                            : "Unarchive"}
+                        </button>
+                        {category.canDeletePermanently ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleDeletePermanently(category.id)
+                            }
+                            disabled={pendingDeleteCategoryId === category.id}
+                            className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {pendingDeleteCategoryId === category.id
+                              ? "Deleting..."
+                              : "Delete"}
+                          </button>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 </div>
+
+                {category.archivedAt && category.deleteBlockReason ? (
+                  <p className="mt-4 text-sm text-gray-500">
+                    Permanent delete blocked: {category.deleteBlockReason}
+                  </p>
+                ) : null}
               </article>
             ))}
           </div>

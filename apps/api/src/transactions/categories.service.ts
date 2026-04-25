@@ -21,6 +21,11 @@ interface PreparedCategoryInput {
   order: number | null;
 }
 
+export interface CategoryDeletionState {
+  canDeletePermanently: boolean;
+  deleteBlockReason: string | null;
+}
+
 type CategoryTransactionClient = Prisma.TransactionClient;
 
 @Injectable()
@@ -256,6 +261,158 @@ export class CategoriesService {
     });
   }
 
+  async unarchive(ownerId: string, id: string): Promise<Category> {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await this.getRequiredCategory(tx, ownerId, id);
+
+      if (!existing.archivedAt) {
+        return existing;
+      }
+
+      const activeCategories = await this.findActiveOrderedCategories(
+        tx,
+        ownerId,
+        existing.type,
+      );
+
+      await tx.category.update({
+        where: { id },
+        data: {
+          archivedAt: null,
+          order: activeCategories.length,
+        },
+      });
+
+      return this.getRequiredCategory(tx, ownerId, id);
+    });
+  }
+
+  async permanentlyDelete(ownerId: string, id: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await this.getRequiredCategory(tx, ownerId, id);
+
+      if (!existing.archivedAt) {
+        throw new ConflictException(
+          'Archive this category before deleting it permanently.',
+        );
+      }
+
+      const deletionState = (
+        await this.getDeletionStates(ownerId, [id], tx)
+      ).get(id);
+
+      if (!deletionState?.canDeletePermanently) {
+        throw new ConflictException(
+          deletionState?.deleteBlockReason ??
+            'This category still has linked data and cannot be deleted permanently.',
+        );
+      }
+
+      await tx.category.delete({
+        where: { id },
+      });
+    });
+  }
+
+  async getDeletionStates(
+    ownerId: string,
+    categoryIds: string[],
+    client: PrismaService | Prisma.TransactionClient = this.prisma,
+  ): Promise<Map<string, CategoryDeletionState>> {
+    const uniqueIds = [...new Set(categoryIds)];
+
+    if (uniqueIds.length === 0) {
+      return new Map();
+    }
+
+    const recurringRuleClient =
+      'recurringTransactionRule' in client
+        ? client.recurringTransactionRule
+        : null;
+    const budgetClient =
+      'categoryBudget' in client ? client.categoryBudget : null;
+
+    const [transactions, recurringRules, budgets] = await Promise.all([
+      client.transaction.findMany({
+        where: {
+          userId: ownerId,
+          categoryId: { in: uniqueIds },
+        },
+        select: { categoryId: true },
+      }),
+      recurringRuleClient
+        ? recurringRuleClient.findMany({
+            where: {
+              userId: ownerId,
+              categoryId: { in: uniqueIds },
+            },
+            select: { categoryId: true },
+          })
+        : Promise.resolve([]),
+      budgetClient
+        ? budgetClient.findMany({
+            where: {
+              userId: ownerId,
+              categoryId: { in: uniqueIds },
+            },
+            select: { categoryId: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const dependencyCounts = new Map<
+      string,
+      { transactions: number; recurringRules: number; budgets: number }
+    >(
+      uniqueIds.map((id) => [
+        id,
+        { transactions: 0, recurringRules: 0, budgets: 0 },
+      ]),
+    );
+
+    for (const transaction of transactions) {
+      if (!transaction.categoryId) {
+        continue;
+      }
+
+      dependencyCounts.get(transaction.categoryId)!.transactions += 1;
+    }
+
+    for (const recurringRule of recurringRules) {
+      if (!recurringRule.categoryId) {
+        continue;
+      }
+
+      dependencyCounts.get(recurringRule.categoryId)!.recurringRules += 1;
+    }
+
+    for (const budget of budgets) {
+      dependencyCounts.get(budget.categoryId)!.budgets += 1;
+    }
+
+    return new Map(
+      uniqueIds.map((id) => {
+        const counts = dependencyCounts.get(id)!;
+        const parts = [
+          this.formatDeleteDependency(counts.transactions, 'transaction'),
+          this.formatDeleteDependency(counts.recurringRules, 'recurring rule'),
+          this.formatDeleteDependency(counts.budgets, 'budget'),
+        ].filter((value): value is string => value !== null);
+
+        return [
+          id,
+          {
+            canDeletePermanently: parts.length === 0,
+            deleteBlockReason:
+              parts.length === 0
+                ? null
+                : `This category still has linked ${parts.join(', ')}.`,
+          },
+        ] satisfies [string, CategoryDeletionState];
+      }),
+    );
+  }
+
   async getAssignableCategory(
     ownerId: string,
     categoryId: string,
@@ -401,5 +558,16 @@ export class CategoriesService {
     }
 
     return category;
+  }
+
+  private formatDeleteDependency(
+    count: number,
+    singular: string,
+  ): string | null {
+    if (count === 0) {
+      return null;
+    }
+
+    return `${count} ${singular}${count === 1 ? '' : 's'}`;
   }
 }

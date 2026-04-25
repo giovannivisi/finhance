@@ -43,6 +43,11 @@ interface PreparedAccountInput {
   openingBalanceDate: Date | null;
 }
 
+export interface AccountDeletionState {
+  canDeletePermanently: boolean;
+  deleteBlockReason: string | null;
+}
+
 export interface AccountReconciliationModel {
   account: Account;
   status: AccountReconciliationStatus;
@@ -55,6 +60,8 @@ export interface AccountReconciliationModel {
   issueCodes: AccountReconciliationIssueCode[];
   diagnostics: AccountReconciliationDiagnosticResponse[];
   canCreateAdjustment: boolean;
+  canEstablishOpeningBalanceBaseline: boolean;
+  openingBalanceBaselineGuidance: string | null;
   adjustmentGuidance: AccountReconciliationAdjustmentGuidanceResponse;
 }
 
@@ -335,6 +342,205 @@ export class AccountsService {
     });
   }
 
+  async unarchive(ownerId: string, id: string): Promise<Account> {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await this.getRequiredAccount(tx, ownerId, id);
+
+      if (!existing.archivedAt) {
+        return existing;
+      }
+
+      const activeAccounts = await this.findActiveOrderedAccounts(tx, ownerId);
+
+      await tx.account.update({
+        where: { id },
+        data: {
+          archivedAt: null,
+          order: activeAccounts.length,
+        },
+      });
+
+      return this.getRequiredAccount(tx, ownerId, id);
+    });
+  }
+
+  async permanentlyDelete(ownerId: string, id: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await this.getRequiredAccount(tx, ownerId, id);
+
+      if (!existing.archivedAt) {
+        throw new ConflictException(
+          'Archive this account before deleting it permanently.',
+        );
+      }
+
+      const deletionState = (
+        await this.getDeletionStates(ownerId, [id], tx)
+      ).get(id);
+
+      if (!deletionState?.canDeletePermanently) {
+        throw new ConflictException(
+          deletionState?.deleteBlockReason ??
+            'This account still has linked data and cannot be deleted permanently.',
+        );
+      }
+
+      await tx.account.delete({
+        where: { id },
+      });
+    });
+  }
+
+  async establishOpeningBalanceBaseline(
+    ownerId: string,
+    accountId: string,
+  ): Promise<Account> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const reconciliation = (
+          await this.findReconciliation(ownerId, { includeArchived: true }, tx)
+        ).find((entry) => entry.account.id === accountId);
+
+        if (!reconciliation) {
+          throw new NotFoundException(`Account ${accountId} was not found.`);
+        }
+
+        if (!reconciliation.canEstablishOpeningBalanceBaseline) {
+          throw new ConflictException(
+            reconciliation.openingBalanceBaselineGuidance ??
+              'This account cannot establish an opening balance baseline right now.',
+          );
+        }
+
+        await tx.account.update({
+          where: { id: accountId },
+          data: {
+            openingBalance: reconciliation.trackedBalance!,
+            openingBalanceDate: this.getNextRomeDayStart(),
+          },
+        });
+
+        return this.getRequiredAccount(tx, ownerId, accountId);
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
+  }
+
+  async getDeletionStates(
+    ownerId: string,
+    accountIds: string[],
+    client: ReconciliationReadClient = this.prisma,
+  ): Promise<Map<string, AccountDeletionState>> {
+    const uniqueIds = [...new Set(accountIds)];
+
+    if (uniqueIds.length === 0) {
+      return new Map();
+    }
+
+    const recurringRuleClient =
+      'recurringTransactionRule' in client
+        ? client.recurringTransactionRule
+        : null;
+
+    const [assets, transactions, recurringRules] = await Promise.all([
+      client.asset.findMany({
+        where: {
+          userId: ownerId,
+          accountId: { in: uniqueIds },
+        },
+        select: { accountId: true },
+      }),
+      client.transaction.findMany({
+        where: {
+          userId: ownerId,
+          accountId: { in: uniqueIds },
+        },
+        select: { accountId: true },
+      }),
+      recurringRuleClient
+        ? recurringRuleClient.findMany({
+            where: {
+              userId: ownerId,
+              OR: [
+                { accountId: { in: uniqueIds } },
+                { sourceAccountId: { in: uniqueIds } },
+                { destinationAccountId: { in: uniqueIds } },
+              ],
+            },
+            select: {
+              accountId: true,
+              sourceAccountId: true,
+              destinationAccountId: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const dependencyCounts = new Map<
+      string,
+      { assets: number; transactions: number; recurringRules: number }
+    >(
+      uniqueIds.map((id) => [
+        id,
+        { assets: 0, transactions: 0, recurringRules: 0 },
+      ]),
+    );
+
+    for (const asset of assets) {
+      if (!asset.accountId) {
+        continue;
+      }
+
+      dependencyCounts.get(asset.accountId)!.assets += 1;
+    }
+
+    for (const transaction of transactions) {
+      dependencyCounts.get(transaction.accountId)!.transactions += 1;
+    }
+
+    for (const rule of recurringRules) {
+      const linkedIds = new Set(
+        [
+          rule.accountId,
+          rule.sourceAccountId,
+          rule.destinationAccountId,
+        ].filter((value): value is string => value !== null),
+      );
+
+      for (const linkedId of linkedIds) {
+        const counts = dependencyCounts.get(linkedId);
+
+        if (counts) {
+          counts.recurringRules += 1;
+        }
+      }
+    }
+
+    return new Map(
+      uniqueIds.map((id) => {
+        const counts = dependencyCounts.get(id)!;
+        const parts = [
+          this.formatDeleteDependency(counts.assets, 'asset'),
+          this.formatDeleteDependency(counts.transactions, 'transaction'),
+          this.formatDeleteDependency(counts.recurringRules, 'recurring rule'),
+        ].filter((value): value is string => value !== null);
+
+        return [
+          id,
+          {
+            canDeletePermanently: parts.length === 0,
+            deleteBlockReason:
+              parts.length === 0
+                ? null
+                : `This account still has linked ${parts.join(', ')}.`,
+          },
+        ] satisfies [string, AccountDeletionState];
+      }),
+    );
+  }
+
   async assertAccountAssignmentAllowed(
     ownerId: string,
     accountId: string | null,
@@ -530,6 +736,16 @@ export class AccountsService {
         issueCodes: [...issueCodes],
         diagnostics,
         canCreateAdjustment: false,
+        canEstablishOpeningBalanceBaseline: false,
+        openingBalanceBaselineGuidance:
+          this.buildOpeningBalanceBaselineGuidance({
+            account,
+            status: 'UNSUPPORTED',
+            issueCodes: [...issueCodes],
+            canEstablishOpeningBalanceBaseline: false,
+            assetCount: assets.length,
+            transactionCount: transactions.length,
+          }),
         adjustmentGuidance: this.buildAdjustmentGuidance({
           account,
           status: 'UNSUPPORTED',
@@ -558,6 +774,11 @@ export class AccountsService {
       status === 'MISMATCH' &&
       !delta.eq(ZERO) &&
       !issueCodes.has('TRANSFER_GROUP_INCOMPLETE');
+    const canEstablishOpeningBalanceBaseline =
+      account.archivedAt === null &&
+      baselineMode === 'FULL_HISTORY' &&
+      status === 'CLEAN' &&
+      assets.length + transactions.length > 0;
 
     return {
       account,
@@ -571,6 +792,15 @@ export class AccountsService {
       issueCodes: issueCodeList,
       diagnostics,
       canCreateAdjustment,
+      canEstablishOpeningBalanceBaseline,
+      openingBalanceBaselineGuidance: this.buildOpeningBalanceBaselineGuidance({
+        account,
+        status,
+        issueCodes: issueCodeList,
+        canEstablishOpeningBalanceBaseline,
+        assetCount: assets.length,
+        transactionCount: transactions.length,
+      }),
       adjustmentGuidance: this.buildAdjustmentGuidance({
         account,
         status,
@@ -710,6 +940,45 @@ export class AccountsService {
       message:
         'This account cannot create a reconciliation adjustment right now.',
     };
+  }
+
+  private buildOpeningBalanceBaselineGuidance(input: {
+    account: Account;
+    status: AccountReconciliationStatus;
+    issueCodes: AccountReconciliationIssueCode[];
+    canEstablishOpeningBalanceBaseline: boolean;
+    assetCount: number;
+    transactionCount: number;
+  }): string | null {
+    if (input.account.archivedAt !== null) {
+      return 'Archived accounts cannot establish a new opening-balance baseline.';
+    }
+
+    if (input.account.openingBalanceDate !== null) {
+      return 'This account already has an opening-balance baseline.';
+    }
+
+    if (input.assetCount + input.transactionCount === 0) {
+      return 'Add assets or transactions first so there is a current state to baseline.';
+    }
+
+    if (input.issueCodes.includes('FX_UNAVAILABLE')) {
+      return 'Resolve missing FX rates before establishing an opening-balance baseline.';
+    }
+
+    if (input.issueCodes.includes('TRANSFER_GROUP_INCOMPLETE')) {
+      return 'Fix broken transfer pairs before establishing an opening-balance baseline.';
+    }
+
+    if (input.status !== 'CLEAN') {
+      return 'Reconcile this account first, then establish an opening balance from the clean current state.';
+    }
+
+    if (input.canEstablishOpeningBalanceBaseline) {
+      return 'Use the current reconciled balance as tomorrow’s opening-balance baseline.';
+    }
+
+    return null;
   }
 
   private async resolveFxRates(
@@ -934,5 +1203,44 @@ export class AccountsService {
     }
 
     return account;
+  }
+
+  private formatDeleteDependency(
+    count: number,
+    singular: string,
+  ): string | null {
+    if (count === 0) {
+      return null;
+    }
+
+    return `${count} ${singular}${count === 1 ? '' : 's'}`;
+  }
+
+  private getNextRomeDayStart(now = new Date()): Date {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Rome',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(now);
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+
+    if (!year || !month || !day) {
+      throw new Error('Unable to derive the current Europe/Rome day.');
+    }
+
+    const nextDay = new Date(
+      Date.UTC(Number(year), Number(month) - 1, Number(day) + 1),
+    );
+    const nextDayKey = [
+      nextDay.getUTCFullYear(),
+      String(nextDay.getUTCMonth() + 1).padStart(2, '0'),
+      String(nextDay.getUTCDate()).padStart(2, '0'),
+    ].join('-');
+
+    return romeDateToUtcStart(nextDayKey);
   }
 }

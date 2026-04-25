@@ -4,6 +4,7 @@ import type {
   AccountResponse,
 } from '@finhance/shared';
 import type { AccountReconciliationModel } from '@accounts/accounts.service';
+import type { AccountDeletionState } from '@accounts/accounts.service';
 
 import type { Account } from '@prisma/client';
 
@@ -11,7 +12,10 @@ function decimalToNumber(value: Prisma.Decimal | null): number | null {
   return value?.toNumber() ?? null;
 }
 
-export function toAccountResponse(account: Account): AccountResponse {
+export function toAccountResponse(
+  account: Account,
+  deletionState?: AccountDeletionState,
+): AccountResponse {
   return {
     id: account.id,
     name: account.name,
@@ -24,6 +28,8 @@ export function toAccountResponse(account: Account): AccountResponse {
     openingBalanceDate:
       account.openingBalanceDate?.toISOString().slice(0, 10) ?? null,
     archivedAt: account.archivedAt?.toISOString() ?? null,
+    canDeletePermanently: deletionState?.canDeletePermanently ?? false,
+    deleteBlockReason: deletionState?.deleteBlockReason ?? null,
     createdAt: account.createdAt.toISOString(),
     updatedAt: account.updatedAt.toISOString(),
   };
@@ -47,6 +53,9 @@ export function toAccountReconciliationResponse(
     issueCodes: model.issueCodes,
     diagnostics: model.diagnostics,
     canCreateAdjustment: model.canCreateAdjustment,
+    canEstablishOpeningBalanceBaseline:
+      model.canEstablishOpeningBalanceBaseline,
+    openingBalanceBaselineGuidance: model.openingBalanceBaselineGuidance,
     adjustmentGuidance: model.adjustmentGuidance,
   };
 }

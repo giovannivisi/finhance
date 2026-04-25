@@ -56,6 +56,8 @@ function expectCategoryResponseDto(
     type: category.type,
     order: category.order,
     archivedAt: category.archivedAt?.toISOString() ?? null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
     createdAt: category.createdAt.toISOString(),
     updatedAt: category.updatedAt.toISOString(),
   });
@@ -70,6 +72,15 @@ describe('Category routes (e2e)', () => {
       findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+    };
+    transaction: {
+      findMany: jest.Mock;
+    };
+    recurringTransactionRule: {
+      findMany: jest.Mock;
+    };
+    categoryBudget: {
+      findMany: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -86,17 +97,36 @@ describe('Category routes (e2e)', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      transaction: {
+        findMany: jest.fn(),
+      },
+      recurringTransactionRule: {
+        findMany: jest.fn(),
+      },
+      categoryBudget: {
+        findMany: jest.fn(),
+      },
       $transaction: jest.fn(),
     };
+
+    prisma.transaction.findMany.mockResolvedValue([]);
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([]);
+    prisma.categoryBudget.findMany.mockResolvedValue([]);
 
     prisma.$transaction.mockImplementation(
       async (
         callback: (tx: {
           category: typeof prisma.category;
+          transaction: typeof prisma.transaction;
+          recurringTransactionRule: typeof prisma.recurringTransactionRule;
+          categoryBudget: typeof prisma.categoryBudget;
         }) => Promise<unknown>,
       ) =>
         callback({
           category: prisma.category,
+          transaction: prisma.transaction,
+          recurringTransactionRule: prisma.recurringTransactionRule,
+          categoryBudget: prisma.categoryBudget,
         }),
     );
 
