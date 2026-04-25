@@ -6,7 +6,11 @@ export type ImportFileType =
   | "accounts"
   | "categories"
   | "assets"
-  | "transactions";
+  | "transactions"
+  | "recurringRules"
+  | "recurringExceptions"
+  | "budgets"
+  | "budgetOverrides";
 
 export type ImportIssueSeverity = "ERROR" | "WARNING";
 
@@ -53,6 +57,8 @@ export const ACCOUNT_IMPORT_HEADERS = [
   "institution",
   "notes",
   "order",
+  "openingBalance",
+  "openingBalanceDate",
   "archived",
 ] as const;
 
@@ -96,6 +102,57 @@ export const TRANSACTION_IMPORT_HEADERS = [
   "destinationAccountImportKey",
 ] as const;
 
+export const RECURRING_RULE_IMPORT_HEADERS = [
+  "importKey",
+  "name",
+  "isActive",
+  "kind",
+  "amount",
+  "dayOfMonth",
+  "startDate",
+  "endDate",
+  "accountImportKey",
+  "direction",
+  "categoryImportKey",
+  "counterparty",
+  "sourceAccountImportKey",
+  "destinationAccountImportKey",
+  "description",
+  "notes",
+] as const;
+
+export const RECURRING_EXCEPTION_IMPORT_HEADERS = [
+  "recurringRuleImportKey",
+  "month",
+  "status",
+  "amount",
+  "postedAtDate",
+  "accountImportKey",
+  "direction",
+  "categoryImportKey",
+  "counterparty",
+  "sourceAccountImportKey",
+  "destinationAccountImportKey",
+  "description",
+  "notes",
+] as const;
+
+export const BUDGET_IMPORT_HEADERS = [
+  "importKey",
+  "categoryImportKey",
+  "currency",
+  "amount",
+  "startMonth",
+  "endMonth",
+] as const;
+
+export const BUDGET_OVERRIDE_IMPORT_HEADERS = [
+  "budgetImportKey",
+  "month",
+  "amount",
+  "note",
+] as const;
+
 export const IMPORT_TEMPLATE_HEADERS: Record<
   ImportFileType,
   readonly string[]
@@ -104,4 +161,8 @@ export const IMPORT_TEMPLATE_HEADERS: Record<
   categories: CATEGORY_IMPORT_HEADERS,
   assets: ASSET_IMPORT_HEADERS,
   transactions: TRANSACTION_IMPORT_HEADERS,
+  recurringRules: RECURRING_RULE_IMPORT_HEADERS,
+  recurringExceptions: RECURRING_EXCEPTION_IMPORT_HEADERS,
+  budgets: BUDGET_IMPORT_HEADERS,
+  budgetOverrides: BUDGET_OVERRIDE_IMPORT_HEADERS,
 };

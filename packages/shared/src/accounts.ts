@@ -34,9 +34,38 @@ export interface AccountResponse {
 
 export type AccountReconciliationStatus = "CLEAN" | "MISMATCH" | "UNSUPPORTED";
 
+export type AccountReconciliationBaselineMode =
+  | "FULL_HISTORY"
+  | "OPENING_BALANCE";
+
 export type AccountReconciliationIssueCode =
   | "FX_UNAVAILABLE"
   | "TRANSFER_GROUP_INCOMPLETE";
+
+export type AccountReconciliationDiagnosticCode =
+  | AccountReconciliationIssueCode
+  | "BASELINE_MISSING"
+  | "BASELINE_POSSIBLY_STALE";
+
+export type AccountReconciliationDiagnosticSeverity = "INFO" | "WARNING";
+
+export interface AccountReconciliationDiagnosticResponse {
+  code: AccountReconciliationDiagnosticCode;
+  severity: AccountReconciliationDiagnosticSeverity;
+  summary: string;
+  likelyCause: string;
+  recommendedAction: string;
+}
+
+export type AccountReconciliationAdjustmentGuidanceStatus =
+  | "SAFE"
+  | "SUSPICIOUS"
+  | "BLOCKED";
+
+export interface AccountReconciliationAdjustmentGuidanceResponse {
+  status: AccountReconciliationAdjustmentGuidanceStatus;
+  message: string;
+}
 
 export interface AccountReconciliationResponse {
   status: AccountReconciliationStatus;
@@ -44,11 +73,14 @@ export interface AccountReconciliationResponse {
   accountName: string;
   accountType: AccountType;
   currency: string;
+  baselineMode: AccountReconciliationBaselineMode;
   trackedBalance: number | null;
   expectedBalance: number | null;
   delta: number | null;
   assetCount: number;
   transactionCount: number;
   issueCodes: AccountReconciliationIssueCode[];
+  diagnostics: AccountReconciliationDiagnosticResponse[];
   canCreateAdjustment: boolean;
+  adjustmentGuidance: AccountReconciliationAdjustmentGuidanceResponse;
 }

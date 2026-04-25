@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
-  AccountReconciliationIssueCode,
   AccountReconciliationResponse,
   AccountResponse,
 } from "@finhance/shared";
@@ -23,9 +22,15 @@ const STATUS_STYLES: Record<string, string> = {
   UNSUPPORTED: "bg-red-100 text-red-800",
 };
 
-const ISSUE_LABELS: Record<AccountReconciliationIssueCode, string> = {
-  FX_UNAVAILABLE: "FX unavailable",
-  TRANSFER_GROUP_INCOMPLETE: "Broken transfer",
+const DIAGNOSTIC_STYLES: Record<string, string> = {
+  INFO: "border-blue-200 bg-blue-50 text-blue-950",
+  WARNING: "border-amber-200 bg-amber-50 text-amber-950",
+};
+
+const GUIDANCE_STYLES: Record<string, string> = {
+  SAFE: "bg-emerald-50 text-emerald-900 ring-emerald-200",
+  SUSPICIOUS: "bg-amber-50 text-amber-950 ring-amber-200",
+  BLOCKED: "bg-gray-100 text-gray-800 ring-gray-200",
 };
 
 export default function AccountsPageClient({
@@ -265,6 +270,12 @@ export default function AccountsPageClient({
                               )} from ${account.openingBalanceDate}`
                             : "Baseline: full transaction history"}
                         </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Mode:{" "}
+                          {reconciliation.baselineMode === "OPENING_BALANCE"
+                            ? "Opening balance baseline"
+                            : "Full history baseline"}
+                        </p>
 
                         <div className="grid gap-3 sm:grid-cols-3">
                           <div>
@@ -317,15 +328,51 @@ export default function AccountsPageClient({
                           <span>
                             {reconciliation.transactionCount} transactions
                           </span>
-                          {reconciliation.issueCodes.map((issueCode) => (
-                            <span
-                              key={issueCode}
-                              className="rounded-full bg-red-100 px-2.5 py-1 font-medium text-red-700"
-                            >
-                              {ISSUE_LABELS[issueCode]}
-                            </span>
-                          ))}
                         </div>
+
+                        <div
+                          className={`mt-4 rounded-2xl px-4 py-3 text-sm ring-1 ${GUIDANCE_STYLES[reconciliation.adjustmentGuidance.status]}`}
+                        >
+                          <p className="font-medium">
+                            Adjustment guidance:{" "}
+                            {reconciliation.adjustmentGuidance.status}
+                          </p>
+                          <p className="mt-1">
+                            {reconciliation.adjustmentGuidance.message}
+                          </p>
+                        </div>
+
+                        {reconciliation.diagnostics.length > 0 ? (
+                          <div className="mt-4 space-y-3">
+                            {reconciliation.diagnostics.map((diagnostic) => (
+                              <article
+                                key={`${account.id}:${diagnostic.code}`}
+                                className={`rounded-2xl border px-4 py-3 text-sm ${DIAGNOSTIC_STYLES[diagnostic.severity]}`}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="font-medium">
+                                    {diagnostic.summary}
+                                  </p>
+                                  <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium">
+                                    {diagnostic.code}
+                                  </span>
+                                </div>
+                                <p className="mt-2 text-sm">
+                                  Likely cause: {diagnostic.likelyCause}
+                                </p>
+                                <p className="mt-1 text-sm">
+                                  Recommended action:{" "}
+                                  {diagnostic.recommendedAction}
+                                </p>
+                              </article>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-4 text-sm text-gray-500">
+                            No structural reconciliation warnings for this
+                            account.
+                          </p>
+                        )}
                       </div>
                     ) : null}
                   </article>

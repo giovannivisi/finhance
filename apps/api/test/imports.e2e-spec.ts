@@ -6,6 +6,7 @@ import { ImportsController } from '@imports/imports.controller';
 import { ImportsService } from '@imports/imports.service';
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
+import { RecurringService } from '@recurring/recurring.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { IdempotencyService } from '@/request-safety/idempotency.service';
 import { AccountType, ImportBatchStatus, ImportSource } from '@prisma/client';
@@ -51,6 +52,8 @@ function createImportedAccount(
     institution: null,
     notes: null,
     order: 0,
+    openingBalance: 0,
+    openingBalanceDate: null,
     archivedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -126,17 +129,37 @@ describe('Import routes (e2e)', () => {
       create: jest.Mock;
       update: jest.Mock;
     };
+    recurringTransactionRule: {
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    recurringTransactionOccurrence: {
+      upsert: jest.Mock;
+    };
+    categoryBudget: {
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
+    categoryBudgetOverride: {
+      upsert: jest.Mock;
+    };
     importBatch: {
       findMany: jest.Mock;
       findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     $transaction: jest.Mock;
   };
   let prices: {
     normalizeCurrency: jest.Mock;
     normalizeTicker: jest.Mock;
+  };
+  let recurring: {
+    materialize: jest.Mock;
   };
 
   function httpServer(): HttpServer {
@@ -165,11 +188,28 @@ describe('Import routes (e2e)', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      recurringTransactionRule: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      recurringTransactionOccurrence: {
+        upsert: jest.fn(),
+      },
+      categoryBudget: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      categoryBudgetOverride: {
+        upsert: jest.fn(),
+      },
       importBatch: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       $transaction: jest.fn(),
     };
@@ -181,6 +221,10 @@ describe('Import routes (e2e)', () => {
           asset: typeof prisma.asset;
           category: typeof prisma.category;
           transaction: typeof prisma.transaction;
+          recurringTransactionRule: typeof prisma.recurringTransactionRule;
+          recurringTransactionOccurrence: typeof prisma.recurringTransactionOccurrence;
+          categoryBudget: typeof prisma.categoryBudget;
+          categoryBudgetOverride: typeof prisma.categoryBudgetOverride;
           importBatch: typeof prisma.importBatch;
         }) => Promise<unknown>,
       ) =>
@@ -189,6 +233,10 @@ describe('Import routes (e2e)', () => {
           asset: prisma.asset,
           category: prisma.category,
           transaction: prisma.transaction,
+          recurringTransactionRule: prisma.recurringTransactionRule,
+          recurringTransactionOccurrence: prisma.recurringTransactionOccurrence,
+          categoryBudget: prisma.categoryBudget,
+          categoryBudgetOverride: prisma.categoryBudgetOverride,
           importBatch: prisma.importBatch,
         }),
     );
@@ -208,6 +256,13 @@ describe('Import routes (e2e)', () => {
       ),
       normalizeTicker: jest.fn((ticker: string) => ticker.trim().toUpperCase()),
     };
+    recurring = {
+      materialize: jest.fn().mockResolvedValue({
+        createdCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+      }),
+    };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [ImportsController],
@@ -215,6 +270,7 @@ describe('Import routes (e2e)', () => {
         ImportsService,
         { provide: PrismaService, useValue: prisma },
         { provide: PricesService, useValue: prices },
+        { provide: RecurringService, useValue: recurring },
         LocalOnlyImportsGuard,
         {
           provide: RequestOwnerResolver,
@@ -307,6 +363,8 @@ describe('Import routes (e2e)', () => {
       institution: null,
       notes: null,
       order: 0,
+      openingBalance: 0,
+      openingBalanceDate: null,
       archivedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -344,8 +402,18 @@ describe('Import routes (e2e)', () => {
       .expect('content-disposition', /attachment; filename="finhance-export-/)
       .expect((response: { body: Buffer }) => {
         const entries = parseZipEntries(response.body);
+        expect([...entries.keys()]).toEqual([
+          'accounts.csv',
+          'categories.csv',
+          'assets.csv',
+          'transactions.csv',
+          'recurringRules.csv',
+          'recurringExceptions.csv',
+          'budgets.csv',
+          'budgetOverrides.csv',
+        ]);
         expect(entries.get('accounts.csv')).toContain(
-          'importKey,name,type,currency,institution,notes,order,archived',
+          'importKey,name,type,currency,institution,notes,order,openingBalance,openingBalanceDate,archived',
         );
         expect(entries.get('categories.csv')).toBe(
           'importKey,name,type,order,archived\n',

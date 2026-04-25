@@ -29,8 +29,8 @@ export default function NetWorthHistoryChart({
   baseCurrency: string;
 }) {
   return (
-    <div className="h-[320px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full min-w-0">
+      <ResponsiveContainer width="100%" height={320} minWidth={0}>
         <LineChart
           data={snapshots}
           margin={{ top: 16, right: 16, left: 8, bottom: 0 }}

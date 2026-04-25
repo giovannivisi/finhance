@@ -352,7 +352,14 @@ describe('Account routes (e2e)', () => {
           delta: 0,
           assetCount: 1,
           transactionCount: 1,
+          baselineMode: 'OPENING_BALANCE',
           issueCodes: [],
+          diagnostics: [],
+          adjustmentGuidance: {
+            status: 'BLOCKED',
+            message:
+              'No adjustment is needed because the account already reconciles.',
+          },
           canCreateAdjustment: false,
         });
         expect(prisma.account.findMany).toHaveBeenCalledWith({

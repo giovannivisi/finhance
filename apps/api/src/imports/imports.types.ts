@@ -8,9 +8,14 @@ import type {
   Asset,
   AssetKind,
   AssetType,
+  CategoryBudget,
+  CategoryBudgetOverride,
   Category,
   CategoryType,
   LiabilityKind,
+  RecurringOccurrenceStatus,
+  RecurringTransactionOccurrence,
+  RecurringTransactionRule,
   Transaction,
   TransactionDirection,
   TransactionKind,
@@ -30,6 +35,8 @@ export interface AccountImportRow {
   institution: string | null;
   notes: string | null;
   order: number | null;
+  openingBalance: string | null;
+  openingBalanceDate: string | null;
   archived: boolean;
 }
 
@@ -76,12 +83,71 @@ export interface TransactionImportRow {
   destinationAccountImportKey: string | null;
 }
 
+export interface RecurringRuleImportRow {
+  rowNumber: number;
+  importKey: string;
+  name: string;
+  isActive: boolean;
+  kind: TransactionKind;
+  amount: string;
+  dayOfMonth: number;
+  startDate: string;
+  endDate: string | null;
+  accountImportKey: string | null;
+  direction: TransactionDirection | null;
+  categoryImportKey: string | null;
+  counterparty: string | null;
+  sourceAccountImportKey: string | null;
+  destinationAccountImportKey: string | null;
+  description: string;
+  notes: string | null;
+}
+
+export interface RecurringExceptionImportRow {
+  rowNumber: number;
+  recurringRuleImportKey: string;
+  month: string;
+  status: RecurringOccurrenceStatus;
+  amount: string | null;
+  postedAtDate: string | null;
+  accountImportKey: string | null;
+  direction: TransactionDirection | null;
+  categoryImportKey: string | null;
+  counterparty: string | null;
+  sourceAccountImportKey: string | null;
+  destinationAccountImportKey: string | null;
+  description: string | null;
+  notes: string | null;
+}
+
+export interface BudgetImportRow {
+  rowNumber: number;
+  importKey: string;
+  categoryImportKey: string;
+  currency: string;
+  amount: string;
+  startMonth: string;
+  endMonth: string | null;
+}
+
+export interface BudgetOverrideImportRow {
+  rowNumber: number;
+  budgetImportKey: string;
+  month: string;
+  amount: string;
+  note: string | null;
+}
+
 export interface ImportPayload {
   providedFiles: ImportFileType[];
   accounts: AccountImportRow[];
   categories: CategoryImportRow[];
   assets: AssetImportRow[];
   transactions: TransactionImportRow[];
+  recurringRules: RecurringRuleImportRow[];
+  recurringExceptions: RecurringExceptionImportRow[];
+  budgets: BudgetImportRow[];
+  budgetOverrides: BudgetOverrideImportRow[];
 }
 
 export interface ImportAnalysisState {
@@ -89,6 +155,13 @@ export interface ImportAnalysisState {
   importedCategoriesByKey: Map<string, Category>;
   importedAssetsByKey: Map<string, Asset>;
   importedTransactionsByKey: Map<string, Transaction[]>;
+  importedRecurringRulesByKey: Map<string, RecurringTransactionRule>;
+  importedRecurringExceptionsByRuleMonthKey: Map<
+    string,
+    RecurringTransactionOccurrence
+  >;
+  importedBudgetsByKey: Map<string, CategoryBudget>;
+  importedBudgetOverridesByBudgetMonthKey: Map<string, CategoryBudgetOverride>;
   accountImportKeyById: Map<string, string>;
   categoryImportKeyById: Map<string, string>;
   activeCategories: Category[];
@@ -114,6 +187,8 @@ export const IMPORT_TEMPLATE_HEADERS: Record<
     'institution',
     'notes',
     'order',
+    'openingBalance',
+    'openingBalanceDate',
     'archived',
   ],
   categories: ['importKey', 'name', 'type', 'order', 'archived'],
@@ -147,6 +222,48 @@ export const IMPORT_TEMPLATE_HEADERS: Record<
     'sourceAccountImportKey',
     'destinationAccountImportKey',
   ],
+  recurringRules: [
+    'importKey',
+    'name',
+    'isActive',
+    'kind',
+    'amount',
+    'dayOfMonth',
+    'startDate',
+    'endDate',
+    'accountImportKey',
+    'direction',
+    'categoryImportKey',
+    'counterparty',
+    'sourceAccountImportKey',
+    'destinationAccountImportKey',
+    'description',
+    'notes',
+  ],
+  recurringExceptions: [
+    'recurringRuleImportKey',
+    'month',
+    'status',
+    'amount',
+    'postedAtDate',
+    'accountImportKey',
+    'direction',
+    'categoryImportKey',
+    'counterparty',
+    'sourceAccountImportKey',
+    'destinationAccountImportKey',
+    'description',
+    'notes',
+  ],
+  budgets: [
+    'importKey',
+    'categoryImportKey',
+    'currency',
+    'amount',
+    'startMonth',
+    'endMonth',
+  ],
+  budgetOverrides: ['budgetImportKey', 'month', 'amount', 'note'],
 };
 
 type AssetlessAccountType = Account['type'];
