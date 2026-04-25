@@ -8,6 +8,7 @@ import { BudgetsModule } from '@budgets/budgets.module';
 import { RecurringModule } from '@recurring/recurring.module';
 import { ImportsModule } from '@imports/imports.module';
 import { DashboardModule } from '@/dashboard/dashboard.module';
+import { SetupModule } from '@/setup/setup.module';
 import { SnapshotsModule } from '@snapshots/snapshots.module';
 import { TransactionsModule } from '@transactions/transactions.module';
 import { LocalOnlyGuard } from '@/security/local-only.guard';
@@ -27,6 +28,7 @@ import { createThrottlerOptions } from '@/config/throttle.config';
     RecurringModule,
     ImportsModule,
     DashboardModule,
+    SetupModule,
     SnapshotsModule,
     TransactionsModule,
   ],

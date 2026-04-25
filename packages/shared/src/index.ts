@@ -4,4 +4,5 @@ export * from "./budgets.js";
 export * from "./recurring.js";
 export * from "./imports.js";
 export * from "./snapshots.js";
+export * from "./setup.js";
 export * from "./transactions.js";
