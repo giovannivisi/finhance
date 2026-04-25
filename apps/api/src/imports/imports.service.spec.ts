@@ -11,12 +11,34 @@ import {
   ImportBatchStatus,
   ImportSource,
   Prisma,
+  RecurringOccurrenceStatus,
   TransactionDirection,
   TransactionKind,
 } from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
 type ImportBatchCreateCall = {
+  data: {
+    payloadJson: unknown;
+  };
+};
+type ImportBatchUpdateCall = {
+  where: {
+    id: string;
+  };
+  data: {
+    status?: ImportBatchStatus;
+    payloadJson?: unknown;
+  };
+};
+type ImportBatchUpdateManyCall = {
+  where: {
+    userId: string;
+    status: ImportBatchStatus;
+    createdAt: {
+      lt: Date;
+    };
+  };
   data: {
     payloadJson: unknown;
   };
@@ -152,6 +174,40 @@ function createImportedAsset(
   };
 }
 
+function createImportedRecurringRule(
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  const now = new Date('2026-04-19T10:00:00.000Z');
+
+  return {
+    id: 'rule-1',
+    userId: OWNER_ID,
+    importSource: ImportSource.CSV_TEMPLATE,
+    importKey: 'adjustment-rule',
+    name: 'Adjustment rule',
+    isActive: true,
+    kind: TransactionKind.ADJUSTMENT,
+    amount: new Prisma.Decimal('10'),
+    dayOfMonth: 15,
+    startDate: new Date('2026-04-15T00:00:00.000Z'),
+    endDate: null,
+    accountId: 'account-1',
+    direction: TransactionDirection.INFLOW,
+    categoryId: null,
+    counterparty: null,
+    sourceAccountId: null,
+    destinationAccountId: null,
+    description: 'Adjustment',
+    notes: null,
+    lastMaterializationError: null,
+    lastMaterializationErrorAt: null,
+    createdAt: now,
+    updatedAt: now,
+    occurrences: [],
+    ...overrides,
+  };
+}
+
 function parseZipEntries(buffer: Buffer): Map<string, string> {
   const entries = new Map<string, string>();
   let offset = 0;
@@ -223,6 +279,7 @@ describe('ImportsService', () => {
       findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -277,6 +334,7 @@ describe('ImportsService', () => {
         findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       $transaction: jest.fn(),
     };
@@ -928,6 +986,159 @@ describe('ImportsService', () => {
 
     expect(result.status).toBe('APPLIED');
     expect(prisma.account.create).toHaveBeenCalledTimes(1);
+    const updateCall = nthCallArg<ImportBatchUpdateCall>(
+      prisma.importBatch.update,
+      0,
+    );
+    expect(updateCall.where).toEqual({ id: preview.id });
+    expect(updateCall.data).toMatchObject({
+      status: ImportBatchStatus.APPLIED,
+      payloadJson: Prisma.DbNull,
+    });
+  });
+
+  it('keeps the import result applied when recurring materialization fails after commit', async () => {
+    const preview = await service.previewCsv(OWNER_ID, {
+      accounts: {
+        originalName: 'accounts.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,currency,institution,notes,order,archived\nchecking,Checking,BANK,EUR,,,0,false\n',
+        ),
+      },
+      recurringRules: {
+        originalName: 'recurringRules.csv',
+        buffer: Buffer.from(
+          'importKey,name,isActive,kind,amount,dayOfMonth,startDate,endDate,accountImportKey,direction,categoryImportKey,counterparty,sourceAccountImportKey,destinationAccountImportKey,description,notes\nadjustment-rule,Adjustment rule,true,ADJUSTMENT,10,15,2026-04-15,,checking,INFLOW,,,,,Adjustment,\n',
+        ),
+      },
+    });
+
+    prisma.importBatch.findFirst.mockResolvedValue(
+      createImportBatch({
+        id: preview.id,
+        payloadJson: nthCallArg<ImportBatchCreateCall>(
+          prisma.importBatch.create,
+          0,
+        ).data.payloadJson,
+      }),
+    );
+    prisma.account.create.mockResolvedValue(createImportedAccount());
+    prisma.recurringTransactionRule.create.mockResolvedValue(
+      createImportedRecurringRule(),
+    );
+    recurring.materialize.mockRejectedValueOnce(
+      new Error('materialize failed'),
+    );
+
+    const result = await service.applyBatch(OWNER_ID, preview.id);
+
+    expect(result.status).toBe('APPLIED');
+    expect(recurring.materialize).toHaveBeenCalledWith(OWNER_ID);
+    const updateCall = nthCallArg<ImportBatchUpdateCall>(
+      prisma.importBatch.update,
+      0,
+    );
+    expect(updateCall.where).toEqual({ id: preview.id });
+    expect(updateCall.data).toMatchObject({
+      status: ImportBatchStatus.APPLIED,
+      payloadJson: Prisma.DbNull,
+    });
+  });
+
+  it('clears override payload when importing skipped recurring exceptions', async () => {
+    const preview = await service.previewCsv(OWNER_ID, {
+      accounts: {
+        originalName: 'accounts.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,currency,institution,notes,order,archived\nchecking,Checking,BANK,EUR,,,0,false\n',
+        ),
+      },
+      recurringRules: {
+        originalName: 'recurringRules.csv',
+        buffer: Buffer.from(
+          'importKey,name,isActive,kind,amount,dayOfMonth,startDate,endDate,accountImportKey,direction,categoryImportKey,counterparty,sourceAccountImportKey,destinationAccountImportKey,description,notes\nadjustment-rule,Adjustment rule,true,ADJUSTMENT,10,15,2026-04-15,,checking,INFLOW,,,,,Adjustment,\n',
+        ),
+      },
+      recurringExceptions: {
+        originalName: 'recurringExceptions.csv',
+        buffer: Buffer.from(
+          'recurringRuleImportKey,month,status,amount,postedAtDate,accountImportKey,direction,categoryImportKey,counterparty,sourceAccountImportKey,destinationAccountImportKey,description,notes\nadjustment-rule,2026-04,SKIPPED,25,2026-04-20,checking,INFLOW,,Vendor,,,Keep me,\n',
+        ),
+      },
+    });
+
+    expect(preview.canApply).toBe(true);
+
+    prisma.importBatch.findFirst.mockResolvedValue(
+      createImportBatch({
+        id: preview.id,
+        payloadJson: nthCallArg<ImportBatchCreateCall>(
+          prisma.importBatch.create,
+          0,
+        ).data.payloadJson,
+      }),
+    );
+    prisma.account.create.mockResolvedValue(createImportedAccount());
+    prisma.recurringTransactionRule.create.mockResolvedValue(
+      createImportedRecurringRule(),
+    );
+
+    await service.applyBatch(OWNER_ID, preview.id);
+
+    expect(prisma.recurringTransactionOccurrence.upsert).toHaveBeenCalledWith({
+      where: {
+        recurringRuleId_occurrenceMonth: {
+          recurringRuleId: 'rule-1',
+          occurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+        },
+      },
+      create: {
+        userId: OWNER_ID,
+        recurringRuleId: 'rule-1',
+        occurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+        status: RecurringOccurrenceStatus.SKIPPED,
+        overrideAmount: null,
+        overridePostedAtDate: null,
+        overrideAccountId: null,
+        overrideDirection: null,
+        overrideCategoryId: null,
+        overrideCounterparty: null,
+        overrideSourceAccountId: null,
+        overrideDestinationAccountId: null,
+        overrideDescription: null,
+        overrideNotes: null,
+      },
+      update: {
+        status: RecurringOccurrenceStatus.SKIPPED,
+        overrideAmount: null,
+        overridePostedAtDate: null,
+        overrideAccountId: null,
+        overrideDirection: null,
+        overrideCategoryId: null,
+        overrideCounterparty: null,
+        overrideSourceAccountId: null,
+        overrideDestinationAccountId: null,
+        overrideDescription: null,
+        overrideNotes: null,
+      },
+    });
+  });
+
+  it('clears expired persisted preview payloads before reading recent batches', async () => {
+    prisma.importBatch.findMany.mockResolvedValue([createImportBatch()]);
+
+    await service.listRecent(OWNER_ID);
+
+    const updateManyCall = nthCallArg<ImportBatchUpdateManyCall>(
+      prisma.importBatch.updateMany,
+      0,
+    );
+    expect(updateManyCall.where.userId).toBe(OWNER_ID);
+    expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
+    expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
+    expect(updateManyCall.data).toEqual({
+      payloadJson: Prisma.DbNull,
+    });
   });
 
   it('rejects oversized import keys during preview before persistence', async () => {

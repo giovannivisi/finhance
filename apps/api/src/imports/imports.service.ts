@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -167,6 +168,7 @@ type CsvRecord = Record<string, string>;
 
 @Injectable()
 export class ImportsService {
+  private readonly logger = new Logger(ImportsService.name);
   private readonly previewPayloads = new Map<string, StoredPreviewPayload>();
 
   constructor(
@@ -176,6 +178,7 @@ export class ImportsService {
   ) {}
 
   async listRecent(ownerId: string): Promise<ImportBatchResponse[]> {
+    await this.clearExpiredPersistedPreviewPayloads(ownerId);
     const batches = await this.prisma.importBatch.findMany({
       where: { userId: ownerId },
       orderBy: [{ createdAt: 'desc' }],
@@ -189,6 +192,7 @@ export class ImportsService {
     ownerId: string,
     batchId: string,
   ): Promise<ImportBatchResponse> {
+    await this.clearExpiredPersistedPreviewPayloads(ownerId);
     const batch = await this.prisma.importBatch.findFirst({
       where: { id: batchId, userId: ownerId },
     });
@@ -205,6 +209,7 @@ export class ImportsService {
     files: Partial<Record<ImportFileType, ImportUploadFile>>,
   ): Promise<ImportPreviewResponse> {
     this.pruneExpiredPreviewPayloads();
+    await this.clearExpiredPersistedPreviewPayloads(ownerId);
 
     const parsed = this.parseUploadedFiles(files);
     const analysis = await this.analyzePayload(
@@ -306,7 +311,7 @@ export class ImportsService {
             status: ImportBatchStatus.APPLIED,
             summaryJson: this.toJsonValue(analysis.summary),
             errorJson: this.toJsonValue(analysis.issues),
-            payloadJson: this.toJsonValue(previewPayload),
+            payloadJson: Prisma.DbNull,
             appliedAt: new Date(),
           },
         });
@@ -316,7 +321,13 @@ export class ImportsService {
         previewPayload.recurringRules.length > 0 ||
         previewPayload.recurringExceptions.length > 0
       ) {
-        await this.recurringService.materialize(ownerId);
+        try {
+          await this.recurringService.materialize(ownerId);
+        } catch (error) {
+          this.logger.warn(
+            `Import batch ${batchId} applied successfully, but recurring materialization failed: ${this.describeError(error)}`,
+          );
+        }
       }
 
       this.previewPayloads.delete(batchId);
@@ -334,7 +345,7 @@ export class ImportsService {
             status: ImportBatchStatus.FAILED,
             summaryJson: this.toJsonValue(analysis.summary),
             errorJson: this.toJsonValue(analysis.issues),
-            payloadJson: this.toJsonValue(previewPayload),
+            payloadJson: Prisma.DbNull,
             appliedAt: null,
           },
         });
@@ -3259,6 +3270,7 @@ export class ImportsService {
       const destinationAccountId = row.destinationAccountImportKey
         ? (accountRefs.get(row.destinationAccountImportKey)?.id ?? null)
         : null;
+      const normalizedOverride = this.normalizeRecurringExceptionOverride(row);
 
       await db.recurringTransactionOccurrence.upsert({
         where: {
@@ -3272,33 +3284,55 @@ export class ImportsService {
           recurringRuleId: recurringRule.id,
           occurrenceMonth,
           status: row.status,
-          overrideAmount: row.amount ? new Prisma.Decimal(row.amount) : null,
-          overridePostedAtDate: row.postedAtDate
-            ? new Date(`${row.postedAtDate}T00:00:00.000Z`)
+          overrideAmount: normalizedOverride.amount
+            ? new Prisma.Decimal(normalizedOverride.amount)
             : null,
-          overrideAccountId: accountId,
-          overrideDirection: row.direction,
-          overrideCategoryId: categoryId,
-          overrideCounterparty: row.counterparty,
-          overrideSourceAccountId: sourceAccountId,
-          overrideDestinationAccountId: destinationAccountId,
-          overrideDescription: row.description,
-          overrideNotes: row.notes,
+          overridePostedAtDate: normalizedOverride.postedAtDate
+            ? new Date(`${normalizedOverride.postedAtDate}T00:00:00.000Z`)
+            : null,
+          overrideAccountId: normalizedOverride.accountImportKey
+            ? accountId
+            : null,
+          overrideDirection: normalizedOverride.direction,
+          overrideCategoryId: normalizedOverride.categoryImportKey
+            ? categoryId
+            : null,
+          overrideCounterparty: normalizedOverride.counterparty,
+          overrideSourceAccountId: normalizedOverride.sourceAccountImportKey
+            ? sourceAccountId
+            : null,
+          overrideDestinationAccountId:
+            normalizedOverride.destinationAccountImportKey
+              ? destinationAccountId
+              : null,
+          overrideDescription: normalizedOverride.description,
+          overrideNotes: normalizedOverride.notes,
         },
         update: {
           status: row.status,
-          overrideAmount: row.amount ? new Prisma.Decimal(row.amount) : null,
-          overridePostedAtDate: row.postedAtDate
-            ? new Date(`${row.postedAtDate}T00:00:00.000Z`)
+          overrideAmount: normalizedOverride.amount
+            ? new Prisma.Decimal(normalizedOverride.amount)
             : null,
-          overrideAccountId: accountId,
-          overrideDirection: row.direction,
-          overrideCategoryId: categoryId,
-          overrideCounterparty: row.counterparty,
-          overrideSourceAccountId: sourceAccountId,
-          overrideDestinationAccountId: destinationAccountId,
-          overrideDescription: row.description,
-          overrideNotes: row.notes,
+          overridePostedAtDate: normalizedOverride.postedAtDate
+            ? new Date(`${normalizedOverride.postedAtDate}T00:00:00.000Z`)
+            : null,
+          overrideAccountId: normalizedOverride.accountImportKey
+            ? accountId
+            : null,
+          overrideDirection: normalizedOverride.direction,
+          overrideCategoryId: normalizedOverride.categoryImportKey
+            ? categoryId
+            : null,
+          overrideCounterparty: normalizedOverride.counterparty,
+          overrideSourceAccountId: normalizedOverride.sourceAccountImportKey
+            ? sourceAccountId
+            : null,
+          overrideDestinationAccountId:
+            normalizedOverride.destinationAccountImportKey
+              ? destinationAccountId
+              : null,
+          overrideDescription: normalizedOverride.description,
+          overrideNotes: normalizedOverride.notes,
         },
       });
     }
@@ -5218,6 +5252,7 @@ export class ImportsService {
     accountImportKeyById: Map<string, string>,
     categoryImportKeyById: Map<string, string>,
   ): boolean {
+    const normalized = this.normalizeRecurringExceptionOverride(row);
     const existingAccountImportKey = existing.overrideAccountId
       ? (accountImportKeyById.get(existing.overrideAccountId) ?? null)
       : null;
@@ -5236,18 +5271,54 @@ export class ImportsService {
     return (
       existing.occurrenceMonth.toISOString().slice(0, 7) === row.month &&
       existing.status === row.status &&
-      this.equalDecimal(existing.overrideAmount, row.amount) &&
+      this.equalDecimal(existing.overrideAmount, normalized.amount) &&
       (existing.overridePostedAtDate?.toISOString().slice(0, 10) ?? null) ===
-        row.postedAtDate &&
-      existingAccountImportKey === row.accountImportKey &&
-      (existing.overrideDirection ?? null) === row.direction &&
-      existingCategoryImportKey === row.categoryImportKey &&
-      (existing.overrideCounterparty ?? null) === row.counterparty &&
-      existingSourceAccountImportKey === row.sourceAccountImportKey &&
-      existingDestinationAccountImportKey === row.destinationAccountImportKey &&
-      (existing.overrideDescription ?? null) === row.description &&
-      (existing.overrideNotes ?? null) === row.notes
+        normalized.postedAtDate &&
+      existingAccountImportKey === normalized.accountImportKey &&
+      (existing.overrideDirection ?? null) === normalized.direction &&
+      existingCategoryImportKey === normalized.categoryImportKey &&
+      (existing.overrideCounterparty ?? null) === normalized.counterparty &&
+      existingSourceAccountImportKey === normalized.sourceAccountImportKey &&
+      existingDestinationAccountImportKey ===
+        normalized.destinationAccountImportKey &&
+      (existing.overrideDescription ?? null) === normalized.description &&
+      (existing.overrideNotes ?? null) === normalized.notes
     );
+  }
+
+  private normalizeRecurringExceptionOverride(
+    row: RecurringExceptionImportRow,
+  ): Omit<
+    RecurringExceptionImportRow,
+    'rowNumber' | 'recurringRuleImportKey' | 'month' | 'status'
+  > {
+    if (row.status === RecurringOccurrenceStatus.OVERRIDDEN) {
+      return {
+        amount: row.amount,
+        postedAtDate: row.postedAtDate,
+        accountImportKey: row.accountImportKey,
+        direction: row.direction,
+        categoryImportKey: row.categoryImportKey,
+        counterparty: row.counterparty,
+        sourceAccountImportKey: row.sourceAccountImportKey,
+        destinationAccountImportKey: row.destinationAccountImportKey,
+        description: row.description,
+        notes: row.notes,
+      };
+    }
+
+    return {
+      amount: null,
+      postedAtDate: null,
+      accountImportKey: null,
+      direction: null,
+      categoryImportKey: null,
+      counterparty: null,
+      sourceAccountImportKey: null,
+      destinationAccountImportKey: null,
+      description: null,
+      notes: null,
+    };
   }
 
   private equalBudgetRow(
@@ -5317,6 +5388,24 @@ export class ImportsService {
         this.previewPayloads.delete(batchId);
       }
     }
+  }
+
+  private async clearExpiredPersistedPreviewPayloads(
+    ownerId: string,
+    now: Date = new Date(),
+  ): Promise<void> {
+    const previewCutoff = new Date(now.getTime() - IMPORT_PREVIEW_TTL_MS);
+
+    await this.prisma.importBatch.updateMany({
+      where: {
+        userId: ownerId,
+        status: ImportBatchStatus.PREVIEW,
+        createdAt: { lt: previewCutoff },
+      },
+      data: {
+        payloadJson: Prisma.DbNull,
+      },
+    });
   }
 
   private toImportBatchResponse(batch: ImportBatch): ImportBatchResponse {
