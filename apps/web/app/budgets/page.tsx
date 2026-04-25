@@ -1,10 +1,20 @@
 import Link from "next/link";
-import type { CategoryResponse, MonthlyBudgetResponse } from "@finhance/shared";
+import type {
+  CategoryResponse,
+  MonthlyBudgetResponse,
+  SetupStatusResponse,
+} from "@finhance/shared";
 import BudgetsPageClient from "@components/BudgetsPageClient";
 import Container from "@components/Container";
 import Header from "@components/Header";
+import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
-import { buildBudgetsQueryString, getBudgetFilters } from "@lib/budgets";
+import {
+  buildBudgetMonthNavigationLink,
+  buildBudgetsQueryString,
+  getBudgetFilters,
+} from "@lib/budgets";
+import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +31,7 @@ export default async function BudgetsPage({
 
   let budgetView: MonthlyBudgetResponse | null = null;
   let categories: CategoryResponse[] | null = null;
+  let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
@@ -33,6 +44,16 @@ export default async function BudgetsPage({
       error instanceof Error
         ? error.message
         : "Budget data is currently unavailable.";
+  }
+
+  if (budgetView) {
+    try {
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
+    } catch {
+      setup = null;
+    }
   }
 
   return (
@@ -64,8 +85,32 @@ export default async function BudgetsPage({
                     visibility into uncovered spend.
                   </p>
                 </div>
-                <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
-                  Month {budgetView.month}
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={buildBudgetMonthNavigationLink({
+                      month: budgetView.month,
+                      delta: -1,
+                      includeArchivedCategories:
+                        filters.includeArchivedCategories,
+                    })}
+                    className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Previous month
+                  </Link>
+                  <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
+                    Month {budgetView.month}
+                  </div>
+                  <Link
+                    href={buildBudgetMonthNavigationLink({
+                      month: budgetView.month,
+                      delta: 1,
+                      includeArchivedCategories:
+                        filters.includeArchivedCategories,
+                    })}
+                    className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Next month
+                  </Link>
                 </div>
               </div>
 
@@ -108,6 +153,16 @@ export default async function BudgetsPage({
                 </div>
               </form>
             </section>
+
+            <WorkflowSection
+              title="Use this month in context"
+              description={`Keep ${budgetView.month} connected to review and trend analysis instead of treating budgets as a standalone page.`}
+              cards={getWorkflowCards({
+                currentPage: "budgets",
+                month: budgetView.month,
+                setup,
+              })}
+            />
 
             <BudgetsPageClient
               budgetView={budgetView}

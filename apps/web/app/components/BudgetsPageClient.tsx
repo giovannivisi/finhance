@@ -14,13 +14,24 @@ import BudgetPlanForm from "@components/BudgetPlanForm";
 import { api, apiMutation } from "@lib/api";
 import {
   buildBudgetTransactionsLink,
+  getBudgetConfidenceMessage,
+  getBudgetCreatePanelContext,
+  getBudgetQuickFillSuggestions,
   getBudgetStatusClasses,
   getBudgetStatusLabel,
+  sortBudgetItemsForDisplay,
 } from "@lib/budgets";
 import { formatCurrency } from "@lib/format";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 type PanelMode = "create" | "edit" | "override";
+
+interface CreatePanelContext {
+  categoryId: string;
+  currency: string;
+  previousMonthExpense: number | null;
+  averageExpenseLast3Months: number | null;
+}
 
 function formatBudgetDelta(item: MonthlyBudgetItemResponse): string {
   if (item.remainingAmount < 0) {
@@ -54,6 +65,8 @@ export default function BudgetsPageClient({
   const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
   const [preferredCategoryId, setPreferredCategoryId] = useState<string>("");
   const [preferredCurrency, setPreferredCurrency] = useState<string>("EUR");
+  const [createPanelContext, setCreatePanelContext] =
+    useState<CreatePanelContext | null>(null);
   const [overrides, setOverrides] = useState<CategoryBudgetOverrideResponse[]>(
     [],
   );
@@ -106,11 +119,13 @@ export default function BudgetsPageClient({
   function openCreatePanel(
     nextCategoryId = "",
     nextCurrency = preferredCurrency || "EUR",
+    nextContext: CreatePanelContext | null = null,
   ) {
     setPanelMode("create");
     setSelectedBudgetId(null);
     setPreferredCategoryId(nextCategoryId);
     setPreferredCurrency(nextCurrency);
+    setCreatePanelContext(nextContext);
     setOverrides([]);
     setActionError(null);
   }
@@ -284,6 +299,25 @@ export default function BudgetsPageClient({
               key={currency.currency}
               className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100"
             >
+              {(() => {
+                const confidence = getBudgetConfidenceMessage(currency);
+
+                return (
+                  <div
+                    className={`mb-5 rounded-2xl border p-4 text-sm ${
+                      confidence.tone === "warning"
+                        ? "border-amber-200 bg-amber-50 text-amber-950"
+                        : confidence.tone === "info"
+                          ? "border-blue-200 bg-blue-50 text-blue-950"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-950"
+                    }`}
+                  >
+                    <p className="font-medium">{confidence.title}</p>
+                    <p className="mt-1 opacity-90">{confidence.detail}</p>
+                  </div>
+                );
+              })()}
+
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-xl font-semibold text-gray-900">
@@ -343,11 +377,13 @@ export default function BudgetsPageClient({
 
               {currency.items.length === 0 ? (
                 <div className="mt-6 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5 text-sm text-gray-500">
-                  No budgeted categories in {currency.currency} for this month.
+                  No budgeted categories in {currency.currency} for this month
+                  yet. Start with the categories already showing spend below or
+                  create a fresh plan in the editor.
                 </div>
               ) : (
                 <div className="mt-6 space-y-3">
-                  {currency.items.map((item) => {
+                  {sortBudgetItemsForDisplay(currency.items).map((item) => {
                     const isBusy = busyBudgetId === item.budgetId;
                     const hasCurrentOverride =
                       item.override?.month === budgetView.month;
@@ -355,7 +391,13 @@ export default function BudgetsPageClient({
                     return (
                       <article
                         key={item.budgetId}
-                        className="rounded-2xl border border-gray-200 p-4"
+                        className={`rounded-2xl border p-4 ${
+                          item.status === "OVER_BUDGET"
+                            ? "border-red-200 bg-red-50/40"
+                            : item.status === "AT_LIMIT"
+                              ? "border-amber-200 bg-amber-50/40"
+                              : "border-gray-200"
+                        }`}
                       >
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div className="space-y-2">
@@ -395,6 +437,21 @@ export default function BudgetsPageClient({
                                 }`}
                                 style={{ width: progressWidth(item) }}
                               />
+                            </div>
+
+                            <div className="flex flex-wrap gap-3 text-xs font-medium">
+                              <span
+                                className={
+                                  item.remainingAmount < 0
+                                    ? "text-red-700"
+                                    : "text-gray-600"
+                                }
+                              >
+                                Variance {formatBudgetDelta(item)}
+                              </span>
+                              <span className="text-gray-500">
+                                Status {getBudgetStatusLabel(item.status)}
+                              </span>
                             </div>
 
                             <div className="flex flex-wrap gap-4 text-xs text-gray-500">
@@ -536,7 +593,18 @@ export default function BudgetsPageClient({
                           <button
                             type="button"
                             onClick={() =>
-                              openCreatePanel(item.categoryId, item.currency)
+                              openCreatePanel(
+                                item.categoryId,
+                                item.currency,
+                                getBudgetCreatePanelContext({
+                                  categoryId: item.categoryId,
+                                  currency: item.currency,
+                                  previousMonthExpense:
+                                    item.previousMonthExpense,
+                                  averageExpenseLast3Months:
+                                    item.averageExpenseLast3Months,
+                                }),
+                              )
                             }
                             className="font-medium text-gray-700 hover:underline"
                           >
@@ -629,6 +697,16 @@ export default function BudgetsPageClient({
               defaultMonth={budgetView.month}
               preferredCategoryId={preferredCategoryId}
               preferredCurrency={preferredCurrency}
+              quickFillSuggestions={getBudgetQuickFillSuggestions({
+                previousMonthExpense:
+                  panelMode === "edit"
+                    ? (selectedBudget?.previousMonthExpense ?? null)
+                    : (createPanelContext?.previousMonthExpense ?? null),
+                averageExpenseLast3Months:
+                  panelMode === "edit"
+                    ? (selectedBudget?.averageExpenseLast3Months ?? null)
+                    : (createPanelContext?.averageExpenseLast3Months ?? null),
+              })}
               onSuccess={() => {
                 if (panelMode !== "create") {
                   openCreatePanel();

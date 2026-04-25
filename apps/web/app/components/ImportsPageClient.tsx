@@ -7,6 +7,11 @@ import type {
   ImportPreviewResponse,
 } from "@finhance/shared";
 import { apiMutation, fetchApiMutation, readApiError } from "@lib/api";
+import {
+  getImportReadiness,
+  groupImportSummaries,
+  splitImportIssues,
+} from "@lib/imports";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 const TEMPLATE_LINKS: Array<{ file: ImportFileType; href: string }> = [
@@ -72,6 +77,9 @@ export default function ImportsPageClient({
     () => Object.values(selectedFiles).filter(Boolean).length,
     [selectedFiles],
   );
+  const previewReadiness = preview ? getImportReadiness(preview) : null;
+  const previewGroups = preview ? groupImportSummaries(preview.summary) : [];
+  const previewIssues = preview ? splitImportIssues(preview.issues) : null;
 
   function updateFileSelection(
     file: ImportFileType,
@@ -203,9 +211,48 @@ export default function ImportsPageClient({
           Import & export
         </h1>
         <p className="mt-2 text-sm text-gray-500">
-          Upload finhance CSV templates to preview safe merges before applying
-          them, or export a round-trip ZIP backup of your current data.
+          Use the CSV round-trip flow to establish a clean baseline, preview
+          merges safely, and carry definitions like recurring rules and budgets
+          without losing the monthly workflow.
         </p>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-800">
+              What apply does
+            </h2>
+            <ul className="mt-3 space-y-2 text-sm text-blue-950">
+              <li>
+                Matches rows by import key and merges creates, updates, and
+                unchanged rows safely.
+              </li>
+              <li>
+                `transactions.csv` covers manual transactions only, not
+                recurring-generated rows.
+              </li>
+              <li>
+                Recurring-generated transactions are recreated from recurring
+                rules and exceptions after apply.
+              </li>
+              <li>
+                Opening balances, recurring definitions, budgets, and overrides
+                are part of the round-trip package.
+              </li>
+            </ul>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
+              Best use of import/export
+            </h2>
+            <p className="mt-3 text-sm text-gray-600">
+              Import is best when you are starting from existing finance data or
+              moving the same finhance model between workspaces. Export is a
+              round-trip backup of definitions and manual history, not a raw
+              dump of every generated occurrence.
+            </p>
+          </div>
+        </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {TEMPLATE_LINKS.map((template) => (
@@ -227,8 +274,8 @@ export default function ImportsPageClient({
                 Export ZIP
               </h2>
               <p className="mt-1 text-sm text-gray-500">
-                Download the full CSV round-trip package, including opening
-                balances, recurring definitions, and budgets.
+                Download the full round-trip package, including opening
+                balances, recurring rules and exceptions, and budget plans.
               </p>
             </div>
 
@@ -279,7 +326,7 @@ export default function ImportsPageClient({
             <p className="text-sm text-gray-500">
               {selectedCount === 0
                 ? "No files selected yet."
-                : `${selectedCount} file${selectedCount === 1 ? "" : "s"} selected.`}
+                : `${selectedCount} file${selectedCount === 1 ? "" : "s"} selected. Preview first to see exactly what would merge.`}
             </p>
           </div>
         </form>
@@ -321,30 +368,75 @@ export default function ImportsPageClient({
             </p>
           ) : null}
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {preview.summary.files.map((fileSummary) => (
-              <article
-                key={fileSummary.file}
+          {previewReadiness ? (
+            <div
+              className={`mt-6 rounded-2xl border p-4 ${
+                previewReadiness.tone === "blocked"
+                  ? "border-red-200 bg-red-50 text-red-950"
+                  : previewReadiness.tone === "warning"
+                    ? "border-amber-200 bg-amber-50 text-amber-950"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-950"
+              }`}
+            >
+              <p className="font-medium">{previewReadiness.title}</p>
+              <p className="mt-1 text-sm opacity-90">
+                {previewReadiness.detail}
+              </p>
+            </div>
+          ) : null}
+
+          <div className="mt-6 grid gap-6 xl:grid-cols-3">
+            {previewGroups.map((group) => (
+              <section
+                key={group.id}
                 className="rounded-2xl border border-gray-200 bg-gray-50 p-4"
               >
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
-                  {fileSummary.file}
+                  {group.title}
                 </h3>
-                <dl className="mt-3 space-y-1 text-sm text-gray-600">
-                  <div className="flex justify-between gap-4">
-                    <dt>Create</dt>
-                    <dd>{fileSummary.createCount}</dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt>Update</dt>
-                    <dd>{fileSummary.updateCount}</dd>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <dt>Unchanged</dt>
-                    <dd>{fileSummary.unchangedCount}</dd>
-                  </div>
-                </dl>
-              </article>
+                <p className="mt-1 text-sm text-gray-500">{group.detail}</p>
+
+                <div className="mt-4 space-y-3">
+                  {group.files.map((fileSummary) => (
+                    <article
+                      key={fileSummary.file}
+                      className="rounded-2xl bg-white px-4 py-3"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="text-sm font-medium text-gray-900">
+                          {fileSummary.file}
+                        </h4>
+                        <span className="text-xs uppercase tracking-wide text-gray-500">
+                          {fileSummary.createCount +
+                            fileSummary.updateCount +
+                            fileSummary.unchangedCount}{" "}
+                          rows
+                        </span>
+                      </div>
+                      <dl className="mt-3 grid gap-2 text-sm text-gray-600 sm:grid-cols-3">
+                        <div className="rounded-xl bg-gray-50 px-3 py-2">
+                          <dt>Create</dt>
+                          <dd className="mt-1 font-medium text-gray-900">
+                            {fileSummary.createCount}
+                          </dd>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 px-3 py-2">
+                          <dt>Update</dt>
+                          <dd className="mt-1 font-medium text-gray-900">
+                            {fileSummary.updateCount}
+                          </dd>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 px-3 py-2">
+                          <dt>Unchanged</dt>
+                          <dd className="mt-1 font-medium text-gray-900">
+                            {fileSummary.unchangedCount}
+                          </dd>
+                        </div>
+                      </dl>
+                    </article>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
 
@@ -362,30 +454,77 @@ export default function ImportsPageClient({
             ) : null}
           </div>
 
-          {preview.issues.length > 0 ? (
-            <div className="mt-6 overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="text-left text-gray-500">
-                  <tr>
-                    <th className="pb-2 pr-4">File</th>
-                    <th className="pb-2 pr-4">Row</th>
-                    <th className="pb-2 pr-4">Field</th>
-                    <th className="pb-2 pr-4">Message</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-700">
-                  {preview.issues.map((issue, index) => (
-                    <tr key={`${issue.file}-${issue.rowNumber}-${index}`}>
-                      <td className="py-2 pr-4 align-top">{issue.file}</td>
-                      <td className="py-2 pr-4 align-top">{issue.rowNumber}</td>
-                      <td className="py-2 pr-4 align-top">
-                        {issue.field ?? "—"}
-                      </td>
-                      <td className="py-2 pr-4 align-top">{issue.message}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {previewIssues && preview.issues.length > 0 ? (
+            <div className="mt-6 space-y-6">
+              {[
+                {
+                  title: "Blocking issues",
+                  empty: "No blocking issues in this preview.",
+                  tone: "red",
+                  issues: previewIssues.errors,
+                },
+                {
+                  title: "Warnings to review",
+                  empty: "No warnings in this preview.",
+                  tone: "amber",
+                  issues: previewIssues.warnings,
+                },
+              ].map((section) => (
+                <section key={section.title}>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {section.title}
+                  </h3>
+                  {section.issues.length === 0 ? (
+                    <p
+                      className={`mt-2 text-sm ${
+                        section.tone === "red"
+                          ? "text-emerald-700"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      {section.empty}
+                    </p>
+                  ) : (
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead className="text-left text-gray-500">
+                          <tr>
+                            <th className="pb-2 pr-4">File</th>
+                            <th className="pb-2 pr-4">Row</th>
+                            <th className="pb-2 pr-4">Field</th>
+                            <th className="pb-2 pr-4">Message</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 text-gray-700">
+                          {section.issues.map((issue, index) => (
+                            <tr
+                              key={`${section.title}-${issue.file}-${issue.rowNumber}-${index}`}
+                              className={
+                                section.tone === "red"
+                                  ? "bg-red-50/50"
+                                  : "bg-amber-50/40"
+                              }
+                            >
+                              <td className="py-2 pr-4 align-top font-medium">
+                                {issue.file}
+                              </td>
+                              <td className="py-2 pr-4 align-top">
+                                {issue.rowNumber}
+                              </td>
+                              <td className="py-2 pr-4 align-top">
+                                {issue.field ?? "—"}
+                              </td>
+                              <td className="py-2 pr-4 align-top">
+                                {issue.message}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              ))}
             </div>
           ) : (
             <p className="mt-6 text-sm text-green-700">
@@ -430,18 +569,27 @@ export default function ImportsPageClient({
                   </div>
 
                   <div className="text-sm text-gray-600">
-                    {batch.summary.errorCount} errors •{" "}
+                    {batch.summary.errorCount} blocking •{" "}
                     {batch.summary.warningCount} warnings
                   </div>
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
-                  {batch.summary.files.map((fileSummary) => (
-                    <span key={`${batch.id}-${fileSummary.file}`}>
-                      {fileSummary.file}: {fileSummary.createCount} create,{" "}
-                      {fileSummary.updateCount} update,{" "}
-                      {fileSummary.unchangedCount} unchanged
-                    </span>
+                <div className="mt-3 space-y-3 text-xs text-gray-500">
+                  {groupImportSummaries(batch.summary).map((group) => (
+                    <div key={`${batch.id}-${group.id}`}>
+                      <p className="font-medium uppercase tracking-wide text-gray-600">
+                        {group.title}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-3">
+                        {group.files.map((fileSummary) => (
+                          <span key={`${batch.id}-${fileSummary.file}`}>
+                            {fileSummary.file}: {fileSummary.createCount}{" "}
+                            create, {fileSummary.updateCount} update,{" "}
+                            {fileSummary.unchangedCount} unchanged
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </article>

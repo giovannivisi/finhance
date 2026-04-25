@@ -3,17 +3,23 @@ import type {
   AccountResponse,
   CashflowAnalyticsResponse,
   CategoryResponse,
+  SetupStatusResponse,
 } from "@finhance/shared";
+import AnalyticsCategoryBarChart from "@components/AnalyticsCategoryBarChart";
+import AnalyticsTrendChart from "@components/AnalyticsTrendChart";
 import Container from "@components/Container";
 import Header from "@components/Header";
+import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
 import {
   buildAnalyticsQueryString,
   buildTransactionsLink,
+  getDefaultAnalyticsFilters,
   getAnalyticsFilters,
   getMonthDateRange,
 } from "@lib/analytics";
 import { formatCurrency } from "@lib/format";
+import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +51,7 @@ export default async function AnalyticsPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const filters = getAnalyticsFilters(resolvedSearchParams);
+  const defaultFilters = getDefaultAnalyticsFilters();
   const queryString = buildAnalyticsQueryString(filters);
   const selectedRange = {
     from: `${filters.from}-01`,
@@ -54,6 +61,7 @@ export default async function AnalyticsPage({
   let analytics: CashflowAnalyticsResponse | null = null;
   let accounts: AccountResponse[] | null = null;
   let categories: CategoryResponse[] | null = null;
+  let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
@@ -67,6 +75,16 @@ export default async function AnalyticsPage({
       error instanceof Error
         ? error.message
         : "Analytics data is currently unavailable.";
+  }
+
+  if (analytics) {
+    try {
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
+    } catch {
+      setup = null;
+    }
   }
 
   return (
@@ -188,16 +206,54 @@ export default async function AnalyticsPage({
               </form>
             </section>
 
+            <WorkflowSection
+              title="Turn the focus month into action"
+              description={`Use ${analytics.focusMonth} as the bridge between trend analysis, monthly review, and budgets.`}
+              cards={getWorkflowCards({
+                currentPage: "analytics",
+                month: analytics.focusMonth,
+                setup,
+              })}
+            />
+
             {analytics.currencies.length === 0 ? (
               <section className="rounded-3xl border border-dashed border-gray-300 bg-white p-8 text-sm text-gray-500">
                 <p className="font-medium text-gray-700">
-                  No analytics data matches the current range and filters.
+                  {!setup?.isComplete
+                    ? "Analytics is available, but the trust baseline is still incomplete."
+                    : "No analytics data matches the current range and filters."}
                 </p>
                 <p className="mt-2">
-                  The selected month range, account, category, or archived
-                  toggle may be filtering everything out. Try widening the range
-                  or use the existing Clear action above to reset the filters.
+                  {!setup?.isComplete
+                    ? "Finish setup or import existing data first so analytics has real accounts, categories, and history to work with."
+                    : filters.from !== defaultFilters.from ||
+                        filters.to !== defaultFilters.to ||
+                        filters.accountId ||
+                        filters.categoryId ||
+                        filters.includeArchivedAccounts
+                      ? "The selected month range, account, category, or archived toggle may be filtering everything out. Widen the range or clear the filters."
+                      : "There is no matching income or expense activity in this range yet. Import existing data or record your first month first."}
                 </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link
+                    href={!setup?.isComplete ? "/setup" : "/import"}
+                    className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    {!setup?.isComplete ? "Open setup" : "Open import"}
+                  </Link>
+                  <Link
+                    href="/analytics"
+                    className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Clear filters
+                  </Link>
+                  <Link
+                    href={`/review?month=${encodeURIComponent(analytics.focusMonth)}`}
+                    className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Open review
+                  </Link>
+                </div>
               </section>
             ) : (
               analytics.currencies.map((currency) => {
@@ -239,6 +295,13 @@ export default async function AnalyticsPage({
                             </p>
                           </div>
                         </div>
+                      </div>
+
+                      <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                        <AnalyticsTrendChart
+                          data={currency.monthlySeries}
+                          currency={currency.currency}
+                        />
                       </div>
                     </section>
 
@@ -358,6 +421,15 @@ export default async function AnalyticsPage({
                           <h4 className="text-sm font-semibold text-gray-900">
                             Expense breakdown
                           </h4>
+                          {currency.focusMonthExpenseBreakdown.length > 0 ? (
+                            <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                              <AnalyticsCategoryBarChart
+                                currency={currency.currency}
+                                data={currency.focusMonthExpenseBreakdown}
+                                mode="breakdown"
+                              />
+                            </div>
+                          ) : null}
                           {currency.focusMonthExpenseBreakdown.length === 0 ? (
                             <p className="mt-2 text-sm text-gray-500">
                               No expense categories in the focus month.
@@ -450,6 +522,20 @@ export default async function AnalyticsPage({
                           <h4 className="text-sm font-semibold text-gray-900">
                             Expense movers
                           </h4>
+                          {currency.expenseMonthOverMonthChanges.length > 0 ? (
+                            <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                              <AnalyticsCategoryBarChart
+                                currency={currency.currency}
+                                data={currency.expenseMonthOverMonthChanges.map(
+                                  (item) => ({
+                                    ...item,
+                                    absoluteDelta: Math.abs(item.delta),
+                                  }),
+                                )}
+                                mode="movers"
+                              />
+                            </div>
+                          ) : null}
                           {currency.expenseMonthOverMonthChanges.length ===
                           0 ? (
                             <p className="mt-2 text-sm text-gray-500">

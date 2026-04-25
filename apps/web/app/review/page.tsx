@@ -2,17 +2,21 @@ import Link from "next/link";
 import type {
   MonthlyReviewResponse,
   MonthlyReviewWarningResponse,
+  SetupStatusResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
 import Header from "@components/Header";
 import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
+import ReviewBudgetStatusChart from "@components/ReviewBudgetStatusChart";
 import ReviewMonthPicker from "@components/ReviewMonthPicker";
 import ReviewCaptureSnapshotButton from "@components/ReviewCaptureSnapshotButton";
+import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
 import { formatCurrency } from "@lib/format";
 import { CATEGORY_TYPE_LABELS } from "@lib/categories";
 import { TRANSACTION_KIND_LABELS } from "@lib/transactions";
 import { getReviewWarningLink, shouldOfferSnapshotCapture } from "@lib/review";
+import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +52,14 @@ function renderWarningMeta(
   return null;
 }
 
+function getDriverBarWidth(total: number, maxTotal: number): string {
+  if (maxTotal <= 0) {
+    return "0%";
+  }
+
+  return `${Math.max(12, Math.min(100, (total / maxTotal) * 100))}%`;
+}
+
 export default async function ReviewPage({
   searchParams,
 }: {
@@ -58,6 +70,7 @@ export default async function ReviewPage({
   const month = getMonthParam(resolvedSearchParams.month, fallbackMonth);
 
   let review: MonthlyReviewResponse | null = null;
+  let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
@@ -69,6 +82,16 @@ export default async function ReviewPage({
       error instanceof Error
         ? error.message
         : "Monthly review data is currently unavailable.";
+  }
+
+  if (review) {
+    try {
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
+    } catch {
+      setup = null;
+    }
   }
 
   if (!review) {
@@ -99,6 +122,11 @@ export default async function ReviewPage({
     review.month,
     review.warnings,
   );
+  const workflowCards = getWorkflowCards({
+    currentPage: "review",
+    month: review.month,
+    setup,
+  });
 
   return (
     <>
@@ -164,6 +192,48 @@ export default async function ReviewPage({
                 </p>
                 <p className="mt-1 text-xs text-gray-500">
                   Based on the nearest available snapshots around the month.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Review warnings
+                </p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">
+                  {review.warnings.length}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {review.warnings.length === 0
+                    ? "No open warning cards."
+                    : "Use the actions below before trusting the month fully."}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Budget highlights
+                </p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">
+                  {review.budgetHighlights.length}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {review.budgetHighlights.length === 0
+                    ? "No categories are currently over budget."
+                    : "Most important over-budget categories are highlighted below."}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500">
+                  Reconciliation issues
+                </p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">
+                  {reconciliationIssueCount}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {reconciliationIssueCount === 0
+                    ? "All active accounts reconcile cleanly."
+                    : "Diagnostics below explain the accounts still weakening trust."}
                 </p>
               </div>
             </div>
@@ -237,6 +307,12 @@ export default async function ReviewPage({
               </div>
             </div>
           </section>
+
+          <WorkflowSection
+            title="Continue the workflow"
+            description="Once this month makes sense, move into budgets and multi-month analytics without losing the same month context."
+            cards={workflowCards}
+          />
 
           <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
             <h2 className="text-xl font-semibold text-gray-900">
@@ -423,6 +499,10 @@ export default async function ReviewPage({
               </div>
             ) : (
               <div className="mt-4 space-y-4">
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                  <ReviewBudgetStatusChart summaries={review.budgetSummary} />
+                </div>
+
                 <div className="grid gap-4 xl:grid-cols-2">
                   {review.budgetSummary.map((summary) => (
                     <article
@@ -720,6 +800,20 @@ export default async function ReviewPage({
                   const cashflowBucket = cashflowByCurrency.get(
                     insight.currency,
                   );
+                  const expenseDriverMax = Math.max(
+                    1,
+                    ...insight.topExpenseCategories.map((item) => item.total),
+                  );
+                  const incomeDriverMax = Math.max(
+                    1,
+                    ...insight.topIncomeCategories.map((item) => item.total),
+                  );
+                  const accountDriverMax = Math.max(
+                    1,
+                    ...insight.topAccounts.map((item) =>
+                      Math.abs(item.netCashflow),
+                    ),
+                  );
 
                   return (
                     <article
@@ -815,13 +909,24 @@ export default async function ReviewPage({
                                   key={item.categoryId ?? item.name}
                                   className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-sm"
                                 >
-                                  <div>
+                                  <div className="min-w-0 flex-1">
                                     <p className="font-medium text-gray-900">
                                       {item.name}
                                     </p>
                                     <p className="text-gray-500">
                                       {CATEGORY_TYPE_LABELS.EXPENSE}
                                     </p>
+                                    <div className="mt-2 h-2 rounded-full bg-gray-100">
+                                      <div
+                                        className="h-2 rounded-full bg-rose-500"
+                                        style={{
+                                          width: getDriverBarWidth(
+                                            item.total,
+                                            expenseDriverMax,
+                                          ),
+                                        }}
+                                      />
+                                    </div>
                                   </div>
                                   <span className="font-medium text-gray-900">
                                     {formatCurrency(
@@ -850,13 +955,24 @@ export default async function ReviewPage({
                                   key={item.categoryId ?? item.name}
                                   className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-sm"
                                 >
-                                  <div>
+                                  <div className="min-w-0 flex-1">
                                     <p className="font-medium text-gray-900">
                                       {item.name}
                                     </p>
                                     <p className="text-gray-500">
                                       {CATEGORY_TYPE_LABELS.INCOME}
                                     </p>
+                                    <div className="mt-2 h-2 rounded-full bg-gray-100">
+                                      <div
+                                        className="h-2 rounded-full bg-emerald-500"
+                                        style={{
+                                          width: getDriverBarWidth(
+                                            item.total,
+                                            incomeDriverMax,
+                                          ),
+                                        }}
+                                      />
+                                    </div>
                                   </div>
                                   <span className="font-medium text-gray-900">
                                     {formatCurrency(
@@ -895,6 +1011,21 @@ export default async function ReviewPage({
                                         insight.currency,
                                       )}
                                     </span>
+                                  </div>
+                                  <div className="mt-2 h-2 rounded-full bg-gray-100">
+                                    <div
+                                      className={`h-2 rounded-full ${
+                                        item.netCashflow >= 0
+                                          ? "bg-sky-500"
+                                          : "bg-amber-500"
+                                      }`}
+                                      style={{
+                                        width: getDriverBarWidth(
+                                          Math.abs(item.netCashflow),
+                                          accountDriverMax,
+                                        ),
+                                      }}
+                                    />
                                   </div>
                                   <p className="mt-1 text-gray-500">
                                     In{" "}
