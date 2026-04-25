@@ -1,10 +1,16 @@
 import Link from "next/link";
-import type { CategoryResponse, MonthlyBudgetResponse } from "@finhance/shared";
+import type {
+  CategoryResponse,
+  MonthlyBudgetResponse,
+  SetupStatusResponse,
+} from "@finhance/shared";
 import BudgetsPageClient from "@components/BudgetsPageClient";
 import Container from "@components/Container";
 import Header from "@components/Header";
+import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
 import { buildBudgetsQueryString, getBudgetFilters } from "@lib/budgets";
+import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +27,7 @@ export default async function BudgetsPage({
 
   let budgetView: MonthlyBudgetResponse | null = null;
   let categories: CategoryResponse[] | null = null;
+  let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
@@ -33,6 +40,16 @@ export default async function BudgetsPage({
       error instanceof Error
         ? error.message
         : "Budget data is currently unavailable.";
+  }
+
+  if (budgetView) {
+    try {
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
+    } catch {
+      setup = null;
+    }
   }
 
   return (
@@ -108,6 +125,16 @@ export default async function BudgetsPage({
                 </div>
               </form>
             </section>
+
+            <WorkflowSection
+              title="Use this month in context"
+              description={`Keep ${budgetView.month} connected to review and trend analysis instead of treating budgets as a standalone page.`}
+              cards={getWorkflowCards({
+                currentPage: "budgets",
+                month: budgetView.month,
+                setup,
+              })}
+            />
 
             <BudgetsPageClient
               budgetView={budgetView}

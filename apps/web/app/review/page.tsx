@@ -2,17 +2,20 @@ import Link from "next/link";
 import type {
   MonthlyReviewResponse,
   MonthlyReviewWarningResponse,
+  SetupStatusResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
 import Header from "@components/Header";
 import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import ReviewMonthPicker from "@components/ReviewMonthPicker";
 import ReviewCaptureSnapshotButton from "@components/ReviewCaptureSnapshotButton";
+import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
 import { formatCurrency } from "@lib/format";
 import { CATEGORY_TYPE_LABELS } from "@lib/categories";
 import { TRANSACTION_KIND_LABELS } from "@lib/transactions";
 import { getReviewWarningLink, shouldOfferSnapshotCapture } from "@lib/review";
+import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +61,7 @@ export default async function ReviewPage({
   const month = getMonthParam(resolvedSearchParams.month, fallbackMonth);
 
   let review: MonthlyReviewResponse | null = null;
+  let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
@@ -69,6 +73,16 @@ export default async function ReviewPage({
       error instanceof Error
         ? error.message
         : "Monthly review data is currently unavailable.";
+  }
+
+  if (review) {
+    try {
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
+    } catch {
+      setup = null;
+    }
   }
 
   if (!review) {
@@ -99,6 +113,11 @@ export default async function ReviewPage({
     review.month,
     review.warnings,
   );
+  const workflowCards = getWorkflowCards({
+    currentPage: "review",
+    month: review.month,
+    setup,
+  });
 
   return (
     <>
@@ -237,6 +256,12 @@ export default async function ReviewPage({
               </div>
             </div>
           </section>
+
+          <WorkflowSection
+            title="Continue the workflow"
+            description="Once this month makes sense, move into budgets and multi-month analytics without losing the same month context."
+            cards={workflowCards}
+          />
 
           <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
             <h2 className="text-xl font-semibold text-gray-900">

@@ -9,9 +9,11 @@ import type {
 } from "@finhance/shared";
 import { api } from "@lib/api";
 import DashboardClient from "@components/DashboardClient";
+import WorkflowSection from "@components/WorkflowSection";
 import { getCurrentRomeMonth } from "@lib/budgets";
 import { formatCurrency } from "@lib/format";
 import { getPrimarySetupAction, getSetupProgressLabel } from "@lib/setup";
+import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +98,14 @@ export default async function Home() {
       total,
     }))
     .sort((left, right) => right.total - left.total);
+  const workflowCards =
+    setup && setup.isComplete
+      ? getWorkflowCards({
+          currentPage: "dashboard",
+          month: budgetView?.month ?? getCurrentRomeMonth(),
+          setup,
+        })
+      : [];
 
   return (
     <>
@@ -193,6 +203,12 @@ export default async function Home() {
           kindTotalsArray={kindTotalsArray}
           baseCurrency={dashboard.baseCurrency}
           lastRefreshAt={dashboard.lastRefreshAt}
+        />
+
+        <WorkflowSection
+          title="Use the current month"
+          description="Move from today’s summary into the month-level workflow: explain it, compare it with plan, and place it in trend context."
+          cards={workflowCards}
         />
 
         {budgetView ? (

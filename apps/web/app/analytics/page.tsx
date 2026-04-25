@@ -3,9 +3,11 @@ import type {
   AccountResponse,
   CashflowAnalyticsResponse,
   CategoryResponse,
+  SetupStatusResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
 import Header from "@components/Header";
+import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
 import {
   buildAnalyticsQueryString,
@@ -14,6 +16,7 @@ import {
   getMonthDateRange,
 } from "@lib/analytics";
 import { formatCurrency } from "@lib/format";
+import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +57,7 @@ export default async function AnalyticsPage({
   let analytics: CashflowAnalyticsResponse | null = null;
   let accounts: AccountResponse[] | null = null;
   let categories: CategoryResponse[] | null = null;
+  let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
@@ -67,6 +71,16 @@ export default async function AnalyticsPage({
       error instanceof Error
         ? error.message
         : "Analytics data is currently unavailable.";
+  }
+
+  if (analytics) {
+    try {
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
+    } catch {
+      setup = null;
+    }
   }
 
   return (
@@ -187,6 +201,16 @@ export default async function AnalyticsPage({
                 </div>
               </form>
             </section>
+
+            <WorkflowSection
+              title="Turn the focus month into action"
+              description={`Use ${analytics.focusMonth} as the bridge between trend analysis, monthly review, and budgets.`}
+              cards={getWorkflowCards({
+                currentPage: "analytics",
+                month: analytics.focusMonth,
+                setup,
+              })}
+            />
 
             {analytics.currencies.length === 0 ? (
               <section className="rounded-3xl border border-dashed border-gray-300 bg-white p-8 text-sm text-gray-500">
