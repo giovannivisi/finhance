@@ -5,17 +5,20 @@ import type {
   DashboardAssetResponse,
   DashboardResponse,
   MonthlyBudgetResponse,
+  SetupStatusResponse,
 } from "@finhance/shared";
 import { api } from "@lib/api";
 import DashboardClient from "@components/DashboardClient";
 import { getCurrentRomeMonth } from "@lib/budgets";
 import { formatCurrency } from "@lib/format";
+import { getPrimarySetupAction, getSetupProgressLabel } from "@lib/setup";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   let dashboard: DashboardResponse | null = null;
   let budgetView: MonthlyBudgetResponse | null = null;
+  let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
@@ -30,6 +33,16 @@ export default async function Home() {
       error instanceof Error
         ? error.message
         : "Dashboard data is currently unavailable.";
+  }
+
+  if (dashboard) {
+    try {
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
+    } catch {
+      setup = null;
+    }
   }
 
   if (!dashboard) {
@@ -89,6 +102,64 @@ export default async function Home() {
       <Header />
       <Container>
         <h2 className="text-2xl font-semibold">Summary</h2>
+
+        {setup && !setup.isComplete ? (
+          <section className="mb-6 rounded-3xl border border-blue-200 bg-blue-50 p-6 text-blue-950">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium uppercase tracking-wide text-blue-700">
+                  Setup checklist
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold">
+                  Your trust baseline is not complete yet
+                </h3>
+                <p className="mt-2 text-sm text-blue-900/80">
+                  {getSetupProgressLabel(setup)}. Finish the baseline first,
+                  then move into review, analytics, budgets, and recurring
+                  workflows with fewer surprises.
+                </p>
+              </div>
+              <Link
+                href="/setup"
+                className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-100"
+              >
+                Open setup
+              </Link>
+            </div>
+
+            {(() => {
+              const primaryAction = getPrimarySetupAction(setup);
+
+              if (!primaryAction) {
+                return null;
+              }
+
+              return (
+                <div className="mt-5 rounded-2xl bg-white/70 p-4">
+                  <p className="text-sm font-medium text-blue-700">
+                    Best next action
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        {primaryAction.title}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        {primaryAction.detail}
+                      </p>
+                    </div>
+                    <Link
+                      href={primaryAction.href}
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    >
+                      {primaryAction.actionLabel}
+                    </Link>
+                  </div>
+                </div>
+              );
+            })()}
+          </section>
+        ) : null}
 
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-white shadow rounded-2xl p-4 text-center">
