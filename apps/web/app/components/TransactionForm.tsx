@@ -153,39 +153,79 @@ export default function TransactionForm({
     });
   }
 
+  const getLabelStyle = (required: boolean) => ({
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    fontSize: "12px",
+    fontWeight: required ? 700 : 500,
+    color: required ? "var(--text-primary)" : "var(--text-tertiary)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.06em",
+    marginBottom: "8px",
+  });
+
+  const inputStyle = {
+    width: "100%",
+    background: "var(--bg-app)",
+    border: "1px solid var(--border-glass-strong)",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    color: "var(--text-primary)",
+    fontSize: "15px",
+    outline: "none",
+    transition: "border-color 0.2s",
+    boxSizing: "border-box" as const,
+  };
+
+  const handleFocus = (
+    e: React.FocusEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => (e.target.style.borderColor = "var(--text-secondary)");
+  const handleBlur = (
+    e: React.FocusEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => (e.target.style.borderColor = "var(--border-glass-strong)");
+
   const isTransfer = form.kind === "TRANSFER";
   const isAdjustment = form.kind === "ADJUSTMENT";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+    >
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
+      >
+        <div>
           <label
             htmlFor={`${fieldPrefix}-posted-at`}
-            className="text-sm font-medium text-gray-600"
+            style={getLabelStyle(true)}
           >
-            Posted at
+            <span>Posted at</span>
           </label>
           <input
             id={`${fieldPrefix}-posted-at`}
-            className="rounded-lg border px-3 py-2"
+            style={inputStyle}
             type="datetime-local"
             value={form.postedAt}
             onChange={(event) => updateField("postedAt", event.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             required
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-kind`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Kind
+        <div>
+          <label htmlFor={`${fieldPrefix}-kind`} style={getLabelStyle(true)}>
+            <span>Kind</span>
           </label>
           <select
             id={`${fieldPrefix}-kind`}
-            className="rounded-lg border px-3 py-2"
+            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
             value={form.kind}
             disabled={!isCreateMode}
             onChange={(event) =>
@@ -194,6 +234,8 @@ export default function TransactionForm({
                 event.target.value as TransactionFormValues["kind"],
               )
             }
+            onFocus={handleFocus}
+            onBlur={handleBlur}
           >
             {TRANSACTION_KIND_OPTIONS.map((kind) => (
               <option key={kind} value={kind}>
@@ -204,38 +246,41 @@ export default function TransactionForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-amount`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Amount
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
+      >
+        <div>
+          <label htmlFor={`${fieldPrefix}-amount`} style={getLabelStyle(true)}>
+            <span>Amount</span>
           </label>
           <input
             id={`${fieldPrefix}-amount`}
-            className="rounded-lg border px-3 py-2"
+            style={inputStyle}
             type="number"
             step="0.01"
             value={form.amount}
             onChange={(event) => updateField("amount", event.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             required
           />
         </div>
 
         {!isTransfer ? (
-          <div className="flex flex-col gap-1">
+          <div>
             <label
               htmlFor={`${fieldPrefix}-account`}
-              className="text-sm font-medium text-gray-600"
+              style={getLabelStyle(true)}
             >
-              Account
+              <span>Account</span>
             </label>
             <select
               id={`${fieldPrefix}-account`}
-              className="rounded-lg border px-3 py-2"
+              style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
               value={form.accountId}
               onChange={(event) => updateField("accountId", event.target.value)}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
               required
             >
               <option value="">Select an account</option>
@@ -247,28 +292,47 @@ export default function TransactionForm({
             </select>
           </div>
         ) : (
-          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+          <div
+            style={{
+              padding: "12px 16px",
+              borderRadius: "12px",
+              border: "1px solid rgba(59, 130, 246, 0.2)",
+              background: "rgba(59, 130, 246, 0.1)",
+              fontSize: "13px",
+              color: "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
             Transfers create one outflow row and one inflow row underneath.
           </div>
         )}
       </div>
 
       {isTransfer ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "16px",
+          }}
+        >
+          <div>
             <label
               htmlFor={`${fieldPrefix}-source-account`}
-              className="text-sm font-medium text-gray-600"
+              style={getLabelStyle(true)}
             >
-              Source account
+              <span>Source account</span>
             </label>
             <select
               id={`${fieldPrefix}-source-account`}
-              className="rounded-lg border px-3 py-2"
+              style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
               value={form.sourceAccountId}
               onChange={(event) =>
                 updateField("sourceAccountId", event.target.value)
               }
+              onFocus={handleFocus}
+              onBlur={handleBlur}
               required
             >
               <option value="">Select a source account</option>
@@ -280,20 +344,22 @@ export default function TransactionForm({
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
+          <div>
             <label
               htmlFor={`${fieldPrefix}-destination-account`}
-              className="text-sm font-medium text-gray-600"
+              style={getLabelStyle(true)}
             >
-              Destination account
+              <span>Destination account</span>
             </label>
             <select
               id={`${fieldPrefix}-destination-account`}
-              className="rounded-lg border px-3 py-2"
+              style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
               value={form.destinationAccountId}
               onChange={(event) =>
                 updateField("destinationAccountId", event.target.value)
               }
+              onFocus={handleFocus}
+              onBlur={handleBlur}
               required
             >
               <option value="">Select a destination account</option>
@@ -308,16 +374,16 @@ export default function TransactionForm({
       ) : null}
 
       {!isTransfer && isAdjustment ? (
-        <div className="flex flex-col gap-1">
+        <div>
           <label
             htmlFor={`${fieldPrefix}-direction`}
-            className="text-sm font-medium text-gray-600"
+            style={getLabelStyle(true)}
           >
-            Direction
+            <span>Direction</span>
           </label>
           <select
             id={`${fieldPrefix}-direction`}
-            className="rounded-lg border px-3 py-2"
+            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
             value={form.direction}
             onChange={(event) =>
               updateField(
@@ -325,6 +391,8 @@ export default function TransactionForm({
                 event.target.value as TransactionFormValues["direction"],
               )
             }
+            onFocus={handleFocus}
+            onBlur={handleBlur}
           >
             {TRANSACTION_DIRECTION_OPTIONS.map((direction) => (
               <option key={direction} value={direction}>
@@ -336,22 +404,31 @@ export default function TransactionForm({
       ) : null}
 
       {!isTransfer ? (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "16px",
+          }}
+        >
           {!isAdjustment ? (
-            <div className="flex flex-col gap-1">
+            <div>
               <label
                 htmlFor={`${fieldPrefix}-category`}
-                className="text-sm font-medium text-gray-600"
+                style={getLabelStyle(false)}
               >
-                Category
+                <span>Category</span>
+                <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
               </label>
               <select
                 id={`${fieldPrefix}-category`}
-                className="rounded-lg border px-3 py-2"
+                style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
                 value={form.categoryId}
                 onChange={(event) =>
                   updateField("categoryId", event.target.value)
                 }
+                onFocus={handleFocus}
+                onBlur={handleBlur}
               >
                 <option value="">No category</option>
                 {visibleCategories.map((category) => (
@@ -361,81 +438,114 @@ export default function TransactionForm({
                 ))}
               </select>
               {!visibleCategories.length ? (
-                <p className="text-xs text-gray-500">
+                <p
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-tertiary)",
+                    marginTop: "4px",
+                  }}
+                >
                   No matching categories available.
                 </p>
               ) : null}
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-1">
+          <div>
             <label
               htmlFor={`${fieldPrefix}-counterparty`}
-              className="text-sm font-medium text-gray-600"
+              style={getLabelStyle(false)}
             >
-              Counterparty
+              <span>Counterparty</span>
+              <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
             </label>
             <input
               id={`${fieldPrefix}-counterparty`}
-              className="rounded-lg border px-3 py-2"
+              style={inputStyle}
               value={form.counterparty}
               onChange={(event) =>
                 updateField("counterparty", event.target.value)
               }
+              onFocus={handleFocus}
+              onBlur={handleBlur}
             />
           </div>
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-1">
+      <div>
         <label
           htmlFor={`${fieldPrefix}-description`}
-          className="text-sm font-medium text-gray-600"
+          style={getLabelStyle(true)}
         >
-          Description
+          <span>Description</span>
         </label>
         <input
           id={`${fieldPrefix}-description`}
-          className="rounded-lg border px-3 py-2"
+          style={inputStyle}
           value={form.description}
           onChange={(event) => updateField("description", event.target.value)}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           required
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-notes`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Notes
+      <div>
+        <label htmlFor={`${fieldPrefix}-notes`} style={getLabelStyle(false)}>
+          <span>Notes</span>
+          <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}
-          className="min-h-28 rounded-lg border px-3 py-2"
+          style={{ ...inputStyle, minHeight: "80px", resize: "vertical" }}
           value={form.notes}
           onChange={(event) => updateField("notes", event.target.value)}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
         />
       </div>
 
       {editingTransaction?.kind === "TRANSFER" ? (
-        <p className="text-xs text-gray-500">
+        <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
           This transaction keeps its transfer identity. To convert it into a
           non-transfer entry, delete it and create a new one.
         </p>
       ) : null}
 
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          style={{
+            fontSize: "14px",
+            color: "var(--color-expense)",
+            background: "rgba(239, 68, 68, 0.1)",
+            padding: "12px",
+            borderRadius: "8px",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
+          }}
+        >
           {error}
         </p>
       ) : null}
 
-      <div className="flex gap-3">
+      <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          style={{
+            flex: 1,
+            background: "var(--text-primary)",
+            color: "var(--bg-app)",
+            padding: "12px 24px",
+            borderRadius: "8px",
+            fontWeight: 600,
+            fontSize: "15px",
+            border: "none",
+            cursor: isSubmitting ? "not-allowed" : "pointer",
+            opacity: isSubmitting ? 0.6 : 1,
+            transition: "opacity 0.2s",
+          }}
         >
           {isSubmitting
             ? "Saving..."
@@ -448,7 +558,23 @@ export default function TransactionForm({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50"
+            style={{
+              padding: "12px 24px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-glass-strong)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontWeight: 500,
+              fontSize: "15px",
+              cursor: "pointer",
+              transition: "background 0.2s",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.background = "var(--bg-card-hover)")
+            }
+            onMouseOut={(e) =>
+              (e.currentTarget.style.background = "transparent")
+            }
           >
             Cancel
           </button>

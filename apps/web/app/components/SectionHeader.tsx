@@ -6,8 +6,25 @@ export default function SectionHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between mb-4">
-      <h2 className="text-2xl font-semibold">{title}</h2>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: "4px",
+      }}
+    >
+      <h2
+        style={{
+          fontSize: "32px",
+          fontWeight: 700,
+          color: "var(--text-primary)",
+          letterSpacing: "-0.03em",
+          margin: 0,
+        }}
+      >
+        {title}
+      </h2>
       {action}
     </div>
   );

@@ -165,15 +165,17 @@ export default function AssetForm({
     });
   }
 
-  const labelStyle = {
-    display: "block",
+  const getLabelStyle = (required: boolean) => ({
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
     fontSize: "12px",
-    fontWeight: 600,
-    color: "var(--text-secondary)",
+    fontWeight: required ? 700 : 500,
+    color: required ? "var(--text-primary)" : "var(--text-tertiary)",
     textTransform: "uppercase" as const,
-    letterSpacing: "0.05em",
-    marginBottom: "6px",
-  };
+    letterSpacing: "0.06em",
+    marginBottom: "8px",
+  });
   const inputStyle = {
     width: "100%",
     background: "var(--bg-app)",
@@ -193,8 +195,8 @@ export default function AssetForm({
       style={{ display: "flex", flexDirection: "column", gap: "20px" }}
     >
       <div>
-        <label htmlFor={`${fieldPrefix}-name`} style={labelStyle}>
-          Name
+        <label htmlFor={`${fieldPrefix}-name`} style={getLabelStyle(true)}>
+          <span>Name</span>
         </label>
         <input
           id={`${fieldPrefix}-name`}
@@ -215,8 +217,8 @@ export default function AssetForm({
         style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
       >
         <div>
-          <label htmlFor={`${fieldPrefix}-type`} style={labelStyle}>
-            Type
+          <label htmlFor={`${fieldPrefix}-type`} style={getLabelStyle(true)}>
+            <span>Type</span>
           </label>
           <select
             id={`${fieldPrefix}-type`}
@@ -239,8 +241,8 @@ export default function AssetForm({
         </div>
 
         <div>
-          <label htmlFor={`${fieldPrefix}-kind`} style={labelStyle}>
-            Kind
+          <label htmlFor={`${fieldPrefix}-kind`} style={getLabelStyle(true)}>
+            <span>Kind</span>
           </label>
           <select
             id={`${fieldPrefix}-kind`}
@@ -267,8 +269,8 @@ export default function AssetForm({
 
       {config.showBalance ? (
         <div>
-          <label htmlFor={`${fieldPrefix}-balance`} style={labelStyle}>
-            Amount
+          <label htmlFor={`${fieldPrefix}-balance`} style={getLabelStyle(true)}>
+            <span>Amount</span>
           </label>
           <input
             id={`${fieldPrefix}-balance`}
@@ -298,8 +300,11 @@ export default function AssetForm({
         >
           {config.showQuantity ? (
             <div>
-              <label htmlFor={`${fieldPrefix}-quantity`} style={labelStyle}>
-                Quantity
+              <label
+                htmlFor={`${fieldPrefix}-quantity`}
+                style={getLabelStyle(true)}
+              >
+                <span>Quantity</span>
               </label>
               <input
                 id={`${fieldPrefix}-quantity`}
@@ -323,8 +328,11 @@ export default function AssetForm({
 
           {config.showUnitPrice ? (
             <div>
-              <label htmlFor={`${fieldPrefix}-unit-price`} style={labelStyle}>
-                Unit Price
+              <label
+                htmlFor={`${fieldPrefix}-unit-price`}
+                style={getLabelStyle(true)}
+              >
+                <span>Unit Price</span>
               </label>
               <input
                 id={`${fieldPrefix}-unit-price`}
@@ -357,8 +365,11 @@ export default function AssetForm({
           }}
         >
           <div>
-            <label htmlFor={`${fieldPrefix}-ticker`} style={labelStyle}>
-              Ticker
+            <label
+              htmlFor={`${fieldPrefix}-ticker`}
+              style={getLabelStyle(true)}
+            >
+              <span>Ticker</span>
             </label>
             <input
               id={`${fieldPrefix}-ticker`}
@@ -376,8 +387,11 @@ export default function AssetForm({
           </div>
 
           <div>
-            <label htmlFor={`${fieldPrefix}-exchange`} style={labelStyle}>
-              Exchange
+            <label
+              htmlFor={`${fieldPrefix}-exchange`}
+              style={getLabelStyle(true)}
+            >
+              <span>Exchange</span>
             </label>
             <select
               id={`${fieldPrefix}-exchange`}
@@ -405,8 +419,12 @@ export default function AssetForm({
         style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
       >
         <div>
-          <label htmlFor={`${fieldPrefix}-currency`} style={labelStyle}>
-            Currency
+          <label
+            htmlFor={`${fieldPrefix}-currency`}
+            style={getLabelStyle(false)}
+          >
+            <span>Currency</span>
+            <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-currency`}
@@ -423,8 +441,12 @@ export default function AssetForm({
         </div>
 
         <div>
-          <label htmlFor={`${fieldPrefix}-account`} style={labelStyle}>
-            Account
+          <label
+            htmlFor={`${fieldPrefix}-account`}
+            style={getLabelStyle(false)}
+          >
+            <span>Account</span>
+            <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
           </label>
           <select
             id={`${fieldPrefix}-account`}
@@ -460,8 +482,9 @@ export default function AssetForm({
       </div>
 
       <div>
-        <label htmlFor={`${fieldPrefix}-notes`} style={labelStyle}>
-          Notes
+        <label htmlFor={`${fieldPrefix}-notes`} style={getLabelStyle(false)}>
+          <span>Notes</span>
+          <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}
@@ -478,7 +501,7 @@ export default function AssetForm({
       </div>
 
       <div style={{ display: "none" }}>
-        <label htmlFor={`${fieldPrefix}-order`} style={labelStyle}>
+        <label htmlFor={`${fieldPrefix}-order`} style={getLabelStyle(false)}>
           Order
         </label>
         <input

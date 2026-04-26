@@ -200,21 +200,63 @@ export default function BudgetPlanForm({
     });
   }
 
+  const getLabelStyle = (required: boolean) => ({
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    fontSize: "12px",
+    fontWeight: required ? 700 : 500,
+    color: required ? "var(--text-primary)" : "var(--text-tertiary)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.06em",
+    marginBottom: "8px",
+  });
+
+  const inputStyle = {
+    width: "100%",
+    background: "var(--bg-app)",
+    border: "1px solid var(--border-glass-strong)",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    color: "var(--text-primary)",
+    fontSize: "15px",
+    outline: "none",
+    transition: "border-color 0.2s",
+    boxSizing: "border-box" as const,
+  };
+
+  const handleFocus = (
+    e: React.FocusEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => (e.target.style.borderColor = "var(--text-secondary)");
+  const handleBlur = (
+    e: React.FocusEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => (e.target.style.borderColor = "var(--border-glass-strong)");
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+    >
       {isCreateMode ? (
-        <div className="flex flex-col gap-1">
+        <div>
           <label
             htmlFor={`${fieldPrefix}-category`}
-            className="text-sm font-medium text-gray-600"
+            style={getLabelStyle(true)}
           >
-            Expense category
+            <span>Expense category</span>
           </label>
           <select
             id={`${fieldPrefix}-category`}
-            className="rounded-lg border px-3 py-2"
+            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
             value={form.categoryId}
             onChange={(event) => updateField("categoryId", event.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            required
           >
             <option value="">Choose a category</option>
             {selectableCategories.map((category) => (
@@ -225,135 +267,191 @@ export default function BudgetPlanForm({
           </select>
         </div>
       ) : budget ? (
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-          <p className="font-medium text-gray-900">{budget.categoryName}</p>
-          <p className="mt-1">
+        <div
+          style={{
+            padding: "16px",
+            borderRadius: "16px",
+            background: "var(--bg-card-hover)",
+            border: "1px solid var(--border-glass-strong)",
+            fontSize: "14px",
+            color: "var(--text-secondary)",
+          }}
+        >
+          <p
+            style={{
+              fontWeight: 600,
+              color: "var(--text-primary)",
+              marginBottom: "4px",
+            }}
+          >
+            {budget.categoryName}
+          </p>
+          <p style={{ fontSize: "13px" }}>
             {budget.currency} budget, active from {budget.startMonth}
             {budget.endMonth ? ` through ${budget.endMonth}` : " onward"}.
           </p>
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
+      >
+        <div>
           <label
             htmlFor={`${fieldPrefix}-currency`}
-            className="text-sm font-medium text-gray-600"
+            style={getLabelStyle(true)}
           >
-            Currency
+            <span>Currency</span>
           </label>
           <input
             id={`${fieldPrefix}-currency`}
-            className="rounded-lg border px-3 py-2"
+            style={inputStyle}
             value={form.currency}
             onChange={(event) => updateField("currency", event.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             disabled={!isCreateMode}
             required
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-amount`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Monthly budget
+        <div>
+          <label htmlFor={`${fieldPrefix}-amount`} style={getLabelStyle(true)}>
+            <span>Monthly budget</span>
           </label>
           <input
             id={`${fieldPrefix}-amount`}
-            className="rounded-lg border px-3 py-2"
+            style={inputStyle}
             type="number"
             step="0.01"
             min="0"
             value={form.amount}
             onChange={(event) => updateField("amount", event.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             required
           />
         </div>
       </div>
 
       {isCreateMode ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "16px",
+          }}
+        >
+          <div>
             <label
               htmlFor={`${fieldPrefix}-start-month`}
-              className="text-sm font-medium text-gray-600"
+              style={getLabelStyle(true)}
             >
-              Start month
+              <span>Start month</span>
             </label>
             <input
               id={`${fieldPrefix}-start-month`}
-              className="rounded-lg border px-3 py-2"
+              style={inputStyle}
               type="month"
               value={form.startMonth}
               onChange={(event) =>
                 updateField("startMonth", event.target.value)
               }
+              onFocus={handleFocus}
+              onBlur={handleBlur}
               required
             />
           </div>
 
-          <div className="flex flex-col gap-1">
+          <div>
             <label
               htmlFor={`${fieldPrefix}-end-month`}
-              className="text-sm font-medium text-gray-600"
+              style={getLabelStyle(false)}
             >
-              End month
+              <span>End month</span>
+              <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
             </label>
             <input
               id={`${fieldPrefix}-end-month`}
-              className="rounded-lg border px-3 py-2"
+              style={inputStyle}
               type="month"
               value={form.endMonth}
               onChange={(event) => updateField("endMonth", event.target.value)}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
             />
           </div>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "16px",
+          }}
+        >
+          <div>
             <label
               htmlFor={`${fieldPrefix}-effective-month`}
-              className="text-sm font-medium text-gray-600"
+              style={getLabelStyle(true)}
             >
-              Apply from month
+              <span>Apply from month</span>
             </label>
             <input
               id={`${fieldPrefix}-effective-month`}
-              className="rounded-lg border px-3 py-2"
+              style={inputStyle}
               type="month"
               value={form.effectiveMonth}
               onChange={(event) =>
                 updateField("effectiveMonth", event.target.value)
               }
+              onFocus={handleFocus}
+              onBlur={handleBlur}
               required
             />
           </div>
 
-          <div className="flex flex-col gap-1">
+          <div>
             <label
               htmlFor={`${fieldPrefix}-edit-end-month`}
-              className="text-sm font-medium text-gray-600"
+              style={getLabelStyle(false)}
             >
-              End month
+              <span>End month</span>
+              <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
             </label>
             <input
               id={`${fieldPrefix}-edit-end-month`}
-              className="rounded-lg border px-3 py-2"
+              style={inputStyle}
               type="month"
               value={form.endMonth}
               onChange={(event) => updateField("endMonth", event.target.value)}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
             />
           </div>
         </div>
       )}
 
       {quickFillSuggestions.length > 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-          <p className="text-sm font-medium text-gray-700">
+        <div
+          style={{
+            padding: "16px",
+            borderRadius: "16px",
+            background: "var(--bg-card-hover)",
+            border: "1px solid var(--border-glass-strong)",
+          }}
+        >
+          <p
+            style={{
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "var(--text-secondary)",
+              marginBottom: "12px",
+            }}
+          >
             Quick-fill from recent spending
           </p>
-          <div className="mt-3 flex flex-wrap gap-3">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             {quickFillSuggestions.map((suggestion) => (
               <button
                 key={suggestion.key}
@@ -361,7 +459,23 @@ export default function BudgetPlanForm({
                 onClick={() =>
                   updateField("amount", suggestion.amount.toFixed(2))
                 }
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-glass-strong)",
+                  background: "var(--bg-app)",
+                  color: "var(--text-primary)",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  transition: "background 0.2s",
+                }}
+                onMouseOver={(e) =>
+                  (e.currentTarget.style.background = "var(--bg-card-hover)")
+                }
+                onMouseOut={(e) =>
+                  (e.currentTarget.style.background = "var(--bg-app)")
+                }
               >
                 {suggestion.label}: {suggestion.amount.toFixed(2)}
               </button>
@@ -371,16 +485,38 @@ export default function BudgetPlanForm({
       ) : null}
 
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          style={{
+            fontSize: "14px",
+            color: "var(--color-expense)",
+            background: "rgba(239, 68, 68, 0.1)",
+            padding: "12px",
+            borderRadius: "8px",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
+          }}
+        >
           {error}
         </p>
       ) : null}
 
-      <div className="flex gap-3">
+      <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          style={{
+            flex: 2,
+            background: "var(--text-primary)",
+            color: "var(--bg-app)",
+            padding: "12px 24px",
+            borderRadius: "8px",
+            fontWeight: 600,
+            fontSize: "15px",
+            border: "none",
+            cursor: isSubmitting ? "not-allowed" : "pointer",
+            opacity: isSubmitting ? 0.6 : 1,
+            transition: "opacity 0.2s",
+          }}
         >
           {isSubmitting
             ? "Saving..."
@@ -393,7 +529,24 @@ export default function BudgetPlanForm({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50"
+            style={{
+              flex: 1,
+              padding: "12px 24px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-glass-strong)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontWeight: 500,
+              fontSize: "15px",
+              cursor: "pointer",
+              transition: "background 0.2s",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.background = "var(--bg-card-hover)")
+            }
+            onMouseOut={(e) =>
+              (e.currentTarget.style.background = "transparent")
+            }
           >
             Cancel
           </button>

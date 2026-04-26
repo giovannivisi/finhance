@@ -39,10 +39,10 @@ export default function TopHeader() {
         />
         <span
           style={{
-            fontSize: "24px",
-            fontWeight: 700,
+            fontSize: "30px",
+            fontWeight: 800,
             color: "var(--text-primary)",
-            letterSpacing: "-0.02em",
+            letterSpacing: "-0.04em",
           }}
         >
           finhance

@@ -108,7 +108,17 @@ export default async function Home() {
   return (
     <>
       <Container>
-        <h2 className="text-2xl font-semibold">Summary</h2>
+        <h2
+          style={{
+            fontSize: "32px",
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            letterSpacing: "-0.03em",
+            marginBottom: "24px",
+          }}
+        >
+          Summary
+        </h2>
 
         {setup && !setup.isComplete ? (
           <section
@@ -216,8 +226,12 @@ export default async function Home() {
             <div className="flex justify-between items-center gap-3">
               <div>
                 <h3
-                  className="text-2xl font-semibold"
-                  style={{ color: "var(--text-primary)" }}
+                  style={{
+                    fontSize: "24px",
+                    fontWeight: 700,
+                    color: "var(--text-primary)",
+                    letterSpacing: "-0.02em",
+                  }}
                 >
                   Budgets
                 </h3>
@@ -231,12 +245,7 @@ export default async function Home() {
               </div>
               <Link
                 href={`/budgets?month=${encodeURIComponent(budgetView.month)}`}
-                style={{
-                  color: "var(--color-primary)",
-                  fontWeight: 500,
-                  fontSize: "14px",
-                  textDecoration: "none",
-                }}
+                className="btn-primary"
               >
                 Open budgets
               </Link>

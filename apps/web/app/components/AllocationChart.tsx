@@ -1,7 +1,6 @@
 "use client";
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
-import type { PieLabelRenderProps } from "recharts";
 import { formatCurrency } from "@lib/format";
 import { COLORS } from "@lib/asset-ui";
 

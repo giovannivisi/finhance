@@ -376,7 +376,7 @@ export default function DashboardClient({
         action={<HeaderAddButton onClick={() => setCreateOpen(true)} />}
       />
 
-      <div className="space-y-6 mt-6">
+      <div className="space-y-6">
         <div className="space-y-4">
           <h3
             style={{
@@ -503,7 +503,7 @@ export default function DashboardClient({
                     >
                       {grouped[category]
                         .filter((asset) => asset.type === "ASSET")
-                        .map((asset, index, arr) => {
+                        .map((asset) => {
                           const displayValue =
                             asset.currentValue ?? asset.referenceValue;
                           const referenceDiffers =
@@ -513,29 +513,40 @@ export default function DashboardClient({
                               asset.referenceValue - asset.currentValue,
                             ) > 0.005;
 
+                          const liveUnitPrice =
+                            asset.quantity && asset.currentValue
+                              ? Number(asset.currentValue) /
+                                Number(asset.quantity)
+                              : null;
+
+                          const quantityDisplay =
+                            asset.quantity != null
+                              ? `${asset.quantity} × ${formatCurrency(liveUnitPrice ?? Number(asset.unitPrice), asset.currency ?? baseCurrency)}`
+                              : "Stored balance";
+
                           return (
                             <li
                               key={asset.id}
                               className="glass-card group"
                               style={{
-                                padding: "16px 20px",
-                                display: "grid",
-                                gridTemplateColumns: "1fr auto auto",
+                                padding: "16px 24px",
+                                display: "flex",
                                 alignItems: "center",
                                 gap: "24px",
                               }}
                             >
                               <div
                                 style={{
+                                  flex: 1,
                                   display: "flex",
                                   flexDirection: "column",
-                                  gap: "4px",
+                                  gap: "2px",
                                 }}
                               >
                                 <div
                                   style={{
                                     display: "flex",
-                                    alignItems: "center",
+                                    alignItems: "baseline",
                                     gap: "8px",
                                   }}
                                 >
@@ -543,7 +554,7 @@ export default function DashboardClient({
                                     style={{
                                       fontWeight: 600,
                                       color: "var(--text-primary)",
-                                      fontSize: "16px",
+                                      fontSize: "17px",
                                     }}
                                   >
                                     {asset.name}
@@ -551,9 +562,9 @@ export default function DashboardClient({
                                   {asset.ticker && (
                                     <span
                                       style={{
-                                        fontSize: "13px",
+                                        fontSize: "12px",
                                         color: "var(--text-tertiary)",
-                                        fontWeight: 500,
+                                        letterSpacing: "0.05em",
                                       }}
                                     >
                                       {asset.ticker}
@@ -563,32 +574,31 @@ export default function DashboardClient({
                                 <div
                                   style={{
                                     display: "flex",
-                                    alignItems: "center",
+                                    alignItems: "baseline",
                                     gap: "8px",
                                   }}
                                 >
-                                  {asset.quantity != null &&
-                                  asset.unitPrice != null ? (
+                                  <p
+                                    style={{
+                                      fontSize: "13px",
+                                      color: "var(--text-secondary)",
+                                      fontWeight: 500,
+                                    }}
+                                  >
+                                    {quantityDisplay}
+                                  </p>
+                                  {liveUnitPrice != null && (
                                     <span
                                       style={{
-                                        fontSize: "13px",
-                                        color: "var(--text-secondary)",
+                                        fontSize: "10px",
+                                        color: "var(--color-income)",
+                                        fontWeight: 700,
+                                        letterSpacing: "0.05em",
+                                        opacity: 0.9,
+                                        lineHeight: 1,
                                       }}
                                     >
-                                      {asset.quantity} ×{" "}
-                                      {formatCurrency(
-                                        Number(asset.unitPrice),
-                                        asset.currency ?? baseCurrency,
-                                      )}
-                                    </span>
-                                  ) : (
-                                    <span
-                                      style={{
-                                        fontSize: "13px",
-                                        color: "var(--text-secondary)",
-                                      }}
-                                    >
-                                      Stored balance
+                                      LIVE
                                     </span>
                                   )}
                                   {asset.notes && (
@@ -596,6 +606,7 @@ export default function DashboardClient({
                                       <span
                                         style={{
                                           color: "var(--border-glass-strong)",
+                                          fontSize: "13px",
                                         }}
                                       >
                                         •
@@ -623,13 +634,13 @@ export default function DashboardClient({
                                   display: "flex",
                                   flexDirection: "column",
                                   alignItems: "flex-end",
-                                  gap: "4px",
-                                  paddingRight: "16px",
+                                  gap: "2px",
+                                  minWidth: "120px",
                                 }}
                               >
                                 <p
                                   style={{
-                                    fontSize: "16px",
+                                    fontSize: "17px",
                                     fontWeight: 600,
                                     color: "var(--text-primary)",
                                   }}
@@ -641,7 +652,7 @@ export default function DashboardClient({
                                 {referenceDiffers ? (
                                   <p
                                     style={{
-                                      fontSize: "12px",
+                                      fontSize: "13px",
                                       color: "var(--text-secondary)",
                                     }}
                                   >
@@ -654,7 +665,7 @@ export default function DashboardClient({
                                 ) : (
                                   <p
                                     style={{
-                                      fontSize: "12px",
+                                      fontSize: "13px",
                                       color: "var(--text-tertiary)",
                                     }}
                                   >
@@ -668,14 +679,14 @@ export default function DashboardClient({
                                   display: "flex",
                                   alignItems: "center",
                                   gap: "16px",
-                                  opacity: 0.6,
+                                  opacity: 0.4,
                                   transition: "opacity 0.2s",
                                 }}
                                 onMouseOver={(e) =>
                                   (e.currentTarget.style.opacity = "1")
                                 }
                                 onMouseOut={(e) =>
-                                  (e.currentTarget.style.opacity = "0.6")
+                                  (e.currentTarget.style.opacity = "0.4")
                                 }
                               >
                                 <button
@@ -831,7 +842,7 @@ export default function DashboardClient({
                     >
                       {grouped[category]
                         .filter((asset) => asset.type === "LIABILITY")
-                        .map((asset, index, arr) => {
+                        .map((asset) => {
                           const displayValue =
                             asset.currentValue ?? asset.referenceValue;
 
@@ -840,41 +851,33 @@ export default function DashboardClient({
                               key={asset.id}
                               className="glass-card group"
                               style={{
-                                padding: "16px 20px",
-                                display: "grid",
-                                gridTemplateColumns: "1fr auto auto",
+                                padding: "16px 24px",
+                                display: "flex",
                                 alignItems: "center",
                                 gap: "24px",
                               }}
                             >
                               <div
                                 style={{
+                                  flex: 1,
                                   display: "flex",
                                   flexDirection: "column",
-                                  gap: "4px",
+                                  gap: "2px",
                                 }}
                               >
-                                <div
+                                <p
                                   style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
+                                    fontWeight: 600,
+                                    color: "var(--text-primary)",
+                                    fontSize: "17px",
                                   }}
                                 >
-                                  <p
-                                    style={{
-                                      fontWeight: 600,
-                                      color: "var(--text-primary)",
-                                      fontSize: "16px",
-                                    }}
-                                  >
-                                    {asset.name}
-                                  </p>
-                                </div>
+                                  {asset.name}
+                                </p>
                                 <div
                                   style={{
                                     display: "flex",
-                                    alignItems: "center",
+                                    alignItems: "baseline",
                                     gap: "8px",
                                   }}
                                 >
@@ -903,6 +906,7 @@ export default function DashboardClient({
                                       <span
                                         style={{
                                           color: "var(--border-glass-strong)",
+                                          fontSize: "13px",
                                         }}
                                       >
                                         •
@@ -930,13 +934,13 @@ export default function DashboardClient({
                                   display: "flex",
                                   flexDirection: "column",
                                   alignItems: "flex-end",
-                                  gap: "4px",
-                                  paddingRight: "16px",
+                                  gap: "2px",
+                                  minWidth: "120px",
                                 }}
                               >
                                 <p
                                   style={{
-                                    fontSize: "16px",
+                                    fontSize: "17px",
                                     fontWeight: 600,
                                     color: "var(--text-primary)",
                                   }}
@@ -947,7 +951,7 @@ export default function DashboardClient({
                                 </p>
                                 <p
                                   style={{
-                                    fontSize: "12px",
+                                    fontSize: "13px",
                                     color: "var(--text-tertiary)",
                                   }}
                                 >
@@ -960,14 +964,14 @@ export default function DashboardClient({
                                   display: "flex",
                                   alignItems: "center",
                                   gap: "16px",
-                                  opacity: 0.6,
+                                  opacity: 0.4,
                                   transition: "opacity 0.2s",
                                 }}
                                 onMouseOver={(e) =>
                                   (e.currentTarget.style.opacity = "1")
                                 }
                                 onMouseOut={(e) =>
-                                  (e.currentTarget.style.opacity = "0.6")
+                                  (e.currentTarget.style.opacity = "0.4")
                                 }
                               >
                                 <button

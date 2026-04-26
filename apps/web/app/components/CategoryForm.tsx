@@ -88,35 +88,72 @@ export default function CategoryForm({
     });
   }
 
+  const getLabelStyle = (required: boolean) => ({
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    fontSize: "12px",
+    fontWeight: required ? 700 : 500,
+    color: required ? "var(--text-primary)" : "var(--text-tertiary)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.06em",
+    marginBottom: "8px",
+  });
+
+  const inputStyle = {
+    width: "100%",
+    background: "var(--bg-app)",
+    border: "1px solid var(--border-glass-strong)",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    color: "var(--text-primary)",
+    fontSize: "15px",
+    outline: "none",
+    transition: "border-color 0.2s",
+    boxSizing: "border-box" as const,
+  };
+
+  const handleFocus = (
+    e: React.FocusEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => (e.target.style.borderColor = "var(--text-secondary)");
+  const handleBlur = (
+    e: React.FocusEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => (e.target.style.borderColor = "var(--border-glass-strong)");
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-name`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Name
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+    >
+      <div>
+        <label htmlFor={`${fieldPrefix}-name`} style={getLabelStyle(true)}>
+          <span>Name</span>
         </label>
         <input
           id={`${fieldPrefix}-name`}
-          className="rounded-lg border px-3 py-2"
+          style={inputStyle}
           value={form.name}
           onChange={(event) => updateField("name", event.target.value)}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           required
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-type`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Type
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
+      >
+        <div>
+          <label htmlFor={`${fieldPrefix}-type`} style={getLabelStyle(true)}>
+            <span>Type</span>
           </label>
           <select
             id={`${fieldPrefix}-type`}
-            className="rounded-lg border px-3 py-2"
+            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
             value={form.type}
             onChange={(event) =>
               updateField(
@@ -124,6 +161,9 @@ export default function CategoryForm({
                 event.target.value as CategoryFormValues["type"],
               )
             }
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            required
           >
             {CATEGORY_TYPE_OPTIONS.map((type) => (
               <option key={type} value={type}>
@@ -133,34 +173,56 @@ export default function CategoryForm({
           </select>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-order`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Order
+        <div>
+          <label htmlFor={`${fieldPrefix}-order`} style={getLabelStyle(false)}>
+            <span>Order</span>
+            <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-order`}
-            className="rounded-lg border px-3 py-2"
+            style={inputStyle}
             type="number"
             value={form.order}
             onChange={(event) => updateField("order", event.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
           />
         </div>
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          style={{
+            fontSize: "14px",
+            color: "var(--color-expense)",
+            background: "rgba(239, 68, 68, 0.1)",
+            padding: "12px",
+            borderRadius: "8px",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
+          }}
+        >
           {error}
         </p>
       ) : null}
 
-      <div className="flex gap-3">
+      <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          style={{
+            flex: 1,
+            background: "var(--text-primary)",
+            color: "var(--bg-app)",
+            padding: "12px 24px",
+            borderRadius: "8px",
+            fontWeight: 600,
+            fontSize: "15px",
+            border: "none",
+            cursor: isSubmitting ? "not-allowed" : "pointer",
+            opacity: isSubmitting ? 0.6 : 1,
+            transition: "opacity 0.2s",
+          }}
         >
           {isSubmitting
             ? "Saving..."
@@ -173,7 +235,23 @@ export default function CategoryForm({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50"
+            style={{
+              padding: "12px 24px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-glass-strong)",
+              background: "transparent",
+              color: "var(--text-secondary)",
+              fontWeight: 500,
+              fontSize: "15px",
+              cursor: "pointer",
+              transition: "background 0.2s",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.background = "var(--bg-card-hover)")
+            }
+            onMouseOut={(e) =>
+              (e.currentTarget.style.background = "transparent")
+            }
           >
             Cancel
           </button>
