@@ -377,184 +377,266 @@ export default function DashboardClient({
       />
 
       <div className="space-y-6 mt-6">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "16px",
-            marginTop: "40px",
-            marginBottom: "16px",
-          }}
-        >
-          <div
+        <div className="space-y-4">
+          <h3
             style={{
-              flex: 1,
-              height: "1px",
-              background: "var(--border-glass-strong)",
-            }}
-          ></div>
-          <span
-            style={{
-              fontSize: "14px",
+              fontSize: "20px",
               fontWeight: 600,
-              color: "var(--text-tertiary)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
+              color: "var(--text-primary)",
+              paddingLeft: "8px",
+              marginBottom: "8px",
             }}
           >
             Assets
-          </span>
+          </h3>
           <div
             style={{
-              flex: 1,
-              height: "1px",
-              background: "var(--border-glass-strong)",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(450px, 1fr))",
+              gap: "24px",
+              alignItems: "start",
             }}
-          ></div>
-        </div>
-
-        <div className="space-y-6">
-          {sortedCategories
-            .filter((category) =>
-              grouped[category].some((asset) => asset.type === "ASSET"),
-            )
-            .map((category) => (
-              <div key={category}>
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(category)}
-                  className="flex items-center justify-between w-full text-left"
+          >
+            {sortedCategories
+              .filter((category) =>
+                grouped[category].some((asset) => asset.type === "ASSET"),
+              )
+              .map((category) => (
+                <div
+                  key={category}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
                 >
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(category)}
+                    className="flex items-center justify-between w-full text-left group"
                     style={{
-                      fontSize: "18px",
-                      fontWeight: 600,
-                      color: "var(--text-primary)",
+                      padding: "12px 16px",
+                      borderRadius: "var(--radius-md)",
+                      background: "transparent",
+                      transition: "background 0.2s",
                     }}
+                    onMouseOver={(e) =>
+                      (e.currentTarget.style.background =
+                        "var(--bg-card-hover)")
+                    }
+                    onMouseOut={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
-                    {category}
-                  </span>
-                  <DisclosureIcon open={openCategories[category]} />
-                </button>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "10px",
+                          height: "10px",
+                          borderRadius: "50%",
+                          background:
+                            category === "STOCK"
+                              ? "#4f46e5"
+                              : category === "CRYPTO"
+                                ? "#eab308"
+                                : category === "CASH"
+                                  ? "#16a34a"
+                                  : "var(--border-glass-strong)",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: "16px",
+                          fontWeight: 600,
+                          color: "var(--text-primary)",
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        {category}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "16px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "15px",
+                          fontWeight: 600,
+                          color: "var(--text-primary)",
+                        }}
+                      >
+                        {formatCurrency(
+                          grouped[category]
+                            .filter((a) => a.type === "ASSET")
+                            .reduce(
+                              (sum, a) =>
+                                sum +
+                                (a.currentValue ??
+                                  a.referenceValue ??
+                                  Number(a.balance)),
+                              0,
+                            ),
+                          baseCurrency,
+                        )}
+                      </span>
+                      <DisclosureIcon open={openCategories[category]} />
+                    </div>
+                  </button>
 
-                {openCategories[category] ? (
-                  <ul className="space-y-2 mt-2 transition-all duration-200 ease-in-out">
-                    {grouped[category]
-                      .filter((asset) => asset.type === "ASSET")
-                      .map((asset) => {
-                        const displayValue =
-                          asset.currentValue ?? asset.referenceValue;
-                        const referenceDiffers =
-                          asset.referenceValue != null &&
-                          asset.currentValue != null &&
-                          Math.abs(asset.referenceValue - asset.currentValue) >
-                            0.005;
+                  {openCategories[category] ? (
+                    <ul
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "12px",
+                      }}
+                    >
+                      {grouped[category]
+                        .filter((asset) => asset.type === "ASSET")
+                        .map((asset, index, arr) => {
+                          const displayValue =
+                            asset.currentValue ?? asset.referenceValue;
+                          const referenceDiffers =
+                            asset.referenceValue != null &&
+                            asset.currentValue != null &&
+                            Math.abs(
+                              asset.referenceValue - asset.currentValue,
+                            ) > 0.005;
 
-                        return (
-                          <li
-                            key={asset.id}
-                            className="glass-card"
-                            style={{
-                              padding: "16px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                            }}
-                          >
-                            <div
+                          return (
+                            <li
+                              key={asset.id}
+                              className="glass-card group"
                               style={{
-                                display: "flex",
-                                flexDirection: "column",
+                                padding: "16px 20px",
+                                display: "grid",
+                                gridTemplateColumns: "1fr auto auto",
+                                alignItems: "center",
+                                gap: "24px",
                               }}
                             >
                               <div
                                 style={{
                                   display: "flex",
-                                  alignItems: "center",
-                                  gap: "8px",
+                                  flexDirection: "column",
+                                  gap: "4px",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                  }}
+                                >
+                                  <p
+                                    style={{
+                                      fontWeight: 600,
+                                      color: "var(--text-primary)",
+                                      fontSize: "16px",
+                                    }}
+                                  >
+                                    {asset.name}
+                                  </p>
+                                  {asset.ticker && (
+                                    <span
+                                      style={{
+                                        fontSize: "13px",
+                                        color: "var(--text-tertiary)",
+                                        fontWeight: 500,
+                                      }}
+                                    >
+                                      {asset.ticker}
+                                    </span>
+                                  )}
+                                </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                  }}
+                                >
+                                  {asset.quantity != null &&
+                                  asset.unitPrice != null ? (
+                                    <span
+                                      style={{
+                                        fontSize: "13px",
+                                        color: "var(--text-secondary)",
+                                      }}
+                                    >
+                                      {asset.quantity} ×{" "}
+                                      {formatCurrency(
+                                        Number(asset.unitPrice),
+                                        asset.currency ?? baseCurrency,
+                                      )}
+                                    </span>
+                                  ) : (
+                                    <span
+                                      style={{
+                                        fontSize: "13px",
+                                        color: "var(--text-secondary)",
+                                      }}
+                                    >
+                                      Stored balance
+                                    </span>
+                                  )}
+                                  {asset.notes && (
+                                    <>
+                                      <span
+                                        style={{
+                                          color: "var(--border-glass-strong)",
+                                        }}
+                                      >
+                                        •
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: "13px",
+                                          color: "var(--text-tertiary)",
+                                          fontStyle: "italic",
+                                          maxWidth: "200px",
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                        }}
+                                      >
+                                        {asset.notes}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "flex-end",
+                                  gap: "4px",
+                                  paddingRight: "16px",
                                 }}
                               >
                                 <p
                                   style={{
-                                    fontWeight: 600,
-                                    color: "var(--text-primary)",
                                     fontSize: "16px",
-                                  }}
-                                >
-                                  {asset.name}
-                                </p>
-                                {asset.ticker ? (
-                                  <span
-                                    style={{
-                                      fontSize: "12px",
-                                      color: "var(--text-secondary)",
-                                    }}
-                                  >
-                                    ({asset.ticker})
-                                  </span>
-                                ) : null}
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-2 mt-1">
-                                <span
-                                  className={
-                                    "px-2 py-0.5 rounded-full text-xs font-medium text-white " +
-                                    (asset.kind === "STOCK"
-                                      ? "bg-indigo-600"
-                                      : asset.kind === "CRYPTO"
-                                        ? "bg-yellow-500"
-                                        : asset.kind === "CASH"
-                                          ? "bg-green-600"
-                                          : "bg-gray-500")
-                                  }
-                                >
-                                  {asset.kind}
-                                </span>
-
-                                {asset.quantity != null &&
-                                asset.unitPrice != null ? (
-                                  <span
-                                    style={{
-                                      fontSize: "12px",
-                                      color: "var(--text-secondary)",
-                                    }}
-                                  >
-                                    {asset.quantity} ×{" "}
-                                    {formatCurrency(
-                                      Number(asset.unitPrice),
-                                      asset.currency ?? baseCurrency,
-                                    )}
-                                  </span>
-                                ) : null}
-
-                                {asset.notes ? (
-                                  <span className="text-xs text-gray-400 italic truncate max-w-[150px]">
-                                    {asset.notes}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-4">
-                              <div className="flex flex-col items-end">
-                                <p
-                                  style={{
-                                    fontSize: "18px",
                                     fontWeight: 600,
                                     color: "var(--text-primary)",
                                   }}
                                 >
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
-                                    : `Unavailable in ${baseCurrency}`}
-                                </p>
-                                <p
-                                  style={{
-                                    fontSize: "12px",
-                                    color: "var(--text-secondary)",
-                                  }}
-                                >
-                                  {getValuationLabel(asset)}
+                                    : `Unavailable`}
                                 </p>
                                 {referenceDiffers ? (
                                   <p
@@ -569,223 +651,356 @@ export default function DashboardClient({
                                       baseCurrency,
                                     )}
                                   </p>
-                                ) : null}
-                                {displayValue == null ? (
+                                ) : (
                                   <p
                                     style={{
                                       fontSize: "12px",
-                                      color: "var(--text-secondary)",
+                                      color: "var(--text-tertiary)",
                                     }}
                                   >
-                                    Stored amount:{" "}
-                                    {formatCurrency(
-                                      Number(asset.balance),
-                                      asset.currency ?? baseCurrency,
-                                    )}
+                                    {getValuationLabel(asset)}
                                   </p>
-                                ) : null}
+                                )}
                               </div>
 
-                              <button
-                                type="button"
-                                onClick={() => setEditAssetId(asset.id)}
+                              <div
                                 style={{
-                                  color: "var(--text-secondary)",
-                                  fontSize: "13px",
-                                  padding: "8px 12px",
-                                  background: "var(--bg-card-hover)",
-                                  borderRadius: "8px",
-                                  border:
-                                    "1px solid var(--border-glass-strong)",
-                                  cursor: "pointer",
-                                  transition: "all 0.2s",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "16px",
+                                  opacity: 0.6,
+                                  transition: "opacity 0.2s",
                                 }}
                                 onMouseOver={(e) =>
-                                  (e.currentTarget.style.color =
-                                    "var(--text-primary)")
+                                  (e.currentTarget.style.opacity = "1")
                                 }
                                 onMouseOut={(e) =>
-                                  (e.currentTarget.style.color =
-                                    "var(--text-secondary)")
+                                  (e.currentTarget.style.opacity = "0.6")
                                 }
                               >
-                                Edit
-                              </button>
-
-                              <DeleteAssetButton id={asset.id} />
-                            </div>
-                          </li>
-                        );
-                      })}
-                  </ul>
-                ) : null}
-              </div>
-            ))}
+                                <button
+                                  type="button"
+                                  onClick={() => setEditAssetId(asset.id)}
+                                  style={{
+                                    color: "var(--text-secondary)",
+                                    fontSize: "13px",
+                                    fontWeight: 500,
+                                    cursor: "pointer",
+                                    transition: "color 0.2s",
+                                  }}
+                                  onMouseOver={(e) =>
+                                    (e.currentTarget.style.color =
+                                      "var(--text-primary)")
+                                  }
+                                  onMouseOut={(e) =>
+                                    (e.currentTarget.style.color =
+                                      "var(--text-secondary)")
+                                  }
+                                >
+                                  Edit
+                                </button>
+                                <DeleteAssetButton id={asset.id} />
+                              </div>
+                            </li>
+                          );
+                        })}
+                    </ul>
+                  ) : null}
+                </div>
+              ))}
+          </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "16px",
-            marginTop: "40px",
-            marginBottom: "16px",
-          }}
-        >
-          <div
+        <div className="space-y-4">
+          <h3
             style={{
-              flex: 1,
-              height: "1px",
-              background: "var(--border-glass-strong)",
-            }}
-          ></div>
-          <span
-            style={{
-              fontSize: "14px",
+              fontSize: "20px",
               fontWeight: 600,
-              color: "var(--text-tertiary)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
+              color: "var(--text-primary)",
+              paddingLeft: "8px",
+              marginBottom: "8px",
+              marginTop: "32px",
             }}
           >
             Liabilities
-          </span>
+          </h3>
           <div
             style={{
-              flex: 1,
-              height: "1px",
-              background: "var(--border-glass-strong)",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(450px, 1fr))",
+              gap: "24px",
+              alignItems: "start",
             }}
-          ></div>
-        </div>
-
-        <div className="space-y-6">
-          {sortedCategories
-            .filter((category) =>
-              grouped[category].some((asset) => asset.type === "LIABILITY"),
-            )
-            .map((category) => (
-              <div key={category}>
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(category)}
-                  className="flex items-center justify-between w-full text-left"
+          >
+            {sortedCategories
+              .filter((category) =>
+                grouped[category].some((asset) => asset.type === "LIABILITY"),
+              )
+              .map((category) => (
+                <div
+                  key={category}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
                 >
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(category)}
+                    className="flex items-center justify-between w-full text-left group"
                     style={{
-                      fontSize: "18px",
-                      fontWeight: 600,
-                      color: "var(--color-expense)",
+                      padding: "12px 16px",
+                      borderRadius: "var(--radius-md)",
+                      background: "transparent",
+                      transition: "background 0.2s",
                     }}
+                    onMouseOver={(e) =>
+                      (e.currentTarget.style.background =
+                        "var(--bg-card-hover)")
+                    }
+                    onMouseOut={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
-                    {category}
-                  </span>
-                  <DisclosureIcon open={openCategories[category]} />
-                </button>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "10px",
+                          height: "10px",
+                          borderRadius: "50%",
+                          background: "var(--color-expense)",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: "16px",
+                          fontWeight: 600,
+                          color: "var(--text-primary)",
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        {category}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "16px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "15px",
+                          fontWeight: 600,
+                          color: "var(--text-primary)",
+                        }}
+                      >
+                        {formatCurrency(
+                          grouped[category]
+                            .filter((a) => a.type === "LIABILITY")
+                            .reduce(
+                              (sum, a) =>
+                                sum +
+                                (a.currentValue ??
+                                  a.referenceValue ??
+                                  Number(a.balance)),
+                              0,
+                            ),
+                          baseCurrency,
+                        )}
+                      </span>
+                      <DisclosureIcon open={openCategories[category]} />
+                    </div>
+                  </button>
 
-                {openCategories[category] ? (
-                  <ul className="space-y-2 mt-2 transition-all duration-200 ease-in-out">
-                    {grouped[category]
-                      .filter((asset) => asset.type === "LIABILITY")
-                      .map((asset) => {
-                        const displayValue =
-                          asset.currentValue ?? asset.referenceValue;
+                  {openCategories[category] ? (
+                    <ul
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "12px",
+                      }}
+                    >
+                      {grouped[category]
+                        .filter((asset) => asset.type === "LIABILITY")
+                        .map((asset, index, arr) => {
+                          const displayValue =
+                            asset.currentValue ?? asset.referenceValue;
 
-                        return (
-                          <li
-                            key={asset.id}
-                            className="glass-card"
-                            style={{
-                              padding: "16px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                            }}
-                          >
-                            <div className="flex flex-col">
-                              <div className="flex items-center gap-2">
-                                <p
+                          return (
+                            <li
+                              key={asset.id}
+                              className="glass-card group"
+                              style={{
+                                padding: "16px 20px",
+                                display: "grid",
+                                gridTemplateColumns: "1fr auto auto",
+                                alignItems: "center",
+                                gap: "24px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "4px",
+                                }}
+                              >
+                                <div
                                   style={{
-                                    fontWeight: 600,
-                                    color: "var(--text-primary)",
-                                    fontSize: "16px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "8px",
                                   }}
                                 >
-                                  {asset.name}
-                                </p>
+                                  <p
+                                    style={{
+                                      fontWeight: 600,
+                                      color: "var(--text-primary)",
+                                      fontSize: "16px",
+                                    }}
+                                  >
+                                    {asset.name}
+                                  </p>
+                                </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                  }}
+                                >
+                                  {asset.liabilityKind ? (
+                                    <span
+                                      style={{
+                                        fontSize: "13px",
+                                        color: "var(--text-secondary)",
+                                        fontWeight: 500,
+                                      }}
+                                    >
+                                      {asset.liabilityKind}
+                                    </span>
+                                  ) : (
+                                    <span
+                                      style={{
+                                        fontSize: "13px",
+                                        color: "var(--text-secondary)",
+                                      }}
+                                    >
+                                      Stored balance
+                                    </span>
+                                  )}
+                                  {asset.notes && (
+                                    <>
+                                      <span
+                                        style={{
+                                          color: "var(--border-glass-strong)",
+                                        }}
+                                      >
+                                        •
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: "13px",
+                                          color: "var(--text-tertiary)",
+                                          fontStyle: "italic",
+                                          maxWidth: "200px",
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                        }}
+                                      >
+                                        {asset.notes}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
                               </div>
 
-                              <div className="flex flex-wrap items-center gap-2 mt-1">
-                                <span className="px-2 py-0.5 rounded-full text-xs font-medium text-white bg-red-600">
-                                  {asset.liabilityKind}
-                                </span>
-
-                                {asset.notes ? (
-                                  <span className="text-xs text-gray-400 italic truncate max-w-[150px]">
-                                    {asset.notes}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-4">
-                              <div className="flex flex-col items-end">
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "flex-end",
+                                  gap: "4px",
+                                  paddingRight: "16px",
+                                }}
+                              >
                                 <p
                                   style={{
-                                    fontSize: "18px",
+                                    fontSize: "16px",
                                     fontWeight: 600,
                                     color: "var(--text-primary)",
                                   }}
                                 >
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
-                                    : `Unavailable in ${baseCurrency}`}
+                                    : `Unavailable`}
                                 </p>
                                 <p
                                   style={{
                                     fontSize: "12px",
-                                    color: "var(--text-secondary)",
+                                    color: "var(--text-tertiary)",
                                   }}
                                 >
                                   {getValuationLabel(asset)}
                                 </p>
                               </div>
 
-                              <button
-                                type="button"
-                                onClick={() => setEditAssetId(asset.id)}
+                              <div
                                 style={{
-                                  color: "var(--text-secondary)",
-                                  fontSize: "13px",
-                                  padding: "8px 12px",
-                                  background: "var(--bg-card-hover)",
-                                  borderRadius: "8px",
-                                  border:
-                                    "1px solid var(--border-glass-strong)",
-                                  cursor: "pointer",
-                                  transition: "all 0.2s",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "16px",
+                                  opacity: 0.6,
+                                  transition: "opacity 0.2s",
                                 }}
                                 onMouseOver={(e) =>
-                                  (e.currentTarget.style.color =
-                                    "var(--text-primary)")
+                                  (e.currentTarget.style.opacity = "1")
                                 }
                                 onMouseOut={(e) =>
-                                  (e.currentTarget.style.color =
-                                    "var(--text-secondary)")
+                                  (e.currentTarget.style.opacity = "0.6")
                                 }
                               >
-                                Edit
-                              </button>
-
-                              <DeleteAssetButton id={asset.id} />
-                            </div>
-                          </li>
-                        );
-                      })}
-                  </ul>
-                ) : null}
-              </div>
-            ))}
+                                <button
+                                  type="button"
+                                  onClick={() => setEditAssetId(asset.id)}
+                                  style={{
+                                    color: "var(--text-secondary)",
+                                    fontSize: "13px",
+                                    fontWeight: 500,
+                                    cursor: "pointer",
+                                    transition: "color 0.2s",
+                                  }}
+                                  onMouseOver={(e) =>
+                                    (e.currentTarget.style.color =
+                                      "var(--text-primary)")
+                                  }
+                                  onMouseOut={(e) =>
+                                    (e.currentTarget.style.color =
+                                      "var(--text-secondary)")
+                                  }
+                                >
+                                  Edit
+                                </button>
+                                <DeleteAssetButton id={asset.id} />
+                              </div>
+                            </li>
+                          );
+                        })}
+                    </ul>
+                  ) : null}
+                </div>
+              ))}
+          </div>
         </div>
       </div>
 

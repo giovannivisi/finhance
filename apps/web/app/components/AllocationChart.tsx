@@ -27,7 +27,9 @@ export default function AllocationChart({
             cx="50%"
             cy="50%"
             innerRadius={50}
-            outerRadius={90}
+            outerRadius={80}
+            paddingAngle={5}
+            cornerRadius={10}
             stroke="none"
             strokeWidth={0}
             labelLine={false}

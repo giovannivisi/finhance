@@ -165,158 +165,231 @@ export default function AssetForm({
     });
   }
 
+  const labelStyle = {
+    display: "block",
+    fontSize: "12px",
+    fontWeight: 600,
+    color: "var(--text-secondary)",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.05em",
+    marginBottom: "6px",
+  };
+  const inputStyle = {
+    width: "100%",
+    background: "var(--bg-app)",
+    border: "1px solid var(--border-glass-strong)",
+    borderRadius: "8px",
+    padding: "12px 16px",
+    color: "var(--text-primary)",
+    fontSize: "15px",
+    outline: "none",
+    transition: "border-color 0.2s",
+    boxSizing: "border-box" as const,
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-name`}
-          className="text-sm text-gray-600"
-        >
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: "flex", flexDirection: "column", gap: "20px" }}
+    >
+      <div>
+        <label htmlFor={`${fieldPrefix}-name`} style={labelStyle}>
           Name
         </label>
         <input
           id={`${fieldPrefix}-name`}
-          className="border rounded-lg px-3 py-2"
+          style={inputStyle}
           value={form.name}
           onChange={(event) => updateField("name", event.target.value)}
+          onFocus={(e) =>
+            (e.target.style.borderColor = "var(--text-secondary)")
+          }
+          onBlur={(e) =>
+            (e.target.style.borderColor = "var(--border-glass-strong)")
+          }
           required
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-type`}
-          className="text-sm text-gray-600"
-        >
-          Type
-        </label>
-        <select
-          id={`${fieldPrefix}-type`}
-          className="border rounded-lg px-3 py-2"
-          value={form.type}
-          onChange={(event) =>
-            updateField("type", event.target.value as AssetFormValues["type"])
-          }
-          required
-        >
-          <option value="ASSET">ASSET</option>
-          <option value="LIABILITY">LIABILITY</option>
-        </select>
-      </div>
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
+      >
+        <div>
+          <label htmlFor={`${fieldPrefix}-type`} style={labelStyle}>
+            Type
+          </label>
+          <select
+            id={`${fieldPrefix}-type`}
+            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
+            value={form.type}
+            onChange={(event) =>
+              updateField("type", event.target.value as AssetFormValues["type"])
+            }
+            onFocus={(e) =>
+              (e.target.style.borderColor = "var(--text-secondary)")
+            }
+            onBlur={(e) =>
+              (e.target.style.borderColor = "var(--border-glass-strong)")
+            }
+            required
+          >
+            <option value="ASSET">ASSET</option>
+            <option value="LIABILITY">LIABILITY</option>
+          </select>
+        </div>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-kind`}
-          className="text-sm text-gray-600"
-        >
-          Kind
-        </label>
-        <select
-          id={`${fieldPrefix}-kind`}
-          className="border rounded-lg px-3 py-2"
-          value={form.kind}
-          onChange={(event) =>
-            updateField("kind", event.target.value as AssetFormValues["kind"])
-          }
-        >
-          {kindOptions.map((kind) => (
-            <option key={kind} value={kind}>
-              {kind}
-            </option>
-          ))}
-        </select>
+        <div>
+          <label htmlFor={`${fieldPrefix}-kind`} style={labelStyle}>
+            Kind
+          </label>
+          <select
+            id={`${fieldPrefix}-kind`}
+            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
+            value={form.kind}
+            onChange={(event) =>
+              updateField("kind", event.target.value as AssetFormValues["kind"])
+            }
+            onFocus={(e) =>
+              (e.target.style.borderColor = "var(--text-secondary)")
+            }
+            onBlur={(e) =>
+              (e.target.style.borderColor = "var(--border-glass-strong)")
+            }
+          >
+            {kindOptions.map((kind) => (
+              <option key={kind} value={kind}>
+                {kind}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {config.showBalance ? (
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-balance`}
-            className="text-sm text-gray-600"
-          >
+        <div>
+          <label htmlFor={`${fieldPrefix}-balance`} style={labelStyle}>
             Amount
           </label>
           <input
             id={`${fieldPrefix}-balance`}
-            className="border rounded-lg px-3 py-2"
+            style={inputStyle}
             type="number"
             step="0.01"
             value={form.balance}
             onChange={(event) => updateField("balance", event.target.value)}
+            onFocus={(e) =>
+              (e.target.style.borderColor = "var(--text-secondary)")
+            }
+            onBlur={(e) =>
+              (e.target.style.borderColor = "var(--border-glass-strong)")
+            }
             required
           />
         </div>
       ) : null}
 
-      {config.showQuantity ? (
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-quantity`}
-            className="text-sm text-gray-600"
-          >
-            Quantity
-          </label>
-          <input
-            id={`${fieldPrefix}-quantity`}
-            className="border rounded-lg px-3 py-2"
-            type="number"
-            step="0.0000001"
-            value={form.quantity}
-            onChange={(event) => updateField("quantity", event.target.value)}
-            required
-          />
-        </div>
-      ) : null}
+      {config.showQuantity || config.showUnitPrice ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "16px",
+          }}
+        >
+          {config.showQuantity ? (
+            <div>
+              <label htmlFor={`${fieldPrefix}-quantity`} style={labelStyle}>
+                Quantity
+              </label>
+              <input
+                id={`${fieldPrefix}-quantity`}
+                style={inputStyle}
+                type="number"
+                step="0.0000001"
+                value={form.quantity}
+                onChange={(event) =>
+                  updateField("quantity", event.target.value)
+                }
+                onFocus={(e) =>
+                  (e.target.style.borderColor = "var(--text-secondary)")
+                }
+                onBlur={(e) =>
+                  (e.target.style.borderColor = "var(--border-glass-strong)")
+                }
+                required
+              />
+            </div>
+          ) : null}
 
-      {config.showUnitPrice ? (
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-unit-price`}
-            className="text-sm text-gray-600"
-          >
-            Unit Price
-          </label>
-          <input
-            id={`${fieldPrefix}-unit-price`}
-            className="border rounded-lg px-3 py-2"
-            type="number"
-            step="0.0001"
-            value={form.unitPrice}
-            onChange={(event) => updateField("unitPrice", event.target.value)}
-            required
-          />
+          {config.showUnitPrice ? (
+            <div>
+              <label htmlFor={`${fieldPrefix}-unit-price`} style={labelStyle}>
+                Unit Price
+              </label>
+              <input
+                id={`${fieldPrefix}-unit-price`}
+                style={inputStyle}
+                type="number"
+                step="0.0001"
+                value={form.unitPrice}
+                onChange={(event) =>
+                  updateField("unitPrice", event.target.value)
+                }
+                onFocus={(e) =>
+                  (e.target.style.borderColor = "var(--text-secondary)")
+                }
+                onBlur={(e) =>
+                  (e.target.style.borderColor = "var(--border-glass-strong)")
+                }
+                required
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {config.showTicker ? (
-        <>
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-ticker`}
-              className="text-sm text-gray-600"
-            >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "16px",
+          }}
+        >
+          <div>
+            <label htmlFor={`${fieldPrefix}-ticker`} style={labelStyle}>
               Ticker
             </label>
             <input
               id={`${fieldPrefix}-ticker`}
-              className="border rounded-lg px-3 py-2"
+              style={inputStyle}
               value={form.ticker}
               onChange={(event) => updateField("ticker", event.target.value)}
+              onFocus={(e) =>
+                (e.target.style.borderColor = "var(--text-secondary)")
+              }
+              onBlur={(e) =>
+                (e.target.style.borderColor = "var(--border-glass-strong)")
+              }
               required
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-exchange`}
-              className="text-sm text-gray-600"
-            >
+          <div>
+            <label htmlFor={`${fieldPrefix}-exchange`} style={labelStyle}>
               Exchange
             </label>
             <select
               id={`${fieldPrefix}-exchange`}
-              className="border rounded-lg px-3 py-2"
+              style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
               value={form.exchange}
               onChange={(event) => updateField("exchange", event.target.value)}
+              onFocus={(e) =>
+                (e.target.style.borderColor = "var(--text-secondary)")
+              }
+              onBlur={(e) =>
+                (e.target.style.borderColor = "var(--border-glass-strong)")
+              }
             >
               {EXCHANGE_SUFFIXES.map((exchange) => (
                 <option key={exchange.value} value={exchange.value}>
@@ -325,74 +398,92 @@ export default function AssetForm({
               ))}
             </select>
           </div>
-        </>
+        </div>
       ) : null}
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-currency`}
-          className="text-sm text-gray-600"
-        >
-          Currency
-        </label>
-        <input
-          id={`${fieldPrefix}-currency`}
-          className="border rounded-lg px-3 py-2"
-          value={form.currency}
-          onChange={(event) => updateField("currency", event.target.value)}
-        />
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
+      >
+        <div>
+          <label htmlFor={`${fieldPrefix}-currency`} style={labelStyle}>
+            Currency
+          </label>
+          <input
+            id={`${fieldPrefix}-currency`}
+            style={inputStyle}
+            value={form.currency}
+            onChange={(event) => updateField("currency", event.target.value)}
+            onFocus={(e) =>
+              (e.target.style.borderColor = "var(--text-secondary)")
+            }
+            onBlur={(e) =>
+              (e.target.style.borderColor = "var(--border-glass-strong)")
+            }
+          />
+        </div>
+
+        <div>
+          <label htmlFor={`${fieldPrefix}-account`} style={labelStyle}>
+            Account
+          </label>
+          <select
+            id={`${fieldPrefix}-account`}
+            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
+            value={form.accountId}
+            onChange={(event) => updateField("accountId", event.target.value)}
+            onFocus={(e) =>
+              (e.target.style.borderColor = "var(--text-secondary)")
+            }
+            onBlur={(e) =>
+              (e.target.style.borderColor = "var(--border-glass-strong)")
+            }
+          >
+            <option value="">No account</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {formatAccountOptionLabel(account)}
+              </option>
+            ))}
+          </select>
+          {accountsError ? (
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--color-expense)",
+                marginTop: "4px",
+              }}
+            >
+              {accountsError}
+            </p>
+          ) : null}
+        </div>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-account`}
-          className="text-sm text-gray-600"
-        >
-          Account
-        </label>
-        <select
-          id={`${fieldPrefix}-account`}
-          className="border rounded-lg px-3 py-2"
-          value={form.accountId}
-          onChange={(event) => updateField("accountId", event.target.value)}
-        >
-          <option value="">No account</option>
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
-              {formatAccountOptionLabel(account)}
-            </option>
-          ))}
-        </select>
-        {accountsError ? (
-          <p className="text-xs text-amber-700">{accountsError}</p>
-        ) : null}
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-notes`}
-          className="text-sm text-gray-600"
-        >
+      <div>
+        <label htmlFor={`${fieldPrefix}-notes`} style={labelStyle}>
           Notes
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}
-          className="border rounded-lg px-3 py-2"
+          style={{ ...inputStyle, resize: "vertical", minHeight: "80px" }}
           value={form.notes}
           onChange={(event) => updateField("notes", event.target.value)}
+          onFocus={(e) =>
+            (e.target.style.borderColor = "var(--text-secondary)")
+          }
+          onBlur={(e) =>
+            (e.target.style.borderColor = "var(--border-glass-strong)")
+          }
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-order`}
-          className="text-sm text-gray-600"
-        >
+      <div style={{ display: "none" }}>
+        <label htmlFor={`${fieldPrefix}-order`} style={labelStyle}>
           Order
         </label>
         <input
           id={`${fieldPrefix}-order`}
-          className="border rounded-lg px-3 py-2"
+          style={inputStyle}
           type="number"
           value={form.order}
           onChange={(event) => updateField("order", event.target.value)}
@@ -400,24 +491,59 @@ export default function AssetForm({
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p
+          role="alert"
+          style={{
+            fontSize: "14px",
+            color: "var(--color-expense)",
+            background: "rgba(239, 68, 68, 0.1)",
+            padding: "12px",
+            borderRadius: "8px",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
+          }}
+        >
           {error}
         </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={isSubmitting}
-        className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+      <div
+        style={{
+          marginTop: "8px",
+          display: "flex",
+          justifyContent: "flex-end",
+        }}
       >
-        {isSubmitting
-          ? "Saving..."
-          : isCreateMode
-            ? isAsset
-              ? "Create Asset"
-              : "Create Liability"
-            : "Save Changes"}
-      </button>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          style={{
+            background: "var(--text-primary)",
+            color: "var(--bg-app)",
+            padding: "14px 24px",
+            borderRadius: "8px",
+            fontWeight: 600,
+            fontSize: "15px",
+            border: "none",
+            cursor: isSubmitting ? "not-allowed" : "pointer",
+            opacity: isSubmitting ? 0.6 : 1,
+            transition: "opacity 0.2s, transform 0.1s",
+            width: "100%",
+          }}
+          onMouseDown={(e) => {
+            if (!isSubmitting) e.currentTarget.style.transform = "scale(0.98)";
+          }}
+          onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+        >
+          {isSubmitting
+            ? "Saving..."
+            : isCreateMode
+              ? isAsset
+                ? "Create Asset"
+                : "Create Liability"
+              : "Save Changes"}
+        </button>
+      </div>
     </form>
   );
 }

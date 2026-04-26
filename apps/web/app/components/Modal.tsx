@@ -1,5 +1,4 @@
-"use client";
-
+import { createPortal } from "react-dom";
 import {
   useEffect,
   useId,
@@ -111,9 +110,21 @@ export default function Modal({
 
   if (!open) return null;
 
-  return (
+  const modalContent = (
     <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.6)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 99999,
+      }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -127,10 +138,29 @@ export default function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto relative outline-none"
+        className="glass-card"
+        style={{
+          width: "100%",
+          maxWidth: "500px",
+          maxHeight: "85vh",
+          overflowY: "auto",
+          position: "relative",
+          outline: "none",
+          padding: "24px",
+          display: "flex",
+          flexDirection: "column",
+          background: "var(--bg-modal)",
+        }}
       >
-        <div className="mb-6 pr-10">
-          <h2 id={titleId} className="text-xl font-semibold text-gray-900">
+        <div style={{ marginBottom: "24px", paddingRight: "40px" }}>
+          <h2
+            id={titleId}
+            style={{
+              fontSize: "20px",
+              fontWeight: 600,
+              color: "var(--text-primary)",
+            }}
+          >
             {title}
           </h2>
         </div>
@@ -138,7 +168,22 @@ export default function Modal({
           type="button"
           onClick={onClose}
           aria-label="Close dialog"
-          className="absolute top-4 right-4 text-gray-500 hover:text-black rounded-full p-1"
+          style={{
+            position: "absolute",
+            top: "24px",
+            right: "24px",
+            color: "var(--text-secondary)",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "16px",
+          }}
+          onMouseOver={(e) =>
+            (e.currentTarget.style.color = "var(--text-primary)")
+          }
+          onMouseOut={(e) =>
+            (e.currentTarget.style.color = "var(--text-secondary)")
+          }
         >
           ✕
         </button>
@@ -146,4 +191,10 @@ export default function Modal({
       </div>
     </div>
   );
+
+  if (typeof document !== "undefined") {
+    return createPortal(modalContent, document.body);
+  }
+
+  return null;
 }

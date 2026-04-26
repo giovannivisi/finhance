@@ -4,7 +4,31 @@ export default function AddAssetButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-6 right-6 bg-blue-600 text-white rounded-full w-14 h-14 shadow-2xl text-3xl flex items-center justify-center hover:bg-blue-700 z-[9999]"
+      style={{
+        position: "fixed",
+        bottom: "24px",
+        right: "24px",
+        background: "var(--color-primary)",
+        color: "#fff",
+        borderRadius: "50%",
+        width: "56px",
+        height: "56px",
+        boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+        fontSize: "24px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        border: "none",
+        cursor: "pointer",
+        transition: "background 0.2s",
+      }}
+      onMouseOver={(e) =>
+        (e.currentTarget.style.background = "var(--color-primary-hover)")
+      }
+      onMouseOut={(e) =>
+        (e.currentTarget.style.background = "var(--color-primary)")
+      }
     >
       +
     </button>
