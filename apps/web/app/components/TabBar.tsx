@@ -147,6 +147,15 @@ export default function TabBar() {
           [data-theme="light"] .more-btn-icon:hover {
             color: #000000 !important;
           }
+          .revolut-active-pill {
+            background-color: ${theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.18)"} !important;
+            border: 0.5px solid ${theme === "light" ? "rgba(0, 0, 0, 0.1)" : "rgba(255, 255, 255, 0.2)"} !important;
+            box-shadow: ${
+              theme === "light"
+                ? "inset 0 1px 2px rgba(0,0,0,0.05)"
+                : "0 4px 12px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.1)"
+            } !important;
+          }
         `,
           }}
         />
@@ -201,7 +210,6 @@ export default function TabBar() {
           )}
         </AnimatePresence>
 
-        {/* Main Tab Bar Container */}
         <div
           id="revolut-tabbar"
           className="relative flex items-center p-2 gap-1 cursor-grab active:cursor-grabbing"
@@ -213,7 +221,7 @@ export default function TabBar() {
               {(hoveredIndex !== null || activeIndex !== -1) && (
                 <motion.div
                   layoutId="tab-highlight"
-                  className="absolute h-full rounded-full bg-[var(--tab-bg-highlight)]"
+                  className="absolute h-full rounded-full bg-[var(--tab-bg-highlight)] revolut-active-pill"
                   initial={false}
                   animate={{
                     left: `${(hoveredIndex !== null ? hoveredIndex : activeIndex) * (100 / (NAV_ITEMS.length + 1))}%`,
@@ -221,9 +229,9 @@ export default function TabBar() {
                   }}
                   transition={{
                     type: "spring",
-                    stiffness: 450,
-                    damping: 35,
-                    mass: 1,
+                    stiffness: 400,
+                    damping: 30,
+                    mass: 0.8,
                   }}
                 />
               )}

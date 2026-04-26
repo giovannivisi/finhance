@@ -769,3 +769,60 @@ label {
     0 10px 40px rgba(0, 0, 0, 0.06),
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.4) !important;
 }
+
+@keyframes prism-rotate {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+.prism-glass-border {
+  position: relative;
+  border: 1px solid transparent !important;
+  background-clip: padding-box, border-box !important;
+  background-origin: padding-box, border-box !important;
+  background-image:
+    linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.02),
+      rgba(255, 255, 255, 0.02)
+    ),
+    linear-gradient(
+      90deg,
+      #ff0000,
+      #ff7f00,
+      #ffff00,
+      #00ff00,
+      #0000ff,
+      #4b0082,
+      #8f00ff,
+      #ff0000
+    ) !important;
+  background-size:
+    100% 100%,
+    400% 100% !important;
+  animation: prism-rotate 20s linear infinite !important;
+}
+
+[data-theme="light"] .prism-glass-border {
+  background-image:
+    linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0.1),
+      rgba(255, 255, 255, 0.1)
+    ),
+    linear-gradient(
+      90deg,
+      #ff000033,
+      #ff7f0033,
+      #ffff0033,
+      #00ff0033,
+      #0000ff33,
+      #4b008233,
+      #8f00ff33,
+      #ff000033
+    ) !important;
+}
