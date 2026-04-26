@@ -1,4 +1,5 @@
-:root {
+:root,
+html[data-theme="dark"] {
   /* Brand & Accents */
   --color-primary: #7c3aed; /* Deep Purple */
   --color-primary-hover: #8b5cf6;
@@ -7,8 +8,11 @@
 
   /* Backgrounds */
   --bg-app: #050505;
+  --bg-header: rgba(5, 5, 5, 0.8);
   --bg-card: rgba(255, 255, 255, 0.03);
   --bg-card-hover: rgba(255, 255, 255, 0.05);
+  --bg-sidebar: rgba(15, 15, 15, 0.7);
+  --bg-sidebar-hover: rgba(255, 255, 255, 0.1);
 
   /* Borders */
   --border-glass: rgba(255, 255, 255, 0.08);
@@ -28,6 +32,41 @@
   --radius-md: 16px;
   --radius-lg: 24px;
 }
+
+html[data-theme="light"] {
+  /* Brand & Accents */
+  --color-primary: #6d28d9; /* Slightly darker purple for contrast */
+  --color-primary-hover: #7c3aed;
+  --color-income: #059669; /* Darker mint */
+  --color-expense: #e11d48; /* Darker red */
+
+  /* Backgrounds */
+  --bg-app: #f4f4f5; /* Very subtle light gray */
+  --bg-header: rgba(255, 255, 255, 0.8);
+  --bg-card: #ffffff; /* Solid white cards */
+  --bg-card-hover: #fcfcfc;
+  --bg-sidebar: rgba(255, 255, 255, 0.85);
+  --bg-sidebar-hover: rgba(0, 0, 0, 0.05);
+
+  /* Borders */
+  --border-glass: rgba(0, 0, 0, 0.08);
+  --border-glass-strong: rgba(0, 0, 0, 0.15);
+
+  /* Text */
+  --text-primary: #18181b; /* Zinc 900 */
+  --text-secondary: #52525b; /* Zinc 600 */
+  --text-tertiary: #a1a1aa; /* Zinc 400 */
+
+  /* Effects */
+  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Theme Logo Switching */
+.theme-logo-light { display: none; }
+.theme-logo-dark { display: block; }
+
+html[data-theme="light"] .theme-logo-light { display: block; }
+html[data-theme="light"] .theme-logo-dark { display: none; }
 
 * {
   box-sizing: border-box;
@@ -96,7 +135,7 @@ button {
   padding: 8px;
   border: 1px solid var(--border-glass-strong);
   border-radius: 40px;
-  background: rgba(15, 15, 15, 0.7);
+  background: var(--bg-sidebar);
   backdrop-filter: blur(32px);
   -webkit-backdrop-filter: blur(32px);
   box-shadow: 0 20px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
@@ -224,7 +263,7 @@ label {
   position: absolute;
   bottom: calc(100% + 16px);
   right: 0;
-  background: rgba(15, 15, 15, 0.85);
+  background: var(--bg-sidebar);
   backdrop-filter: blur(32px);
   border: 1px solid var(--border-glass-strong);
   border-radius: 16px;

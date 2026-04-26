@@ -7,11 +7,11 @@ export default function TopHeader() {
       style={{
         display: "flex",
         alignItems: "center",
-        padding: "20px 40px",
+        padding: "24px 48px",
         borderBottom: "1px solid var(--border-glass)",
-        background: "rgba(5, 5, 5, 0.8)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
+        background: "var(--bg-header)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
         position: "sticky",
         top: 0,
         zIndex: 40,
@@ -19,18 +19,27 @@ export default function TopHeader() {
     >
       <Link
         href="/"
-        style={{ display: "flex", alignItems: "center", gap: "12px" }}
+        style={{ display: "flex", alignItems: "center", gap: "16px" }}
       >
         <Image
-          src="/logo.png"
-          alt="finhance logo"
-          width={32}
-          height={32}
-          style={{ borderRadius: "8px", objectFit: "cover" }}
+          src="/logo-dark.svg"
+          alt="finhance logo dark"
+          width={44}
+          height={44}
+          style={{ objectFit: "contain" }}
+          className="theme-logo-dark"
+        />
+        <Image
+          src="/logo-light.svg"
+          alt="finhance logo light"
+          width={44}
+          height={44}
+          style={{ objectFit: "contain" }}
+          className="theme-logo-light"
         />
         <span
           style={{
-            fontSize: "20px",
+            fontSize: "24px",
             fontWeight: 700,
             color: "var(--text-primary)",
             letterSpacing: "-0.02em",

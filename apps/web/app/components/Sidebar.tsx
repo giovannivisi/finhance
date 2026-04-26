@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { isRedundantTabNavigation } from "@lib/navigation";
+import { useTheme } from "@components/ThemeProvider";
 
 const PRIMARY_NAV = [
   { href: "/", label: "Dashboard" },
@@ -73,6 +74,7 @@ export default function Sidebar() {
   const [isPending, startTransition] = useTransition();
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [showMore, setShowMore] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const currentPath = pathname ?? "/";
   const activePendingPath = isPending ? pendingPath : null;
@@ -120,6 +122,31 @@ export default function Sidebar() {
                 isSecondary={true}
               />
             ))}
+            <div
+              style={{
+                height: "1px",
+                background: "var(--border-glass-strong)",
+                margin: "4px 0",
+              }}
+            />
+            <button
+              onClick={() => {
+                toggleTheme();
+                setShowMore(false);
+              }}
+              className="sidebar-link sidebar-link-secondary"
+              style={{
+                textAlign: "left",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+              <span style={{ fontSize: "16px" }}>
+                {theme === "dark" ? "☀️" : "🌙"}
+              </span>
+            </button>
           </nav>
         )}
       </div>

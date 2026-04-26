@@ -7,6 +7,18 @@ export const metadata = {
 
 import Sidebar from "@components/Sidebar";
 import TopHeader from "@components/TopHeader";
+import { ThemeProvider } from "@components/ThemeProvider";
+import Script from "next/script";
+
+const themeScript = `
+  (function() {
+    try {
+      var savedTheme = localStorage.getItem('finhance-theme');
+      var theme = savedTheme || 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {}
+  })();
+`;
 
 export default function RootLayout({
   children,
@@ -14,13 +26,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script
+          id="theme-script"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: themeScript }}
+        />
+      </head>
       <body>
-        <div className="layout-app">
-          <TopHeader />
-          <Sidebar />
-          <main className="layout-main">{children}</main>
-        </div>
+        <ThemeProvider>
+          <div className="layout-app">
+            <TopHeader />
+            <Sidebar />
+            <main className="layout-main">{children}</main>
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   );
