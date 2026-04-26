@@ -180,12 +180,12 @@ export default function AssetForm({
     width: "100%",
     background: "var(--bg-app)",
     border: "1px solid var(--border-glass-strong)",
-    borderRadius: "8px",
-    padding: "12px 16px",
+    borderRadius: "var(--radius-md)",
+    padding: "14px 20px",
     color: "var(--text-primary)",
     fontSize: "15px",
     outline: "none",
-    transition: "border-color 0.2s",
+    transition: "all 0.2s",
     boxSizing: "border-box" as const,
   };
 
@@ -540,17 +540,20 @@ export default function AssetForm({
           type="submit"
           disabled={isSubmitting}
           style={{
-            background: "var(--text-primary)",
-            color: "var(--bg-app)",
-            padding: "14px 24px",
-            borderRadius: "8px",
-            fontWeight: 600,
-            fontSize: "15px",
+            background: "var(--color-primary)",
+            background:
+              "linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))",
+            color: "#fff",
             border: "none",
+            borderRadius: "var(--radius-md)",
+            padding: "14px 24px",
+            fontSize: "16px",
+            fontWeight: 700,
             cursor: isSubmitting ? "not-allowed" : "pointer",
-            opacity: isSubmitting ? 0.6 : 1,
-            transition: "opacity 0.2s, transform 0.1s",
+            opacity: isSubmitting ? 0.7 : 1,
+            transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
             width: "100%",
+            boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)",
           }}
           onMouseDown={(e) => {
             if (!isSubmitting) e.currentTarget.style.transform = "scale(0.98)";

@@ -143,27 +143,18 @@ export default function Modal({
           width: "100%",
           maxWidth: "500px",
           maxHeight: "85vh",
-          overflowY: "auto",
           position: "relative",
           outline: "none",
-          padding: "24px",
           display: "flex",
           flexDirection: "column",
           background: "var(--bg-modal)",
+          borderRadius: "var(--radius-lg)",
+          overflow: "hidden", // Important: clip children to the supercircle radius
+          border: "1px solid var(--border-glass-strong)",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
         }}
       >
-        <div style={{ marginBottom: "24px", paddingRight: "40px" }}>
-          <h2
-            id={titleId}
-            style={{
-              fontSize: "20px",
-              fontWeight: 600,
-              color: "var(--text-primary)",
-            }}
-          >
-            {title}
-          </h2>
-        </div>
+        {/* Close Button - remains fixed at the top right of the modal frame */}
         <button
           type="button"
           onClick={onClose}
@@ -172,22 +163,55 @@ export default function Modal({
             position: "absolute",
             top: "24px",
             right: "24px",
+            zIndex: 10, // Ensure it's above the scrolling content
             color: "var(--text-secondary)",
-            background: "transparent",
-            border: "none",
+            background: "var(--bg-app)", // Added slight background for visibility over content
+            width: "32px",
+            height: "32px",
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "1px solid var(--border-glass-strong)",
             cursor: "pointer",
-            fontSize: "16px",
+            fontSize: "14px",
+            transition: "all 0.2s",
           }}
-          onMouseOver={(e) =>
-            (e.currentTarget.style.color = "var(--text-primary)")
-          }
-          onMouseOut={(e) =>
-            (e.currentTarget.style.color = "var(--text-secondary)")
-          }
+          onMouseOver={(e) => {
+            e.currentTarget.style.color = "var(--text-primary)";
+            e.currentTarget.style.background = "var(--bg-card-hover)";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.color = "var(--text-secondary)";
+            e.currentTarget.style.background = "var(--bg-app)";
+          }}
         >
           ✕
         </button>
-        {children}
+
+        <div
+          className="custom-scrollbar"
+          style={{
+            padding: "32px",
+            overflowY: "auto",
+            flex: 1,
+          }}
+        >
+          <div style={{ marginBottom: "24px", paddingRight: "40px" }}>
+            <h2
+              id={titleId}
+              style={{
+                fontSize: "22px",
+                fontWeight: 700,
+                color: "var(--text-primary)",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {title}
+            </h2>
+          </div>
+          {children}
+        </div>
       </div>
     </div>
   );
