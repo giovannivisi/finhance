@@ -5,23 +5,6 @@ import type { PieLabelRenderProps } from "recharts";
 import { formatCurrency } from "@lib/format";
 import { COLORS } from "@lib/asset-ui";
 
-const renderLabel = (props: PieLabelRenderProps) => {
-  const { name, percent, x, y } = props;
-  if (!percent || percent === 0) return null;
-  return (
-    <text
-      x={x}
-      y={y}
-      fill="#111827"
-      textAnchor="middle"
-      dominantBaseline="central"
-      style={{ fontSize: "12px", fontWeight: 500 }}
-    >
-      {`${name} ${(percent * 100).toFixed(0)}%`}
-    </text>
-  );
-};
-
 export default function AllocationChart({
   data,
   size = 400,
@@ -45,10 +28,10 @@ export default function AllocationChart({
             cy="50%"
             innerRadius={50}
             outerRadius={90}
-            stroke="#fff"
-            strokeWidth={2}
+            stroke="none"
+            strokeWidth={0}
             labelLine={false}
-            label={isSingle ? false : renderLabel}
+            label={false}
           >
             {cleaned.map((entry, index) => (
               <Cell
@@ -64,7 +47,11 @@ export default function AllocationChart({
               y="50%"
               textAnchor="middle"
               dominantBaseline="middle"
-              style={{ fontSize: "16px", fontWeight: 600, fill: "#111827" }}
+              style={{
+                fontSize: "16px",
+                fontWeight: 600,
+                fill: "var(--text-primary)",
+              }}
             >
               {single.label}{" "}
               {(
@@ -77,7 +64,19 @@ export default function AllocationChart({
           ) : null}
 
           {!isSingle ? (
-            <Tooltip formatter={(value: number) => formatCurrency(value)} />
+            <Tooltip
+              formatter={(value: number) => formatCurrency(value)}
+              contentStyle={{
+                backgroundColor: "#18181b",
+                borderColor: "rgba(255,255,255,0.05)",
+                borderRadius: "12px",
+                color: "#fff",
+                fontSize: "12px",
+                padding: "8px 12px",
+                boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+              }}
+              itemStyle={{ color: "#fff" }}
+            />
           ) : null}
         </PieChart>
       </ResponsiveContainer>

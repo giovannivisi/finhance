@@ -117,13 +117,27 @@ export default async function Home() {
           >
             <div className="flex justify-between items-center gap-4">
               <div>
-                <p className="text-sm font-medium uppercase tracking-wide text-blue-700">
+                <p
+                  style={{
+                    color: "var(--color-primary)",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
                   Setup checklist
                 </p>
-                <h3 className="mt-2 text-2xl font-semibold">
+                <h3
+                  className="mt-2 text-2xl font-semibold"
+                  style={{ color: "var(--text-primary)" }}
+                >
                   Your trust baseline is not complete yet
                 </h3>
-                <p className="mt-2 text-sm text-blue-900/80">
+                <p
+                  className="mt-2 text-sm"
+                  style={{ color: "var(--text-secondary)" }}
+                >
                   {getSetupProgressLabel(setup)}. Finish the baseline first,
                   then move into review, analytics, budgets, and recurring
                   workflows with fewer surprises.
@@ -160,10 +174,16 @@ export default async function Home() {
                   </p>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-gray-900">
+                      <p
+                        className="font-semibold"
+                        style={{ color: "var(--text-primary)" }}
+                      >
                         {primaryAction.title}
                       </p>
-                      <p className="mt-1 text-sm text-gray-600">
+                      <p
+                        className="mt-1 text-sm"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
                         {primaryAction.detail}
                       </p>
                     </div>
@@ -177,78 +197,12 @@ export default async function Home() {
           </section>
         ) : null}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "16px",
-            marginBottom: "24px",
-          }}
-        >
-          <div
-            className="glass-card"
-            style={{ padding: "24px", textAlign: "center" }}
-          >
-            <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
-              Assets
-            </p>
-            <p
-              style={{
-                color: "var(--color-income)",
-                fontSize: "24px",
-                fontWeight: 700,
-              }}
-            >
-              {formatCurrency(dashboard.summary.assets, dashboard.baseCurrency)}
-            </p>
-          </div>
-          <div
-            className="glass-card"
-            style={{ padding: "24px", textAlign: "center" }}
-          >
-            <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
-              Liabilities
-            </p>
-            <p
-              style={{
-                color: "var(--color-expense)",
-                fontSize: "24px",
-                fontWeight: 700,
-              }}
-            >
-              {formatCurrency(
-                dashboard.summary.liabilities,
-                dashboard.baseCurrency,
-              )}
-            </p>
-          </div>
-          <div
-            className="glass-card"
-            style={{ padding: "24px", textAlign: "center" }}
-          >
-            <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
-              Net Worth
-            </p>
-            <p
-              style={{
-                color: "var(--text-primary)",
-                fontSize: "24px",
-                fontWeight: 700,
-              }}
-            >
-              {formatCurrency(
-                dashboard.summary.netWorth,
-                dashboard.baseCurrency,
-              )}
-            </p>
-          </div>
-        </div>
-
         <DashboardClient
           grouped={grouped}
           kindTotalsArray={kindTotalsArray}
           baseCurrency={dashboard.baseCurrency}
           lastRefreshAt={dashboard.lastRefreshAt}
+          summary={dashboard.summary}
         />
 
         <WorkflowSection
@@ -261,24 +215,41 @@ export default async function Home() {
           <section className="glass-card mt-6" style={{ padding: "32px" }}>
             <div className="flex justify-between items-center gap-3">
               <div>
-                <h3 className="text-2xl font-semibold text-gray-900">
+                <h3
+                  className="text-2xl font-semibold"
+                  style={{ color: "var(--text-primary)" }}
+                >
                   Budgets
                 </h3>
-                <p className="mt-1 text-sm text-gray-500">
+                <p
+                  className="mt-1 text-sm"
+                  style={{ color: "var(--text-secondary)" }}
+                >
                   Current-month budget coverage and the categories already
                   breaking plan.
                 </p>
               </div>
               <Link
                 href={`/budgets?month=${encodeURIComponent(budgetView.month)}`}
-                className="text-sm font-medium text-blue-600 hover:underline"
+                style={{
+                  color: "var(--color-primary)",
+                  fontWeight: 500,
+                  fontSize: "14px",
+                  textDecoration: "none",
+                }}
               >
                 Open budgets
               </Link>
             </div>
 
             {budgetView.currencies.length === 0 ? (
-              <div className="mt-5 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5 text-sm text-gray-500">
+              <div
+                className="mt-5 rounded-2xl border p-5 text-sm"
+                style={{
+                  borderColor: "var(--border-glass-strong)",
+                  color: "var(--text-secondary)",
+                }}
+              >
                 No budgets or expense activity for {budgetView.month}.
               </div>
             ) : (
@@ -297,10 +268,16 @@ export default async function Home() {
                     style={{ padding: "24px" }}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <h4 className="text-lg font-semibold text-gray-900">
+                      <h4
+                        className="text-lg font-semibold"
+                        style={{ color: "var(--text-primary)" }}
+                      >
                         {currency.currency}
                       </h4>
-                      <span className="text-sm text-gray-500">
+                      <span
+                        className="text-sm"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
                         {currency.budgetedCategoryCount} budgeted
                       </span>
                     </div>
@@ -368,7 +345,10 @@ export default async function Home() {
 
                     {currency.overBudgetHighlights.length > 0 ? (
                       <div className="mt-4 space-y-2">
-                        <p className="text-sm font-medium text-gray-700">
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--text-primary)" }}
+                        >
                           Top over-budget categories
                         </p>
                         {currency.overBudgetHighlights.map((item) => (
@@ -396,13 +376,19 @@ export default async function Home() {
                         ))}
                       </div>
                     ) : (
-                      <p className="mt-4 text-sm text-emerald-700">
+                      <p
+                        className="mt-4 text-sm"
+                        style={{ color: "var(--color-income)" }}
+                      >
                         No categories are over budget in {currency.currency}.
                       </p>
                     )}
 
                     {currency.unbudgetedExpenseTotal > 0 ? (
-                      <p className="mt-3 text-sm text-amber-700">
+                      <p
+                        className="mt-3 text-sm"
+                        style={{ color: "var(--color-expense)" }}
+                      >
                         Unbudgeted spend:{" "}
                         {formatCurrency(
                           currency.unbudgetedExpenseTotal,

@@ -40,11 +40,13 @@ export default function DashboardClient({
   kindTotalsArray,
   baseCurrency,
   lastRefreshAt,
+  summary,
 }: {
   grouped: Record<string, DashboardAssetResponse[]>;
   kindTotalsArray: { kind: string; total: number }[];
   baseCurrency: string;
   lastRefreshAt?: string | null;
+  summary: { assets: number; liabilities: number; netWorth: number };
 }) {
   const router = useRouter();
   const [editAssetId, setEditAssetId] = useState<string | null>(null);
@@ -151,84 +153,222 @@ export default function DashboardClient({
 
   return (
     <>
-      <SectionHeader title="Asset Allocation" />
-
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-gray-500">{refreshStatus}</p>
-          {refreshNotice ? (
-            <CooldownNotice
-              key={refreshNotice}
-              notice={refreshNotice}
-              className="mt-1 text-sm text-amber-700"
-            />
-          ) : null}
-          {refreshError ? (
-            <p className="mt-1 text-sm text-red-600">{refreshError}</p>
-          ) : null}
-        </div>
-
-        <button
-          type="button"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          style={{
-            fontSize: "14px",
-            padding: "8px 16px",
-            borderRadius: "8px",
-            background: "var(--color-primary)",
-            color: "white",
-            opacity: isRefreshing ? 0.6 : 1,
-            cursor: isRefreshing ? "not-allowed" : "pointer",
-          }}
-        >
-          {isRefreshing ? "Refreshing..." : "Refresh"}
-        </button>
-      </div>
-
+      {/* HERO SECTION */}
       <div
-        className="glass-card"
         style={{
-          padding: "40px",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          margin: "24px auto",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          marginBottom: "32px",
         }}
       >
-        <div style={{ width: "520px", height: "520px" }}>
-          <AllocationChart
-            size={520}
-            data={kindTotalsArray.map((kindTotal) => ({
-              label: kindTotal.kind,
-              total: kindTotal.total,
-            }))}
-          />
+        <div>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "var(--text-secondary)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              fontWeight: 600,
+            }}
+          >
+            Total Net Worth
+          </p>
+          <h1
+            style={{
+              fontSize: "48px",
+              fontWeight: 800,
+              color: "var(--text-primary)",
+              letterSpacing: "-0.04em",
+              margin: "8px 0 0 0",
+              lineHeight: 1,
+            }}
+          >
+            {formatCurrency(summary.netWorth, baseCurrency)}
+          </h1>
+          <div style={{ display: "flex", gap: "24px", marginTop: "16px" }}>
+            <div>
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                Assets
+              </p>
+              <p
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 600,
+                  color: "var(--color-income)",
+                }}
+              >
+                {formatCurrency(summary.assets, baseCurrency)}
+              </p>
+            </div>
+            <div>
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                Liabilities
+              </p>
+              <p
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 600,
+                  color: "var(--color-expense)",
+                }}
+              >
+                {formatCurrency(summary.liabilities, baseCurrency)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ textAlign: "right" }}>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "var(--text-secondary)",
+              marginBottom: "8px",
+            }}
+          >
+            {refreshStatus}
+          </p>
+          {refreshNotice && (
+            <CooldownNotice
+              notice={refreshNotice}
+              style={{
+                fontSize: "12px",
+                color: "#f59e0b",
+                marginBottom: "4px",
+              }}
+            />
+          )}
+          {refreshError && (
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--color-expense)",
+                marginBottom: "4px",
+              }}
+            >
+              {refreshError}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="btn-secondary"
+            style={{
+              padding: "8px 16px",
+              borderRadius: "100px",
+              fontSize: "13px",
+            }}
+          >
+            {isRefreshing ? "Refreshing..." : "Refresh Data"}
+          </button>
         </div>
       </div>
 
+      {/* ALLOCATION OVERVIEW */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gridTemplateColumns: "1fr 1fr",
           gap: "24px",
-          marginTop: "24px",
+          marginBottom: "40px",
         }}
       >
-        {kindTotalsArray.map(({ kind, total }) => (
-          <div
-            key={kind}
-            className="glass-card"
-            style={{ padding: "24px", textAlign: "center" }}
-          >
-            <p style={{ fontSize: "14px", color: "var(--text-secondary)" }}>
-              {kind}
-            </p>
-            <p style={{ fontSize: "24px", fontWeight: 700, marginTop: "8px" }}>
-              {formatCurrency(total, baseCurrency)}
-            </p>
+        {/* Chart Card */}
+        <div
+          className="glass-card"
+          style={{
+            padding: "32px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: "300px",
+          }}
+        >
+          <div style={{ width: "240px", height: "240px" }}>
+            <AllocationChart
+              size={240}
+              data={kindTotalsArray.map((kindTotal) => ({
+                label: kindTotal.kind,
+                total: kindTotal.total,
+              }))}
+            />
           </div>
-        ))}
+        </div>
+
+        {/* Breakdown Card */}
+        <div
+          className="glass-card"
+          style={{
+            padding: "32px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "18px",
+              fontWeight: 600,
+              color: "var(--text-primary)",
+              marginBottom: "24px",
+            }}
+          >
+            Asset Allocation
+          </h3>
+          <div
+            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+          >
+            {kindTotalsArray.map(({ kind, total }) => (
+              <div
+                key={kind}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "12px" }}
+                >
+                  <div
+                    style={{
+                      width: "12px",
+                      height: "12px",
+                      borderRadius: "50%",
+                      background:
+                        kind === "STOCK"
+                          ? "#4f46e5"
+                          : kind === "CRYPTO"
+                            ? "#eab308"
+                            : kind === "CASH"
+                              ? "#16a34a"
+                              : "var(--border-glass-strong)",
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontSize: "15px",
+                      color: "var(--text-secondary)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {kind}
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 600,
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  {formatCurrency(total, baseCurrency)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       <SectionHeader
@@ -236,11 +376,41 @@ export default function DashboardClient({
         action={<HeaderAddButton onClick={() => setCreateOpen(true)} />}
       />
 
-      <div className="space-y-10 mt-6">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 h-px bg-gray-300"></div>
-          <span className="text-lg font-semibold text-gray-700">Assets</span>
-          <div className="flex-1 h-px bg-gray-300"></div>
+      <div className="space-y-6 mt-6">
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "16px",
+            marginTop: "40px",
+            marginBottom: "16px",
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              height: "1px",
+              background: "var(--border-glass-strong)",
+            }}
+          ></div>
+          <span
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "var(--text-tertiary)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
+            Assets
+          </span>
+          <div
+            style={{
+              flex: 1,
+              height: "1px",
+              background: "var(--border-glass-strong)",
+            }}
+          ></div>
         </div>
 
         <div className="space-y-6">
@@ -255,7 +425,13 @@ export default function DashboardClient({
                   onClick={() => toggleCategory(category)}
                   className="flex items-center justify-between w-full text-left"
                 >
-                  <span className="text-lg font-medium text-gray-900">
+                  <span
+                    style={{
+                      fontSize: "18px",
+                      fontWeight: 600,
+                      color: "var(--text-primary)",
+                    }}
+                  >
                     {category}
                   </span>
                   <DisclosureIcon open={openCategories[category]} />
@@ -298,7 +474,15 @@ export default function DashboardClient({
                                   gap: "8px",
                                 }}
                               >
-                                <p style={{ fontWeight: 600 }}>{asset.name}</p>
+                                <p
+                                  style={{
+                                    fontWeight: 600,
+                                    color: "var(--text-primary)",
+                                    fontSize: "16px",
+                                  }}
+                                >
+                                  {asset.name}
+                                </p>
                                 {asset.ticker ? (
                                   <span
                                     style={{
@@ -329,7 +513,12 @@ export default function DashboardClient({
 
                                 {asset.quantity != null &&
                                 asset.unitPrice != null ? (
-                                  <span className="text-xs text-gray-600">
+                                  <span
+                                    style={{
+                                      fontSize: "12px",
+                                      color: "var(--text-secondary)",
+                                    }}
+                                  >
                                     {asset.quantity} ×{" "}
                                     {formatCurrency(
                                       Number(asset.unitPrice),
@@ -348,16 +537,32 @@ export default function DashboardClient({
 
                             <div className="flex items-center gap-4">
                               <div className="flex flex-col items-end">
-                                <p className="text-lg font-semibold text-gray-900">
+                                <p
+                                  style={{
+                                    fontSize: "18px",
+                                    fontWeight: 600,
+                                    color: "var(--text-primary)",
+                                  }}
+                                >
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable in ${baseCurrency}`}
                                 </p>
-                                <p className="text-xs text-gray-500">
+                                <p
+                                  style={{
+                                    fontSize: "12px",
+                                    color: "var(--text-secondary)",
+                                  }}
+                                >
                                   {getValuationLabel(asset)}
                                 </p>
                                 {referenceDiffers ? (
-                                  <p className="text-xs text-gray-500">
+                                  <p
+                                    style={{
+                                      fontSize: "12px",
+                                      color: "var(--text-secondary)",
+                                    }}
+                                  >
                                     Ref:{" "}
                                     {formatCurrency(
                                       asset.referenceValue!,
@@ -366,7 +571,12 @@ export default function DashboardClient({
                                   </p>
                                 ) : null}
                                 {displayValue == null ? (
-                                  <p className="text-xs text-gray-500">
+                                  <p
+                                    style={{
+                                      fontSize: "12px",
+                                      color: "var(--text-secondary)",
+                                    }}
+                                  >
                                     Stored amount:{" "}
                                     {formatCurrency(
                                       Number(asset.balance),
@@ -379,7 +589,25 @@ export default function DashboardClient({
                               <button
                                 type="button"
                                 onClick={() => setEditAssetId(asset.id)}
-                                className="text-blue-600 hover:underline"
+                                style={{
+                                  color: "var(--text-secondary)",
+                                  fontSize: "13px",
+                                  padding: "8px 12px",
+                                  background: "var(--bg-card-hover)",
+                                  borderRadius: "8px",
+                                  border:
+                                    "1px solid var(--border-glass-strong)",
+                                  cursor: "pointer",
+                                  transition: "all 0.2s",
+                                }}
+                                onMouseOver={(e) =>
+                                  (e.currentTarget.style.color =
+                                    "var(--text-primary)")
+                                }
+                                onMouseOut={(e) =>
+                                  (e.currentTarget.style.color =
+                                    "var(--text-secondary)")
+                                }
                               >
                                 Edit
                               </button>
@@ -395,12 +623,40 @@ export default function DashboardClient({
             ))}
         </div>
 
-        <div className="flex items-center gap-4 mt-10">
-          <div className="flex-1 h-px bg-gray-300"></div>
-          <span className="text-lg font-semibold text-gray-700">
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "16px",
+            marginTop: "40px",
+            marginBottom: "16px",
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              height: "1px",
+              background: "var(--border-glass-strong)",
+            }}
+          ></div>
+          <span
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              color: "var(--text-tertiary)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
             Liabilities
           </span>
-          <div className="flex-1 h-px bg-gray-300"></div>
+          <div
+            style={{
+              flex: 1,
+              height: "1px",
+              background: "var(--border-glass-strong)",
+            }}
+          ></div>
         </div>
 
         <div className="space-y-6">
@@ -415,7 +671,13 @@ export default function DashboardClient({
                   onClick={() => toggleCategory(category)}
                   className="flex items-center justify-between w-full text-left"
                 >
-                  <span className="text-lg font-medium text-red-600">
+                  <span
+                    style={{
+                      fontSize: "18px",
+                      fontWeight: 600,
+                      color: "var(--color-expense)",
+                    }}
+                  >
                     {category}
                   </span>
                   <DisclosureIcon open={openCategories[category]} />
@@ -432,11 +694,23 @@ export default function DashboardClient({
                         return (
                           <li
                             key={asset.id}
-                            className="bg-white shadow rounded-2xl p-4 flex items-center justify-between"
+                            className="glass-card"
+                            style={{
+                              padding: "16px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                            }}
                           >
                             <div className="flex flex-col">
                               <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900">
+                                <p
+                                  style={{
+                                    fontWeight: 600,
+                                    color: "var(--text-primary)",
+                                    fontSize: "16px",
+                                  }}
+                                >
                                   {asset.name}
                                 </p>
                               </div>
@@ -456,12 +730,23 @@ export default function DashboardClient({
 
                             <div className="flex items-center gap-4">
                               <div className="flex flex-col items-end">
-                                <p className="text-lg font-semibold text-gray-900">
+                                <p
+                                  style={{
+                                    fontSize: "18px",
+                                    fontWeight: 600,
+                                    color: "var(--text-primary)",
+                                  }}
+                                >
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable in ${baseCurrency}`}
                                 </p>
-                                <p className="text-xs text-gray-500">
+                                <p
+                                  style={{
+                                    fontSize: "12px",
+                                    color: "var(--text-secondary)",
+                                  }}
+                                >
                                   {getValuationLabel(asset)}
                                 </p>
                               </div>
@@ -469,7 +754,25 @@ export default function DashboardClient({
                               <button
                                 type="button"
                                 onClick={() => setEditAssetId(asset.id)}
-                                className="text-blue-600 hover:underline"
+                                style={{
+                                  color: "var(--text-secondary)",
+                                  fontSize: "13px",
+                                  padding: "8px 12px",
+                                  background: "var(--bg-card-hover)",
+                                  borderRadius: "8px",
+                                  border:
+                                    "1px solid var(--border-glass-strong)",
+                                  cursor: "pointer",
+                                  transition: "all 0.2s",
+                                }}
+                                onMouseOver={(e) =>
+                                  (e.currentTarget.style.color =
+                                    "var(--text-primary)")
+                                }
+                                onMouseOut={(e) =>
+                                  (e.currentTarget.style.color =
+                                    "var(--text-secondary)")
+                                }
                               >
                                 Edit
                               </button>
