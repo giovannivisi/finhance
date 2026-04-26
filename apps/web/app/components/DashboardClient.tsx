@@ -18,6 +18,19 @@ import DisclosureIcon from "@components/DisclosureIcon";
 import AllocationChart from "@components/AllocationChart";
 import { useSingleFlightActions } from "@lib/single-flight";
 
+function getKindDotColor(kind: string): string {
+  switch (kind) {
+    case "STOCK":
+      return "#4f46e5";
+    case "CRYPTO":
+      return "#eab308";
+    case "CASH":
+      return "#16a34a";
+    default:
+      return "var(--border-glass-strong)";
+  }
+}
+
 function getValuationLabel(asset: DashboardAssetResponse): string {
   switch (asset.valuationSource) {
     case "LIVE":
@@ -154,80 +167,30 @@ export default function DashboardClient({
   return (
     <>
       {/* HERO SECTION */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-end",
-          marginBottom: "32px",
-        }}
-      >
+      <div className="dashboard-hero">
         <div>
-          <p
-            style={{
-              fontSize: "14px",
-              color: "var(--text-secondary)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              fontWeight: 600,
-            }}
-          >
-            Total Net Worth
-          </p>
-          <h1
-            style={{
-              fontSize: "48px",
-              fontWeight: 800,
-              color: "var(--text-primary)",
-              letterSpacing: "-0.04em",
-              margin: "8px 0 0 0",
-              lineHeight: 1,
-            }}
-          >
+          <p className="dashboard-hero-eyebrow">Total Net Worth</p>
+          <h1 className="dashboard-hero-amount">
             {formatCurrency(summary.netWorth, baseCurrency)}
           </h1>
-          <div style={{ display: "flex", gap: "24px", marginTop: "16px" }}>
+          <div className="dashboard-hero-stats">
             <div>
-              <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                Assets
-              </p>
-              <p
-                style={{
-                  fontSize: "18px",
-                  fontWeight: 600,
-                  color: "var(--color-income)",
-                }}
-              >
+              <p className="dashboard-hero-stat-label">Assets</p>
+              <p className="dashboard-hero-stat-value is-positive">
                 {formatCurrency(summary.assets, baseCurrency)}
               </p>
             </div>
             <div>
-              <p style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                Liabilities
-              </p>
-              <p
-                style={{
-                  fontSize: "18px",
-                  fontWeight: 600,
-                  color: "var(--color-expense)",
-                }}
-              >
+              <p className="dashboard-hero-stat-label">Liabilities</p>
+              <p className="dashboard-hero-stat-value is-negative">
                 {formatCurrency(summary.liabilities, baseCurrency)}
               </p>
             </div>
           </div>
         </div>
 
-        <div style={{ textAlign: "right" }}>
-          <p
-            style={{
-              fontSize: "12px",
-              color: "var(--text-secondary)",
-              marginBottom: "8px",
-            }}
-          >
-            {refreshStatus}
-          </p>
+        <div className="dashboard-hero-aside">
+          <p className="dashboard-hero-aside-status">{refreshStatus}</p>
           {refreshNotice && (
             <CooldownNotice
               notice={refreshNotice}
@@ -239,26 +202,13 @@ export default function DashboardClient({
             />
           )}
           {refreshError && (
-            <p
-              style={{
-                fontSize: "12px",
-                color: "var(--color-expense)",
-                marginBottom: "4px",
-              }}
-            >
-              {refreshError}
-            </p>
+            <p className="dashboard-hero-aside-error">{refreshError}</p>
           )}
           <button
             type="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="btn-secondary"
-            style={{
-              padding: "8px 16px",
-              borderRadius: "100px",
-              fontSize: "13px",
-            }}
+            className="btn-secondary dashboard-hero-refresh-btn"
           >
             {isRefreshing ? "Refreshing..." : "Refresh Data"}
           </button>
@@ -332,19 +282,8 @@ export default function DashboardClient({
                   style={{ display: "flex", alignItems: "center", gap: "12px" }}
                 >
                   <div
-                    style={{
-                      width: "12px",
-                      height: "12px",
-                      borderRadius: "50%",
-                      background:
-                        kind === "STOCK"
-                          ? "#4f46e5"
-                          : kind === "CRYPTO"
-                            ? "#eab308"
-                            : kind === "CASH"
-                              ? "#16a34a"
-                              : "var(--border-glass-strong)",
-                    }}
+                    className="category-dot is-large"
+                    style={{ background: getKindDotColor(kind) }}
                   />
                   <span
                     style={{
@@ -378,103 +317,28 @@ export default function DashboardClient({
 
       <div className="space-y-6">
         <div className="space-y-4">
-          <h3
-            style={{
-              fontSize: "20px",
-              fontWeight: 600,
-              color: "var(--text-primary)",
-              paddingLeft: "8px",
-              marginBottom: "8px",
-            }}
-          >
-            Assets
-          </h3>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(450px, 1fr))",
-              gap: "24px",
-              alignItems: "start",
-            }}
-          >
+          <h3 className="dashboard-section-heading">Assets</h3>
+          <div className="dashboard-grid">
             {sortedCategories
               .filter((category) =>
                 grouped[category].some((asset) => asset.type === "ASSET"),
               )
               .map((category) => (
-                <div
-                  key={category}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "12px",
-                  }}
-                >
+                <div key={category} className="category-block">
                   <button
                     type="button"
                     onClick={() => toggleCategory(category)}
-                    className="flex items-center justify-between w-full text-left group"
-                    style={{
-                      padding: "12px 16px",
-                      borderRadius: "var(--radius-md)",
-                      background: "transparent",
-                      transition: "background 0.2s",
-                    }}
-                    onMouseOver={(e) =>
-                      (e.currentTarget.style.background =
-                        "var(--bg-card-hover)")
-                    }
-                    onMouseOut={(e) =>
-                      (e.currentTarget.style.background = "transparent")
-                    }
+                    className="category-toggle"
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
-                      }}
-                    >
+                    <div className="category-toggle-label">
                       <div
-                        style={{
-                          width: "10px",
-                          height: "10px",
-                          borderRadius: "50%",
-                          background:
-                            category === "STOCK"
-                              ? "#4f46e5"
-                              : category === "CRYPTO"
-                                ? "#eab308"
-                                : category === "CASH"
-                                  ? "#16a34a"
-                                  : "var(--border-glass-strong)",
-                        }}
+                        className="category-dot"
+                        style={{ background: getKindDotColor(category) }}
                       />
-                      <span
-                        style={{
-                          fontSize: "16px",
-                          fontWeight: 600,
-                          color: "var(--text-primary)",
-                          letterSpacing: "0.02em",
-                        }}
-                      >
-                        {category}
-                      </span>
+                      <span className="category-toggle-name">{category}</span>
                     </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "16px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "15px",
-                          fontWeight: 600,
-                          color: "var(--text-primary)",
-                        }}
-                      >
+                    <div className="category-toggle-meta">
+                      <span className="category-toggle-total">
                         {formatCurrency(
                           grouped[category]
                             .filter((a) => a.type === "ASSET")
@@ -494,13 +358,7 @@ export default function DashboardClient({
                   </button>
 
                   {openCategories[category] ? (
-                    <ul
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "12px",
-                      }}
-                    >
+                    <ul className="category-items">
                       {grouped[category]
                         .filter((asset) => asset.type === "ASSET")
                         .map((asset) => {
@@ -525,103 +383,31 @@ export default function DashboardClient({
                               : "Stored balance";
 
                           return (
-                            <li
-                              key={asset.id}
-                              className="glass-card group"
-                              style={{
-                                padding: "16px 24px",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "24px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  flex: 1,
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: "2px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "baseline",
-                                    gap: "8px",
-                                  }}
-                                >
-                                  <p
-                                    style={{
-                                      fontWeight: 600,
-                                      color: "var(--text-primary)",
-                                      fontSize: "17px",
-                                    }}
-                                  >
-                                    {asset.name}
-                                  </p>
+                            <li key={asset.id} className="glass-card asset-row">
+                              <div className="asset-row-info">
+                                <div className="asset-row-headline">
+                                  <p className="asset-row-name">{asset.name}</p>
                                   {asset.ticker && (
-                                    <span
-                                      style={{
-                                        fontSize: "12px",
-                                        color: "var(--text-tertiary)",
-                                        letterSpacing: "0.05em",
-                                      }}
-                                    >
+                                    <span className="asset-row-ticker">
                                       {asset.ticker}
                                     </span>
                                   )}
                                 </div>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "baseline",
-                                    gap: "8px",
-                                  }}
-                                >
-                                  <p
-                                    style={{
-                                      fontSize: "13px",
-                                      color: "var(--text-secondary)",
-                                      fontWeight: 500,
-                                    }}
-                                  >
+                                <div className="asset-row-meta">
+                                  <p className="asset-row-meta-text">
                                     {quantityDisplay}
                                   </p>
                                   {liveUnitPrice != null && (
-                                    <span
-                                      style={{
-                                        fontSize: "10px",
-                                        color: "var(--color-income)",
-                                        fontWeight: 700,
-                                        letterSpacing: "0.05em",
-                                        opacity: 0.9,
-                                        lineHeight: 1,
-                                      }}
-                                    >
+                                    <span className="asset-row-live-badge">
                                       LIVE
                                     </span>
                                   )}
                                   {asset.notes && (
                                     <>
-                                      <span
-                                        style={{
-                                          color: "var(--border-glass-strong)",
-                                          fontSize: "13px",
-                                        }}
-                                      >
+                                      <span className="asset-row-bullet">
                                         •
                                       </span>
-                                      <span
-                                        style={{
-                                          fontSize: "13px",
-                                          color: "var(--text-tertiary)",
-                                          fontStyle: "italic",
-                                          maxWidth: "200px",
-                                          whiteSpace: "nowrap",
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                        }}
-                                      >
+                                      <span className="asset-row-notes">
                                         {asset.notes}
                                       </span>
                                     </>
@@ -629,33 +415,14 @@ export default function DashboardClient({
                                 </div>
                               </div>
 
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "flex-end",
-                                  gap: "2px",
-                                  minWidth: "120px",
-                                }}
-                              >
-                                <p
-                                  style={{
-                                    fontSize: "17px",
-                                    fontWeight: 600,
-                                    color: "var(--text-primary)",
-                                  }}
-                                >
+                              <div className="asset-row-value">
+                                <p className="asset-row-value-amount">
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable`}
                                 </p>
                                 {referenceDiffers ? (
-                                  <p
-                                    style={{
-                                      fontSize: "13px",
-                                      color: "var(--text-secondary)",
-                                    }}
-                                  >
+                                  <p className="asset-row-value-sub is-ref">
                                     Ref:{" "}
                                     {formatCurrency(
                                       asset.referenceValue!,
@@ -663,50 +430,17 @@ export default function DashboardClient({
                                     )}
                                   </p>
                                 ) : (
-                                  <p
-                                    style={{
-                                      fontSize: "13px",
-                                      color: "var(--text-tertiary)",
-                                    }}
-                                  >
+                                  <p className="asset-row-value-sub">
                                     {getValuationLabel(asset)}
                                   </p>
                                 )}
                               </div>
 
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "16px",
-                                  opacity: 0.4,
-                                  transition: "opacity 0.2s",
-                                }}
-                                onMouseOver={(e) =>
-                                  (e.currentTarget.style.opacity = "1")
-                                }
-                                onMouseOut={(e) =>
-                                  (e.currentTarget.style.opacity = "0.4")
-                                }
-                              >
+                              <div className="asset-row-actions">
                                 <button
                                   type="button"
                                   onClick={() => setEditAssetId(asset.id)}
-                                  style={{
-                                    color: "var(--text-secondary)",
-                                    fontSize: "13px",
-                                    fontWeight: 500,
-                                    cursor: "pointer",
-                                    transition: "color 0.2s",
-                                  }}
-                                  onMouseOver={(e) =>
-                                    (e.currentTarget.style.color =
-                                      "var(--text-primary)")
-                                  }
-                                  onMouseOut={(e) =>
-                                    (e.currentTarget.style.color =
-                                      "var(--text-secondary)")
-                                  }
+                                  className="asset-row-edit-btn"
                                 >
                                   Edit
                                 </button>
@@ -723,97 +457,30 @@ export default function DashboardClient({
         </div>
 
         <div className="space-y-4">
-          <h3
-            style={{
-              fontSize: "20px",
-              fontWeight: 600,
-              color: "var(--text-primary)",
-              paddingLeft: "8px",
-              marginBottom: "8px",
-              marginTop: "32px",
-            }}
-          >
+          <h3 className="dashboard-section-heading is-secondary">
             Liabilities
           </h3>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(450px, 1fr))",
-              gap: "24px",
-              alignItems: "start",
-            }}
-          >
+          <div className="dashboard-grid">
             {sortedCategories
               .filter((category) =>
                 grouped[category].some((asset) => asset.type === "LIABILITY"),
               )
               .map((category) => (
-                <div
-                  key={category}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "12px",
-                  }}
-                >
+                <div key={category} className="category-block">
                   <button
                     type="button"
                     onClick={() => toggleCategory(category)}
-                    className="flex items-center justify-between w-full text-left group"
-                    style={{
-                      padding: "12px 16px",
-                      borderRadius: "var(--radius-md)",
-                      background: "transparent",
-                      transition: "background 0.2s",
-                    }}
-                    onMouseOver={(e) =>
-                      (e.currentTarget.style.background =
-                        "var(--bg-card-hover)")
-                    }
-                    onMouseOut={(e) =>
-                      (e.currentTarget.style.background = "transparent")
-                    }
+                    className="category-toggle"
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
-                      }}
-                    >
+                    <div className="category-toggle-label">
                       <div
-                        style={{
-                          width: "10px",
-                          height: "10px",
-                          borderRadius: "50%",
-                          background: "var(--color-expense)",
-                        }}
+                        className="category-dot"
+                        style={{ background: "var(--color-expense)" }}
                       />
-                      <span
-                        style={{
-                          fontSize: "16px",
-                          fontWeight: 600,
-                          color: "var(--text-primary)",
-                          letterSpacing: "0.02em",
-                        }}
-                      >
-                        {category}
-                      </span>
+                      <span className="category-toggle-name">{category}</span>
                     </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "16px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "15px",
-                          fontWeight: 600,
-                          color: "var(--text-primary)",
-                        }}
-                      >
+                    <div className="category-toggle-meta">
+                      <span className="category-toggle-total">
                         {formatCurrency(
                           grouped[category]
                             .filter((a) => a.type === "LIABILITY")
@@ -833,13 +500,7 @@ export default function DashboardClient({
                   </button>
 
                   {openCategories[category] ? (
-                    <ul
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "12px",
-                      }}
-                    >
+                    <ul className="category-items">
                       {grouped[category]
                         .filter((asset) => asset.type === "LIABILITY")
                         .map((asset) => {
@@ -847,81 +508,19 @@ export default function DashboardClient({
                             asset.currentValue ?? asset.referenceValue;
 
                           return (
-                            <li
-                              key={asset.id}
-                              className="glass-card group"
-                              style={{
-                                padding: "16px 24px",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "24px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  flex: 1,
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: "2px",
-                                }}
-                              >
-                                <p
-                                  style={{
-                                    fontWeight: 600,
-                                    color: "var(--text-primary)",
-                                    fontSize: "17px",
-                                  }}
-                                >
-                                  {asset.name}
-                                </p>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "baseline",
-                                    gap: "8px",
-                                  }}
-                                >
-                                  {asset.liabilityKind ? (
-                                    <span
-                                      style={{
-                                        fontSize: "13px",
-                                        color: "var(--text-secondary)",
-                                        fontWeight: 500,
-                                      }}
-                                    >
-                                      {asset.liabilityKind}
-                                    </span>
-                                  ) : (
-                                    <span
-                                      style={{
-                                        fontSize: "13px",
-                                        color: "var(--text-secondary)",
-                                      }}
-                                    >
-                                      Stored balance
-                                    </span>
-                                  )}
+                            <li key={asset.id} className="glass-card asset-row">
+                              <div className="asset-row-info">
+                                <p className="asset-row-name">{asset.name}</p>
+                                <div className="asset-row-meta">
+                                  <span className="asset-row-meta-text">
+                                    {asset.liabilityKind ?? "Stored balance"}
+                                  </span>
                                   {asset.notes && (
                                     <>
-                                      <span
-                                        style={{
-                                          color: "var(--border-glass-strong)",
-                                          fontSize: "13px",
-                                        }}
-                                      >
+                                      <span className="asset-row-bullet">
                                         •
                                       </span>
-                                      <span
-                                        style={{
-                                          fontSize: "13px",
-                                          color: "var(--text-tertiary)",
-                                          fontStyle: "italic",
-                                          maxWidth: "200px",
-                                          whiteSpace: "nowrap",
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                        }}
-                                      >
+                                      <span className="asset-row-notes">
                                         {asset.notes}
                                       </span>
                                     </>
@@ -929,69 +528,22 @@ export default function DashboardClient({
                                 </div>
                               </div>
 
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  alignItems: "flex-end",
-                                  gap: "2px",
-                                  minWidth: "120px",
-                                }}
-                              >
-                                <p
-                                  style={{
-                                    fontSize: "17px",
-                                    fontWeight: 600,
-                                    color: "var(--text-primary)",
-                                  }}
-                                >
+                              <div className="asset-row-value">
+                                <p className="asset-row-value-amount">
                                   {displayValue != null
                                     ? formatCurrency(displayValue, baseCurrency)
                                     : `Unavailable`}
                                 </p>
-                                <p
-                                  style={{
-                                    fontSize: "13px",
-                                    color: "var(--text-tertiary)",
-                                  }}
-                                >
+                                <p className="asset-row-value-sub">
                                   {getValuationLabel(asset)}
                                 </p>
                               </div>
 
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "16px",
-                                  opacity: 0.4,
-                                  transition: "opacity 0.2s",
-                                }}
-                                onMouseOver={(e) =>
-                                  (e.currentTarget.style.opacity = "1")
-                                }
-                                onMouseOut={(e) =>
-                                  (e.currentTarget.style.opacity = "0.4")
-                                }
-                              >
+                              <div className="asset-row-actions">
                                 <button
                                   type="button"
                                   onClick={() => setEditAssetId(asset.id)}
-                                  style={{
-                                    color: "var(--text-secondary)",
-                                    fontSize: "13px",
-                                    fontWeight: 500,
-                                    cursor: "pointer",
-                                    transition: "color 0.2s",
-                                  }}
-                                  onMouseOver={(e) =>
-                                    (e.currentTarget.style.color =
-                                      "var(--text-primary)")
-                                  }
-                                  onMouseOut={(e) =>
-                                    (e.currentTarget.style.color =
-                                      "var(--text-secondary)")
-                                  }
+                                  className="asset-row-edit-btn"
                                 >
                                   Edit
                                 </button>

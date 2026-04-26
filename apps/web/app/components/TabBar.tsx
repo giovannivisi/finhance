@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -44,14 +44,87 @@ const MORE_ITEMS = [
   { href: "/import", label: "Import", icon: Upload },
 ] as const;
 
+const TAB_COUNT = NAV_ITEMS.length + 1; // 4 nav + 1 more
+
 export default function TabBar() {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [showMore, setShowMore] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const isDraggingRef = useRef(false);
+  const wasDraggingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+
+  /** Returns the tab slot index (0–TAB_COUNT-1) for a given clientX. */
+  function getTabIndexAt(clientX: number): number {
+    const bar = barRef.current;
+    if (!bar) return 0;
+    const rect = bar.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const idx = Math.floor((x / rect.width) * TAB_COUNT);
+    return Math.max(0, Math.min(idx, TAB_COUNT - 1));
+  }
+
+  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return;
+    isDraggingRef.current = false;
+    wasDraggingRef.current = false;
+    dragStartXRef.current = e.clientX;
+    // No setPointerCapture — let clicks bubble naturally to <Link> children.
+    // onPointerMove/Up on the container still receive events via React bubbling.
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!(e.buttons & 1)) return; // primary button must be held
+    const delta = e.clientX - dragStartXRef.current;
+    if (Math.abs(delta) < 6) return;
+
+    if (!isDraggingRef.current) {
+      isDraggingRef.current = true;
+      setIsDragging(true);
+    }
+    setHoveredIndex(getTabIndexAt(e.clientX));
+  }
+
+  function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return;
+    if (!isDraggingRef.current) return;
+
+    wasDraggingRef.current = true;
+    isDraggingRef.current = false;
+    setIsDragging(false);
+
+    const idx = getTabIndexAt(e.clientX);
+    setHoveredIndex(null);
+
+    if (idx < NAV_ITEMS.length) {
+      router.push(NAV_ITEMS[idx].href);
+    } else {
+      setShowMore(true);
+    }
+  }
+
+  function handlePointerCancel() {
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    setHoveredIndex(null);
+  }
+
+  /** Intercepts the synthetic click that fires after a drag-release. */
+  function handleClickCapture(e: React.MouseEvent) {
+    if (wasDraggingRef.current) {
+      wasDraggingRef.current = false;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -66,126 +139,81 @@ export default function TabBar() {
       }
     }
 
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowMore(false);
+        moreButtonRef.current?.focus();
+      }
+    }
+
     if (showMore) {
       document.addEventListener("mousedown", handleClickOutside);
-    } else {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleEscape);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [showMore]);
-
-  const glassStyle = {
-    backgroundColor:
-      theme === "light"
-        ? "rgba(255, 255, 255, 0.15)"
-        : "rgba(10, 10, 10, 0.22)",
-    backdropFilter: "blur(64px) saturate(140%)",
-    WebkitBackdropFilter: "blur(64px) saturate(140%)",
-    border: `0.5px solid ${theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.1)"}`,
-    borderRadius: "100px",
-    boxShadow:
-      theme === "light"
-        ? "0 10px 40px rgba(0, 0, 0, 0.04)"
-        : "0 12px 40px rgba(0, 0, 0, 0.3)",
-  };
 
   const activeIndex = NAV_ITEMS.findIndex((item) =>
     item.href === "/" ? pathname === "/" : pathname?.startsWith(item.href),
   );
 
-  return (
-    <div className="fixed bottom-10 left-0 right-0 z-50 pointer-events-none flex justify-center">
-      <div ref={menuRef} className="pointer-events-auto relative">
-        {/* Nuclear Style Override for True Glass Pill */}
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-          #revolut-tabbar {
-            background-color: ${theme === "light" ? "rgba(255, 255, 255, 0.15)" : "rgba(10, 10, 10, 0.22)"} !important;
-            backdrop-filter: blur(64px) saturate(140%) !important;
-            -webkit-backdrop-filter: blur(64px) saturate(140%) !important;
-            border: 0.5px solid ${theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.1)"} !important;
-            border-radius: 9999px !important;
-            box-shadow: ${
-              theme === "light"
-                ? "0 10px 40px rgba(0, 0, 0, 0.04)"
-                : "0 12px 40px rgba(0, 0, 0, 0.3)"
-            } !important;
-          }
-          #revolut-more-panel {
-            background-color: ${theme === "light" ? "rgba(255, 255, 255, 0.2)" : "rgba(10, 10, 10, 0.3)"} !important;
-            backdrop-filter: blur(64px) saturate(140%) !important;
-            -webkit-backdrop-filter: blur(64px) saturate(140%) !important;
-            border: 0.5px solid ${theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.1)"} !important;
-            border-radius: 24px !important;
-          }
-          [data-theme="dark"] #revolut-more-panel span,
-          [data-theme="dark"] #revolut-more-panel svg {
-            color: rgba(255, 255, 255, 0.9) !important;
-          }
-          [data-theme="dark"] #revolut-more-panel .group:hover span,
-          [data-theme="dark"] #revolut-more-panel .group:hover svg {
-            color: #ffffff !important;
-          }
-          [data-theme="dark"] .more-btn-icon {
-            color: rgba(255, 255, 255, 0.7) !important;
-          }
-          [data-theme="dark"] .more-btn-icon:hover {
-            color: #ffffff !important;
-          }
-          [data-theme="light"] .more-btn-icon {
-            color: rgba(0, 0, 0, 0.4) !important;
-          }
-          [data-theme="light"] .more-btn-icon:hover {
-            color: #000000 !important;
-          }
-          .revolut-active-pill {
-            background-color: ${theme === "light" ? "rgba(0, 0, 0, 0.08)" : "rgba(255, 255, 255, 0.18)"} !important;
-            border: 0.5px solid ${theme === "light" ? "rgba(0, 0, 0, 0.1)" : "rgba(255, 255, 255, 0.2)"} !important;
-            box-shadow: ${
-              theme === "light"
-                ? "inset 0 1px 2px rgba(0,0,0,0.05)"
-                : "0 4px 12px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.1)"
-            } !important;
-            backdrop-filter: blur(8px) saturate(120%) !important;
-          }
-          .revolut-active-pill .pill-sheen {
-            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.05) 100%) !important;
-          }
-          /* Prevent browser default link dragging */
-          #revolut-tabbar a {
-            -webkit-user-drag: none !important;
-            user-select: none !important;
-          }
-        `,
-          }}
-        />
+  // -1 means we're on a More-menu page → park the pill at the "..." slot
+  const isMoreActive = activeIndex === -1;
+  const pillIndex =
+    hoveredIndex !== null
+      ? hoveredIndex
+      : activeIndex !== -1
+        ? activeIndex
+        : NAV_ITEMS.length; // "..." slot
 
+  return (
+    <nav
+      aria-label="Primary"
+      className="fixed bottom-10 left-0 right-0 z-50 pointer-events-none flex justify-center"
+    >
+      <div ref={menuRef} className="pointer-events-auto relative">
         {/* More Menu Popover */}
         <AnimatePresence>
           {showMore && (
             <motion.div
               id="revolut-more-panel"
-              initial={{ opacity: 0, y: 15, scale: 0.95 }}
+              role="menu"
+              aria-label="More navigation"
+              initial={
+                prefersReducedMotion
+                  ? false
+                  : { opacity: 0, y: 15, scale: 0.95 }
+              }
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 15, scale: 0.95 }}
-              transition={{ type: "spring", damping: 25, stiffness: 400 }}
-              className="absolute bottom-full mb-5 right-0 min-w-[180px] p-2 flex flex-col gap-1 overflow-hidden"
+              exit={
+                prefersReducedMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, y: 15, scale: 0.95 }
+              }
+              transition={
+                prefersReducedMotion
+                  ? { duration: 0 }
+                  : { type: "spring", damping: 25, stiffness: 400 }
+              }
+              className="tab-more-panel absolute bottom-full mb-5 right-0 min-w-[180px] p-2 flex flex-col gap-1 overflow-hidden"
             >
               {MORE_ITEMS.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
+                  role="menuitem"
                   className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-[var(--tab-bg-highlight)] group"
                 >
                   <item.icon
                     size={18}
-                    className="text-[var(--tab-icon-inactive)] group-hover:text-[var(--tab-icon-hover)]"
+                    aria-hidden="true"
+                    className="tab-menu-icon"
                   />
-                  <span className="text-[13px] font-medium text-[var(--tab-icon-inactive)] group-hover:text-[var(--tab-icon-hover)]">
+                  <span className="text-[13px] font-medium tab-menu-label">
                     {item.label}
                   </span>
                 </Link>
@@ -194,19 +222,30 @@ export default function TabBar() {
               <div
                 className="h-px bg-[var(--tab-border)] my-1 mx-2"
                 style={{ opacity: 0.5 }}
+                role="separator"
               />
 
               {/* Theme Toggle */}
               <button
                 onClick={() => toggleTheme()}
+                role="menuitem"
+                aria-label={
+                  theme === "dark"
+                    ? "Switch to light mode"
+                    : "Switch to dark mode"
+                }
                 className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[var(--tab-bg-highlight)] transition-colors group"
               >
                 {theme === "dark" ? (
-                  <Sun size={18} className="text-amber-400" />
+                  <Sun size={18} aria-hidden="true" className="tab-menu-icon" />
                 ) : (
-                  <Moon size={18} className="text-indigo-400" />
+                  <Moon
+                    size={18}
+                    aria-hidden="true"
+                    className="tab-menu-icon"
+                  />
                 )}
-                <span className="text-[13px] font-medium text-[var(--tab-icon-inactive)] group-hover:text-[var(--tab-icon-hover)]">
+                <span className="text-[13px] font-medium tab-menu-label">
                   {theme === "dark" ? "Light Mode" : "Dark Mode"}
                 </span>
               </button>
@@ -215,60 +254,40 @@ export default function TabBar() {
         </AnimatePresence>
 
         <div
+          ref={barRef}
           id="revolut-tabbar"
-          className="relative flex items-center p-2 gap-1 cursor-grab active:cursor-grabbing"
-          onMouseLeave={() => setHoveredIndex(null)}
+          className="tab-bar-pill relative flex items-center p-2 gap-1 cursor-grab active:cursor-grabbing select-none"
+          style={{ touchAction: "none" }}
+          onMouseLeave={() => {
+            if (!isDraggingRef.current) setHoveredIndex(null);
+          }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onClickCapture={handleClickCapture}
         >
-          {/* Magic Slider Background */}
+          {/* Magic Slider Background — always rendered, parks at "..." for More pages */}
           <div className="absolute inset-2 flex pointer-events-none">
-            <AnimatePresence>
-              {(hoveredIndex !== null || activeIndex !== -1) && (
-                <motion.div
-                  layoutId="tab-highlight"
-                  className="absolute h-full rounded-full bg-[var(--tab-bg-highlight)] revolut-active-pill overflow-hidden cursor-grab active:cursor-grabbing"
-                  initial={false}
-                  animate={{
-                    left: `${(hoveredIndex !== null ? hoveredIndex : activeIndex) * (100 / (NAV_ITEMS.length + 1))}%`,
-                    width: `${100 / (NAV_ITEMS.length + 1)}%`,
-                  }}
-                  drag="x"
-                  dragConstraints={{ left: 0, right: 0 }}
-                  dragElastic={0.4}
-                  onDragEnd={(e, info) => {
-                    const barWidth = menuRef.current?.offsetWidth || 300;
-                    const tabCount = NAV_ITEMS.length + 1;
-                    const tabWidth = barWidth / tabCount;
-
-                    // Calculate which tab we are closest to
-                    const dragOffset = info.offset.x;
-                    const currentPos = activeIndex * tabWidth;
-                    const newPos = currentPos + dragOffset;
-                    const targetIdx = Math.round(newPos / tabWidth);
-
-                    const clampedIdx = Math.max(
-                      0,
-                      Math.min(targetIdx, tabCount - 1),
-                    );
-
-                    if (clampedIdx < NAV_ITEMS.length) {
-                      router.push(NAV_ITEMS[clampedIdx].href);
-                    } else {
-                      setShowMore(true);
-                    }
-                  }}
-                  whileDrag={{ scale: 1.1, filter: "brightness(1.1)" }}
-                  whileTap={{ scale: 0.95 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 450,
-                    damping: 30,
-                    mass: 0.8,
-                  }}
-                >
-                  <div className="absolute inset-0 pill-sheen pointer-events-none" />
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <motion.div
+              layoutId="tab-highlight"
+              aria-hidden="true"
+              className="absolute h-full rounded-full tab-active-pill overflow-hidden"
+              initial={false}
+              animate={{
+                left: `${pillIndex * (100 / TAB_COUNT)}%`,
+                width: `${100 / TAB_COUNT}%`,
+              }}
+              transition={
+                prefersReducedMotion
+                  ? { duration: 0 }
+                  : isDragging
+                    ? { type: "tween", duration: 0.05 }
+                    : { type: "spring", stiffness: 450, damping: 30, mass: 0.8 }
+              }
+            >
+              <div className="absolute inset-0 pill-sheen pointer-events-none" />
+            </motion.div>
           </div>
 
           {/* Tab Items */}
@@ -278,6 +297,8 @@ export default function TabBar() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-label={item.label}
+                aria-current={isActive ? "page" : undefined}
                 onMouseEnter={() => setHoveredIndex(idx)}
                 className={cn(
                   "relative flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-90",
@@ -286,10 +307,18 @@ export default function TabBar() {
                     : "text-[var(--tab-icon-inactive)] hover:text-[var(--tab-icon-hover)]",
                 )}
               >
-                <item.icon size={22} strokeWidth={isActive ? 2.5 : 2} />
+                <item.icon
+                  size={22}
+                  strokeWidth={isActive ? 2.5 : 2}
+                  aria-hidden="true"
+                />
                 {isActive && (
                   <motion.div
                     layoutId="active-dot"
+                    aria-hidden="true"
+                    transition={
+                      prefersReducedMotion ? { duration: 0 } : undefined
+                    }
                     className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full shadow-[0_0_12px_rgba(16,185,129,0.8)]"
                   />
                 )}
@@ -299,19 +328,35 @@ export default function TabBar() {
 
           {/* More Button */}
           <button
+            ref={moreButtonRef}
+            type="button"
             onClick={() => setShowMore(!showMore)}
             onMouseEnter={() => setHoveredIndex(NAV_ITEMS.length)}
+            aria-label="More navigation"
+            aria-expanded={showMore}
+            aria-haspopup="menu"
+            aria-controls="revolut-more-panel"
             className={cn(
-              "relative flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-90 more-btn-icon",
-              showMore
-                ? "text-[var(--tab-icon-active)]"
-                : "text-[var(--tab-icon-inactive)] hover:text-[var(--tab-icon-hover)]",
+              "tab-more-btn relative flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-90",
+              (showMore || isMoreActive) && "is-open",
             )}
           >
-            <MoreHorizontal size={22} strokeWidth={showMore ? 2.5 : 2} />
+            <MoreHorizontal
+              size={22}
+              strokeWidth={showMore || isMoreActive ? 2.5 : 2}
+              aria-hidden="true"
+            />
+            {isMoreActive && (
+              <motion.div
+                layoutId="active-dot"
+                aria-hidden="true"
+                transition={prefersReducedMotion ? { duration: 0 } : undefined}
+                className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full shadow-[0_0_12px_rgba(16,185,129,0.8)]"
+              />
+            )}
           </button>
         </div>
       </div>
-    </div>
+    </nav>
   );
 }

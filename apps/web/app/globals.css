@@ -44,6 +44,23 @@ html[data-theme="dark"] {
   --tab-bg-highlight: rgba(255, 255, 255, 0.15);
   --tab-more-bg: rgba(255, 255, 255, 0.05);
   --tab-border: rgba(255, 255, 255, 0.15);
+
+  /* Focus ring (keyboard-only via :focus-visible) */
+  --focus-ring: rgba(255, 255, 255, 0.4);
+
+  /* TabBar pill (glass) */
+  --tab-pill-bg: rgba(15, 15, 15, 0.7);
+  --tab-pill-border: rgba(255, 255, 255, 0.1);
+  --tab-pill-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  --tab-pill-blur: blur(40px) saturate(140%);
+
+  --tab-active-pill-bg: rgba(255, 255, 255, 0.18);
+  --tab-active-pill-border: rgba(255, 255, 255, 0.2);
+  --tab-active-pill-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+
+  --tab-more-panel-bg: rgba(18, 18, 18, 0.93);
+  --tab-more-panel-border: rgba(255, 255, 255, 0.1);
 }
 
 html[data-theme="light"] {
@@ -75,19 +92,35 @@ html[data-theme="light"] {
   /* Zinc 900 */
   --text-secondary: #52525b;
   /* Zinc 600 */
-  --text-tertiary: #a1a1aa;
-  /* Zinc 400 */
+  --text-tertiary: #71717a;
+  /* Zinc 500 — bumped from #a1a1aa to clear WCAG AA on light bg */
 
   /* Effects */
   --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.06);
 
   /* TabBar specific colors - Light Theme */
   --tab-icon-active: #000000;
-  --tab-icon-inactive: rgba(0, 0, 0, 0.4);
+  --tab-icon-inactive: rgba(0, 0, 0, 0.55);
   --tab-icon-hover: rgba(0, 0, 0, 0.6);
   --tab-bg-highlight: rgba(0, 0, 0, 0.08);
   --tab-more-bg: rgba(0, 0, 0, 0.03);
   --tab-border: rgba(0, 0, 0, 0.08);
+
+  /* Focus ring (keyboard-only via :focus-visible) */
+  --focus-ring: rgba(0, 0, 0, 0.3);
+
+  /* TabBar pill (glass) */
+  --tab-pill-bg: rgba(255, 255, 255, 0.7);
+  --tab-pill-border: rgba(0, 0, 0, 0.08);
+  --tab-pill-shadow: 0 10px 40px rgba(0, 0, 0, 0.06);
+  --tab-pill-blur: blur(40px) saturate(140%);
+
+  --tab-active-pill-bg: rgba(0, 0, 0, 0.08);
+  --tab-active-pill-border: rgba(0, 0, 0, 0.1);
+  --tab-active-pill-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+
+  --tab-more-panel-bg: rgba(255, 255, 255, 0.96);
+  --tab-more-panel-border: rgba(0, 0, 0, 0.08);
 }
 
 /* Theme Logo Switching */
@@ -250,8 +283,15 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+  border-color: var(--border-glass-strong);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--border-glass-strong);
 }
 
 label {
@@ -825,4 +865,426 @@ label {
       #8f00ff33,
       #ff000033
     ) !important;
+}
+
+/* Skip-to-content link — visually hidden until keyboard-focused */
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 10px 16px;
+  background: var(--color-primary);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: var(--radius-sm);
+  transform: translateY(-200%);
+  transition: transform 0.2s ease-in-out;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Dashboard — repeated patterns extracted from DashboardClient */
+
+/* Hero block (Total Net Worth) */
+.dashboard-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 32px;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.dashboard-hero-eyebrow {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.dashboard-hero-amount {
+  font-size: 48px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.04em;
+  margin: 8px 0 0 0;
+  line-height: 1;
+}
+
+.dashboard-hero-stats {
+  display: flex;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.dashboard-hero-stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dashboard-hero-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.dashboard-hero-stat-value.is-positive {
+  color: var(--color-income);
+}
+
+.dashboard-hero-stat-value.is-negative {
+  color: var(--color-expense);
+}
+
+.dashboard-hero-aside {
+  text-align: right;
+}
+
+.dashboard-hero-aside-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.dashboard-hero-aside-error {
+  font-size: 12px;
+  color: var(--color-expense);
+  margin-bottom: 4px;
+}
+
+.dashboard-hero-refresh-btn {
+  padding: 8px 16px;
+  border-radius: 100px;
+  font-size: 13px;
+}
+
+/* Asset / liability section grids — single column below 1024px */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(450px, 100%), 1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 1023px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-section-heading {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-left: 8px;
+  margin-bottom: 8px;
+}
+
+.dashboard-section-heading.is-secondary {
+  margin-top: 32px;
+}
+
+/* Category disclosure (one per asset kind) */
+.category-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.category-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.category-toggle:hover {
+  background: var(--bg-card-hover);
+}
+
+.category-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.category-toggle-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.category-toggle-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.category-toggle-total {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.category-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.category-dot.is-large {
+  width: 12px;
+  height: 12px;
+}
+
+/* Asset / liability item rows */
+.category-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.asset-row {
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.asset-row-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.asset-row-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.asset-row-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 17px;
+}
+
+.asset-row-ticker {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.05em;
+}
+
+.asset-row-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.asset-row-meta-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.asset-row-live-badge {
+  font-size: 10px;
+  color: var(--color-income);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  opacity: 0.9;
+  line-height: 1;
+}
+
+.asset-row-bullet {
+  color: var(--border-glass-strong);
+  font-size: 13px;
+}
+
+.asset-row-notes {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-style: italic;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asset-row-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 120px;
+}
+
+.asset-row-value-amount {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.asset-row-value-sub {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.asset-row-value-sub.is-ref {
+  color: var(--text-secondary);
+}
+
+/* Hover-reveal action buttons (CSS-only, replaces inline onMouseOver/Out) */
+.asset-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  opacity: 0.4;
+  transition: opacity 0.2s;
+}
+
+.asset-row:hover .asset-row-actions,
+.asset-row:focus-within .asset-row-actions {
+  opacity: 1;
+}
+
+.asset-row-edit-btn {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.asset-row-edit-btn:hover {
+  color: var(--text-primary);
+}
+
+/* TabBar — pill, active highlight, more menu */
+.tab-bar-pill {
+  background-color: var(--tab-pill-bg);
+  backdrop-filter: var(--tab-pill-blur);
+  -webkit-backdrop-filter: var(--tab-pill-blur);
+  border: 0.5px solid var(--tab-pill-border);
+  border-radius: 9999px;
+  box-shadow: var(--tab-pill-shadow);
+}
+
+.tab-bar-pill a {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.tab-bar-pill a:focus-visible,
+.tab-bar-pill button:focus-visible,
+.tab-more-panel a:focus-visible,
+.tab-more-panel button:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.tab-active-pill {
+  background-color: var(--tab-active-pill-bg);
+  border: 0.5px solid var(--tab-active-pill-border);
+  box-shadow: var(--tab-active-pill-shadow);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+}
+
+.tab-active-pill .pill-sheen {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+}
+
+.tab-more-panel {
+  background-color: var(--tab-more-panel-bg);
+  backdrop-filter: var(--tab-pill-blur);
+  -webkit-backdrop-filter: var(--tab-pill-blur);
+  border: 0.5px solid var(--tab-more-panel-border);
+  border-radius: 24px;
+}
+
+/* Dedicated color classes for More-panel items — avoids CSS-variable
+   resolution issues with Tailwind's text-[var(...)] arbitrary classes. */
+.tab-menu-icon {
+  color: rgba(255, 255, 255, 0.82);
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.tab-menu-label {
+  color: rgba(255, 255, 255, 0.82);
+  transition: color 0.15s;
+}
+
+.group:hover .tab-menu-icon,
+.group:hover .tab-menu-label {
+  color: #ffffff;
+}
+
+[data-theme="light"] .tab-menu-icon,
+[data-theme="light"] .tab-menu-label {
+  color: rgba(0, 0, 0, 0.65);
+}
+
+[data-theme="light"] .group:hover .tab-menu-icon,
+[data-theme="light"] .group:hover .tab-menu-label {
+  color: rgba(0, 0, 0, 0.9);
+}
+
+/* "..." More button — explicit colors so the icon is always legible */
+.tab-more-btn {
+  color: rgba(255, 255, 255, 0.7);
+  transition: color 0.15s;
+}
+
+.tab-more-btn.is-open {
+  color: #ffffff;
+}
+
+[data-theme="light"] .tab-more-btn {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+[data-theme="light"] .tab-more-btn.is-open {
+  color: #000000;
+}
+
+/* Honor user's reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

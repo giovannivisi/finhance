@@ -5,6 +5,12 @@ export const metadata = {
   description: "Finance dashboard",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
 import TabBar from "@components/TabBar";
 import TopHeader from "@components/TopHeader";
 import { ThemeProvider } from "@components/ThemeProvider";
@@ -36,9 +42,14 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
+          <a href="#main" className="skip-link">
+            Skip to content
+          </a>
           <div className="layout-app">
             <TopHeader />
-            <main className="layout-main">{children}</main>
+            <main id="main" className="layout-main">
+              {children}
+            </main>
             <TabBar />
           </div>
         </ThemeProvider>
