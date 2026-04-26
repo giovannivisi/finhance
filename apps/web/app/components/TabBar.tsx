@@ -3,7 +3,12 @@
 import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import {
+  motion,
+  AnimatePresence,
+  useReducedMotion,
+  useAnimation,
+} from "framer-motion";
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -61,6 +66,9 @@ export default function TabBar() {
   const isDraggingRef = useRef(false);
   const wasDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
+
+  const pillControls = useAnimation();
+  const prevPillIndexRef = useRef<number | null>(null); // null = not yet initialised
 
   /** Returns the tab slot index (0–TAB_COUNT-1) for a given clientX. */
   function getTabIndexAt(clientX: number): number {
@@ -170,6 +178,60 @@ export default function TabBar() {
         ? activeIndex
         : NAV_ITEMS.length; // "..." slot
 
+  // Liquid-glass pill animation:
+  // • First render / drag → instant set (no spring lag)
+  // • Normal navigation/hover → 2-phase: stretch toward destination, then spring-contract
+  useEffect(() => {
+    const W = 100 / TAB_COUNT;
+    const toIdx = pillIndex;
+    const fromIdx = prevPillIndexRef.current;
+
+    // First render: place pill instantly with no animation
+    if (fromIdx === null) {
+      prevPillIndexRef.current = toIdx;
+      void pillControls.set({ left: `${toIdx * W}%`, width: `${W}%` });
+      return;
+    }
+
+    prevPillIndexRef.current = toIdx;
+    if (fromIdx === toIdx) return;
+
+    // During drag or reduced-motion: instant repositioning
+    if (isDragging || prefersReducedMotion) {
+      void pillControls.start({
+        left: `${toIdx * W}%`,
+        width: `${W}%`,
+        transition: { duration: 0 },
+      });
+      return;
+    }
+
+    // Liquid stretch: pill elongates to bridge source → destination,
+    // then the trailing edge springs inward to the final slot.
+    const isRight = toIdx > fromIdx;
+    const fromLeft = fromIdx * W;
+    const toLeft = toIdx * W;
+    const dist = Math.abs(toIdx - fromIdx);
+    const extraW = Math.min(dist, 2) * W * 0.7; // cap stretch at ~2 slots
+    const stretchLeft = isRight ? fromLeft : toLeft;
+    const stretchWidth = W + extraW;
+
+    void (async () => {
+      // Phase 1 — fast stretch toward the destination
+      await pillControls.start({
+        left: `${stretchLeft}%`,
+        width: `${stretchWidth}%`,
+        transition: { type: "tween", duration: 0.13, ease: [0.4, 0, 0.2, 1] },
+      });
+      // Phase 2 — spring-contract to the final slot
+      await pillControls.start({
+        left: `${toLeft}%`,
+        width: `${W}%`,
+        transition: { type: "spring", stiffness: 420, damping: 30, mass: 0.85 },
+      });
+    })();
+  }, [pillIndex, isDragging, prefersReducedMotion, pillControls]);
+
   return (
     <nav
       aria-label="Primary"
@@ -270,21 +332,9 @@ export default function TabBar() {
           {/* Magic Slider Background — always rendered, parks at "..." for More pages */}
           <div className="absolute inset-2 flex pointer-events-none">
             <motion.div
-              layoutId="tab-highlight"
               aria-hidden="true"
               className="absolute h-full rounded-full tab-active-pill overflow-hidden"
-              initial={false}
-              animate={{
-                left: `${pillIndex * (100 / TAB_COUNT)}%`,
-                width: `${100 / TAB_COUNT}%`,
-              }}
-              transition={
-                prefersReducedMotion
-                  ? { duration: 0 }
-                  : isDragging
-                    ? { type: "tween", duration: 0.05 }
-                    : { type: "spring", stiffness: 450, damping: 30, mass: 0.8 }
-              }
+              animate={pillControls}
             >
               <div className="absolute inset-0 pill-sheen pointer-events-none" />
             </motion.div>
