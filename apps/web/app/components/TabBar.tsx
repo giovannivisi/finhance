@@ -20,6 +20,7 @@ import {
   Moon,
 } from "lucide-react";
 import { useTheme } from "@components/ThemeProvider";
+import { useRouter } from "next/navigation";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -45,6 +46,7 @@ const MORE_ITEMS = [
 
 export default function TabBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [showMore, setShowMore] = useState(false);
@@ -96,14 +98,7 @@ export default function TabBar() {
 
   return (
     <div className="fixed bottom-10 left-0 right-0 z-50 pointer-events-none flex justify-center">
-      <motion.div
-        ref={menuRef}
-        drag
-        dragConstraints={{ left: -150, right: 150, top: -150, bottom: 50 }}
-        dragElastic={0.1}
-        whileDrag={{ scale: 1.05, cursor: "grabbing" }}
-        className="pointer-events-auto relative"
-      >
+      <div ref={menuRef} className="pointer-events-auto relative">
         {/* Nuclear Style Override for True Glass Pill */}
         <style
           dangerouslySetInnerHTML={{
@@ -155,6 +150,15 @@ export default function TabBar() {
                 ? "inset 0 1px 2px rgba(0,0,0,0.05)"
                 : "0 4px 12px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.1)"
             } !important;
+            backdrop-filter: blur(8px) saturate(120%) !important;
+          }
+          .revolut-active-pill .pill-sheen {
+            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.05) 100%) !important;
+          }
+          /* Prevent browser default link dragging */
+          #revolut-tabbar a {
+            -webkit-user-drag: none !important;
+            user-select: none !important;
           }
         `,
           }}
@@ -221,19 +225,48 @@ export default function TabBar() {
               {(hoveredIndex !== null || activeIndex !== -1) && (
                 <motion.div
                   layoutId="tab-highlight"
-                  className="absolute h-full rounded-full bg-[var(--tab-bg-highlight)] revolut-active-pill"
+                  className="absolute h-full rounded-full bg-[var(--tab-bg-highlight)] revolut-active-pill overflow-hidden cursor-grab active:cursor-grabbing"
                   initial={false}
                   animate={{
                     left: `${(hoveredIndex !== null ? hoveredIndex : activeIndex) * (100 / (NAV_ITEMS.length + 1))}%`,
                     width: `${100 / (NAV_ITEMS.length + 1)}%`,
                   }}
+                  drag="x"
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={0.4}
+                  onDragEnd={(e, info) => {
+                    const barWidth = menuRef.current?.offsetWidth || 300;
+                    const tabCount = NAV_ITEMS.length + 1;
+                    const tabWidth = barWidth / tabCount;
+
+                    // Calculate which tab we are closest to
+                    const dragOffset = info.offset.x;
+                    const currentPos = activeIndex * tabWidth;
+                    const newPos = currentPos + dragOffset;
+                    const targetIdx = Math.round(newPos / tabWidth);
+
+                    const clampedIdx = Math.max(
+                      0,
+                      Math.min(targetIdx, tabCount - 1),
+                    );
+
+                    if (clampedIdx < NAV_ITEMS.length) {
+                      router.push(NAV_ITEMS[clampedIdx].href);
+                    } else {
+                      setShowMore(true);
+                    }
+                  }}
+                  whileDrag={{ scale: 1.1, filter: "brightness(1.1)" }}
+                  whileTap={{ scale: 0.95 }}
                   transition={{
                     type: "spring",
-                    stiffness: 400,
+                    stiffness: 450,
                     damping: 30,
                     mass: 0.8,
                   }}
-                />
+                >
+                  <div className="absolute inset-0 pill-sheen pointer-events-none" />
+                </motion.div>
               )}
             </AnimatePresence>
           </div>
@@ -278,7 +311,7 @@ export default function TabBar() {
             <MoreHorizontal size={22} strokeWidth={showMore ? 2.5 : 2} />
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
