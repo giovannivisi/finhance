@@ -11,10 +11,14 @@
   },
   "dependencies": {
     "@finhance/shared": "workspace:^",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.11.0",
     "next": "16.2.3",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "recharts": "^3.5.0"
+    "recharts": "^3.5.0",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@types/node": "^20",

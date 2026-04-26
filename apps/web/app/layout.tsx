@@ -5,7 +5,7 @@ export const metadata = {
   description: "Finance dashboard",
 };
 
-import Sidebar from "@components/Sidebar";
+import TabBar from "@components/TabBar";
 import TopHeader from "@components/TopHeader";
 import { ThemeProvider } from "@components/ThemeProvider";
 import Script from "next/script";
@@ -38,8 +38,8 @@ export default function RootLayout({
         <ThemeProvider>
           <div className="layout-app">
             <TopHeader />
-            <Sidebar />
             <main className="layout-main">{children}</main>
+            <TabBar />
           </div>
         </ThemeProvider>
       </body>
