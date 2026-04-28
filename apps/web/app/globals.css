@@ -62,7 +62,6 @@ html[data-theme="dark"] {
     0 4px 20px rgba(0, 0, 0, 0.28),
     inset 0 1.5px 0 rgba(255, 255, 255, 0.52),
     inset 0 -1px 0 rgba(0, 0, 0, 0.12);
-
   --tab-more-panel-bg: rgba(18, 18, 18, 0.93);
   --tab-more-panel-border: rgba(255, 255, 255, 0.1);
 }
@@ -125,7 +124,6 @@ html[data-theme="light"] {
     0 2px 12px rgba(0, 0, 0, 0.07),
     inset 0 1.5px 0 rgba(255, 255, 255, 1),
     inset 0 -0.5px 0 rgba(0, 0, 0, 0.04);
-
   --tab-more-panel-bg: rgba(255, 255, 255, 0.96);
   --tab-more-panel-border: rgba(0, 0, 0, 0.08);
 }
@@ -863,6 +861,7 @@ label {
   -webkit-backdrop-filter: var(--tab-pill-blur);
   border: 0.5px solid var(--tab-pill-border);
   border-radius: 9999px;
+  corner-shape: superellipse(0.7);
   box-shadow: var(--tab-pill-shadow);
 }
 
@@ -880,22 +879,30 @@ label {
 }
 
 .tab-active-pill {
-  background-color: var(--tab-active-pill-bg);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--tab-active-pill-bg) 92%, white 8%) 0%,
+      color-mix(in srgb, var(--tab-active-pill-bg) 100%, transparent) 100%
+    );
   border: 0.5px solid var(--tab-active-pill-border);
+  border-radius: 9999px;
+  corner-shape: superellipse(0.72);
   box-shadow: var(--tab-active-pill-shadow);
-  backdrop-filter: blur(24px) saturate(200%) brightness(1.12);
-  -webkit-backdrop-filter: blur(24px) saturate(200%) brightness(1.12);
+  backdrop-filter: blur(26px) saturate(185%) brightness(1.12);
+  -webkit-backdrop-filter: blur(26px) saturate(185%) brightness(1.12);
 }
 
 .tab-active-pill .pill-sheen {
-  /* Strong top-left highlight fades to transparent — gives the glass "refraction" look */
   background: linear-gradient(
     148deg,
-    rgba(255, 255, 255, 0.65) 0%,
-    rgba(255, 255, 255, 0.18) 30%,
-    rgba(255, 255, 255, 0) 55%,
-    rgba(255, 255, 255, 0.04) 100%
+    rgba(255, 255, 255, 0.58) 0%,
+    rgba(255, 255, 255, 0.18) 28%,
+    rgba(255, 255, 255, 0.03) 54%,
+    rgba(255, 255, 255, 0.01) 78%,
+    rgba(255, 255, 255, 0) 100%
   );
+  mix-blend-mode: screen;
 }
 
 .tab-more-panel {
@@ -904,6 +911,10 @@ label {
   -webkit-backdrop-filter: var(--tab-pill-blur);
   border: 0.5px solid var(--tab-more-panel-border);
   border-radius: 24px;
+  corner-shape: superellipse(0.7);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 /* Dedicated color classes for More-panel items — avoids CSS-variable

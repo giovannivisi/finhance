@@ -61,6 +61,7 @@ export default function TabBar() {
     index: number;
   } | null>(null);
   const [showMore, setShowMore] = useState(false);
+  const [hoverLeftPct, setHoverLeftPct] = useState<number | null>(null);
   const [dragLeftPct, setDragLeftPct] = useState<number | null>(null);
   const prefersReducedMotion = useReducedMotion();
 
@@ -98,23 +99,32 @@ export default function TabBar() {
     return Math.max(0, Math.min(unclamped, 100 - dragWidthPct));
   }
 
+  function getHoverLeftPctAt(clientX: number): number {
+    const bar = barRef.current;
+    if (!bar) return 0;
+    const rect = bar.getBoundingClientRect();
+    const slotWidthPct = 100 / TAB_COUNT;
+    const x = clientX - rect.left;
+    const unclamped = (x / rect.width) * 100 - slotWidthPct / 2;
+    return Math.max(0, Math.min(unclamped, 100 - slotWidthPct));
+  }
+
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
     isDraggingRef.current = false;
     wasDraggingRef.current = false;
     dragStartXRef.current = e.clientX;
-    // No setPointerCapture — let clicks bubble naturally to <Link> children.
-    // onPointerMove/Up on the container still receive events via React bubbling.
   }
 
   function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!(e.buttons & 1)) return; // primary button must be held
+    if (!(e.buttons & 1)) return;
     const delta = e.clientX - dragStartXRef.current;
     if (Math.abs(delta) < 6) return;
 
     if (!isDraggingRef.current) {
       isDraggingRef.current = true;
       setShowMore(false);
+      setHoverLeftPct(null);
     }
     setHoveredIndex(getTabIndexAt(e.clientX));
     setDragLeftPct(getDragLeftPctAt(e.clientX));
@@ -127,6 +137,7 @@ export default function TabBar() {
     wasDraggingRef.current = true;
     isDraggingRef.current = false;
     setDragLeftPct(null);
+    setHoverLeftPct(null);
 
     const idx = getTabIndexAt(e.clientX);
     setHoveredIndex(null);
@@ -142,6 +153,7 @@ export default function TabBar() {
   function handlePointerCancel() {
     isDraggingRef.current = false;
     setDragLeftPct(null);
+    setHoverLeftPct(null);
     setHoveredIndex(null);
   }
 
@@ -154,7 +166,6 @@ export default function TabBar() {
     }
   }
 
-  // Click outside to close "More" menu
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -205,16 +216,22 @@ export default function TabBar() {
         ? NAV_ITEMS.length
         : (pendingIndex ?? activeSlotIndex);
 
-  // Liquid-glass pill animation:
-  // • First render → instant set
-  // • Drag → direct cursor-follow with a slightly wider pill
-  // • Normal navigation/hover → 2-phase: stretch toward destination, then spring-contract
   useEffect(() => {
     const slotWidthPct = 100 / TAB_COUNT;
     const dragWidthPct = Math.min(slotWidthPct * 1.08, slotWidthPct + 2.5);
-    const targetWidthPct = dragLeftPct !== null ? dragWidthPct : slotWidthPct;
+    const hoverWidthPct = slotWidthPct * 1.01;
+    const targetWidthPct =
+      dragLeftPct !== null
+        ? dragWidthPct
+        : hoverLeftPct !== null
+          ? hoverWidthPct
+          : slotWidthPct;
     const targetLeftPct =
-      dragLeftPct !== null ? dragLeftPct : pillIndex * slotWidthPct;
+      dragLeftPct !== null
+        ? dragLeftPct
+        : hoverLeftPct !== null
+          ? hoverLeftPct
+          : pillIndex * slotWidthPct;
     const previous = prevPillMetricsRef.current;
     const runId = animationRunIdRef.current + 1;
     animationRunIdRef.current = runId;
@@ -258,8 +275,6 @@ export default function TabBar() {
       return;
     }
 
-    // Liquid stretch: pill elongates to bridge source → destination,
-    // then the trailing edge springs inward to the final slot.
     const isRight = targetLeftPct > previous.left;
     const distanceInSlots =
       Math.abs(targetLeftPct - previous.left) / slotWidthPct;
@@ -271,7 +286,6 @@ export default function TabBar() {
     );
 
     void (async () => {
-      // Phase 1 — quick stretch toward the destination.
       await pillControls.start({
         left: `${stretchLeftPct}%`,
         width: `${stretchWidthPct}%`,
@@ -284,7 +298,6 @@ export default function TabBar() {
       if (animationRunIdRef.current !== runId) {
         return;
       }
-      // Phase 2 — spring-contract to the final slot.
       await pillControls.start({
         left: `${targetLeftPct}%`,
         width: `${targetWidthPct}%`,
@@ -296,7 +309,13 @@ export default function TabBar() {
         },
       });
     })();
-  }, [dragLeftPct, pillControls, pillIndex, prefersReducedMotion]);
+  }, [
+    dragLeftPct,
+    hoverLeftPct,
+    pillControls,
+    pillIndex,
+    prefersReducedMotion,
+  ]);
 
   return (
     <nav
@@ -304,7 +323,6 @@ export default function TabBar() {
       className="fixed bottom-10 left-0 right-0 z-50 pointer-events-none flex justify-center"
     >
       <div ref={menuRef} className="pointer-events-auto relative">
-        {/* More Menu Popover */}
         <AnimatePresence>
           {showMore && (
             <motion.div
@@ -326,7 +344,7 @@ export default function TabBar() {
                   ? { duration: 0 }
                   : { type: "spring", damping: 25, stiffness: 400 }
               }
-              className="tab-more-panel absolute bottom-full mb-5 right-0 min-w-[180px] p-2 flex flex-col gap-1 overflow-hidden"
+              className="tab-more-panel absolute bottom-full mb-5 right-0 w-[196px] px-1.5 py-1.5 flex flex-col gap-0 overflow-visible"
             >
               {MORE_ITEMS.map((item) => (
                 <Link
@@ -342,26 +360,25 @@ export default function TabBar() {
                   aria-current={
                     pathname?.startsWith(item.href) ? "page" : undefined
                   }
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-[var(--tab-bg-highlight)] group"
+                  className="group flex min-h-[38px] items-center gap-3 rounded-xl px-3 py-2 transition-all hover:bg-[var(--tab-bg-highlight)]"
                 >
                   <item.icon
                     size={18}
                     aria-hidden="true"
                     className="tab-menu-icon"
                   />
-                  <span className="text-[13px] font-medium tab-menu-label">
+                  <span className="tab-menu-label text-[13px] font-medium leading-none">
                     {item.label}
                   </span>
                 </Link>
               ))}
 
               <div
-                className="h-px bg-[var(--tab-border)] my-1 mx-2"
+                className="mx-2 my-0.5 h-px bg-[var(--tab-border)]"
                 style={{ opacity: 0.5 }}
                 aria-hidden="true"
               />
 
-              {/* Theme Toggle */}
               <button
                 type="button"
                 onClick={() => toggleTheme()}
@@ -370,7 +387,7 @@ export default function TabBar() {
                     ? "Switch to light mode"
                     : "Switch to dark mode"
                 }
-                className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-[var(--tab-bg-highlight)] group"
+                className="group flex min-h-[38px] items-center gap-3 rounded-xl px-3 py-2 transition-all hover:bg-[var(--tab-bg-highlight)]"
                 style={{ width: "100%", textAlign: "left" }}
               >
                 {theme === "dark" ? (
@@ -382,7 +399,7 @@ export default function TabBar() {
                     className="tab-menu-icon"
                   />
                 )}
-                <span className="text-[13px] font-medium tab-menu-label">
+                <span className="tab-menu-label text-[13px] font-medium leading-none">
                   {theme === "dark" ? "Light Mode" : "Dark Mode"}
                 </span>
               </button>
@@ -395,8 +412,18 @@ export default function TabBar() {
           id="revolut-tabbar"
           className="tab-bar-pill relative flex items-center p-2 gap-1 cursor-grab active:cursor-grabbing select-none"
           style={{ touchAction: "none" }}
+          onMouseMove={(e) => {
+            if (isDraggingRef.current || e.buttons & 1) {
+              return;
+            }
+            setHoveredIndex(getTabIndexAt(e.clientX));
+            setHoverLeftPct(getHoverLeftPctAt(e.clientX));
+          }}
           onMouseLeave={() => {
-            if (!isDraggingRef.current) setHoveredIndex(null);
+            if (!isDraggingRef.current) {
+              setHoveredIndex(null);
+              setHoverLeftPct(null);
+            }
           }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -404,7 +431,6 @@ export default function TabBar() {
           onPointerCancel={handlePointerCancel}
           onClickCapture={handleClickCapture}
         >
-          {/* Magic Slider Background — always rendered, parks at "..." for More pages */}
           <div className="absolute inset-2 flex pointer-events-none">
             <motion.div
               aria-hidden="true"
@@ -415,7 +441,6 @@ export default function TabBar() {
             </motion.div>
           </div>
 
-          {/* Tab Items */}
           {NAV_ITEMS.map((item, idx) => {
             const isActive = activeIndex === idx;
             return (
@@ -427,8 +452,12 @@ export default function TabBar() {
                 onClick={() => {
                   setPendingNavigation({ href: item.href, index: idx });
                   setShowMore(false);
+                  setHoverLeftPct(null);
                 }}
-                onMouseEnter={() => setHoveredIndex(idx)}
+                onMouseEnter={(e) => {
+                  setHoveredIndex(idx);
+                  setHoverLeftPct(getHoverLeftPctAt(e.clientX));
+                }}
                 className={cn(
                   "relative flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-90",
                   visualActiveIndex === idx
@@ -455,12 +484,17 @@ export default function TabBar() {
             );
           })}
 
-          {/* More Button */}
           <button
             ref={moreButtonRef}
             type="button"
-            onClick={() => setShowMore((current) => !current)}
-            onMouseEnter={() => setHoveredIndex(NAV_ITEMS.length)}
+            onClick={() => {
+              setShowMore((current) => !current);
+              setHoverLeftPct(null);
+            }}
+            onMouseEnter={(e) => {
+              setHoveredIndex(NAV_ITEMS.length);
+              setHoverLeftPct(getHoverLeftPctAt(e.clientX));
+            }}
             aria-label="More navigation"
             aria-expanded={showMore}
             aria-haspopup="true"
