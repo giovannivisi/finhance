@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { DashboardAssetResponse } from "@finhance/shared";
 import CreateAssetModal from "@/components/CreateAssetModal";
@@ -17,6 +18,8 @@ import SectionHeader from "@components/SectionHeader";
 import DisclosureIcon from "@components/DisclosureIcon";
 import AllocationChart from "@components/AllocationChart";
 import { useSingleFlightActions } from "@lib/single-flight";
+
+const PRIVACY_STORAGE_KEY = "finhance-hide-balances";
 
 function getKindDotColor(kind: string): string {
   switch (kind) {
@@ -48,6 +51,18 @@ function getValuationLabel(asset: DashboardAssetResponse): string {
   }
 }
 
+function formatSensitiveCurrency(
+  value: number | null | undefined,
+  currency: string,
+  hidden: boolean,
+): string {
+  if (value == null) {
+    return "Unavailable";
+  }
+
+  return hidden ? "••••" : formatCurrency(value, currency);
+}
+
 export default function DashboardClient({
   grouped,
   kindTotalsArray,
@@ -71,7 +86,7 @@ export default function DashboardClient({
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
-  const autoRefreshAttemptedRef = useRef(false);
+  const [hideBalances, setHideBalances] = useState(false);
   const actions = useSingleFlightActions<"refresh">();
   const sortedCategories = useMemo(
     () => Object.keys(grouped).sort(),
@@ -82,6 +97,14 @@ export default function DashboardClient({
     setNowMs(Date.now());
     const id = setInterval(() => setNowMs(Date.now()), 60_000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    try {
+      setHideBalances(localStorage.getItem(PRIVACY_STORAGE_KEY) === "true");
+    } catch {
+      setHideBalances(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -96,36 +119,25 @@ export default function DashboardClient({
     });
   }, [sortedCategories]);
 
-  useEffect(() => {
-    if (autoRefreshAttemptedRef.current) {
-      return;
-    }
-
-    autoRefreshAttemptedRef.current = true;
-
-    async function runAutoRefresh() {
-      const result = await requestDashboardRefresh();
-
-      if (result.ok) {
-        router.refresh();
-        return;
-      }
-
-      if (getDashboardRefreshNotice(result.status, result.error)) {
-        return;
-      }
-
-      setRefreshError(result.error);
-    }
-
-    void runAutoRefresh();
-  }, [router]);
-
   function toggleCategory(category: string) {
     setOpenCategories((previous) => ({
       ...previous,
       [category]: !previous[category],
     }));
+  }
+
+  function toggleBalances() {
+    setHideBalances((current) => {
+      const next = !current;
+
+      try {
+        localStorage.setItem(PRIVACY_STORAGE_KEY, String(next));
+      } catch {
+        // Ignore storage failures and keep the in-memory setting.
+      }
+
+      return next;
+    });
   }
 
   async function handleRefresh() {
@@ -164,80 +176,119 @@ export default function DashboardClient({
             Math.floor((nowMs - Date.parse(lastRefreshAt)) / 60_000),
           )} min ago`;
 
+  const refreshToneClass =
+    lastRefreshAt == null ? "is-warning" : refreshError ? "is-error" : "";
+
   return (
     <>
-      {/* HERO SECTION */}
       <div className="dashboard-hero">
-        <div>
+        <div className="dashboard-hero-main">
           <p className="dashboard-hero-eyebrow">Total Net Worth</p>
           <h1 className="dashboard-hero-amount">
-            {formatCurrency(summary.netWorth, baseCurrency)}
+            {formatSensitiveCurrency(
+              summary.netWorth,
+              baseCurrency,
+              hideBalances,
+            )}
           </h1>
           <div className="dashboard-hero-stats">
             <div>
               <p className="dashboard-hero-stat-label">Assets</p>
               <p className="dashboard-hero-stat-value is-positive">
-                {formatCurrency(summary.assets, baseCurrency)}
+                {formatSensitiveCurrency(
+                  summary.assets,
+                  baseCurrency,
+                  hideBalances,
+                )}
               </p>
             </div>
             <div>
               <p className="dashboard-hero-stat-label">Liabilities</p>
               <p className="dashboard-hero-stat-value is-negative">
-                {formatCurrency(summary.liabilities, baseCurrency)}
+                {formatSensitiveCurrency(
+                  summary.liabilities,
+                  baseCurrency,
+                  hideBalances,
+                )}
               </p>
             </div>
           </div>
         </div>
 
         <div className="dashboard-hero-aside">
-          <p className="dashboard-hero-aside-status">{refreshStatus}</p>
-          {refreshNotice && (
-            <CooldownNotice
-              notice={refreshNotice}
-              style={{
-                fontSize: "12px",
-                color: "#f59e0b",
-                marginBottom: "4px",
-              }}
-            />
-          )}
-          {refreshError && (
-            <p className="dashboard-hero-aside-error">{refreshError}</p>
-          )}
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="btn-secondary dashboard-hero-refresh-btn"
+          <div className="dashboard-hero-controls">
+            <button
+              type="button"
+              onClick={toggleBalances}
+              aria-pressed={hideBalances}
+              className="btn-secondary dashboard-hero-privacy-btn"
+            >
+              {hideBalances ? (
+                <Eye size={16} aria-hidden="true" />
+              ) : (
+                <EyeOff size={16} aria-hidden="true" />
+              )}
+              <span>{hideBalances ? "Show balances" : "Hide balances"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="btn-secondary dashboard-hero-refresh-btn"
+            >
+              {isRefreshing ? "Refreshing..." : "Refresh data"}
+            </button>
+          </div>
+
+          <div
+            className={`dashboard-refresh-card${refreshToneClass ? ` ${refreshToneClass}` : ""}`}
           >
-            {isRefreshing ? "Refreshing..." : "Refresh Data"}
-          </button>
+            <p className="dashboard-hero-aside-status">{refreshStatus}</p>
+            <p className="dashboard-refresh-hint">
+              Quotes update only when you request a refresh.
+            </p>
+            {refreshNotice ? (
+              <CooldownNotice
+                notice={refreshNotice}
+                style={{
+                  fontSize: "12px",
+                  color: "#f59e0b",
+                  marginBottom: "0",
+                }}
+              />
+            ) : null}
+            {refreshError ? (
+              <p className="dashboard-hero-aside-error">{refreshError}</p>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      {/* ALLOCATION OVERVIEW */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "24px",
-          marginBottom: "40px",
-        }}
-      >
-        {/* Chart Card */}
-        <div
-          className="glass-card"
-          style={{
-            padding: "32px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minHeight: "300px",
-          }}
-        >
-          <div style={{ width: "240px", height: "240px" }}>
+      <section className="dashboard-overview">
+        <div className="glass-card dashboard-overview-card dashboard-overview-breakdown">
+          <h3 className="dashboard-overview-title">Asset Allocation</h3>
+          <div className="dashboard-overview-list">
+            {kindTotalsArray.map(({ kind, total }) => (
+              <div key={kind} className="dashboard-overview-row">
+                <div className="dashboard-overview-label">
+                  <div
+                    className="category-dot is-large"
+                    style={{ background: getKindDotColor(kind) }}
+                  />
+                  <span>{kind}</span>
+                </div>
+                <span className="dashboard-overview-value">
+                  {formatSensitiveCurrency(total, baseCurrency, hideBalances)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="glass-card dashboard-overview-card dashboard-overview-chart">
+          <div className="dashboard-overview-chart-wrap">
             <AllocationChart
-              size={240}
+              size={220}
               data={kindTotalsArray.map((kindTotal) => ({
                 label: kindTotal.kind,
                 total: kindTotal.total,
@@ -245,70 +296,7 @@ export default function DashboardClient({
             />
           </div>
         </div>
-
-        {/* Breakdown Card */}
-        <div
-          className="glass-card"
-          style={{
-            padding: "32px",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-          }}
-        >
-          <h3
-            style={{
-              fontSize: "18px",
-              fontWeight: 600,
-              color: "var(--text-primary)",
-              marginBottom: "24px",
-            }}
-          >
-            Asset Allocation
-          </h3>
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-          >
-            {kindTotalsArray.map(({ kind, total }) => (
-              <div
-                key={kind}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "12px" }}
-                >
-                  <div
-                    className="category-dot is-large"
-                    style={{ background: getKindDotColor(kind) }}
-                  />
-                  <span
-                    style={{
-                      fontSize: "15px",
-                      color: "var(--text-secondary)",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {kind}
-                  </span>
-                </div>
-                <span
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 600,
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {formatCurrency(total, baseCurrency)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      </section>
 
       <SectionHeader
         title="Assets and liabilities"
@@ -339,7 +327,7 @@ export default function DashboardClient({
                     </div>
                     <div className="category-toggle-meta">
                       <span className="category-toggle-total">
-                        {formatCurrency(
+                        {formatSensitiveCurrency(
                           grouped[category]
                             .filter((a) => a.type === "ASSET")
                             .reduce(
@@ -351,6 +339,7 @@ export default function DashboardClient({
                               0,
                             ),
                           baseCurrency,
+                          hideBalances,
                         )}
                       </span>
                       <DisclosureIcon open={openCategories[category]} />
@@ -387,22 +376,22 @@ export default function DashboardClient({
                               <div className="asset-row-info">
                                 <div className="asset-row-headline">
                                   <p className="asset-row-name">{asset.name}</p>
-                                  {asset.ticker && (
+                                  {asset.ticker ? (
                                     <span className="asset-row-ticker">
                                       {asset.ticker}
                                     </span>
-                                  )}
+                                  ) : null}
                                 </div>
                                 <div className="asset-row-meta">
                                   <p className="asset-row-meta-text">
                                     {quantityDisplay}
                                   </p>
-                                  {liveUnitPrice != null && (
+                                  {liveUnitPrice != null ? (
                                     <span className="asset-row-live-badge">
                                       LIVE
                                     </span>
-                                  )}
-                                  {asset.notes && (
+                                  ) : null}
+                                  {asset.notes ? (
                                     <>
                                       <span className="asset-row-bullet">
                                         •
@@ -411,22 +400,25 @@ export default function DashboardClient({
                                         {asset.notes}
                                       </span>
                                     </>
-                                  )}
+                                  ) : null}
                                 </div>
                               </div>
 
                               <div className="asset-row-value">
                                 <p className="asset-row-value-amount">
-                                  {displayValue != null
-                                    ? formatCurrency(displayValue, baseCurrency)
-                                    : `Unavailable`}
+                                  {formatSensitiveCurrency(
+                                    displayValue,
+                                    baseCurrency,
+                                    hideBalances,
+                                  )}
                                 </p>
                                 {referenceDiffers ? (
                                   <p className="asset-row-value-sub is-ref">
                                     Ref:{" "}
-                                    {formatCurrency(
-                                      asset.referenceValue!,
+                                    {formatSensitiveCurrency(
+                                      asset.referenceValue,
                                       baseCurrency,
+                                      hideBalances,
                                     )}
                                   </p>
                                 ) : (
@@ -481,7 +473,7 @@ export default function DashboardClient({
                     </div>
                     <div className="category-toggle-meta">
                       <span className="category-toggle-total">
-                        {formatCurrency(
+                        {formatSensitiveCurrency(
                           grouped[category]
                             .filter((a) => a.type === "LIABILITY")
                             .reduce(
@@ -493,6 +485,7 @@ export default function DashboardClient({
                               0,
                             ),
                           baseCurrency,
+                          hideBalances,
                         )}
                       </span>
                       <DisclosureIcon open={openCategories[category]} />
@@ -515,7 +508,7 @@ export default function DashboardClient({
                                   <span className="asset-row-meta-text">
                                     {asset.liabilityKind ?? "Stored balance"}
                                   </span>
-                                  {asset.notes && (
+                                  {asset.notes ? (
                                     <>
                                       <span className="asset-row-bullet">
                                         •
@@ -524,15 +517,17 @@ export default function DashboardClient({
                                         {asset.notes}
                                       </span>
                                     </>
-                                  )}
+                                  ) : null}
                                 </div>
                               </div>
 
                               <div className="asset-row-value">
                                 <p className="asset-row-value-amount">
-                                  {displayValue != null
-                                    ? formatCurrency(displayValue, baseCurrency)
-                                    : `Unavailable`}
+                                  {formatSensitiveCurrency(
+                                    displayValue,
+                                    baseCurrency,
+                                    hideBalances,
+                                  )}
                                 </p>
                                 <p className="asset-row-value-sub">
                                   {getValuationLabel(asset)}

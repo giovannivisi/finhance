@@ -13,6 +13,7 @@ export const viewport = {
 
 import TabBar from "@components/TabBar";
 import TopHeader from "@components/TopHeader";
+import Sidebar from "@components/Sidebar";
 import { ThemeProvider } from "@components/ThemeProvider";
 import Script from "next/script";
 
@@ -47,9 +48,12 @@ export default function RootLayout({
           </a>
           <div className="layout-app">
             <TopHeader />
-            <main id="main" className="layout-main">
-              {children}
-            </main>
+            <div className="layout-shell">
+              <Sidebar />
+              <main id="main" className="layout-main">
+                {children}
+              </main>
+            </div>
             <TabBar />
           </div>
         </ThemeProvider>
