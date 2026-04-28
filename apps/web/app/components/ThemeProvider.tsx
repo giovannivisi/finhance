@@ -4,15 +4,28 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 type Theme = "light" | "dark";
 
-interface ThemeContextType {
+const THEME_STORAGE_KEY = "finhance-theme";
+const HIDE_MONEY_STORAGE_KEY = "finhance-hide-money";
+const DASHBOARD_REFRESH_SESSION_KEY = "finhance-dashboard-refresh-attempted";
+
+interface AppPreferencesContextType {
   theme: Theme;
+  isHydrated: boolean;
+  hideMoney: boolean;
   toggleTheme: () => void;
+  toggleHideMoney: () => void;
+  hasAttemptedDashboardRefresh: () => boolean;
+  markDashboardRefreshAttempted: () => void;
 }
 
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const AppPreferencesContext = createContext<
+  AppPreferencesContextType | undefined
+>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>("dark");
+  const [hideMoney, setHideMoney] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
     // Read the initial theme from the document root which was set by the blocking script
@@ -23,6 +36,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(currentTheme);
     }
+
+    const storedHideMoney =
+      document.documentElement.getAttribute("data-hide-money") === "true";
+    setHideMoney(storedHideMoney);
+    setIsHydrated(true);
   }, []);
 
   const toggleTheme = () => {
@@ -30,23 +48,69 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme(newTheme);
     document.documentElement.setAttribute("data-theme", newTheme);
     try {
-      localStorage.setItem("finhance-theme", newTheme);
+      localStorage.setItem(THEME_STORAGE_KEY, newTheme);
     } catch {
       // Ignore storage errors
     }
   };
 
+  const toggleHideMoney = () => {
+    setHideMoney((current) => {
+      const next = !current;
+
+      document.documentElement.setAttribute("data-hide-money", String(next));
+      try {
+        localStorage.setItem(HIDE_MONEY_STORAGE_KEY, String(next));
+      } catch {
+        // Ignore storage errors
+      }
+
+      return next;
+    });
+  };
+
+  function hasAttemptedDashboardRefresh() {
+    try {
+      return sessionStorage.getItem(DASHBOARD_REFRESH_SESSION_KEY) === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  function markDashboardRefreshAttempted() {
+    try {
+      sessionStorage.setItem(DASHBOARD_REFRESH_SESSION_KEY, "true");
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <AppPreferencesContext.Provider
+      value={{
+        theme,
+        isHydrated,
+        hideMoney,
+        toggleTheme,
+        toggleHideMoney,
+        hasAttemptedDashboardRefresh,
+        markDashboardRefreshAttempted,
+      }}
+    >
       {children}
-    </ThemeContext.Provider>
+    </AppPreferencesContext.Provider>
   );
 }
 
-export function useTheme() {
-  const context = useContext(ThemeContext);
+export function useAppPreferences() {
+  const context = useContext(AppPreferencesContext);
   if (context === undefined) {
-    throw new Error("useTheme must be used within a ThemeProvider");
+    throw new Error("useAppPreferences must be used within a ThemeProvider");
   }
   return context;
+}
+
+export function useTheme() {
+  const { theme, toggleTheme } = useAppPreferences();
+  return { theme, toggleTheme };
 }

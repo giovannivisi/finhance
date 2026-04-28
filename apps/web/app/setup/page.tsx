@@ -34,13 +34,20 @@ export default async function SetupPage() {
     return (
       <>
         <Container>
-          <h1 className="text-3xl font-semibold text-gray-900">Setup</h1>
-          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
-            <p className="font-medium">The web app could not reach the API.</p>
-            <p className="mt-2 text-sm text-amber-900/80">
-              {errorMessage ?? "Start the API and refresh the page."}
-            </p>
-          </div>
+          <section className="page-shell">
+            <div className="page-hero">
+              <p className="page-kicker">Trust</p>
+              <h1 className="page-title is-compact">Setup</h1>
+            </div>
+            <div className="page-inline-notice surface-warning">
+              <p className="font-medium">
+                The web app could not reach the API.
+              </p>
+              <p className="mt-2 text-sm">
+                {errorMessage ?? "Start the API and refresh the page."}
+              </p>
+            </div>
+          </section>
         </Container>
       </>
     );
@@ -51,17 +58,18 @@ export default async function SetupPage() {
   return (
     <>
       <Container>
-        <div className="space-y-8">
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+        <div className="page-shell">
+          <section className="page-hero">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-semibold text-gray-900">Setup</h1>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="page-kicker">Trust</p>
+                <h1 className="page-title is-compact">Setup</h1>
+                <p className="page-description">
                   Build a trustworthy starting point, then move into review,
                   analytics, budgets, and recurring workflows.
                 </p>
               </div>
-              <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
+              <div className="page-pill">
                 {setup.isComplete
                   ? "Trust baseline complete"
                   : getSetupProgressLabel(setup)}
@@ -69,7 +77,7 @@ export default async function SetupPage() {
             </div>
 
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <article className="rounded-2xl border border-gray-200 p-5">
+              <article className="list-card">
                 <h2 className="text-lg font-semibold text-gray-900">
                   Import existing data
                 </h2>
@@ -82,15 +90,12 @@ export default async function SetupPage() {
                     ? "An import batch has already been applied in this workspace."
                     : "No applied import batch yet. You can still import later if you start manually now."}
                 </p>
-                <Link
-                  href="/import"
-                  className="mt-4 inline-flex rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
-                >
+                <Link href="/import" className="btn-secondary mt-4 self-start">
                   Open import
                 </Link>
               </article>
 
-              <article className="rounded-2xl border border-gray-200 p-5">
+              <article className="list-card">
                 <h2 className="text-lg font-semibold text-gray-900">
                   Set up manually
                 </h2>
@@ -102,17 +107,14 @@ export default async function SetupPage() {
                   Start with accounts and categories first. Everything else
                   builds more cleanly on that trust baseline.
                 </p>
-                <Link
-                  href="/accounts"
-                  className="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
+                <Link href="/accounts" className="btn-primary mt-4 self-start">
                   Open accounts
                 </Link>
               </article>
             </div>
 
             {primaryAction ? (
-              <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-950">
+              <div className="mt-6 page-inline-notice surface-info">
                 <p className="text-sm font-medium uppercase tracking-wide text-blue-700">
                   Best next action
                 </p>
@@ -123,10 +125,7 @@ export default async function SetupPage() {
                       {primaryAction.detail}
                     </p>
                   </div>
-                  <Link
-                    href={primaryAction.href}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                  >
+                  <Link href={primaryAction.href} className="btn-primary">
                     {primaryAction.actionLabel}
                   </Link>
                 </div>
@@ -134,7 +133,7 @@ export default async function SetupPage() {
             ) : null}
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+          <section className="page-section">
             <h2 className="text-2xl font-semibold text-gray-900">
               Required checklist
             </h2>
@@ -145,10 +144,7 @@ export default async function SetupPage() {
 
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
               {setup.requiredSteps.map((step) => (
-                <article
-                  key={step.code}
-                  className="rounded-2xl border border-gray-200 p-5"
-                >
+                <article key={step.code} className="list-card">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">
@@ -166,7 +162,7 @@ export default async function SetupPage() {
                   </div>
                   <Link
                     href={step.href}
-                    className="mt-4 inline-flex rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+                    className="btn-secondary mt-4 self-start"
                   >
                     {step.actionLabel}
                   </Link>
@@ -175,7 +171,7 @@ export default async function SetupPage() {
             </div>
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+          <section className="page-section">
             <h2 className="text-2xl font-semibold text-gray-900">
               Warnings and trust notes
             </h2>
@@ -185,7 +181,7 @@ export default async function SetupPage() {
             </p>
 
             {setup.warnings.length === 0 ? (
-              <div className="mt-6 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5 text-sm text-gray-500">
+              <div className="mt-6 page-inline-notice surface-dashed">
                 No setup warnings are active right now.
               </div>
             ) : (
@@ -193,7 +189,7 @@ export default async function SetupPage() {
                 {setup.warnings.map((warning) => (
                   <article
                     key={warning.code}
-                    className={`rounded-2xl border p-5 ${WARNING_STYLES[warning.severity]}`}
+                    className={`list-card ${WARNING_STYLES[warning.severity]}`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -223,7 +219,7 @@ export default async function SetupPage() {
             )}
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+          <section className="page-section">
             <h2 className="text-2xl font-semibold text-gray-900">
               Recommended next steps
             </h2>
@@ -234,10 +230,7 @@ export default async function SetupPage() {
 
             <div className="mt-6 grid gap-4 lg:grid-cols-2">
               {setup.recommendedSteps.map((step) => (
-                <article
-                  key={step.code}
-                  className="rounded-2xl border border-gray-200 p-5"
-                >
+                <article key={step.code} className="list-card">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">

@@ -11,6 +11,7 @@ import ReviewBudgetStatusChart from "@components/ReviewBudgetStatusChart";
 import ReviewMonthPicker from "@components/ReviewMonthPicker";
 import ReviewCaptureSnapshotButton from "@components/ReviewCaptureSnapshotButton";
 import WorkflowSection from "@components/WorkflowSection";
+import MoneyValue from "@components/MoneyValue";
 import { api } from "@lib/api";
 import { formatCurrency } from "@lib/format";
 import { CATEGORY_TYPE_LABELS } from "@lib/categories";
@@ -98,13 +99,20 @@ export default async function ReviewPage({
     return (
       <>
         <Container>
-          <h1 className="text-3xl font-semibold text-gray-900">Review</h1>
-          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
-            <p className="font-medium">The web app could not reach the API.</p>
-            <p className="mt-2 text-sm text-amber-900/80">
-              {errorMessage ?? "Start the API and refresh the page."}
-            </p>
-          </div>
+          <section className="page-shell">
+            <div className="page-hero">
+              <p className="page-kicker">Monthly close</p>
+              <h1 className="page-title is-compact">Review</h1>
+            </div>
+            <div className="page-inline-notice surface-warning">
+              <p className="font-medium">
+                The web app could not reach the API.
+              </p>
+              <p className="mt-2 text-sm">
+                {errorMessage ?? "Start the API and refresh the page."}
+              </p>
+            </div>
+          </section>
         </Container>
       </>
     );
@@ -130,14 +138,13 @@ export default async function ReviewPage({
   return (
     <>
       <Container>
-        <div className="space-y-8">
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+        <div className="page-shell">
+          <section className="page-hero">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-semibold text-gray-900">
-                  Monthly review
-                </h1>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="page-kicker">Monthly close</p>
+                <h1 className="page-title is-compact">Monthly review</h1>
+                <p className="page-description">
                   Explain what happened in {review.month}, what still needs
                   attention, and what changed your trajectory.
                 </p>
@@ -146,89 +153,79 @@ export default async function ReviewPage({
               <ReviewMonthPicker currentMonth={review.month} />
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              <div className="rounded-2xl bg-gray-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Opening net worth
+            <div className="summary-grid mt-6 md:grid-cols-3">
+              <div className="summary-card">
+                <p className="summary-card-label">Opening net worth</p>
+                <p className="summary-card-value">
+                  {review.openingNetWorth === null ? (
+                    "Unavailable"
+                  ) : (
+                    <MoneyValue value={review.openingNetWorth} />
+                  )}
                 </p>
-                <p className="mt-1 text-lg font-semibold text-gray-900">
-                  {review.openingNetWorth === null
-                    ? "Unavailable"
-                    : formatCurrency(review.openingNetWorth)}
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="summary-card-note">
                   {review.openingSnapshotDate
                     ? `Snapshot ${review.openingSnapshotDate}`
                     : "No opening snapshot boundary"}
                 </p>
               </div>
 
-              <div className="rounded-2xl bg-gray-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Closing net worth
+              <div className="summary-card">
+                <p className="summary-card-label">Closing net worth</p>
+                <p className="summary-card-value">
+                  {review.closingNetWorth === null ? (
+                    "Unavailable"
+                  ) : (
+                    <MoneyValue value={review.closingNetWorth} />
+                  )}
                 </p>
-                <p className="mt-1 text-lg font-semibold text-gray-900">
-                  {review.closingNetWorth === null
-                    ? "Unavailable"
-                    : formatCurrency(review.closingNetWorth)}
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="summary-card-note">
                   {review.closingSnapshotDate
                     ? `Snapshot ${review.closingSnapshotDate}`
                     : "No closing snapshot boundary"}
                 </p>
               </div>
 
-              <div className="rounded-2xl bg-gray-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Net worth delta
+              <div className="summary-card">
+                <p className="summary-card-label">Net worth delta</p>
+                <p className="summary-card-value">
+                  {review.netWorthDelta === null ? (
+                    "Unavailable"
+                  ) : (
+                    <MoneyValue value={review.netWorthDelta} />
+                  )}
                 </p>
-                <p className="mt-1 text-lg font-semibold text-gray-900">
-                  {review.netWorthDelta === null
-                    ? "Unavailable"
-                    : formatCurrency(review.netWorthDelta)}
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="summary-card-note">
                   Based on the nearest available snapshots around the month.
                 </p>
               </div>
             </div>
 
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Review warnings
-                </p>
-                <p className="mt-1 text-lg font-semibold text-gray-900">
-                  {review.warnings.length}
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
+            <div className="summary-grid mt-4 md:grid-cols-3">
+              <div className="summary-card">
+                <p className="summary-card-label">Review warnings</p>
+                <p className="summary-card-value">{review.warnings.length}</p>
+                <p className="summary-card-note">
                   {review.warnings.length === 0
                     ? "No open warning cards."
                     : "Use the actions below before trusting the month fully."}
                 </p>
               </div>
-              <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Budget highlights
-                </p>
-                <p className="mt-1 text-lg font-semibold text-gray-900">
+              <div className="summary-card">
+                <p className="summary-card-label">Budget highlights</p>
+                <p className="summary-card-value">
                   {review.budgetHighlights.length}
                 </p>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="summary-card-note">
                   {review.budgetHighlights.length === 0
                     ? "No categories are currently over budget."
                     : "Most important over-budget categories are highlighted below."}
                 </p>
               </div>
-              <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                <p className="text-xs uppercase tracking-wide text-gray-500">
-                  Reconciliation issues
-                </p>
-                <p className="mt-1 text-lg font-semibold text-gray-900">
-                  {reconciliationIssueCount}
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
+              <div className="summary-card">
+                <p className="summary-card-label">Reconciliation issues</p>
+                <p className="summary-card-value">{reconciliationIssueCount}</p>
+                <p className="summary-card-note">
                   {reconciliationIssueCount === 0
                     ? "All active accounts reconcile cleanly."
                     : "Diagnostics below explain the accounts still weakening trust."}
@@ -236,22 +233,20 @@ export default async function ReviewPage({
               </div>
             </div>
 
-            <div className="mt-6 rounded-3xl border border-blue-100 bg-blue-50/70 p-5">
+            <div className="mt-6 page-inline-notice surface-info">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    Why net worth moved
-                  </h2>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <h2 className="section-title">Why net worth moved</h2>
+                  <p className="section-subtitle">
                     {review.netWorthExplanation.note ??
                       "No additional explanation is available for this month."}
                   </p>
                 </div>
                 <span
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  className={`status-chip ${
                     review.netWorthExplanation.isComparableInEur
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-amber-100 text-amber-800"
+                      ? "is-success"
+                      : "is-warning"
                   }`}
                 >
                   {review.netWorthExplanation.isComparableInEur
@@ -260,13 +255,13 @@ export default async function ReviewPage({
                 </span>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/70 bg-white/70 p-4">
+              <div className="mt-4 detail-panel">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                       Recurring sync
                     </h3>
-                    <p className="mt-1 text-sm text-gray-600">
+                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
                       This review no longer creates transactions while the page
                       renders. Sync due transactions only when you want any
                       missing recurring entries materialized before reviewing
@@ -277,12 +272,10 @@ export default async function ReviewPage({
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl bg-white/80 p-4">
-                  <p className="text-xs uppercase tracking-wide text-gray-500">
-                    Cashflow contribution
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-gray-900">
+              <div className="summary-grid mt-4 md:grid-cols-2">
+                <div className="summary-card">
+                  <p className="summary-card-label">Cashflow contribution</p>
+                  <p className="summary-card-value">
                     {review.netWorthExplanation.cashflowContributionEur === null
                       ? "Unavailable"
                       : formatCurrency(
@@ -290,11 +283,9 @@ export default async function ReviewPage({
                         )}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-white/80 p-4">
-                  <p className="text-xs uppercase tracking-wide text-gray-500">
-                    Valuation movement
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-gray-900">
+                <div className="summary-card">
+                  <p className="summary-card-label">Valuation movement</p>
+                  <p className="summary-card-value">
                     {review.netWorthExplanation.valuationMovementEur === null
                       ? "Unavailable"
                       : formatCurrency(
@@ -312,16 +303,14 @@ export default async function ReviewPage({
             cards={workflowCards}
           />
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-            <h2 className="text-xl font-semibold text-gray-900">
-              Warnings and actions
-            </h2>
-            <p className="mt-1 text-sm text-gray-500">
+          <section className="page-section">
+            <h2 className="section-title">Warnings and actions</h2>
+            <p className="section-subtitle">
               Use these as your checklist before you trust the monthly story.
             </p>
 
             {review.warnings.length === 0 ? (
-              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+              <div className="mt-4 page-inline-notice surface-success">
                 No review warnings for this month.
               </div>
             ) : (
@@ -336,26 +325,26 @@ export default async function ReviewPage({
                   return (
                     <article
                       key={`${warning.code}:${warning.currency ?? "global"}:${warning.count ?? "na"}:${warning.amount ?? "na"}`}
-                      className={`rounded-2xl border p-4 ${
+                      className={`page-inline-notice ${
                         warning.severity === "WARNING"
-                          ? "border-amber-200 bg-amber-50"
-                          : "border-blue-200 bg-blue-50"
+                          ? "surface-warning"
+                          : "surface-info"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="text-sm font-semibold text-gray-900">
+                          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                             {warning.title}
                           </h3>
-                          <p className="mt-1 text-sm text-gray-600">
+                          <p className="mt-1 text-sm text-[var(--text-secondary)]">
                             {warning.detail}
                           </p>
                         </div>
                         <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                          className={`status-chip ${
                             warning.severity === "WARNING"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-blue-100 text-blue-800"
+                              ? "is-warning"
+                              : "is-info"
                           }`}
                         >
                           {warning.severity}
@@ -363,7 +352,7 @@ export default async function ReviewPage({
                       </div>
 
                       {warningMeta ? (
-                        <p className="mt-3 text-sm font-medium text-gray-900">
+                        <p className="mt-3 text-sm font-medium text-[var(--text-primary)]">
                           {warningMeta}
                         </p>
                       ) : null}
@@ -374,10 +363,7 @@ export default async function ReviewPage({
                           <ReviewCaptureSnapshotButton />
                         ) : null}
                         {linkAction ? (
-                          <Link
-                            href={linkAction.href}
-                            className="text-sm font-medium text-blue-700 hover:underline"
-                          >
+                          <Link href={linkAction.href} className="link-button">
                             {linkAction.label}
                           </Link>
                         ) : null}
@@ -391,10 +377,10 @@ export default async function ReviewPage({
             <div className="mt-8">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                     Reconciliation highlights
                   </h3>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
                     {review.reconciliationHighlights.length === 0
                       ? "All active accounts reconcile cleanly."
                       : `${review.reconciliationHighlights.length} account${
@@ -407,10 +393,7 @@ export default async function ReviewPage({
                   </p>
                 </div>
                 {review.reconciliationHighlights.length > 0 ? (
-                  <Link
-                    href="/accounts"
-                    className="text-sm font-medium text-blue-700 hover:underline"
-                  >
+                  <Link href="/accounts" className="link-button">
                     Open accounts
                   </Link>
                 ) : null}
@@ -419,30 +402,27 @@ export default async function ReviewPage({
               {review.reconciliationHighlights.length === 0 ? null : (
                 <div className="mt-3 space-y-2">
                   {review.reconciliationHighlights.map((item) => (
-                    <div
-                      key={item.accountId}
-                      className="rounded-2xl bg-gray-50 px-4 py-3 text-sm"
-                    >
+                    <div key={item.accountId} className="detail-panel text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <p className="font-medium text-gray-900">
+                          <p className="font-medium text-[var(--text-primary)]">
                             {item.accountName}
                           </p>
-                          <p className="mt-1 text-gray-500">
+                          <p className="mt-1 text-[var(--text-secondary)]">
                             Delta{" "}
                             {item.delta === null
                               ? "Unavailable"
                               : formatCurrency(item.delta, item.currency)}
                           </p>
-                          <p className="mt-1 text-gray-500">
+                          <p className="mt-1 text-[var(--text-secondary)]">
                             {item.adjustmentGuidance.message}
                           </p>
                         </div>
                         <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                          className={`status-chip ${
                             item.status === "UNSUPPORTED"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-amber-100 text-amber-800"
+                              ? "is-danger"
+                              : "is-warning"
                           }`}
                         >
                           {item.status}
@@ -450,7 +430,7 @@ export default async function ReviewPage({
                       </div>
                       <div className="mt-3 space-y-2">
                         {item.diagnostics.length === 0 ? (
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-[var(--text-secondary)]">
                             No structural diagnostics were recorded for this
                             account.
                           </p>
@@ -458,17 +438,17 @@ export default async function ReviewPage({
                           item.diagnostics.map((diagnostic) => (
                             <div
                               key={`${item.accountId}:${diagnostic.code}`}
-                              className="rounded-2xl bg-white px-3 py-2 text-xs ring-1 ring-gray-200"
+                              className="detail-panel text-xs"
                             >
                               <div className="flex items-center justify-between gap-3">
-                                <p className="font-medium text-gray-900">
+                                <p className="font-medium text-[var(--text-primary)]">
                                   {diagnostic.summary}
                                 </p>
-                                <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-700">
+                                <span className="status-chip is-neutral">
                                   {diagnostic.code}
                                 </span>
                               </div>
-                              <p className="mt-1 text-gray-600">
+                              <p className="mt-1 text-[var(--text-secondary)]">
                                 {diagnostic.likelyCause}
                               </p>
                             </div>

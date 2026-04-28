@@ -193,13 +193,8 @@ export default function TransactionForm({
   const isAdjustment = form.kind === "ADJUSTMENT";
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-    >
-      <div
-        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
-      >
+    <form onSubmit={handleSubmit} className="app-form">
+      <div className="app-form-grid">
         <div>
           <label
             htmlFor={`${fieldPrefix}-posted-at`}
@@ -246,9 +241,7 @@ export default function TransactionForm({
         </div>
       </div>
 
-      <div
-        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
-      >
+      <div className="app-form-grid">
         <div>
           <label htmlFor={`${fieldPrefix}-amount`} style={getLabelStyle(true)}>
             <span>Amount</span>
@@ -514,39 +507,13 @@ export default function TransactionForm({
       ) : null}
 
       {error ? (
-        <p
-          role="alert"
-          style={{
-            fontSize: "14px",
-            color: "var(--color-expense)",
-            background: "rgba(239, 68, 68, 0.1)",
-            padding: "12px",
-            borderRadius: "8px",
-            border: "1px solid rgba(239, 68, 68, 0.2)",
-          }}
-        >
+        <p role="alert" className="app-form-error">
           {error}
         </p>
       ) : null}
 
-      <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          style={{
-            flex: 1,
-            background: "var(--text-primary)",
-            color: "var(--bg-app)",
-            padding: "12px 24px",
-            borderRadius: "8px",
-            fontWeight: 600,
-            fontSize: "15px",
-            border: "none",
-            cursor: isSubmitting ? "not-allowed" : "pointer",
-            opacity: isSubmitting ? 0.6 : 1,
-            transition: "opacity 0.2s",
-          }}
-        >
+      <div className="app-form-actions">
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting
             ? "Saving..."
             : isCreateMode
@@ -555,27 +522,7 @@ export default function TransactionForm({
         </button>
 
         {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              padding: "12px 24px",
-              borderRadius: "8px",
-              border: "1px solid var(--border-glass-strong)",
-              background: "transparent",
-              color: "var(--text-secondary)",
-              fontWeight: 500,
-              fontSize: "15px",
-              cursor: "pointer",
-              transition: "background 0.2s",
-            }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.background = "var(--bg-card-hover)")
-            }
-            onMouseOut={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
         ) : null}

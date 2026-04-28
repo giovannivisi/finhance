@@ -190,10 +190,7 @@ export default function AssetForm({
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      style={{ display: "flex", flexDirection: "column", gap: "20px" }}
-    >
+    <form onSubmit={handleSubmit} className="app-form">
       <div>
         <label htmlFor={`${fieldPrefix}-name`} style={getLabelStyle(true)}>
           <span>Name</span>
@@ -213,9 +210,7 @@ export default function AssetForm({
         />
       </div>
 
-      <div
-        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
-      >
+      <div className="app-form-grid">
         <div>
           <label htmlFor={`${fieldPrefix}-type`} style={getLabelStyle(true)}>
             <span>Type</span>
@@ -514,52 +509,13 @@ export default function AssetForm({
       </div>
 
       {error ? (
-        <p
-          role="alert"
-          style={{
-            fontSize: "14px",
-            color: "var(--color-expense)",
-            background: "rgba(239, 68, 68, 0.1)",
-            padding: "12px",
-            borderRadius: "8px",
-            border: "1px solid rgba(239, 68, 68, 0.2)",
-          }}
-        >
+        <p role="alert" className="app-form-error">
           {error}
         </p>
       ) : null}
 
-      <div
-        style={{
-          marginTop: "8px",
-          display: "flex",
-          justifyContent: "flex-end",
-        }}
-      >
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          style={{
-            background:
-              "linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))",
-            color: "#fff",
-            border: "none",
-            borderRadius: "var(--radius-md)",
-            padding: "14px 24px",
-            fontSize: "16px",
-            fontWeight: 700,
-            cursor: isSubmitting ? "not-allowed" : "pointer",
-            opacity: isSubmitting ? 0.7 : 1,
-            transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-            width: "100%",
-            boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)",
-          }}
-          onMouseDown={(e) => {
-            if (!isSubmitting) e.currentTarget.style.transform = "scale(0.98)";
-          }}
-          onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-          onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-        >
+      <div className="app-form-actions">
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting
             ? "Saving..."
             : isCreateMode

@@ -68,18 +68,18 @@ export default function RecurringMaterializeButton({
         type="button"
         onClick={() => void handleSync()}
         disabled={isBusy}
-        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
       >
         {buttonLabel}
       </button>
       {summary ? (
-        <p className="text-sm text-emerald-700">
+        <p className="page-inline-notice surface-success">
           Synced due transactions: created {summary.createdCount}, processed{" "}
           {summary.processedRuleCount}, failed {summary.failedRuleCount}.
         </p>
       ) : null}
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="page-inline-notice surface-danger">
           {error}
         </p>
       ) : null}
@@ -87,7 +87,7 @@ export default function RecurringMaterializeButton({
         <CooldownNotice
           key={notice}
           notice={notice}
-          className="text-sm text-amber-700"
+          className="page-inline-notice surface-warning"
         />
       ) : null}
     </div>

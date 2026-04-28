@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAppPreferences } from "@components/ThemeProvider";
 import type { NetWorthSnapshotResponse } from "@finhance/shared";
-import { formatCurrency } from "@lib/format";
+import { formatSensitiveCurrency } from "@lib/money";
 import NetWorthHistoryChart from "@components/NetWorthHistoryChart";
 import { getRepeatedActionNotice } from "@lib/request-safety";
 import { requestSnapshotCapture } from "@lib/snapshot-capture";
@@ -25,6 +26,8 @@ export default function HistoryPageClient({
   const [isCapturing, setIsCapturing] = useState(false);
   const actions = useSingleFlightActions<"capture">();
   const baseCurrency = snapshots[0]?.baseCurrency ?? "EUR";
+  const { hideMoney, isHydrated } = useAppPreferences();
+  const shouldHideMoney = !isHydrated || hideMoney;
 
   async function handleCapture() {
     await actions.run("capture", async () => {
@@ -63,51 +66,54 @@ export default function HistoryPageClient({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold text-gray-900">
-            Net worth history
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Daily snapshots of your derived portfolio totals in Europe/Rome.
-          </p>
-        </div>
+    <div className="page-shell">
+      <section className="page-hero">
+        <div className="page-hero-row">
+          <div className="page-hero-copy">
+            <p className="page-kicker">Trend</p>
+            <h1 className="page-title is-compact">Net worth history</h1>
+            <p className="page-description">
+              Daily snapshots of your derived portfolio totals in Europe/Rome.
+            </p>
+          </div>
 
-        <button
-          type="button"
-          onClick={handleCapture}
-          disabled={isCapturing}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isCapturing ? "Capturing..." : "Capture snapshot"}
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={handleCapture}
+            disabled={isCapturing}
+            className="btn-primary"
+          >
+            {isCapturing ? "Capturing..." : "Capture snapshot"}
+          </button>
+        </div>
+      </section>
 
       {captureError ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="page-inline-notice surface-danger">
           {captureError}
         </p>
       ) : null}
       {captureNotice ? (
-        <p className="text-sm text-amber-700">{captureNotice}</p>
+        <p className="page-inline-notice surface-warning">{captureNotice}</p>
       ) : null}
 
       {snapshots.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-gray-300 bg-white p-10 text-center">
-          <h2 className="text-xl font-semibold text-gray-900">
+        <div className="page-inline-notice surface-dashed text-center">
+          <h2 className="text-xl font-semibold text-[var(--text-primary)]">
             No snapshots yet
           </h2>
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm">
             Capture your first snapshot to start tracking daily net worth
             history.
           </p>
         </div>
       ) : (
         <>
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900">Trend</h2>
-            <p className="mt-1 text-sm text-gray-500">
+          <section className="page-section">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+              Trend
+            </h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               Stored daily net worth based on the current dashboard valuation
               rules.
             </p>
@@ -120,13 +126,15 @@ export default function HistoryPageClient({
             </div>
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900">Snapshots</h2>
+          <section className="page-section">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+              Snapshots
+            </h2>
 
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <div className="table-shell">
+              <table className="data-table">
                 <thead>
-                  <tr className="text-left text-gray-500">
+                  <tr>
                     <th className="pb-3 pr-4 font-medium">Date</th>
                     <th className="pb-3 pr-4 font-medium">Net Worth</th>
                     <th className="pb-3 pr-4 font-medium">Assets</th>
@@ -135,31 +143,34 @@ export default function HistoryPageClient({
                     <th className="pb-3 font-medium">Captured</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody>
                   {snapshots
                     .slice()
                     .reverse()
                     .map((snapshot) => (
-                      <tr key={snapshot.id} className="text-gray-700">
-                        <td className="py-3 pr-4 font-medium text-gray-900">
+                      <tr key={snapshot.id}>
+                        <td className="py-3 pr-4 font-medium text-[var(--text-primary)]">
                           {snapshot.snapshotDate}
                         </td>
                         <td className="py-3 pr-4">
-                          {formatCurrency(
+                          {formatSensitiveCurrency(
                             snapshot.netWorthTotal,
                             snapshot.baseCurrency,
+                            shouldHideMoney,
                           )}
                         </td>
                         <td className="py-3 pr-4">
-                          {formatCurrency(
+                          {formatSensitiveCurrency(
                             snapshot.assetsTotal,
                             snapshot.baseCurrency,
+                            shouldHideMoney,
                           )}
                         </td>
                         <td className="py-3 pr-4">
-                          {formatCurrency(
+                          {formatSensitiveCurrency(
                             snapshot.liabilitiesTotal,
                             snapshot.baseCurrency,
+                            shouldHideMoney,
                           )}
                         </td>
                         <td className="py-3 pr-4">

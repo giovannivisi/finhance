@@ -17,20 +17,20 @@ import { formatCurrency } from "@lib/format";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 const STATUS_STYLES: Record<string, string> = {
-  CLEAN: "bg-emerald-100 text-emerald-800",
-  MISMATCH: "bg-amber-100 text-amber-800",
-  UNSUPPORTED: "bg-red-100 text-red-800",
+  CLEAN: "status-chip is-success",
+  MISMATCH: "status-chip is-warning",
+  UNSUPPORTED: "status-chip is-danger",
 };
 
 const DIAGNOSTIC_STYLES: Record<string, string> = {
-  INFO: "border-blue-200 bg-blue-50 text-blue-950",
-  WARNING: "border-amber-200 bg-amber-50 text-amber-950",
+  INFO: "page-inline-notice surface-info",
+  WARNING: "page-inline-notice surface-warning",
 };
 
 const GUIDANCE_STYLES: Record<string, string> = {
-  SAFE: "bg-emerald-50 text-emerald-900 ring-emerald-200",
-  SUSPICIOUS: "bg-amber-50 text-amber-950 ring-amber-200",
-  BLOCKED: "bg-gray-100 text-gray-800 ring-gray-200",
+  SAFE: "page-inline-notice surface-success",
+  SUSPICIOUS: "page-inline-notice surface-warning",
+  BLOCKED: "page-inline-notice",
 };
 
 export default function AccountsPageClient({
@@ -221,75 +221,76 @@ export default function AccountsPageClient({
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,420px)]">
+    <div className="page-split">
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900">Accounts</h2>
-            <p className="text-sm text-gray-500">
-              Accounts organize assets and liabilities without affecting totals.
-            </p>
-          </div>
+        <div className="page-hero">
+          <div className="page-hero-row">
+            <div className="page-hero-copy">
+              <p className="page-kicker">Structure</p>
+              <h2 className="page-title is-compact">Accounts</h2>
+              <p className="page-description">
+                Accounts organize assets and liabilities without affecting
+                totals.
+              </p>
+            </div>
 
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-gray-600">
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={(event) => setShowArchived(event.target.checked)}
-              />
-              Show archived
-            </label>
+            <div className="page-hero-actions">
+              <label className="page-pill">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(event) => setShowArchived(event.target.checked)}
+                />
+                Show archived
+              </label>
 
-            <button
-              type="button"
-              onClick={() => setEditingAccountId(null)}
-              className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              New account
-            </button>
+              <button
+                type="button"
+                onClick={() => setEditingAccountId(null)}
+                className="btn-primary"
+              >
+                New account
+              </button>
+            </div>
           </div>
         </div>
 
         {actionError ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="page-inline-notice surface-danger">
             {actionError}
           </p>
         ) : null}
 
         {reconciliationError ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="page-inline-notice surface-danger">
             {reconciliationError}
           </p>
         ) : null}
 
         {visibleAccounts.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
+          <div className="page-inline-notice surface-dashed">
             No accounts yet.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="list-stack">
             {visibleAccounts.map((account) =>
               (() => {
                 const reconciliation =
                   reconciliationByAccountId.get(account.id) ?? null;
 
                 return (
-                  <article
-                    key={account.id}
-                    className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100"
-                  >
+                  <article key={account.id} className="list-card">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-lg font-semibold text-gray-900">
+                          <h3 className="text-lg font-semibold text-[var(--text-primary)]">
                             {account.name}
                           </h3>
-                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                          <span className="status-chip is-neutral">
                             {ACCOUNT_TYPE_LABELS[account.type]}
                           </span>
                           {account.archivedAt ? (
-                            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                            <span className="status-chip is-warning">
                               Archived
                             </span>
                           ) : null}
@@ -302,7 +303,7 @@ export default function AccountsPageClient({
                           ) : null}
                         </div>
 
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-[var(--text-secondary)]">
                           {account.currency}
                           {account.institution
                             ? ` • ${account.institution}`
@@ -310,7 +311,7 @@ export default function AccountsPageClient({
                         </p>
 
                         {account.notes ? (
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-[var(--text-secondary)]">
                             {account.notes}
                           </p>
                         ) : null}
@@ -324,7 +325,7 @@ export default function AccountsPageClient({
                               void handleCreateAdjustment(account.id)
                             }
                             disabled={adjustingAccountId === account.id}
-                            className="text-sm font-medium text-emerald-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                            className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {adjustingAccountId === account.id
                               ? "Adjusting..."
@@ -335,7 +336,7 @@ export default function AccountsPageClient({
                         <button
                           type="button"
                           onClick={() => setEditingAccountId(account.id)}
-                          className="text-sm font-medium text-blue-600 hover:underline"
+                          className="link-button mobile-hit-target"
                         >
                           Edit
                         </button>
@@ -345,7 +346,7 @@ export default function AccountsPageClient({
                             type="button"
                             onClick={() => void handleArchive(account.id)}
                             disabled={pendingArchiveAccountId === account.id}
-                            className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                            className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {pendingArchiveAccountId === account.id
                               ? "Archiving..."
@@ -359,7 +360,7 @@ export default function AccountsPageClient({
                               disabled={
                                 pendingUnarchiveAccountId === account.id
                               }
-                              className="text-sm font-medium text-blue-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                              className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {pendingUnarchiveAccountId === account.id
                                 ? "Unarchiving..."
@@ -372,7 +373,7 @@ export default function AccountsPageClient({
                                   void handleDeletePermanently(account.id)
                                 }
                                 disabled={pendingDeleteAccountId === account.id}
-                                className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {pendingDeleteAccountId === account.id
                                   ? "Deleting..."
@@ -384,8 +385,8 @@ export default function AccountsPageClient({
                       </div>
                     </div>
                     {reconciliation ? (
-                      <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                        <p className="text-xs text-gray-600">
+                      <div className="detail-panel">
+                        <p className="text-xs text-[var(--text-secondary)]">
                           {account.openingBalanceDate
                             ? `Baseline: ${formatCurrency(
                                 account.openingBalance,
@@ -393,19 +394,17 @@ export default function AccountsPageClient({
                               )} from ${account.openingBalanceDate}`
                             : "Baseline: full transaction history"}
                         </p>
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-[var(--text-secondary)]">
                           Mode:{" "}
                           {reconciliation.baselineMode === "OPENING_BALANCE"
                             ? "Opening balance baseline"
                             : "Full history baseline"}
                         </p>
 
-                        <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="mt-4 detail-panel-grid sm:grid-cols-3">
                           <div>
-                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                              Tracked
-                            </p>
-                            <p className="mt-1 text-sm font-semibold text-gray-900">
+                            <p className="detail-metric-label">Tracked</p>
+                            <p className="detail-metric-value">
                               {reconciliation.trackedBalance === null
                                 ? "Unavailable"
                                 : formatCurrency(
@@ -416,10 +415,8 @@ export default function AccountsPageClient({
                           </div>
 
                           <div>
-                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                              Expected
-                            </p>
-                            <p className="mt-1 text-sm font-semibold text-gray-900">
+                            <p className="detail-metric-label">Expected</p>
+                            <p className="detail-metric-value">
                               {reconciliation.expectedBalance === null
                                 ? "Unavailable"
                                 : formatCurrency(
@@ -430,10 +427,8 @@ export default function AccountsPageClient({
                           </div>
 
                           <div>
-                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                              Delta
-                            </p>
-                            <p className="mt-1 text-sm font-semibold text-gray-900">
+                            <p className="detail-metric-label">Delta</p>
+                            <p className="detail-metric-value">
                               {reconciliation.delta === null
                                 ? "Unavailable"
                                 : formatCurrency(
@@ -444,7 +439,7 @@ export default function AccountsPageClient({
                           </div>
                         </div>
 
-                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-600">
+                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-[var(--text-secondary)]">
                           <span>
                             {reconciliation.assetCount} assets assigned
                           </span>
@@ -454,7 +449,7 @@ export default function AccountsPageClient({
                         </div>
 
                         <div
-                          className={`mt-4 rounded-2xl px-4 py-3 text-sm ring-1 ${GUIDANCE_STYLES[reconciliation.adjustmentGuidance.status]}`}
+                          className={`mt-4 ${GUIDANCE_STYLES[reconciliation.adjustmentGuidance.status]}`}
                         >
                           <p className="font-medium">
                             Adjustment guidance:{" "}
@@ -466,7 +461,7 @@ export default function AccountsPageClient({
                         </div>
 
                         {reconciliation.openingBalanceBaselineGuidance ? (
-                          <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+                          <div className="mt-4 page-inline-notice surface-info">
                             <p className="font-medium">
                               Opening balance baseline
                             </p>
@@ -482,7 +477,7 @@ export default function AccountsPageClient({
                                 disabled={
                                   pendingBaselineAccountId === account.id
                                 }
-                                className="mt-3 text-sm font-medium text-blue-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                className="mt-3 link-button disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {pendingBaselineAccountId === account.id
                                   ? "Setting baseline..."
@@ -497,13 +492,15 @@ export default function AccountsPageClient({
                             {reconciliation.diagnostics.map((diagnostic) => (
                               <article
                                 key={`${account.id}:${diagnostic.code}`}
-                                className={`rounded-2xl border px-4 py-3 text-sm ${DIAGNOSTIC_STYLES[diagnostic.severity]}`}
+                                className={
+                                  DIAGNOSTIC_STYLES[diagnostic.severity]
+                                }
                               >
                                 <div className="flex items-center justify-between gap-3">
                                   <p className="font-medium">
                                     {diagnostic.summary}
                                   </p>
-                                  <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium">
+                                  <span className="status-chip is-neutral">
                                     {diagnostic.code}
                                   </span>
                                 </div>
@@ -540,7 +537,7 @@ export default function AccountsPageClient({
         )}
       </section>
 
-      <aside className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+      <aside className="page-form-card">
         <h2 className="text-xl font-semibold text-gray-900">
           {editingAccount ? "Edit account" : "Create account"}
         </h2>

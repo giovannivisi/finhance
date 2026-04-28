@@ -22,7 +22,9 @@ const themeScript = `
     try {
       var savedTheme = localStorage.getItem('finhance-theme');
       var theme = savedTheme || 'dark';
+      var hideMoney = localStorage.getItem('finhance-hide-money') === 'true';
       document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-hide-money', String(hideMoney));
     } catch (e) {}
   })();
 `;

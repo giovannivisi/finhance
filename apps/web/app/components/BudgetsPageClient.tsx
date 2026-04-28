@@ -11,6 +11,7 @@ import type {
 } from "@finhance/shared";
 import BudgetOverrideForm from "@components/BudgetOverrideForm";
 import BudgetPlanForm from "@components/BudgetPlanForm";
+import { useAppPreferences } from "@components/ThemeProvider";
 import { api, apiMutation } from "@lib/api";
 import {
   buildBudgetTransactionsLink,
@@ -21,7 +22,7 @@ import {
   getBudgetStatusLabel,
   sortBudgetItemsForDisplay,
 } from "@lib/budgets";
-import { formatCurrency } from "@lib/format";
+import { formatSensitiveCurrency } from "@lib/money";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 type PanelMode = "create" | "edit" | "override";
@@ -33,16 +34,27 @@ interface CreatePanelContext {
   averageExpenseLast3Months: number | null;
 }
 
-function formatBudgetDelta(item: MonthlyBudgetItemResponse): string {
+function formatBudgetDelta(
+  item: MonthlyBudgetItemResponse,
+  hidden: boolean,
+): string {
   if (item.remainingAmount < 0) {
-    return `Over by ${formatCurrency(Math.abs(item.remainingAmount), item.currency)}`;
+    return `Over by ${formatSensitiveCurrency(
+      Math.abs(item.remainingAmount),
+      item.currency,
+      hidden,
+    )}`;
   }
 
   if (item.remainingAmount === 0) {
     return "Exactly at limit";
   }
 
-  return `${formatCurrency(item.remainingAmount, item.currency)} remaining`;
+  return `${formatSensitiveCurrency(
+    item.remainingAmount,
+    item.currency,
+    hidden,
+  )} remaining`;
 }
 
 function progressWidth(item: MonthlyBudgetItemResponse): string {
@@ -74,6 +86,8 @@ export default function BudgetsPageClient({
   const [isLoadingOverrides, setIsLoadingOverrides] = useState(false);
   const [busyBudgetId, setBusyBudgetId] = useState<string | null>(null);
   const actions = useSingleFlightActions<string>();
+  const { hideMoney, isHydrated } = useAppPreferences();
+  const shouldHideMoney = !isHydrated || hideMoney;
 
   const allBudgetItems = useMemo(
     () => budgetView.currencies.flatMap((currency) => currency.items),
@@ -215,7 +229,11 @@ export default function BudgetsPageClient({
         title: `${currency.overBudgetCount} over-budget categor${
           currency.overBudgetCount === 1 ? "y" : "ies"
         } in ${currency.currency}`,
-        detail: `${formatCurrency(currency.overBudgetTotal, currency.currency)} above planned spend.`,
+        detail: `${formatSensitiveCurrency(
+          currency.overBudgetTotal,
+          currency.currency,
+          shouldHideMoney,
+        )} above planned spend.`,
       });
     }
 
@@ -223,9 +241,10 @@ export default function BudgetsPageClient({
       cards.push({
         key: `${currency.currency}:unbudgeted`,
         title: `Unbudgeted spend in ${currency.currency}`,
-        detail: `${formatCurrency(
+        detail: `${formatSensitiveCurrency(
           currency.unbudgetedExpenseTotal,
           currency.currency,
+          shouldHideMoney,
         )} is categorized but has no matching budget.`,
       });
     }
@@ -234,9 +253,10 @@ export default function BudgetsPageClient({
       cards.push({
         key: `${currency.currency}:uncategorized`,
         title: `Uncategorized spend in ${currency.currency}`,
-        detail: `${formatCurrency(
+        detail: `${formatSensitiveCurrency(
           currency.uncategorizedExpenseTotal,
           currency.currency,
+          shouldHideMoney,
         )} still needs category cleanup before budgets tell the full story.`,
       });
     }
@@ -245,28 +265,31 @@ export default function BudgetsPageClient({
   });
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,420px)]">
+    <div className="page-split">
       <section className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900">Budgets</h2>
-            <p className="text-sm text-gray-500">
-              Monthly expense plans, manual month overrides, and the gaps that
-              still weaken budget trust.
-            </p>
-          </div>
+        <div className="page-hero">
+          <div className="page-hero-row">
+            <div className="page-hero-copy">
+              <p className="page-kicker">Planning</p>
+              <h2 className="page-title is-compact">Budgets</h2>
+              <p className="page-description">
+                Monthly expense plans, manual month overrides, and the gaps that
+                still weaken budget trust.
+              </p>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => openCreatePanel()}
-            className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            New budget
-          </button>
+            <button
+              type="button"
+              onClick={() => openCreatePanel()}
+              className="btn-primary"
+            >
+              New budget
+            </button>
+          </div>
         </div>
 
         {actionError ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="page-inline-notice surface-danger">
             {actionError}
           </p>
         ) : null}
@@ -276,7 +299,7 @@ export default function BudgetsPageClient({
             {warningCards.map((warning) => (
               <div
                 key={warning.key}
-                className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+                className="page-inline-notice surface-warning"
               >
                 <p className="font-medium">{warning.title}</p>
                 <p className="mt-1 text-amber-900/80">{warning.detail}</p>
@@ -284,21 +307,18 @@ export default function BudgetsPageClient({
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <div className="page-inline-notice surface-success">
             No budget warnings for {budgetView.month}.
           </div>
         )}
 
         {budgetView.currencies.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
+          <div className="page-inline-notice surface-dashed">
             No budgets or expense activity match the selected month.
           </div>
         ) : (
           budgetView.currencies.map((currency) => (
-            <section
-              key={currency.currency}
-              className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100"
-            >
+            <section key={currency.currency} className="page-section">
               {(() => {
                 const confidence = getBudgetConfidenceMessage(currency);
 
@@ -320,14 +340,14 @@ export default function BudgetsPageClient({
 
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-xl font-semibold text-gray-900">
+                  <h3 className="text-xl font-semibold text-[var(--text-primary)]">
                     {currency.currency}
                   </h3>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
                     {budgetView.month} budget coverage and uncovered expense.
                   </p>
                 </div>
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-[var(--text-secondary)]">
                   {currency.budgetedCategoryCount} budgeted categor
                   {currency.budgetedCategoryCount === 1 ? "y" : "ies"}
                 </div>
@@ -336,41 +356,50 @@ export default function BudgetsPageClient({
               <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <SummaryCard
                   label="Budgeted"
-                  value={formatCurrency(
+                  value={formatSensitiveCurrency(
                     currency.budgetTotal,
                     currency.currency,
+                    shouldHideMoney,
                   )}
                 />
                 <SummaryCard
                   label="Spent vs budget"
-                  value={formatCurrency(currency.spentTotal, currency.currency)}
+                  value={formatSensitiveCurrency(
+                    currency.spentTotal,
+                    currency.currency,
+                    shouldHideMoney,
+                  )}
                 />
                 <SummaryCard
                   label="Remaining"
-                  value={formatCurrency(
+                  value={formatSensitiveCurrency(
                     currency.remainingTotal,
                     currency.currency,
+                    shouldHideMoney,
                   )}
                 />
                 <SummaryCard
                   label="Over budget"
-                  value={formatCurrency(
+                  value={formatSensitiveCurrency(
                     currency.overBudgetTotal,
                     currency.currency,
+                    shouldHideMoney,
                   )}
                 />
                 <SummaryCard
                   label="Unbudgeted"
-                  value={formatCurrency(
+                  value={formatSensitiveCurrency(
                     currency.unbudgetedExpenseTotal,
                     currency.currency,
+                    shouldHideMoney,
                   )}
                 />
                 <SummaryCard
                   label="Uncategorized"
-                  value={formatCurrency(
+                  value={formatSensitiveCurrency(
                     currency.uncategorizedExpenseTotal,
                     currency.currency,
+                    shouldHideMoney,
                   )}
                 />
               </div>
@@ -420,10 +449,18 @@ export default function BudgetsPageClient({
                             </div>
 
                             <p className="text-sm text-gray-600">
-                              {formatCurrency(item.spentAmount, item.currency)}{" "}
+                              {formatSensitiveCurrency(
+                                item.spentAmount,
+                                item.currency,
+                                shouldHideMoney,
+                              )}{" "}
                               spent against{" "}
-                              {formatCurrency(item.budgetAmount, item.currency)}
-                              . {formatBudgetDelta(item)}.
+                              {formatSensitiveCurrency(
+                                item.budgetAmount,
+                                item.currency,
+                                shouldHideMoney,
+                              )}
+                              . {formatBudgetDelta(item, shouldHideMoney)}.
                             </p>
 
                             <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-gray-100">
@@ -447,7 +484,8 @@ export default function BudgetsPageClient({
                                     : "text-gray-600"
                                 }
                               >
-                                Variance {formatBudgetDelta(item)}
+                                Variance{" "}
+                                {formatBudgetDelta(item, shouldHideMoney)}
                               </span>
                               <span className="text-gray-500">
                                 Status {getBudgetStatusLabel(item.status)}
@@ -459,18 +497,20 @@ export default function BudgetsPageClient({
                                 Prev month:{" "}
                                 {item.previousMonthExpense === null
                                   ? "No history"
-                                  : formatCurrency(
+                                  : formatSensitiveCurrency(
                                       item.previousMonthExpense,
                                       item.currency,
+                                      shouldHideMoney,
                                     )}
                               </span>
                               <span>
                                 Avg last 3 months:{" "}
                                 {item.averageExpenseLast3Months === null
                                   ? "No history"
-                                  : formatCurrency(
+                                  : formatSensitiveCurrency(
                                       item.averageExpenseLast3Months,
                                       item.currency,
+                                      shouldHideMoney,
                                     )}
                               </span>
                             </div>
@@ -482,21 +522,21 @@ export default function BudgetsPageClient({
                                 month: budgetView.month,
                                 categoryId: item.categoryId,
                               })}
-                              className="font-medium text-blue-600 hover:underline"
+                              className="link-button"
                             >
                               Transactions
                             </Link>
                             <button
                               type="button"
                               onClick={() => openEditPanel(item.budgetId)}
-                              className="font-medium text-gray-700 hover:underline"
+                              className="link-button"
                             >
                               Edit plan
                             </button>
                             <button
                               type="button"
                               onClick={() => openOverridePanel(item.budgetId)}
-                              className="font-medium text-gray-700 hover:underline"
+                              className="link-button"
                             >
                               Override month
                             </button>
@@ -507,7 +547,7 @@ export default function BudgetsPageClient({
                                   void handleClearCurrentOverride(item)
                                 }
                                 disabled={isBusy}
-                                className="font-medium text-gray-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                className="link-button disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {isBusy ? "Clearing..." : "Clear override"}
                               </button>
@@ -518,7 +558,7 @@ export default function BudgetsPageClient({
                                 void handleEndBudget(item.budgetId)
                               }
                               disabled={isBusy}
-                              className="font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                              className="link-button is-danger disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {isBusy ? "Ending..." : "End from this month"}
                             </button>
@@ -531,21 +571,22 @@ export default function BudgetsPageClient({
               )}
 
               {currency.unbudgetedCategories.length > 0 ? (
-                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="mt-6 page-inline-notice surface-warning">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h4 className="text-sm font-semibold text-amber-950">
+                      <h4 className="text-sm font-semibold text-[var(--text-primary)]">
                         Unbudgeted categorized spend
                       </h4>
-                      <p className="mt-1 text-sm text-amber-900/80">
+                      <p className="mt-1 text-sm">
                         These expense categories were used this month without a
                         matching budget.
                       </p>
                     </div>
-                    <span className="text-sm font-medium text-amber-900">
-                      {formatCurrency(
+                    <span className="text-sm font-medium text-[var(--text-primary)]">
+                      {formatSensitiveCurrency(
                         currency.unbudgetedExpenseTotal,
                         currency.currency,
+                        shouldHideMoney,
                       )}
                     </span>
                   </div>
@@ -554,39 +595,45 @@ export default function BudgetsPageClient({
                     {currency.unbudgetedCategories.map((item) => (
                       <div
                         key={item.categoryId}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white/80 px-4 py-3 text-sm"
+                        className="detail-panel flex flex-wrap items-center justify-between gap-3 text-sm"
                       >
                         <div>
-                          <p className="font-medium text-gray-900">
+                          <p className="font-medium text-[var(--text-primary)]">
                             {item.categoryName}
                           </p>
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="mt-1 text-xs text-[var(--text-secondary)]">
                             Prev month:{" "}
                             {item.previousMonthExpense === null
                               ? "No history"
-                              : formatCurrency(
+                              : formatSensitiveCurrency(
                                   item.previousMonthExpense,
                                   item.currency,
+                                  shouldHideMoney,
                                 )}{" "}
                             • Avg last 3 months:{" "}
                             {item.averageExpenseLast3Months === null
                               ? "No history"
-                              : formatCurrency(
+                              : formatSensitiveCurrency(
                                   item.averageExpenseLast3Months,
                                   item.currency,
+                                  shouldHideMoney,
                                 )}
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-medium text-gray-900">
-                            {formatCurrency(item.spentAmount, item.currency)}
+                          <span className="font-medium text-[var(--text-primary)]">
+                            {formatSensitiveCurrency(
+                              item.spentAmount,
+                              item.currency,
+                              shouldHideMoney,
+                            )}
                           </span>
                           <Link
                             href={buildBudgetTransactionsLink({
                               month: budgetView.month,
                               categoryId: item.categoryId,
                             })}
-                            className="font-medium text-blue-600 hover:underline"
+                            className="link-button"
                           >
                             Transactions
                           </Link>
@@ -606,7 +653,7 @@ export default function BudgetsPageClient({
                                 }),
                               )
                             }
-                            className="font-medium text-gray-700 hover:underline"
+                            className="link-button"
                           >
                             Create budget
                           </button>
@@ -618,14 +665,15 @@ export default function BudgetsPageClient({
               ) : null}
 
               {currency.uncategorizedExpenseTotal > 0 ? (
-                <div className="mt-4 rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 p-4 text-sm text-amber-950">
+                <div className="mt-4 page-inline-notice surface-warning surface-dashed">
                   <p className="font-medium">
                     Uncategorized expenses are not budgeted automatically.
                   </p>
                   <p className="mt-1">
-                    {formatCurrency(
+                    {formatSensitiveCurrency(
                       currency.uncategorizedExpenseTotal,
                       currency.currency,
+                      shouldHideMoney,
                     )}{" "}
                     in {currency.currency} still needs category cleanup before
                     budget coverage is complete.
@@ -634,7 +682,7 @@ export default function BudgetsPageClient({
                     href={buildBudgetTransactionsLink({
                       month: budgetView.month,
                     })}
-                    className="mt-2 inline-block font-medium text-blue-600 hover:underline"
+                    className="mt-2 inline-block link-button"
                   >
                     Open transactions
                   </Link>
@@ -645,17 +693,17 @@ export default function BudgetsPageClient({
         )}
       </section>
 
-      <aside className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+      <aside className="page-form-card">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">
+            <h2 className="text-xl font-semibold text-[var(--text-primary)]">
               {panelMode === "create"
                 ? "Create budget"
                 : panelMode === "edit"
                   ? "Edit repeating budget"
                   : `Override ${budgetView.month}`}
             </h2>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               {panelMode === "create"
                 ? "Add a monthly expense target for a category and currency."
                 : panelMode === "edit"
@@ -667,7 +715,7 @@ export default function BudgetsPageClient({
             <button
               type="button"
               onClick={() => openCreatePanel()}
-              className="text-sm font-medium text-gray-600 hover:text-gray-900"
+              className="link-button"
             >
               New budget
             </button>
@@ -677,7 +725,9 @@ export default function BudgetsPageClient({
         <div className="mt-6">
           {panelMode === "override" && selectedBudget ? (
             isLoadingOverrides ? (
-              <p className="text-sm text-gray-500">Loading overrides...</p>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Loading overrides...
+              </p>
             ) : (
               <BudgetOverrideForm
                 budget={selectedBudget}
@@ -725,9 +775,9 @@ export default function BudgetsPageClient({
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm">
-      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="mt-1 font-semibold text-gray-900">{value}</p>
+    <div className="summary-card text-sm">
+      <p className="summary-card-label">{label}</p>
+      <p className="summary-card-value">{value}</p>
     </div>
   );
 }

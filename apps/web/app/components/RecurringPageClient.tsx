@@ -268,42 +268,43 @@ export default function RecurringPageClient({
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,420px)]">
+    <div className="page-split">
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900">
-              Recurring rules
-            </h2>
-            <p className="text-sm text-gray-500">
-              Monthly templates that create real due transactions on demand.
-            </p>
-          </div>
+        <div className="page-hero">
+          <div className="page-hero-row">
+            <div className="page-hero-copy">
+              <p className="page-kicker">Automation</p>
+              <h2 className="page-title is-compact">Recurring rules</h2>
+              <p className="page-description">
+                Monthly templates that create real due transactions on demand.
+              </p>
+            </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setOccurrenceRuleId(null);
-                setEditingRuleId(null);
-              }}
-              className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              New rule
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSync()}
-              disabled={isSyncing}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSyncing ? "Syncing..." : "Sync due transactions"}
-            </button>
+            <div className="page-hero-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setOccurrenceRuleId(null);
+                  setEditingRuleId(null);
+                }}
+                className="btn-secondary"
+              >
+                New rule
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSync()}
+                disabled={isSyncing}
+                className="btn-primary"
+              >
+                {isSyncing ? "Syncing..." : "Sync due transactions"}
+              </button>
+            </div>
           </div>
         </div>
 
         {actionError ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="page-inline-notice surface-danger">
             {actionError}
           </p>
         ) : null}
@@ -311,12 +312,12 @@ export default function RecurringPageClient({
           <CooldownNotice
             key={actionNotice}
             notice={actionNotice}
-            className="text-sm text-amber-700"
+            className="page-inline-notice surface-warning"
           />
         ) : null}
 
         {syncSummary ? (
-          <p className="text-sm text-emerald-700">
+          <p className="page-inline-notice surface-success">
             Synced due transactions: created {syncSummary.createdCount},
             processed {syncSummary.processedRuleCount}, failed{" "}
             {syncSummary.failedRuleCount}.
@@ -324,16 +325,13 @@ export default function RecurringPageClient({
         ) : null}
 
         {rules.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
+          <div className="page-inline-notice surface-dashed">
             No recurring rules yet.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="list-stack">
             {rules.map((rule) => (
-              <article
-                key={rule.id}
-                className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100"
-              >
+              <article key={rule.id} className="list-card">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -376,14 +374,14 @@ export default function RecurringPageClient({
                         setOccurrenceRuleId(null);
                         setEditingRuleId(rule.id);
                       }}
-                      className="text-sm font-medium text-blue-600 hover:underline"
+                      className="link-button mobile-hit-target"
                     >
                       Edit
                     </button>
                     <button
                       type="button"
                       onClick={() => openOccurrenceManager(rule.id)}
-                      className="text-sm font-medium text-amber-700 hover:underline"
+                      className="link-button is-warning mobile-hit-target"
                     >
                       Exceptions
                     </button>
@@ -392,7 +390,7 @@ export default function RecurringPageClient({
                         type="button"
                         onClick={() => void handleDisable(rule.id)}
                         disabled={busyRuleId === rule.id}
-                        className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                        className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {busyRuleId === rule.id ? "Disabling..." : "Disable"}
                       </button>
@@ -401,7 +399,7 @@ export default function RecurringPageClient({
                 </div>
 
                 {rule.lastMaterializationError ? (
-                  <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <div className="mt-4 rounded-2xl border px-4 py-3 text-sm surface-danger">
                     <p className="font-medium">Last materialization error</p>
                     <p className="mt-1">{rule.lastMaterializationError}</p>
                     {rule.lastMaterializationErrorAt ? (
@@ -419,7 +417,7 @@ export default function RecurringPageClient({
         )}
       </section>
 
-      <aside className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+      <aside className="page-form-card">
         <h2 className="text-xl font-semibold text-gray-900">
           {occurrenceRule
             ? `Occurrence exceptions · ${occurrenceRule.name}`

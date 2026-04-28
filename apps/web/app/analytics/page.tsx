@@ -8,6 +8,7 @@ import type {
 import AnalyticsCategoryBarChart from "@components/AnalyticsCategoryBarChart";
 import AnalyticsTrendChart from "@components/AnalyticsTrendChart";
 import Container from "@components/Container";
+import MoneyValue from "@components/MoneyValue";
 
 import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
@@ -104,23 +105,22 @@ export default async function AnalyticsPage({
           </>
         ) : (
           <div className="space-y-8">
-            <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+            <section className="page-hero">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-3xl font-semibold text-gray-900">
-                    Analytics
-                  </h1>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="page-kicker">Analysis</p>
+                  <h1 className="page-title is-compact">Analytics</h1>
+                  <p className="page-description">
                     Multi-month cashflow trends, biggest category changes, and
                     drill-down links into the ledger.
                   </p>
                 </div>
-                <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
+                <div className="page-pill">
                   Focus month {analytics.focusMonth}
                 </div>
               </div>
 
-              <form className="mt-6 grid gap-4 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+              <form className="filter-grid lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
                 <div className="flex flex-col gap-1">
                   <label className="text-sm font-medium text-gray-600">
                     From
@@ -188,16 +188,10 @@ export default async function AnalyticsPage({
                     Include archived accounts
                   </label>
                   <div className="flex gap-3">
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                    >
+                    <button type="submit" className="btn-primary">
                       Apply
                     </button>
-                    <Link
-                      href="/analytics"
-                      className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
+                    <Link href="/analytics" className="btn-secondary">
                       Clear
                     </Link>
                   </div>
@@ -216,7 +210,7 @@ export default async function AnalyticsPage({
             />
 
             {analytics.currencies.length === 0 ? (
-              <section className="rounded-3xl border border-dashed border-gray-300 bg-white p-8 text-sm text-gray-500">
+              <section className="page-inline-notice surface-dashed">
                 <p className="font-medium text-gray-700">
                   {!setup?.isComplete
                     ? "Analytics is available, but the trust baseline is still incomplete."
@@ -236,19 +230,16 @@ export default async function AnalyticsPage({
                 <div className="mt-4 flex flex-wrap gap-3">
                   <Link
                     href={!setup?.isComplete ? "/setup" : "/import"}
-                    className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="btn-secondary"
                   >
                     {!setup?.isComplete ? "Open setup" : "Open import"}
                   </Link>
-                  <Link
-                    href="/analytics"
-                    className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
+                  <Link href="/analytics" className="btn-secondary">
                     Clear filters
                   </Link>
                   <Link
                     href={`/review?month=${encodeURIComponent(analytics.focusMonth)}`}
-                    className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="btn-secondary"
                   >
                     Open review
                   </Link>
@@ -260,7 +251,7 @@ export default async function AnalyticsPage({
 
                 return (
                   <div key={currency.currency} className="space-y-8">
-                    <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+                    <section className="page-section">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <h2 className="text-2xl font-semibold text-gray-900">
@@ -270,33 +261,33 @@ export default async function AnalyticsPage({
                             Range {analytics.from} to {analytics.to}
                           </p>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm">
-                            <p className="text-xs uppercase tracking-wide text-gray-500">
+                        <div className="summary-grid sm:grid-cols-2">
+                          <div className="summary-card text-sm">
+                            <p className="summary-card-label">
                               Avg monthly income
                             </p>
-                            <p className="mt-1 font-semibold text-gray-900">
-                              {formatCurrency(
-                                currency.averageMonthlyIncome,
-                                currency.currency,
-                              )}
+                            <p className="summary-card-value">
+                              <MoneyValue
+                                value={currency.averageMonthlyIncome}
+                                currency={currency.currency}
+                              />
                             </p>
                           </div>
-                          <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm">
-                            <p className="text-xs uppercase tracking-wide text-gray-500">
+                          <div className="summary-card text-sm">
+                            <p className="summary-card-label">
                               Avg monthly expense
                             </p>
-                            <p className="mt-1 font-semibold text-gray-900">
-                              {formatCurrency(
-                                currency.averageMonthlyExpense,
-                                currency.currency,
-                              )}
+                            <p className="summary-card-value">
+                              <MoneyValue
+                                value={currency.averageMonthlyExpense}
+                                currency={currency.currency}
+                              />
                             </p>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="mt-6 rounded-2xl border border-[var(--border-glass)] bg-[var(--bg-card-muted)] p-4">
                         <AnalyticsTrendChart
                           data={currency.monthlySeries}
                           currency={currency.currency}
@@ -304,7 +295,7 @@ export default async function AnalyticsPage({
                       </div>
                     </section>
 
-                    <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+                    <section className="page-section">
                       <h3 className="text-xl font-semibold text-gray-900">
                         Trend
                       </h3>
@@ -323,17 +314,17 @@ export default async function AnalyticsPage({
                               includeArchivedAccounts:
                                 filters.includeArchivedAccounts,
                             })}
-                            className="rounded-2xl bg-gray-50 p-4 transition hover:bg-gray-100"
+                            className="list-card is-muted transition hover:bg-[var(--bg-card-hover)]"
                           >
                             <div className="flex items-center justify-between gap-3">
                               <p className="font-semibold text-gray-900">
                                 {month.month}
                               </p>
                               <span className="text-sm font-medium text-gray-700">
-                                {formatCurrency(
-                                  month.netCashflow,
-                                  currency.currency,
-                                )}
+                                <MoneyValue
+                                  value={month.netCashflow}
+                                  currency={currency.currency}
+                                />
                               </span>
                             </div>
 

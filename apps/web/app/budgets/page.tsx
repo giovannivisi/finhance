@@ -60,31 +60,33 @@ export default async function BudgetsPage({
     <>
       <Container>
         {!budgetView || !categories ? (
-          <>
-            <h1 className="text-3xl font-semibold text-gray-900">Budgets</h1>
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
+          <section className="page-shell">
+            <div className="page-hero">
+              <p className="page-kicker">Planning</p>
+              <h1 className="page-title is-compact">Budgets</h1>
+            </div>
+            <div className="page-inline-notice surface-warning">
               <p className="font-medium">
                 The web app could not reach the API.
               </p>
-              <p className="mt-2 text-sm text-amber-900/80">
+              <p className="mt-2 text-sm">
                 {errorMessage ?? "Start the API and refresh the page."}
               </p>
             </div>
-          </>
+          </section>
         ) : (
           <div className="space-y-8">
-            <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h1 className="text-3xl font-semibold text-gray-900">
-                    Budgets
-                  </h1>
-                  <p className="mt-1 text-sm text-gray-500">
+            <section className="page-hero">
+              <div className="page-hero-row">
+                <div className="page-hero-copy">
+                  <p className="page-kicker">Planning</p>
+                  <h1 className="page-title is-compact">Budgets</h1>
+                  <p className="page-description">
                     Monthly expense plans with manual month overrides and clear
                     visibility into uncovered spend.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="page-hero-actions">
                   <Link
                     href={buildBudgetMonthNavigationLink({
                       month: budgetView.month,
@@ -92,13 +94,11 @@ export default async function BudgetsPage({
                       includeArchivedCategories:
                         filters.includeArchivedCategories,
                     })}
-                    className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="btn-secondary"
                   >
                     Previous month
                   </Link>
-                  <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
-                    Month {budgetView.month}
-                  </div>
+                  <div className="page-pill">Month {budgetView.month}</div>
                   <Link
                     href={buildBudgetMonthNavigationLink({
                       month: budgetView.month,
@@ -106,16 +106,16 @@ export default async function BudgetsPage({
                       includeArchivedCategories:
                         filters.includeArchivedCategories,
                     })}
-                    className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="btn-secondary"
                   >
                     Next month
                   </Link>
                 </div>
               </div>
 
-              <form className="mt-6 flex flex-wrap items-end gap-4">
+              <form className="filter-grid sm:grid-cols-[minmax(0,220px)_auto_auto]">
                 <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-600">
+                  <label className="text-sm font-medium text-[var(--text-secondary)]">
                     Month
                   </label>
                   <input
@@ -126,7 +126,7 @@ export default async function BudgetsPage({
                   />
                 </div>
 
-                <label className="flex items-center gap-2 text-sm text-gray-600">
+                <label className="page-pill">
                   <input
                     type="checkbox"
                     name="includeArchivedCategories"
@@ -136,17 +136,11 @@ export default async function BudgetsPage({
                   Include archived categories
                 </label>
 
-                <div className="flex gap-3">
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                  >
+                <div className="filter-actions">
+                  <button type="submit" className="btn-primary">
                     Apply
                   </button>
-                  <Link
-                    href="/budgets"
-                    className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
+                  <Link href="/budgets" className="btn-secondary">
                     Clear
                   </Link>
                 </div>

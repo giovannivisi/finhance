@@ -38,21 +38,22 @@ export default async function ImportPage() {
       <Container>
         {!batches ? (
           <>
-            <h1>Import</h1>
-            <div
-              className="glass-card"
-              style={{ padding: "24px", borderColor: "var(--color-expense)" }}
-            >
-              <p style={{ fontWeight: 600 }}>
-                The web app could not reach the API.
-              </p>
-              <p style={{ color: "var(--text-secondary)" }}>
-                {errorMessage ?? "Start the API and refresh the page."}
-              </p>
-            </div>
+            <section className="page-shell">
+              <div className="page-hero">
+                <p className="page-kicker">Migration</p>
+                <h1 className="page-title is-compact">Import</h1>
+              </div>
+              <div className="page-inline-notice surface-danger">
+                <p className="font-medium">
+                  The web app could not reach the API.
+                </p>
+                <p>{errorMessage ?? "Start the API and refresh the page."}</p>
+              </div>
+            </section>
           </>
         ) : (
-          <div className="space-y-8">
+          <div className="page-shell">
+            <ImportsPageClient initialBatches={batches} />
             <WorkflowSection
               title="After import, keep the month connected"
               description={`Use import to establish or restore the baseline, then move directly into ${setup?.currentMonth ?? "the current month"} review, analytics, and budgets.`}
@@ -62,7 +63,6 @@ export default async function ImportPage() {
                 setup,
               })}
             />
-            <ImportsPageClient initialBatches={batches} />
           </div>
         )}
       </Container>

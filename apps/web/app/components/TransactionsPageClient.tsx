@@ -9,6 +9,7 @@ import type {
   TransactionResponse,
 } from "@finhance/shared";
 import RecurringOccurrenceForm from "@components/RecurringOccurrenceForm";
+import { useAppPreferences } from "@components/ThemeProvider";
 import TransactionForm from "@components/TransactionForm";
 import {
   recurringTransactionToOccurrenceFormValues,
@@ -19,7 +20,7 @@ import {
   transactionToFormValues,
 } from "@lib/transaction-form";
 import { apiMutation } from "@lib/api";
-import { formatCurrency } from "@lib/format";
+import { formatSensitiveCurrency } from "@lib/money";
 import { CATEGORY_TYPE_LABELS } from "@lib/categories";
 import {
   TRANSACTION_KIND_LABELS,
@@ -80,6 +81,8 @@ export default function TransactionsPageClient({
   } | null>(null);
   const actions = useSingleFlightActions<string>();
   const navigation = useSingleFlightNavigation();
+  const { hideMoney, isHydrated } = useAppPreferences();
+  const shouldHideMoney = !isHydrated || hideMoney;
 
   useEffect(() => {
     setFilters(initialFilters);
@@ -245,14 +248,13 @@ export default function TransactionsPageClient({
   }
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-semibold text-gray-900">
-              Transactions
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
+    <div className="page-shell">
+      <section className="page-hero">
+        <div className="page-hero-row">
+          <div className="page-hero-copy">
+            <p className="page-kicker">Cashflow</p>
+            <h1 className="page-title is-compact">Transactions</h1>
+            <p className="page-description">
               Cashflow history stays separate from portfolio holdings and is
               summarized per currency.
             </p>
@@ -264,7 +266,7 @@ export default function TransactionsPageClient({
               setOccurrenceDraft(null);
               setEditingTransactionId(null);
             }}
-            className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="btn-primary"
           >
             New transaction
           </button>
@@ -272,10 +274,12 @@ export default function TransactionsPageClient({
 
         <form
           onSubmit={handleFilterSubmit}
-          className="mt-6 grid gap-4 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]"
+          className="filter-grid lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]"
         >
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-600">From</label>
+            <label className="text-sm font-medium text-[var(--text-secondary)]">
+              From
+            </label>
             <input
               className="rounded-lg border px-3 py-2"
               type="date"
@@ -285,7 +289,9 @@ export default function TransactionsPageClient({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-600">To</label>
+            <label className="text-sm font-medium text-[var(--text-secondary)]">
+              To
+            </label>
             <input
               className="rounded-lg border px-3 py-2"
               type="date"
@@ -295,7 +301,9 @@ export default function TransactionsPageClient({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-600">Kind</label>
+            <label className="text-sm font-medium text-[var(--text-secondary)]">
+              Kind
+            </label>
             <select
               className="rounded-lg border px-3 py-2"
               value={filters.kind}
@@ -311,7 +319,9 @@ export default function TransactionsPageClient({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-600">Account</label>
+            <label className="text-sm font-medium text-[var(--text-secondary)]">
+              Account
+            </label>
             <select
               className="rounded-lg border px-3 py-2"
               value={filters.accountId}
@@ -329,7 +339,7 @@ export default function TransactionsPageClient({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-600">
+            <label className="text-sm font-medium text-[var(--text-secondary)]">
               Category
             </label>
             <select
@@ -349,7 +359,7 @@ export default function TransactionsPageClient({
           </div>
 
           <div className="flex flex-col justify-end gap-3">
-            <label className="flex items-center gap-2 text-sm text-gray-600">
+            <label className="page-pill">
               <input
                 type="checkbox"
                 checked={filters.includeArchivedAccounts}
@@ -360,11 +370,11 @@ export default function TransactionsPageClient({
               Include archived accounts
             </label>
 
-            <div className="flex gap-3">
+            <div className="filter-actions">
               <button
                 type="submit"
                 disabled={navigation.isRunning}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-primary"
               >
                 {navigation.isRunning ? "Applying..." : "Apply"}
               </button>
@@ -372,7 +382,7 @@ export default function TransactionsPageClient({
                 type="button"
                 onClick={handleClearFilters}
                 disabled={navigation.isRunning}
-                className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-secondary"
               >
                 Clear
               </button>
@@ -381,90 +391,96 @@ export default function TransactionsPageClient({
         </form>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,420px)]">
+      <section className="page-split xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,420px)]">
         <div className="space-y-6">
           {cashflow.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-gray-300 bg-white p-8 text-sm text-gray-500">
+            <div className="page-inline-notice surface-dashed">
               No cashflow matches the current filters.
             </div>
           ) : (
             cashflow.map((bucket) => (
-              <article
-                key={bucket.currency}
-                className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100"
-              >
+              <article key={bucket.currency} className="page-section">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-xl font-semibold text-gray-900">
+                    <h2 className="text-xl font-semibold text-[var(--text-primary)]">
                       {bucket.currency} cashflow
                     </h2>
-                    <p className="mt-1 text-sm text-gray-500">
+                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
                       Income, expense, and adjustments without transfer double
                       counting.
                     </p>
                   </div>
 
-                  <div className="rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-700">
-                    Net {formatCurrency(bucket.netCashflow, bucket.currency)}
+                  <div className="page-pill">
+                    Net{" "}
+                    {formatSensitiveCurrency(
+                      bucket.netCashflow,
+                      bucket.currency,
+                      shouldHideMoney,
+                    )}
                   </div>
                 </div>
 
-                <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                  <div className="rounded-2xl bg-gray-50 p-4">
-                    <p className="text-xs uppercase tracking-wide text-gray-500">
-                      Income
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-gray-900">
-                      {formatCurrency(bucket.incomeTotal, bucket.currency)}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-gray-50 p-4">
-                    <p className="text-xs uppercase tracking-wide text-gray-500">
-                      Expenses
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-gray-900">
-                      {formatCurrency(bucket.expenseTotal, bucket.currency)}
+                <div className="summary-grid mt-5 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="summary-card">
+                    <p className="summary-card-label">Income</p>
+                    <p className="summary-card-value">
+                      {formatSensitiveCurrency(
+                        bucket.incomeTotal,
+                        bucket.currency,
+                        shouldHideMoney,
+                      )}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-gray-50 p-4">
-                    <p className="text-xs uppercase tracking-wide text-gray-500">
-                      Adjustment In
+                  <div className="summary-card">
+                    <p className="summary-card-label">Expenses</p>
+                    <p className="summary-card-value">
+                      {formatSensitiveCurrency(
+                        bucket.expenseTotal,
+                        bucket.currency,
+                        shouldHideMoney,
+                      )}
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-gray-900">
-                      {formatCurrency(
+                  </div>
+                  <div className="summary-card">
+                    <p className="summary-card-label">Adjustment In</p>
+                    <p className="summary-card-value">
+                      {formatSensitiveCurrency(
                         bucket.adjustmentInTotal,
                         bucket.currency,
+                        shouldHideMoney,
                       )}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-gray-50 p-4">
-                    <p className="text-xs uppercase tracking-wide text-gray-500">
-                      Adjustment Out
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-gray-900">
-                      {formatCurrency(
+                  <div className="summary-card">
+                    <p className="summary-card-label">Adjustment Out</p>
+                    <p className="summary-card-value">
+                      {formatSensitiveCurrency(
                         bucket.adjustmentOutTotal,
                         bucket.currency,
+                        shouldHideMoney,
                       )}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-gray-50 p-4">
-                    <p className="text-xs uppercase tracking-wide text-gray-500">
-                      Net
-                    </p>
-                    <p className="mt-1 text-lg font-semibold text-gray-900">
-                      {formatCurrency(bucket.netCashflow, bucket.currency)}
+                  <div className="summary-card">
+                    <p className="summary-card-label">Net</p>
+                    <p className="summary-card-value">
+                      {formatSensitiveCurrency(
+                        bucket.netCashflow,
+                        bucket.currency,
+                        shouldHideMoney,
+                      )}
                     </p>
                   </div>
                 </div>
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-2">
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                       By category
                     </h3>
                     {bucket.byCategory.length === 0 ? (
-                      <p className="mt-2 text-sm text-gray-500">
+                      <p className="mt-2 text-sm text-[var(--text-secondary)]">
                         No income or expense categories in this bucket.
                       </p>
                     ) : (
@@ -472,18 +488,22 @@ export default function TransactionsPageClient({
                         {bucket.byCategory.map((item) => (
                           <div
                             key={`${item.type}:${item.categoryId ?? "uncategorized"}`}
-                            className="flex items-center justify-between rounded-2xl bg-gray-50 px-4 py-3 text-sm"
+                            className="list-card is-muted flex items-center justify-between text-sm"
                           >
                             <div>
-                              <p className="font-medium text-gray-900">
+                              <p className="font-medium text-[var(--text-primary)]">
                                 {item.name}
                               </p>
-                              <p className="text-gray-500">
+                              <p className="text-[var(--text-secondary)]">
                                 {CATEGORY_TYPE_LABELS[item.type]}
                               </p>
                             </div>
-                            <span className="font-medium text-gray-900">
-                              {formatCurrency(item.total, bucket.currency)}
+                            <span className="font-medium text-[var(--text-primary)]">
+                              {formatSensitiveCurrency(
+                                item.total,
+                                bucket.currency,
+                                shouldHideMoney,
+                              )}
                             </span>
                           </div>
                         ))}
@@ -492,11 +512,11 @@ export default function TransactionsPageClient({
                   </div>
 
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                       By account
                     </h3>
                     {bucket.byAccount.length === 0 ? (
-                      <p className="mt-2 text-sm text-gray-500">
+                      <p className="mt-2 text-sm text-[var(--text-secondary)]">
                         No account totals in this bucket.
                       </p>
                     ) : (
@@ -504,31 +524,34 @@ export default function TransactionsPageClient({
                         {bucket.byAccount.map((item) => (
                           <div
                             key={item.accountId}
-                            className="rounded-2xl bg-gray-50 px-4 py-3 text-sm"
+                            className="list-card is-muted text-sm"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <p className="font-medium text-gray-900">
+                              <p className="font-medium text-[var(--text-primary)]">
                                 {item.name}
                               </p>
-                              <span className="font-medium text-gray-900">
+                              <span className="font-medium text-[var(--text-primary)]">
                                 Net{" "}
-                                {formatCurrency(
+                                {formatSensitiveCurrency(
                                   item.netCashflow,
                                   bucket.currency,
+                                  shouldHideMoney,
                                 )}
                               </span>
                             </div>
-                            <p className="mt-1 text-gray-500">
+                            <p className="mt-1 text-[var(--text-secondary)]">
                               In{" "}
-                              {formatCurrency(
+                              {formatSensitiveCurrency(
                                 item.inflowTotal,
                                 bucket.currency,
+                                shouldHideMoney,
                               )}
                               {" · "}
                               Out{" "}
-                              {formatCurrency(
+                              {formatSensitiveCurrency(
                                 item.outflowTotal,
                                 bucket.currency,
+                                shouldHideMoney,
                               )}
                             </p>
                           </div>
@@ -541,11 +564,13 @@ export default function TransactionsPageClient({
             ))
           )}
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+          <section className="page-section">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">Entries</h2>
-                <p className="mt-1 text-sm text-gray-500">
+                <h2 className="text-xl font-semibold text-[var(--text-primary)]">
+                  Entries
+                </h2>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
                   Logical transactions, including paired transfers.
                 </p>
               </div>
@@ -564,14 +589,14 @@ export default function TransactionsPageClient({
             ) : null}
 
             {transactions.length === 0 ? (
-              <div className="mt-6 rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
+              <div className="mt-6 page-inline-notice surface-dashed">
                 No transactions match the current filters.
               </div>
             ) : (
-              <div className="mt-6 overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <div className="table-shell">
+                <table className="data-table">
                   <thead>
-                    <tr className="text-left text-gray-500">
+                    <tr>
                       <th className="pb-3 pr-4 font-medium">Posted</th>
                       <th className="pb-3 pr-4 font-medium">Kind</th>
                       <th className="pb-3 pr-4 font-medium">Description</th>
@@ -581,7 +606,7 @@ export default function TransactionsPageClient({
                       <th className="pb-3 font-medium">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody>
                     {transactions.map((transaction) => {
                       const account =
                         transaction.accountId !== null
@@ -601,8 +626,11 @@ export default function TransactionsPageClient({
                           : null;
 
                       return (
-                        <tr key={transaction.id} className="text-gray-700">
-                          <td className="py-3 pr-4 text-gray-900">
+                        <tr
+                          key={transaction.id}
+                          className="text-[var(--text-secondary)]"
+                        >
+                          <td className="py-3 pr-4 text-[var(--text-primary)]">
                             {DATETIME_FORMATTER.format(
                               new Date(transaction.postedAt),
                             )}
@@ -613,18 +641,18 @@ export default function TransactionsPageClient({
                                 {TRANSACTION_KIND_LABELS[transaction.kind]}
                               </span>
                               {transaction.isRecurringGenerated ? (
-                                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                                <span className="status-chip is-neutral">
                                   Recurring
                                 </span>
                               ) : null}
                             </div>
                           </td>
                           <td className="py-3 pr-4">
-                            <p className="font-medium text-gray-900">
+                            <p className="font-medium text-[var(--text-primary)]">
                               {transaction.description}
                             </p>
                             {transaction.counterparty ? (
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-[var(--text-secondary)]">
                                 {transaction.counterparty}
                               </p>
                             ) : null}
@@ -645,17 +673,22 @@ export default function TransactionsPageClient({
                           <td className="py-3 pr-4">
                             {category ? category.name : "-"}
                           </td>
-                          <td className="py-3 pr-4 font-medium text-gray-900">
+                          <td className="py-3 pr-4 font-medium text-[var(--text-primary)]">
                             {formatTransactionAmount(
                               transaction,
-                              formatCurrency,
+                              (value, currency) =>
+                                formatSensitiveCurrency(
+                                  value,
+                                  currency,
+                                  shouldHideMoney,
+                                ),
                             )}
                           </td>
                           <td className="py-3">
                             <div className="flex items-center gap-3">
                               {transaction.isRecurringGenerated ? (
                                 <>
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-xs text-[var(--text-secondary)]">
                                     Locked
                                   </span>
                                   {transaction.recurringRuleId &&
@@ -674,7 +707,7 @@ export default function TransactionsPageClient({
                                               ),
                                           })
                                         }
-                                        className="text-sm font-medium text-blue-600 hover:underline"
+                                        className="link-button mobile-hit-target"
                                       >
                                         Override month
                                       </button>
@@ -687,7 +720,7 @@ export default function TransactionsPageClient({
                                           busyRecurringTransactionId ===
                                           transaction.id
                                         }
-                                        className="text-sm font-medium text-amber-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="link-button is-warning mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                                       >
                                         {busyRecurringTransactionId ===
                                         transaction.id
@@ -705,7 +738,7 @@ export default function TransactionsPageClient({
                                       setOccurrenceDraft(null);
                                       setEditingTransactionId(transaction.id);
                                     }}
-                                    className="text-sm font-medium text-blue-600 hover:underline"
+                                    className="link-button mobile-hit-target"
                                   >
                                     Edit
                                   </button>
@@ -717,7 +750,7 @@ export default function TransactionsPageClient({
                                     disabled={
                                       deletingTransactionId === transaction.id
                                     }
-                                    className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                                   >
                                     {deletingTransactionId === transaction.id
                                       ? "Deleting..."
@@ -737,15 +770,15 @@ export default function TransactionsPageClient({
           </section>
         </div>
 
-        <aside className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-          <h2 className="text-xl font-semibold text-gray-900">
+        <aside className="page-form-card">
+          <h2 className="text-xl font-semibold text-[var(--text-primary)]">
             {occurrenceDraft
               ? "Override recurring month"
               : editingTransaction
                 ? "Edit transaction"
                 : "Create transaction"}
           </h2>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             {occurrenceDraft
               ? "Override one generated occurrence without detaching it from the recurring rule."
               : editingTransaction
@@ -766,7 +799,7 @@ export default function TransactionsPageClient({
                 onCancel={() => setOccurrenceDraft(null)}
               />
             ) : editingTransaction?.isRecurringGenerated ? (
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+              <div className="page-inline-notice">
                 This transaction was generated by a recurring rule. Update or
                 disable the rule from the Recurring page instead.
               </div>

@@ -10,14 +10,17 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useAppPreferences } from "@components/ThemeProvider";
 import type { MonthlyBudgetCurrencySummaryResponse } from "@finhance/shared";
-import { formatCurrency } from "@lib/format";
+import { formatSensitiveCurrency, formatSensitiveNumber } from "@lib/money";
 
 export default function ReviewBudgetStatusChart({
   summaries,
 }: {
   summaries: MonthlyBudgetCurrencySummaryResponse[];
 }) {
+  const { hideMoney, isHydrated } = useAppPreferences();
+  const shouldHideMoney = !isHydrated || hideMoney;
   const data = summaries.map((summary) => ({
     currency: summary.currency,
     budgetTotal: summary.budgetTotal,
@@ -31,42 +34,53 @@ export default function ReviewBudgetStatusChart({
           data={data}
           margin={{ top: 16, right: 16, left: 8, bottom: 0 }}
         >
-          <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" />
+          <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="4 4" />
           <XAxis
             dataKey="currency"
-            stroke="#6b7280"
+            stroke="var(--chart-axis)"
             tickLine={false}
             axisLine={false}
           />
           <YAxis
-            stroke="#6b7280"
+            stroke="var(--chart-axis)"
             tickLine={false}
             axisLine={false}
             width={110}
-            tickFormatter={(value: number) => value.toFixed(0)}
+            tickFormatter={(value: number) =>
+              formatSensitiveNumber(Number(value.toFixed(0)), shouldHideMoney)
+            }
           />
           <Tooltip
             formatter={(
               value: number,
               _name: string,
               item: { payload?: { currency?: string } },
-            ) => formatCurrency(value, item.payload?.currency ?? "EUR")}
+            ) =>
+              formatSensitiveCurrency(
+                value,
+                item.payload?.currency ?? "EUR",
+                shouldHideMoney,
+              )
+            }
             contentStyle={{
               borderRadius: "1rem",
-              border: "1px solid #e5e7eb",
+              border: "1px solid var(--chart-tooltip-border)",
+              background: "var(--chart-tooltip-bg)",
+              color: "var(--text-primary)",
+              boxShadow: "var(--shadow-glass)",
             }}
           />
           <Legend />
           <Bar
             dataKey="budgetTotal"
             name="Budget"
-            fill="#94a3b8"
+            fill="var(--chart-budget)"
             radius={[8, 8, 0, 0]}
           />
           <Bar
             dataKey="spentTotal"
             name="Spent"
-            fill="#2563eb"
+            fill="var(--chart-spent)"
             radius={[8, 8, 0, 0]}
           />
         </BarChart>

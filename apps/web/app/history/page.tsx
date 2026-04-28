@@ -23,17 +23,20 @@ export default async function HistoryPage() {
     <>
       <Container>
         {!snapshots ? (
-          <>
-            <h1 className="text-3xl font-semibold text-gray-900">History</h1>
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
+          <section className="page-shell">
+            <div className="page-hero">
+              <p className="page-kicker">Trend</p>
+              <h1 className="page-title is-compact">History</h1>
+            </div>
+            <div className="page-inline-notice surface-warning">
               <p className="font-medium">
                 The web app could not reach the API.
               </p>
-              <p className="mt-2 text-sm text-amber-900/80">
+              <p className="mt-2 text-sm">
                 {errorMessage ?? "Start the API and refresh the page."}
               </p>
             </div>
-          </>
+          </section>
         ) : (
           <HistoryPageClient snapshots={snapshots} />
         )}

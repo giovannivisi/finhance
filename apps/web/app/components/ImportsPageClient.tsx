@@ -205,19 +205,18 @@ export default function ImportsPageClient({
   }
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-        <h1 className="text-3xl font-semibold text-gray-900">
-          Import & export
-        </h1>
-        <p className="mt-2 text-sm text-gray-500">
+    <div className="page-shell">
+      <section className="page-hero">
+        <p className="page-kicker">Migration</p>
+        <h1 className="page-title is-compact">Import & export</h1>
+        <p className="page-description">
           Use the CSV round-trip flow to establish a clean baseline, preview
           merges safely, and carry definitions like recurring rules and budgets
           without losing the monthly workflow.
         </p>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <div className="page-inline-notice surface-info">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-800">
               What apply does
             </h2>
@@ -241,7 +240,7 @@ export default function ImportsPageClient({
             </ul>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <div className="page-inline-notice">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
               Best use of import/export
             </h2>
@@ -267,7 +266,7 @@ export default function ImportsPageClient({
           ))}
         </div>
 
-        <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+        <div className="mt-6 page-inline-notice">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
@@ -283,7 +282,7 @@ export default function ImportsPageClient({
               type="button"
               onClick={() => void handleExport()}
               disabled={isExporting}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-secondary"
             >
               {isExporting ? "Exporting..." : "Export ZIP"}
             </button>
@@ -318,7 +317,7 @@ export default function ImportsPageClient({
             <button
               type="submit"
               disabled={isPreviewing}
-              className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-primary"
             >
               {isPreviewing ? "Previewing..." : "Preview import"}
             </button>
@@ -332,14 +331,14 @@ export default function ImportsPageClient({
         </form>
 
         {previewError ? (
-          <p role="alert" className="mt-4 text-sm text-red-600">
+          <p role="alert" className="page-inline-notice surface-danger">
             {previewError}
           </p>
         ) : null}
       </section>
 
       {preview ? (
-        <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+        <section className="page-section">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold text-gray-900">
@@ -355,7 +354,7 @@ export default function ImportsPageClient({
                 type="button"
                 onClick={() => void handleApply()}
                 disabled={isApplying}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-primary"
               >
                 {isApplying ? "Applying..." : "Apply import"}
               </button>
@@ -363,7 +362,7 @@ export default function ImportsPageClient({
           </div>
 
           {applyError ? (
-            <p role="alert" className="mt-4 text-sm text-red-600">
+            <p role="alert" className="page-inline-notice surface-danger">
               {applyError}
             </p>
           ) : null}
@@ -387,10 +386,7 @@ export default function ImportsPageClient({
 
           <div className="mt-6 grid gap-6 xl:grid-cols-3">
             {previewGroups.map((group) => (
-              <section
-                key={group.id}
-                className="rounded-2xl border border-gray-200 bg-gray-50 p-4"
-              >
+              <section key={group.id} className="list-card is-muted">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
                   {group.title}
                 </h3>
@@ -398,10 +394,7 @@ export default function ImportsPageClient({
 
                 <div className="mt-4 space-y-3">
                   {group.files.map((fileSummary) => (
-                    <article
-                      key={fileSummary.file}
-                      className="rounded-2xl bg-white px-4 py-3"
-                    >
+                    <article key={fileSummary.file} className="list-card">
                       <div className="flex items-center justify-between gap-3">
                         <h4 className="text-sm font-medium text-gray-900">
                           {fileSummary.file}
@@ -485,9 +478,9 @@ export default function ImportsPageClient({
                       {section.empty}
                     </p>
                   ) : (
-                    <div className="mt-3 overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead className="text-left text-gray-500">
+                    <div className="table-shell">
+                      <table className="data-table">
+                        <thead>
                           <tr>
                             <th className="pb-2 pr-4">File</th>
                             <th className="pb-2 pr-4">Row</th>
@@ -495,7 +488,7 @@ export default function ImportsPageClient({
                             <th className="pb-2 pr-4">Message</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100 text-gray-700">
+                        <tbody>
                           {section.issues.map((issue, index) => (
                             <tr
                               key={`${section.title}-${issue.file}-${issue.rowNumber}-${index}`}
@@ -527,30 +520,27 @@ export default function ImportsPageClient({
               ))}
             </div>
           ) : (
-            <p className="mt-6 text-sm text-green-700">
+            <p className="page-inline-notice surface-success">
               No validation issues found in this preview.
             </p>
           )}
         </section>
       ) : null}
 
-      <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+      <section className="page-section">
         <h2 className="text-2xl font-semibold text-gray-900">Recent batches</h2>
         <p className="mt-1 text-sm text-gray-500">
           Preview and apply history stays visible here for auditability.
         </p>
 
         {batches.length === 0 ? (
-          <div className="mt-6 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
+          <div className="mt-6 page-inline-notice surface-dashed">
             No import batches yet.
           </div>
         ) : (
           <div className="mt-6 space-y-3">
             {batches.map((batch) => (
-              <article
-                key={batch.id}
-                className="rounded-2xl border border-gray-200 bg-gray-50 p-4"
-              >
+              <article key={batch.id} className="list-card is-muted">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { DashboardAssetResponse } from "@finhance/shared";
@@ -17,9 +17,9 @@ import HeaderAddButton from "@components/HeaderAddButton";
 import SectionHeader from "@components/SectionHeader";
 import DisclosureIcon from "@components/DisclosureIcon";
 import AllocationChart from "@components/AllocationChart";
+import { useAppPreferences } from "@components/ThemeProvider";
+import { formatSensitiveCurrency } from "@lib/money";
 import { useSingleFlightActions } from "@lib/single-flight";
-
-const PRIVACY_STORAGE_KEY = "finhance-hide-balances";
 
 function getKindDotColor(kind: string): string {
   switch (kind) {
@@ -51,18 +51,6 @@ function getValuationLabel(asset: DashboardAssetResponse): string {
   }
 }
 
-function formatSensitiveCurrency(
-  value: number | null | undefined,
-  currency: string,
-  hidden: boolean,
-): string {
-  if (value == null) {
-    return "Unavailable";
-  }
-
-  return hidden ? "••••" : formatCurrency(value, currency);
-}
-
 export default function DashboardClient({
   grouped,
   kindTotalsArray,
@@ -86,25 +74,28 @@ export default function DashboardClient({
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
-  const [hideBalances, setHideBalances] = useState(false);
   const actions = useSingleFlightActions<"refresh">();
+  const {
+    hideMoney,
+    isHydrated,
+    toggleHideMoney,
+    hasAttemptedDashboardRefresh,
+    markDashboardRefreshAttempted,
+  } = useAppPreferences();
+  const autoRefreshStartedRef = useRef(false);
   const sortedCategories = useMemo(
     () => Object.keys(grouped).sort(),
     [grouped],
   );
+  const shouldHideMoney = !isHydrated || hideMoney;
+  const runAutoRefresh = useEffectEvent(() => {
+    void handleRefresh();
+  });
 
   useEffect(() => {
     setNowMs(Date.now());
     const id = setInterval(() => setNowMs(Date.now()), 60_000);
     return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    try {
-      setHideBalances(localStorage.getItem(PRIVACY_STORAGE_KEY) === "true");
-    } catch {
-      setHideBalances(false);
-    }
   }, []);
 
   useEffect(() => {
@@ -124,20 +115,6 @@ export default function DashboardClient({
       ...previous,
       [category]: !previous[category],
     }));
-  }
-
-  function toggleBalances() {
-    setHideBalances((current) => {
-      const next = !current;
-
-      try {
-        localStorage.setItem(PRIVACY_STORAGE_KEY, String(next));
-      } catch {
-        // Ignore storage failures and keep the in-memory setting.
-      }
-
-      return next;
-    });
   }
 
   async function handleRefresh() {
@@ -166,6 +143,20 @@ export default function DashboardClient({
     });
   }
 
+  useEffect(() => {
+    if (!isHydrated || autoRefreshStartedRef.current) {
+      return;
+    }
+
+    autoRefreshStartedRef.current = true;
+    if (hasAttemptedDashboardRefresh()) {
+      return;
+    }
+
+    markDashboardRefreshAttempted();
+    runAutoRefresh();
+  }, [hasAttemptedDashboardRefresh, isHydrated, markDashboardRefreshAttempted]);
+
   const refreshStatus =
     lastRefreshAt == null
       ? "No quote snapshot yet"
@@ -188,7 +179,7 @@ export default function DashboardClient({
             {formatSensitiveCurrency(
               summary.netWorth,
               baseCurrency,
-              hideBalances,
+              shouldHideMoney,
             )}
           </h1>
           <div className="dashboard-hero-stats">
@@ -198,7 +189,7 @@ export default function DashboardClient({
                 {formatSensitiveCurrency(
                   summary.assets,
                   baseCurrency,
-                  hideBalances,
+                  shouldHideMoney,
                 )}
               </p>
             </div>
@@ -208,7 +199,7 @@ export default function DashboardClient({
                 {formatSensitiveCurrency(
                   summary.liabilities,
                   baseCurrency,
-                  hideBalances,
+                  shouldHideMoney,
                 )}
               </p>
             </div>
@@ -219,16 +210,16 @@ export default function DashboardClient({
           <div className="dashboard-hero-controls">
             <button
               type="button"
-              onClick={toggleBalances}
-              aria-pressed={hideBalances}
+              onClick={toggleHideMoney}
+              aria-pressed={hideMoney}
               className="btn-secondary dashboard-hero-privacy-btn"
             >
-              {hideBalances ? (
+              {shouldHideMoney ? (
                 <Eye size={16} aria-hidden="true" />
               ) : (
                 <EyeOff size={16} aria-hidden="true" />
               )}
-              <span>{hideBalances ? "Show balances" : "Hide balances"}</span>
+              <span>{shouldHideMoney ? "Show balances" : "Hide balances"}</span>
             </button>
             <button
               type="button"
@@ -245,7 +236,7 @@ export default function DashboardClient({
           >
             <p className="dashboard-hero-aside-status">{refreshStatus}</p>
             <p className="dashboard-refresh-hint">
-              Quotes update only when you request a refresh.
+              This tab refreshes once automatically, then stays manual.
             </p>
             {refreshNotice ? (
               <CooldownNotice
@@ -278,7 +269,11 @@ export default function DashboardClient({
                   <span>{kind}</span>
                 </div>
                 <span className="dashboard-overview-value">
-                  {formatSensitiveCurrency(total, baseCurrency, hideBalances)}
+                  {formatSensitiveCurrency(
+                    total,
+                    baseCurrency,
+                    shouldHideMoney,
+                  )}
                 </span>
               </div>
             ))}
@@ -289,6 +284,7 @@ export default function DashboardClient({
           <div className="dashboard-overview-chart-wrap">
             <AllocationChart
               size={220}
+              currency={baseCurrency}
               data={kindTotalsArray.map((kindTotal) => ({
                 label: kindTotal.kind,
                 total: kindTotal.total,
@@ -339,7 +335,7 @@ export default function DashboardClient({
                               0,
                             ),
                           baseCurrency,
-                          hideBalances,
+                          shouldHideMoney,
                         )}
                       </span>
                       <DisclosureIcon open={openCategories[category]} />
@@ -409,7 +405,7 @@ export default function DashboardClient({
                                   {formatSensitiveCurrency(
                                     displayValue,
                                     baseCurrency,
-                                    hideBalances,
+                                    shouldHideMoney,
                                   )}
                                 </p>
                                 {referenceDiffers ? (
@@ -418,7 +414,7 @@ export default function DashboardClient({
                                     {formatSensitiveCurrency(
                                       asset.referenceValue,
                                       baseCurrency,
-                                      hideBalances,
+                                      shouldHideMoney,
                                     )}
                                   </p>
                                 ) : (
@@ -485,7 +481,7 @@ export default function DashboardClient({
                               0,
                             ),
                           baseCurrency,
-                          hideBalances,
+                          shouldHideMoney,
                         )}
                       </span>
                       <DisclosureIcon open={openCategories[category]} />
@@ -526,7 +522,7 @@ export default function DashboardClient({
                                   {formatSensitiveCurrency(
                                     displayValue,
                                     baseCurrency,
-                                    hideBalances,
+                                    shouldHideMoney,
                                   )}
                                 </p>
                                 <p className="asset-row-value-sub">

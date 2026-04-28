@@ -9,11 +9,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useAppPreferences } from "@components/ThemeProvider";
 import type {
   CashflowAnalyticsBreakdownItemResponse,
   CashflowAnalyticsMonthOverMonthChangeResponse,
 } from "@finhance/shared";
-import { formatCurrency } from "@lib/format";
+import { formatSensitiveCurrency } from "@lib/money";
 
 type BreakdownChartData = Array<CashflowAnalyticsBreakdownItemResponse>;
 type MoversChartData = Array<
@@ -29,6 +30,8 @@ export default function AnalyticsCategoryBarChart({
   data: BreakdownChartData | MoversChartData;
   mode: "breakdown" | "movers";
 }) {
+  const { hideMoney, isHydrated } = useAppPreferences();
+  const shouldHideMoney = !isHydrated || hideMoney;
   const chartData =
     mode === "breakdown"
       ? (data as BreakdownChartData).map((item) => ({
@@ -50,27 +53,34 @@ export default function AnalyticsCategoryBarChart({
           layout="vertical"
           margin={{ top: 8, right: 16, left: 16, bottom: 0 }}
         >
-          <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" />
+          <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="4 4" />
           <XAxis
             type="number"
-            stroke="#6b7280"
+            stroke="var(--chart-axis)"
             tickLine={false}
             axisLine={false}
-            tickFormatter={(value: number) => formatCurrency(value, currency)}
+            tickFormatter={(value: number) =>
+              formatSensitiveCurrency(value, currency, shouldHideMoney)
+            }
           />
           <YAxis
             dataKey="name"
             type="category"
-            stroke="#6b7280"
+            stroke="var(--chart-axis)"
             tickLine={false}
             axisLine={false}
             width={120}
           />
           <Tooltip
-            formatter={(value: number) => formatCurrency(value, currency)}
+            formatter={(value: number) =>
+              formatSensitiveCurrency(value, currency, shouldHideMoney)
+            }
             contentStyle={{
               borderRadius: "1rem",
-              border: "1px solid #e5e7eb",
+              border: "1px solid var(--chart-tooltip-border)",
+              background: "var(--chart-tooltip-bg)",
+              color: "var(--text-primary)",
+              boxShadow: "var(--shadow-glass)",
             }}
           />
           <Bar dataKey="value" fill={barColor} radius={[0, 8, 8, 0]} />
