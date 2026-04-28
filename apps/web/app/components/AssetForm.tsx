@@ -540,7 +540,6 @@ export default function AssetForm({
           type="submit"
           disabled={isSubmitting}
           style={{
-            background: "var(--color-primary)",
             background:
               "linear-gradient(135deg, var(--color-primary), var(--color-primary-hover))",
             color: "#fff",

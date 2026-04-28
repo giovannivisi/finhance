@@ -56,8 +56,12 @@ export default function TabBar() {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    href: string;
+    index: number;
+  } | null>(null);
   const [showMore, setShowMore] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const [dragLeftPct, setDragLeftPct] = useState<number | null>(null);
   const prefersReducedMotion = useReducedMotion();
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -68,7 +72,10 @@ export default function TabBar() {
   const dragStartXRef = useRef(0);
 
   const pillControls = useAnimation();
-  const prevPillIndexRef = useRef<number | null>(null); // null = not yet initialised
+  const prevPillMetricsRef = useRef<{ left: number; width: number } | null>(
+    null,
+  );
+  const animationRunIdRef = useRef(0);
 
   /** Returns the tab slot index (0–TAB_COUNT-1) for a given clientX. */
   function getTabIndexAt(clientX: number): number {
@@ -78,6 +85,17 @@ export default function TabBar() {
     const x = clientX - rect.left;
     const idx = Math.floor((x / rect.width) * TAB_COUNT);
     return Math.max(0, Math.min(idx, TAB_COUNT - 1));
+  }
+
+  function getDragLeftPctAt(clientX: number): number {
+    const bar = barRef.current;
+    if (!bar) return 0;
+    const rect = bar.getBoundingClientRect();
+    const slotWidthPct = 100 / TAB_COUNT;
+    const dragWidthPct = Math.min(slotWidthPct * 1.08, slotWidthPct + 2.5);
+    const x = clientX - rect.left;
+    const unclamped = (x / rect.width) * 100 - dragWidthPct / 2;
+    return Math.max(0, Math.min(unclamped, 100 - dragWidthPct));
   }
 
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
@@ -96,9 +114,10 @@ export default function TabBar() {
 
     if (!isDraggingRef.current) {
       isDraggingRef.current = true;
-      setIsDragging(true);
+      setShowMore(false);
     }
     setHoveredIndex(getTabIndexAt(e.clientX));
+    setDragLeftPct(getDragLeftPctAt(e.clientX));
   }
 
   function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
@@ -107,12 +126,13 @@ export default function TabBar() {
 
     wasDraggingRef.current = true;
     isDraggingRef.current = false;
-    setIsDragging(false);
+    setDragLeftPct(null);
 
     const idx = getTabIndexAt(e.clientX);
     setHoveredIndex(null);
 
     if (idx < NAV_ITEMS.length) {
+      setPendingNavigation({ href: NAV_ITEMS[idx].href, index: idx });
       router.push(NAV_ITEMS[idx].href);
     } else {
       setShowMore(true);
@@ -121,7 +141,7 @@ export default function TabBar() {
 
   function handlePointerCancel() {
     isDraggingRef.current = false;
-    setIsDragging(false);
+    setDragLeftPct(null);
     setHoveredIndex(null);
   }
 
@@ -133,11 +153,6 @@ export default function TabBar() {
       e.preventDefault();
     }
   }
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setShowMore(false);
-  }, [pathname]);
 
   // Click outside to close "More" menu
   useEffect(() => {
@@ -169,68 +184,119 @@ export default function TabBar() {
     item.href === "/" ? pathname === "/" : pathname?.startsWith(item.href),
   );
 
-  // -1 means we're on a More-menu page → park the pill at the "..." slot
-  const isMoreActive = activeIndex === -1;
+  const activeSlotIndex = activeIndex !== -1 ? activeIndex : NAV_ITEMS.length;
+  const pendingIndex =
+    pendingNavigation === null
+      ? null
+      : pendingNavigation.href === "/"
+        ? pathname !== "/"
+          ? pendingNavigation.index
+          : null
+        : pathname?.startsWith(pendingNavigation.href)
+          ? null
+          : pendingNavigation.index;
+  const visualActiveIndex = showMore
+    ? NAV_ITEMS.length
+    : (pendingIndex ?? activeSlotIndex);
   const pillIndex =
     hoveredIndex !== null
       ? hoveredIndex
-      : activeIndex !== -1
-        ? activeIndex
-        : NAV_ITEMS.length; // "..." slot
+      : showMore
+        ? NAV_ITEMS.length
+        : (pendingIndex ?? activeSlotIndex);
 
   // Liquid-glass pill animation:
-  // • First render / drag → instant set (no spring lag)
+  // • First render → instant set
+  // • Drag → direct cursor-follow with a slightly wider pill
   // • Normal navigation/hover → 2-phase: stretch toward destination, then spring-contract
   useEffect(() => {
-    const W = 100 / TAB_COUNT;
-    const toIdx = pillIndex;
-    const fromIdx = prevPillIndexRef.current;
+    const slotWidthPct = 100 / TAB_COUNT;
+    const dragWidthPct = Math.min(slotWidthPct * 1.08, slotWidthPct + 2.5);
+    const targetWidthPct = dragLeftPct !== null ? dragWidthPct : slotWidthPct;
+    const targetLeftPct =
+      dragLeftPct !== null ? dragLeftPct : pillIndex * slotWidthPct;
+    const previous = prevPillMetricsRef.current;
+    const runId = animationRunIdRef.current + 1;
+    animationRunIdRef.current = runId;
+    pillControls.stop();
 
-    // First render: place pill instantly with no animation
-    if (fromIdx === null) {
-      prevPillIndexRef.current = toIdx;
-      void pillControls.set({ left: `${toIdx * W}%`, width: `${W}%` });
+    if (previous === null) {
+      prevPillMetricsRef.current = {
+        left: targetLeftPct,
+        width: targetWidthPct,
+      };
+      void pillControls.set({
+        left: `${targetLeftPct}%`,
+        width: `${targetWidthPct}%`,
+      });
       return;
     }
 
-    prevPillIndexRef.current = toIdx;
-    if (fromIdx === toIdx) return;
+    if (previous.left === targetLeftPct && previous.width === targetWidthPct) {
+      return;
+    }
 
-    // During drag or reduced-motion: instant repositioning
-    if (isDragging || prefersReducedMotion) {
+    prevPillMetricsRef.current = {
+      left: targetLeftPct,
+      width: targetWidthPct,
+    };
+
+    if (prefersReducedMotion) {
       void pillControls.start({
-        left: `${toIdx * W}%`,
-        width: `${W}%`,
+        left: `${targetLeftPct}%`,
+        width: `${targetWidthPct}%`,
         transition: { duration: 0 },
+      });
+      return;
+    }
+
+    if (dragLeftPct !== null) {
+      void pillControls.set({
+        left: `${targetLeftPct}%`,
+        width: `${targetWidthPct}%`,
       });
       return;
     }
 
     // Liquid stretch: pill elongates to bridge source → destination,
     // then the trailing edge springs inward to the final slot.
-    const isRight = toIdx > fromIdx;
-    const fromLeft = fromIdx * W;
-    const toLeft = toIdx * W;
-    const dist = Math.abs(toIdx - fromIdx);
-    const extraW = Math.min(dist, 2) * W * 0.7; // cap stretch at ~2 slots
-    const stretchLeft = isRight ? fromLeft : toLeft;
-    const stretchWidth = W + extraW;
+    const isRight = targetLeftPct > previous.left;
+    const distanceInSlots =
+      Math.abs(targetLeftPct - previous.left) / slotWidthPct;
+    const extraWidthPct = Math.min(distanceInSlots, 2) * slotWidthPct * 0.7;
+    const stretchLeftPct = isRight ? previous.left : targetLeftPct;
+    const stretchWidthPct = Math.max(
+      targetWidthPct,
+      slotWidthPct + extraWidthPct,
+    );
 
     void (async () => {
-      // Phase 1 — fast stretch toward the destination
+      // Phase 1 — quick stretch toward the destination.
       await pillControls.start({
-        left: `${stretchLeft}%`,
-        width: `${stretchWidth}%`,
-        transition: { type: "tween", duration: 0.13, ease: [0.4, 0, 0.2, 1] },
+        left: `${stretchLeftPct}%`,
+        width: `${stretchWidthPct}%`,
+        transition: {
+          type: "tween",
+          duration: 0.15,
+          ease: [0.22, 1, 0.36, 1],
+        },
       });
-      // Phase 2 — spring-contract to the final slot
+      if (animationRunIdRef.current !== runId) {
+        return;
+      }
+      // Phase 2 — spring-contract to the final slot.
       await pillControls.start({
-        left: `${toLeft}%`,
-        width: `${W}%`,
-        transition: { type: "spring", stiffness: 420, damping: 30, mass: 0.85 },
+        left: `${targetLeftPct}%`,
+        width: `${targetWidthPct}%`,
+        transition: {
+          type: "spring",
+          stiffness: 360,
+          damping: 28,
+          mass: 0.72,
+        },
       });
     })();
-  }, [pillIndex, isDragging, prefersReducedMotion, pillControls]);
+  }, [dragLeftPct, pillControls, pillIndex, prefersReducedMotion]);
 
   return (
     <nav
@@ -243,7 +309,6 @@ export default function TabBar() {
           {showMore && (
             <motion.div
               id="revolut-more-panel"
-              role="menu"
               aria-label="More navigation"
               initial={
                 prefersReducedMotion
@@ -267,7 +332,16 @@ export default function TabBar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  role="menuitem"
+                  onClick={() => {
+                    setPendingNavigation({
+                      href: item.href,
+                      index: NAV_ITEMS.length,
+                    });
+                    setShowMore(false);
+                  }}
+                  aria-current={
+                    pathname?.startsWith(item.href) ? "page" : undefined
+                  }
                   className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-[var(--tab-bg-highlight)] group"
                 >
                   <item.icon
@@ -284,19 +358,20 @@ export default function TabBar() {
               <div
                 className="h-px bg-[var(--tab-border)] my-1 mx-2"
                 style={{ opacity: 0.5 }}
-                role="separator"
+                aria-hidden="true"
               />
 
               {/* Theme Toggle */}
               <button
+                type="button"
                 onClick={() => toggleTheme()}
-                role="menuitem"
                 aria-label={
                   theme === "dark"
                     ? "Switch to light mode"
                     : "Switch to dark mode"
                 }
-                className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[var(--tab-bg-highlight)] transition-colors group"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-[var(--tab-bg-highlight)] group"
+                style={{ width: "100%", textAlign: "left" }}
               >
                 {theme === "dark" ? (
                   <Sun size={18} aria-hidden="true" className="tab-menu-icon" />
@@ -349,20 +424,24 @@ export default function TabBar() {
                 href={item.href}
                 aria-label={item.label}
                 aria-current={isActive ? "page" : undefined}
+                onClick={() => {
+                  setPendingNavigation({ href: item.href, index: idx });
+                  setShowMore(false);
+                }}
                 onMouseEnter={() => setHoveredIndex(idx)}
                 className={cn(
                   "relative flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-90",
-                  isActive
+                  visualActiveIndex === idx
                     ? "text-[var(--tab-icon-active)]"
                     : "text-[var(--tab-icon-inactive)] hover:text-[var(--tab-icon-hover)]",
                 )}
               >
                 <item.icon
                   size={22}
-                  strokeWidth={isActive ? 2.5 : 2}
+                  strokeWidth={visualActiveIndex === idx ? 2.5 : 2}
                   aria-hidden="true"
                 />
-                {isActive && (
+                {visualActiveIndex === idx && (
                   <motion.div
                     layoutId="active-dot"
                     aria-hidden="true"
@@ -380,23 +459,25 @@ export default function TabBar() {
           <button
             ref={moreButtonRef}
             type="button"
-            onClick={() => setShowMore(!showMore)}
+            onClick={() => setShowMore((current) => !current)}
             onMouseEnter={() => setHoveredIndex(NAV_ITEMS.length)}
             aria-label="More navigation"
             aria-expanded={showMore}
-            aria-haspopup="menu"
+            aria-haspopup="true"
             aria-controls="revolut-more-panel"
             className={cn(
               "tab-more-btn relative flex items-center justify-center w-14 h-14 rounded-full transition-all active:scale-90",
-              (showMore || isMoreActive) && "is-open",
+              (showMore || visualActiveIndex === NAV_ITEMS.length) && "is-open",
             )}
           >
             <MoreHorizontal
               size={22}
-              strokeWidth={showMore || isMoreActive ? 2.5 : 2}
+              strokeWidth={
+                showMore || visualActiveIndex === NAV_ITEMS.length ? 2.5 : 2
+              }
               aria-hidden="true"
             />
-            {isMoreActive && (
+            {visualActiveIndex === NAV_ITEMS.length && (
               <motion.div
                 layoutId="active-dot"
                 aria-hidden="true"
