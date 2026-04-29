@@ -954,11 +954,12 @@ export class BudgetsService {
   }
 
   private monthKeyToValue(monthKey: string): Date {
-    return romeMonthToUtcStart(monthKey);
+    const [year, month] = monthKey.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
   }
 
   private toMonthKey(value: Date): string {
-    return value.toISOString().slice(0, 7);
+    return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}`;
   }
 
   private toOptionalMonthKey(value: Date | null): string | null {
