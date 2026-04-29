@@ -1,6 +1,15 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import Link from "next/link";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import type {
   ImportBatchResponse,
   ImportFileType,
@@ -12,6 +21,7 @@ import {
   groupImportSummaries,
   splitImportIssues,
 } from "@lib/imports";
+import type { ImportPrivacySummary } from "@lib/privacy-notice";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 const TEMPLATE_LINKS: Array<{ file: ImportFileType; href: string }> = [
@@ -36,6 +46,8 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   timeStyle: "short",
 });
 
+type ImportDisclosureId = "apply" | "bestUse" | "privacy";
+
 function upsertBatch(
   batches: ImportBatchResponse[],
   nextBatch: ImportBatchResponse,
@@ -57,8 +69,10 @@ function getDownloadFilename(contentDisposition: string | null): string | null {
 
 export default function ImportsPageClient({
   initialBatches,
+  privacySummary,
 }: {
   initialBatches: ImportBatchResponse[];
+  privacySummary: ImportPrivacySummary;
 }) {
   const [selectedFiles, setSelectedFiles] = useState<
     Partial<Record<ImportFileType, File | null>>
@@ -71,7 +85,10 @@ export default function ImportsPageClient({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [activeDisclosure, setActiveDisclosure] =
+    useState<ImportDisclosureId | null>(null);
   const actions = useSingleFlightActions<"preview" | "apply" | "export">();
+  const disclosureRef = useRef<HTMLDivElement | null>(null);
 
   const selectedCount = useMemo(
     () => Object.values(selectedFiles).filter(Boolean).length,
@@ -80,6 +97,122 @@ export default function ImportsPageClient({
   const previewReadiness = preview ? getImportReadiness(preview) : null;
   const previewGroups = preview ? groupImportSummaries(preview.summary) : [];
   const previewIssues = preview ? splitImportIssues(preview.issues) : null;
+
+  useEffect(() => {
+    if (!activeDisclosure) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!disclosureRef.current?.contains(event.target as Node)) {
+        setActiveDisclosure(null);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setActiveDisclosure(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [activeDisclosure]);
+
+  const disclosureContent: Record<
+    ImportDisclosureId,
+    {
+      title: string;
+      toneClassName: string;
+      body: ReactNode;
+    }
+  > = {
+    apply: {
+      title: "What apply does",
+      toneClassName: "surface-info",
+      body: (
+        <ul className="space-y-2 text-sm text-blue-950">
+          <li>
+            Matches rows by import key and merges creates, updates, and
+            unchanged rows safely.
+          </li>
+          <li>
+            `transactions.csv` covers manual transactions only, not
+            recurring-generated rows.
+          </li>
+          <li>
+            Recurring-generated transactions are recreated from recurring rules
+            and exceptions after apply.
+          </li>
+          <li>
+            Opening balances, recurring definitions, budgets, and overrides are
+            part of the round-trip package.
+          </li>
+        </ul>
+      ),
+    },
+    bestUse: {
+      title: "Best use of import/export",
+      toneClassName: "",
+      body: (
+        <p className="text-sm text-gray-600">
+          Import is best when you are starting from existing finance data or
+          moving the same finhance model between workspaces. Export is a
+          round-trip backup of definitions and manual history, not a raw dump of
+          every generated occurrence.
+        </p>
+      ),
+    },
+    privacy: {
+      title: "Import privacy",
+      toneClassName: "surface-warning",
+      body: (
+        <div className="space-y-3 text-sm text-amber-950">
+          <p>{privacySummary.controller}</p>
+          <p>
+            <span className="font-medium">Purpose:</span>{" "}
+            {privacySummary.purpose}
+          </p>
+          <p>
+            <span className="font-medium">Legal basis:</span>{" "}
+            {privacySummary.legalBasis}
+          </p>
+          <p>
+            <span className="font-medium">Retention:</span>{" "}
+            {privacySummary.retention}
+          </p>
+          <p>
+            <span className="font-medium">Recipients and transfers:</span>{" "}
+            {privacySummary.recipients}
+          </p>
+          <p>
+            <span className="font-medium">Your rights:</span>{" "}
+            {privacySummary.rights}
+          </p>
+          <Link
+            href={privacySummary.fullNoticeHref}
+            className="import-disclosure-link"
+          >
+            {privacySummary.fullNoticeLabel}
+          </Link>
+        </div>
+      ),
+    },
+  };
+
+  const disclosureButtons: Array<{
+    id: ImportDisclosureId;
+    label: string;
+  }> = [
+    { id: "apply", label: "What apply does" },
+    { id: "bestUse", label: "Best use" },
+    { id: "privacy", label: "Import privacy" },
+  ];
 
   function updateFileSelection(
     file: ImportFileType,
@@ -242,42 +375,49 @@ export default function ImportsPageClient({
           </p>
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="page-inline-notice surface-info">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-800">
-              What apply does
-            </h2>
-            <ul className="mt-3 space-y-2 text-sm text-blue-950">
-              <li>
-                Matches rows by import key and merges creates, updates, and
-                unchanged rows safely.
-              </li>
-              <li>
-                `transactions.csv` covers manual transactions only, not
-                recurring-generated rows.
-              </li>
-              <li>
-                Recurring-generated transactions are recreated from recurring
-                rules and exceptions after apply.
-              </li>
-              <li>
-                Opening balances, recurring definitions, budgets, and overrides
-                are part of the round-trip package.
-              </li>
-            </ul>
+        <div ref={disclosureRef} className="section-stack-tight">
+          <div className="import-disclosure-rail">
+            {disclosureButtons.map((button) => {
+              const isActive = activeDisclosure === button.id;
+
+              return (
+                <button
+                  key={button.id}
+                  type="button"
+                  aria-expanded={isActive}
+                  aria-controls={`import-disclosure-${button.id}`}
+                  onClick={() => setActiveDisclosure(button.id)}
+                  onFocus={() => setActiveDisclosure(button.id)}
+                  onMouseEnter={() => setActiveDisclosure(button.id)}
+                  className={`import-disclosure-trigger${
+                    isActive ? " is-active" : ""
+                  }`}
+                >
+                  {button.label}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="page-inline-notice">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
-              Best use of import/export
-            </h2>
-            <p className="mt-3 text-sm text-gray-600">
-              Import is best when you are starting from existing finance data or
-              moving the same finhance model between workspaces. Export is a
-              round-trip backup of definitions and manual history, not a raw
-              dump of every generated occurrence.
+          {activeDisclosure ? (
+            <div
+              id={`import-disclosure-${activeDisclosure}`}
+              role="region"
+              aria-label={disclosureContent[activeDisclosure].title}
+              className={`page-inline-notice import-disclosure-panel ${disclosureContent[activeDisclosure].toneClassName}`}
+            >
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--text-primary)]">
+                {disclosureContent[activeDisclosure].title}
+              </h2>
+              <div className="mt-3">
+                {disclosureContent[activeDisclosure].body}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              Open a topic for quick guidance without expanding the whole page.
             </p>
-          </div>
+          )}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

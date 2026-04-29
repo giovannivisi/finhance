@@ -33,7 +33,7 @@ type ImportBatchUpdateCall = {
 };
 type ImportBatchUpdateManyCall = {
   where: {
-    userId: string;
+    userId?: string;
     status: ImportBatchStatus;
     createdAt: {
       lt: Date;
@@ -997,6 +997,57 @@ describe('ImportsService', () => {
     });
   });
 
+  it('rejects applying an expired persisted preview batch after a restart', async () => {
+    const preview = await service.previewCsv(OWNER_ID, {
+      accounts: {
+        originalName: 'accounts.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,currency,institution,notes,order,archived\nchecking,Checking,BANK,EUR,,,0,false\n',
+        ),
+      },
+    });
+
+    const persistedPayload = nthCallArg<ImportBatchCreateCall>(
+      prisma.importBatch.create,
+      0,
+    ).data.payloadJson;
+    let expiredPayloadCleared = false;
+
+    prisma.importBatch.updateMany.mockClear();
+    prisma.importBatch.updateMany.mockImplementation(() => {
+      expiredPayloadCleared = true;
+      return { count: 1 };
+    });
+    prisma.importBatch.findFirst.mockImplementation(() =>
+      createImportBatch({
+        id: preview.id,
+        createdAt: new Date('2026-04-19T10:00:00.000Z'),
+        payloadJson: expiredPayloadCleared ? null : persistedPayload,
+      }),
+    );
+
+    const restartedService = new ImportsService(
+      prisma as unknown as PrismaService,
+      prices as unknown as PricesService,
+      recurring as unknown as RecurringService,
+    );
+
+    await expect(
+      restartedService.applyBatch(OWNER_ID, preview.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    const updateManyCall = nthCallArg<ImportBatchUpdateManyCall>(
+      prisma.importBatch.updateMany,
+      0,
+    );
+    expect(updateManyCall.where.userId).toBe(OWNER_ID);
+    expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
+    expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
+    expect(updateManyCall.data).toEqual({
+      payloadJson: Prisma.DbNull,
+    });
+  });
+
   it('keeps the import result applied when recurring materialization fails after commit', async () => {
     const preview = await service.previewCsv(OWNER_ID, {
       accounts: {
@@ -1139,6 +1190,41 @@ describe('ImportsService', () => {
     expect(updateManyCall.data).toEqual({
       payloadJson: Prisma.DbNull,
     });
+  });
+
+  it('starts a background cleanup loop for expired persisted preview payloads', async () => {
+    jest.useFakeTimers();
+
+    try {
+      await service.onModuleInit();
+
+      let updateManyCall = nthCallArg<ImportBatchUpdateManyCall>(
+        prisma.importBatch.updateMany,
+        0,
+      );
+      expect(updateManyCall.where.userId).toBeUndefined();
+      expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
+      expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
+      expect(updateManyCall.data).toEqual({
+        payloadJson: Prisma.DbNull,
+      });
+
+      await jest.advanceTimersByTimeAsync(60 * 1000);
+
+      updateManyCall = nthCallArg<ImportBatchUpdateManyCall>(
+        prisma.importBatch.updateMany,
+        1,
+      );
+      expect(updateManyCall.where.userId).toBeUndefined();
+      expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
+      expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
+      expect(updateManyCall.data).toEqual({
+        payloadJson: Prisma.DbNull,
+      });
+    } finally {
+      service.onModuleDestroy();
+      jest.useRealTimers();
+    }
   });
 
   it('rejects oversized import keys during preview before persistence', async () => {

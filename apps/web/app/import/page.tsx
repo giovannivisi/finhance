@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Container from "@components/Container";
 import ImportsPageClient from "@components/ImportsPageClient";
 import WorkflowSection from "@components/WorkflowSection";
@@ -7,11 +8,13 @@ import type {
   SetupStatusResponse,
 } from "@finhance/shared";
 import { getCurrentRomeMonth } from "@lib/budgets";
+import { getPrivacyNoticeConfig } from "@lib/privacy-notice";
 import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
 export default async function ImportPage() {
+  const privacyNotice = getPrivacyNoticeConfig();
   let batches: ImportBatchResponse[] | null = null;
   let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
@@ -48,12 +51,22 @@ export default async function ImportPage() {
                   The web app could not reach the API.
                 </p>
                 <p>{errorMessage ?? "Start the API and refresh the page."}</p>
+                <p className="mt-3 text-sm">
+                  You can still review the{" "}
+                  <Link href="/privacy" className="import-disclosure-link">
+                    privacy notice
+                  </Link>{" "}
+                  before importing files.
+                </p>
               </div>
             </section>
           </>
         ) : (
           <div className="page-shell">
-            <ImportsPageClient initialBatches={batches} />
+            <ImportsPageClient
+              initialBatches={batches}
+              privacySummary={privacyNotice.importSummary}
+            />
             <WorkflowSection
               title="After import, keep the month connected"
               description={`Use import to establish or restore the baseline, then move directly into ${setup?.currentMonth ?? "the current month"} review, analytics, and budgets.`}
