@@ -63,3 +63,7 @@ AGENTS.md
 
 # Claude folders
 .claude/
+
+# videos
+*.mp4
+*.mov

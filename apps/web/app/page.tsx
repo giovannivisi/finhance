@@ -1,6 +1,5 @@
 import Link from "next/link";
 import Container from "@components/Container";
-import Header from "@components/Header";
 import type {
   DashboardAssetResponse,
   DashboardResponse,
@@ -9,11 +8,22 @@ import type {
 } from "@finhance/shared";
 import { api } from "@lib/api";
 import DashboardClient from "@components/DashboardClient";
+import WorkflowSection from "@components/WorkflowSection";
 import { getCurrentRomeMonth } from "@lib/budgets";
 import { formatCurrency } from "@lib/format";
 import { getPrimarySetupAction, getSetupProgressLabel } from "@lib/setup";
+import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
+
+function BudgetMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="glass-card home-budget-metric">
+      <p className="detail-metric-label home-budget-metric-label">{label}</p>
+      <p className="home-budget-metric-value">{value}</p>
+    </div>
+  );
+}
 
 export default async function Home() {
   let dashboard: DashboardResponse | null = null;
@@ -48,7 +58,6 @@ export default async function Home() {
   if (!dashboard) {
     return (
       <>
-        <Header />
         <Container>
           <h2 className="text-2xl font-semibold">Dashboard unavailable</h2>
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
@@ -96,33 +105,35 @@ export default async function Home() {
       total,
     }))
     .sort((left, right) => right.total - left.total);
+  const workflowCards =
+    setup && setup.isComplete
+      ? getWorkflowCards({
+          currentPage: "dashboard",
+          month: budgetView?.month ?? getCurrentRomeMonth(),
+          setup,
+        })
+      : [];
 
   return (
     <>
-      <Header />
       <Container>
-        <h2 className="text-2xl font-semibold">Summary</h2>
+        <h2 className="home-summary-title">Summary</h2>
 
         {setup && !setup.isComplete ? (
-          <section className="mb-6 rounded-3xl border border-blue-200 bg-blue-50 p-6 text-blue-950">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+          <section className="glass-card home-setup-card">
+            <div className="home-section-header">
               <div>
-                <p className="text-sm font-medium uppercase tracking-wide text-blue-700">
-                  Setup checklist
-                </p>
-                <h3 className="mt-2 text-2xl font-semibold">
+                <p className="home-setup-kicker">Setup checklist</p>
+                <h3 className="home-setup-title">
                   Your trust baseline is not complete yet
                 </h3>
-                <p className="mt-2 text-sm text-blue-900/80">
+                <p className="home-setup-copy">
                   {getSetupProgressLabel(setup)}. Finish the baseline first,
                   then move into review, analytics, budgets, and recurring
                   workflows with fewer surprises.
                 </p>
               </div>
-              <Link
-                href="/setup"
-                className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-900 hover:bg-blue-100"
-              >
+              <Link href="/setup" className="btn-primary">
                 Open setup
               </Link>
             </div>
@@ -135,23 +146,18 @@ export default async function Home() {
               }
 
               return (
-                <div className="mt-5 rounded-2xl bg-white/70 p-4">
-                  <p className="text-sm font-medium text-blue-700">
-                    Best next action
-                  </p>
+                <div className="glass-card home-setup-next">
+                  <p className="home-setup-next-label">Best next action</p>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-gray-900">
+                      <p className="home-setup-next-title">
                         {primaryAction.title}
                       </p>
-                      <p className="mt-1 text-sm text-gray-600">
+                      <p className="home-setup-next-detail">
                         {primaryAction.detail}
                       </p>
                     </div>
-                    <Link
-                      href={primaryAction.href}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                    >
+                    <Link href={primaryAction.href} className="btn-primary">
                       {primaryAction.actionLabel}
                     </Link>
                   </div>
@@ -161,119 +167,81 @@ export default async function Home() {
           </section>
         ) : null}
 
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white shadow rounded-2xl p-4 text-center">
-            <p className="text-sm text-gray-500">Assets</p>
-            <p className="text-green-600 text-xl font-bold">
-              {formatCurrency(dashboard.summary.assets, dashboard.baseCurrency)}
-            </p>
-          </div>
-          <div className="bg-white shadow rounded-2xl p-4 text-center">
-            <p className="text-sm text-gray-500">Liabilities</p>
-            <p className="text-red-600 text-xl font-bold">
-              {formatCurrency(
-                dashboard.summary.liabilities,
-                dashboard.baseCurrency,
-              )}
-            </p>
-          </div>
-          <div className="bg-white shadow rounded-2xl p-4 text-center">
-            <p className="text-sm text-gray-500">Net Worth</p>
-            <p className="text-black text-xl font-bold">
-              {formatCurrency(
-                dashboard.summary.netWorth,
-                dashboard.baseCurrency,
-              )}
-            </p>
-          </div>
-        </div>
-
         <DashboardClient
           grouped={grouped}
           kindTotalsArray={kindTotalsArray}
           baseCurrency={dashboard.baseCurrency}
           lastRefreshAt={dashboard.lastRefreshAt}
+          summary={dashboard.summary}
+        />
+
+        <WorkflowSection
+          title="Use the current month"
+          description="Move from today’s summary into the month-level workflow: explain it, compare it with plan, and place it in trend context."
+          cards={workflowCards}
         />
 
         {budgetView ? (
-          <section className="mt-10 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="glass-card home-budget-section">
+            <div className="home-section-header">
               <div>
-                <h3 className="text-2xl font-semibold text-gray-900">
-                  Budgets
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">
+                <h3 className="home-budget-title">Budgets</h3>
+                <p className="home-budget-copy">
                   Current-month budget coverage and the categories already
                   breaking plan.
                 </p>
               </div>
               <Link
                 href={`/budgets?month=${encodeURIComponent(budgetView.month)}`}
-                className="text-sm font-medium text-blue-600 hover:underline"
+                className="btn-primary"
               >
                 Open budgets
               </Link>
             </div>
 
             {budgetView.currencies.length === 0 ? (
-              <div className="mt-5 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5 text-sm text-gray-500">
+              <div className="home-budget-empty">
                 No budgets or expense activity for {budgetView.month}.
               </div>
             ) : (
-              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="home-budget-grid">
                 {budgetView.currencies.map((currency) => (
                   <div
                     key={currency.currency}
-                    className="rounded-2xl border border-gray-200 p-4"
+                    className="glass-card home-budget-card"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <h4 className="text-lg font-semibold text-gray-900">
+                      <h4 className="home-budget-currency">
                         {currency.currency}
                       </h4>
-                      <span className="text-sm text-gray-500">
+                      <span className="home-budget-count">
                         {currency.budgetedCategoryCount} budgeted
                       </span>
                     </div>
 
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm">
-                        <p className="text-xs uppercase tracking-wide text-gray-500">
-                          Spent vs budget
-                        </p>
-                        <p className="mt-1 font-semibold text-gray-900">
-                          {formatCurrency(
-                            currency.spentTotal,
-                            currency.currency,
-                          )}{" "}
-                          /{" "}
-                          {formatCurrency(
-                            currency.budgetTotal,
-                            currency.currency,
-                          )}
-                        </p>
-                      </div>
-                      <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm">
-                        <p className="text-xs uppercase tracking-wide text-gray-500">
-                          Remaining
-                        </p>
-                        <p className="mt-1 font-semibold text-gray-900">
-                          {formatCurrency(
-                            currency.remainingTotal,
-                            currency.currency,
-                          )}
-                        </p>
-                      </div>
+                    <div className="home-budget-metrics">
+                      <BudgetMetric
+                        label="Spent vs budget"
+                        value={`${formatCurrency(currency.spentTotal, currency.currency)} / ${formatCurrency(currency.budgetTotal, currency.currency)}`}
+                      />
+                      <BudgetMetric
+                        label="Remaining"
+                        value={formatCurrency(
+                          currency.remainingTotal,
+                          currency.currency,
+                        )}
+                      />
                     </div>
 
                     {currency.overBudgetHighlights.length > 0 ? (
                       <div className="mt-4 space-y-2">
-                        <p className="text-sm font-medium text-gray-700">
+                        <p className="home-budget-highlights-title">
                           Top over-budget categories
                         </p>
                         {currency.overBudgetHighlights.map((item) => (
                           <div
                             key={item.budgetId}
-                            className="flex items-center justify-between gap-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-900"
+                            className="home-budget-highlight-row"
                           >
                             <span>{item.categoryName}</span>
                             <span className="font-medium">
@@ -286,13 +254,13 @@ export default async function Home() {
                         ))}
                       </div>
                     ) : (
-                      <p className="mt-4 text-sm text-emerald-700">
+                      <p className="home-budget-success">
                         No categories are over budget in {currency.currency}.
                       </p>
                     )}
 
                     {currency.unbudgetedExpenseTotal > 0 ? (
-                      <p className="mt-3 text-sm text-amber-700">
+                      <p className="home-budget-unbudgeted">
                         Unbudgeted spend:{" "}
                         {formatCurrency(
                           currency.unbudgetedExpenseTotal,

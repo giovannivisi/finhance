@@ -89,34 +89,22 @@ export default function CategoryForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-name`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Name
-        </label>
+    <form onSubmit={handleSubmit} className="app-form">
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-name`}>Name</label>
         <input
           id={`${fieldPrefix}-name`}
-          className="rounded-lg border px-3 py-2"
           value={form.name}
           onChange={(event) => updateField("name", event.target.value)}
           required
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-type`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Type
-          </label>
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-type`}>Type</label>
           <select
             id={`${fieldPrefix}-type`}
-            className="rounded-lg border px-3 py-2"
             value={form.type}
             onChange={(event) =>
               updateField(
@@ -124,6 +112,7 @@ export default function CategoryForm({
                 event.target.value as CategoryFormValues["type"],
               )
             }
+            required
           >
             {CATEGORY_TYPE_OPTIONS.map((type) => (
               <option key={type} value={type}>
@@ -133,16 +122,13 @@ export default function CategoryForm({
           </select>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-order`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Order
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-order`} className="is-optional">
+            <span>Order</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-order`}
-            className="rounded-lg border px-3 py-2"
             type="number"
             value={form.order}
             onChange={(event) => updateField("order", event.target.value)}
@@ -151,17 +137,13 @@ export default function CategoryForm({
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="app-form-error">
           {error}
         </p>
       ) : null}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+      <div className="app-form-actions">
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting
             ? "Saving..."
             : isCreateMode
@@ -170,11 +152,7 @@ export default function CategoryForm({
         </button>
 
         {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
         ) : null}

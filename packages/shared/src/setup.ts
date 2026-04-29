@@ -28,7 +28,7 @@ export interface SetupWarningResponse {
   count: number | null;
 }
 
-export type SetupHandoffCode = "REVIEW" | "ANALYTICS" | "HISTORY";
+export type SetupHandoffCode = "REVIEW" | "ANALYTICS" | "BUDGETS" | "HISTORY";
 
 export interface SetupHandoffResponse {
   code: SetupHandoffCode;

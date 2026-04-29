@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { DashboardAssetResponse } from "@finhance/shared";
 import CreateAssetModal from "@/components/CreateAssetModal";
@@ -16,7 +17,22 @@ import HeaderAddButton from "@components/HeaderAddButton";
 import SectionHeader from "@components/SectionHeader";
 import DisclosureIcon from "@components/DisclosureIcon";
 import AllocationChart from "@components/AllocationChart";
+import { useAppPreferences } from "@components/ThemeProvider";
+import { formatSensitiveCurrency } from "@lib/money";
 import { useSingleFlightActions } from "@lib/single-flight";
+
+function getKindDotColor(kind: string): string {
+  switch (kind) {
+    case "STOCK":
+      return "#4f46e5";
+    case "CRYPTO":
+      return "#eab308";
+    case "CASH":
+      return "#16a34a";
+    default:
+      return "var(--border-glass-strong)";
+  }
+}
 
 function getValuationLabel(asset: DashboardAssetResponse): string {
   switch (asset.valuationSource) {
@@ -40,11 +56,13 @@ export default function DashboardClient({
   kindTotalsArray,
   baseCurrency,
   lastRefreshAt,
+  summary,
 }: {
   grouped: Record<string, DashboardAssetResponse[]>;
   kindTotalsArray: { kind: string; total: number }[];
   baseCurrency: string;
   lastRefreshAt?: string | null;
+  summary: { assets: number; liabilities: number; netWorth: number };
 }) {
   const router = useRouter();
   const [editAssetId, setEditAssetId] = useState<string | null>(null);
@@ -56,12 +74,23 @@ export default function DashboardClient({
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
-  const autoRefreshAttemptedRef = useRef(false);
   const actions = useSingleFlightActions<"refresh">();
+  const {
+    hideMoney,
+    isHydrated,
+    toggleHideMoney,
+    hasAttemptedDashboardRefresh,
+    markDashboardRefreshAttempted,
+  } = useAppPreferences();
+  const autoRefreshStartedRef = useRef(false);
   const sortedCategories = useMemo(
     () => Object.keys(grouped).sort(),
     [grouped],
   );
+  const shouldHideMoney = !isHydrated || hideMoney;
+  const runAutoRefresh = useEffectEvent(() => {
+    void handleRefresh();
+  });
 
   useEffect(() => {
     setNowMs(Date.now());
@@ -80,31 +109,6 @@ export default function DashboardClient({
       return next;
     });
   }, [sortedCategories]);
-
-  useEffect(() => {
-    if (autoRefreshAttemptedRef.current) {
-      return;
-    }
-
-    autoRefreshAttemptedRef.current = true;
-
-    async function runAutoRefresh() {
-      const result = await requestDashboardRefresh();
-
-      if (result.ok) {
-        router.refresh();
-        return;
-      }
-
-      if (getDashboardRefreshNotice(result.status, result.error)) {
-        return;
-      }
-
-      setRefreshError(result.error);
-    }
-
-    void runAutoRefresh();
-  }, [router]);
 
   function toggleCategory(category: string) {
     setOpenCategories((previous) => ({
@@ -139,6 +143,20 @@ export default function DashboardClient({
     });
   }
 
+  useEffect(() => {
+    if (!isHydrated || autoRefreshStartedRef.current) {
+      return;
+    }
+
+    autoRefreshStartedRef.current = true;
+    if (hasAttemptedDashboardRefresh()) {
+      return;
+    }
+
+    markDashboardRefreshAttempted();
+    runAutoRefresh();
+  }, [hasAttemptedDashboardRefresh, isHydrated, markDashboardRefreshAttempted]);
+
   const refreshStatus =
     lastRefreshAt == null
       ? "No quote snapshot yet"
@@ -149,293 +167,384 @@ export default function DashboardClient({
             Math.floor((nowMs - Date.parse(lastRefreshAt)) / 60_000),
           )} min ago`;
 
+  const refreshToneClass =
+    lastRefreshAt == null ? "is-warning" : refreshError ? "is-error" : "";
+
   return (
     <>
-      <SectionHeader title="Asset Allocation" />
+      <div className="dashboard-hero">
+        <div className="dashboard-hero-main">
+          <p className="dashboard-hero-eyebrow">Total Net Worth</p>
+          <h1 className="dashboard-hero-amount">
+            {formatSensitiveCurrency(
+              summary.netWorth,
+              baseCurrency,
+              shouldHideMoney,
+            )}
+          </h1>
+        </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-gray-500">{refreshStatus}</p>
+        <div className="dashboard-hero-controls">
+          <button
+            type="button"
+            onClick={toggleHideMoney}
+            aria-pressed={hideMoney}
+            className="btn-secondary dashboard-hero-privacy-btn"
+          >
+            {shouldHideMoney ? (
+              <Eye size={16} aria-hidden="true" />
+            ) : (
+              <EyeOff size={16} aria-hidden="true" />
+            )}
+            <span>{shouldHideMoney ? "Show balances" : "Hide balances"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="btn-secondary dashboard-hero-refresh-btn"
+          >
+            {isRefreshing ? "Refreshing..." : "Refresh data"}
+          </button>
+        </div>
+
+        <div className="dashboard-hero-stats">
+          <div>
+            <p className="dashboard-hero-stat-label">Assets</p>
+            <p className="dashboard-hero-stat-value is-positive">
+              {formatSensitiveCurrency(
+                summary.assets,
+                baseCurrency,
+                shouldHideMoney,
+              )}
+            </p>
+          </div>
+          <div>
+            <p className="dashboard-hero-stat-label">Liabilities</p>
+            <p className="dashboard-hero-stat-value is-negative">
+              {formatSensitiveCurrency(
+                summary.liabilities,
+                baseCurrency,
+                shouldHideMoney,
+              )}
+            </p>
+          </div>
+        </div>
+
+        <div
+          className={`dashboard-refresh-card${refreshToneClass ? ` ${refreshToneClass}` : ""}`}
+        >
+          <p className="dashboard-hero-aside-status">{refreshStatus}</p>
           {refreshNotice ? (
             <CooldownNotice
-              key={refreshNotice}
               notice={refreshNotice}
-              className="mt-1 text-sm text-amber-700"
+              style={{
+                fontSize: "12px",
+                color: "#f59e0b",
+                margin: "6px 0 0",
+                textAlign: "right",
+              }}
             />
           ) : null}
           {refreshError ? (
-            <p className="mt-1 text-sm text-red-600">{refreshError}</p>
+            <p className="dashboard-hero-aside-error">{refreshError}</p>
           ) : null}
         </div>
-
-        <button
-          type="button"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="text-sm px-3 py-1.5 rounded-lg bg-white shadow hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isRefreshing ? "Refreshing..." : "Refresh"}
-        </button>
       </div>
 
-      <div className="bg-white shadow rounded-2xl p-10 flex items-center justify-center mx-auto my-6">
-        <div className="w-[520px] h-[520px]">
-          <AllocationChart
-            size={520}
-            data={kindTotalsArray.map((kindTotal) => ({
-              label: kindTotal.kind,
-              total: kindTotal.total,
-            }))}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 mt-6">
-        {kindTotalsArray.map(({ kind, total }) => (
-          <div
-            key={kind}
-            className="bg-white shadow rounded-2xl p-6 text-center"
-          >
-            <p className="text-md font-medium text-gray-700">{kind}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">
-              {formatCurrency(total, baseCurrency)}
-            </p>
+      <section className="dashboard-overview">
+        <div className="glass-card dashboard-overview-card dashboard-overview-breakdown">
+          <h3 className="dashboard-overview-title">Asset Allocation</h3>
+          <div className="dashboard-overview-list">
+            {kindTotalsArray.map(({ kind, total }) => (
+              <div key={kind} className="dashboard-overview-row">
+                <div className="dashboard-overview-label">
+                  <div
+                    className="category-dot is-large"
+                    style={{ background: getKindDotColor(kind) }}
+                  />
+                  <span>{kind}</span>
+                </div>
+                <span className="dashboard-overview-value">
+                  {formatSensitiveCurrency(
+                    total,
+                    baseCurrency,
+                    shouldHideMoney,
+                  )}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+
+        <div className="glass-card dashboard-overview-card dashboard-overview-chart">
+          <div className="dashboard-overview-chart-wrap">
+            <AllocationChart
+              size={220}
+              currency={baseCurrency}
+              data={kindTotalsArray.map((kindTotal) => ({
+                label: kindTotal.kind,
+                total: kindTotal.total,
+              }))}
+            />
+          </div>
+        </div>
+      </section>
 
       <SectionHeader
         title="Assets and liabilities"
         action={<HeaderAddButton onClick={() => setCreateOpen(true)} />}
       />
 
-      <div className="space-y-10 mt-6">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 h-px bg-gray-300"></div>
-          <span className="text-lg font-semibold text-gray-700">Assets</span>
-          <div className="flex-1 h-px bg-gray-300"></div>
-        </div>
+      <div className="space-y-6">
+        <div className="space-y-4">
+          <h3 className="dashboard-section-heading">Assets</h3>
+          <div className="dashboard-grid">
+            {sortedCategories
+              .filter((category) =>
+                grouped[category].some((asset) => asset.type === "ASSET"),
+              )
+              .map((category) => (
+                <div key={category} className="category-block">
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(category)}
+                    className="category-toggle"
+                  >
+                    <div className="category-toggle-label">
+                      <div
+                        className="category-dot"
+                        style={{ background: getKindDotColor(category) }}
+                      />
+                      <span className="category-toggle-name">{category}</span>
+                    </div>
+                    <div className="category-toggle-meta">
+                      <span className="category-toggle-total">
+                        {formatSensitiveCurrency(
+                          grouped[category]
+                            .filter((a) => a.type === "ASSET")
+                            .reduce(
+                              (sum, a) =>
+                                sum +
+                                (a.currentValue ??
+                                  a.referenceValue ??
+                                  Number(a.balance)),
+                              0,
+                            ),
+                          baseCurrency,
+                          shouldHideMoney,
+                        )}
+                      </span>
+                      <DisclosureIcon open={openCategories[category]} />
+                    </div>
+                  </button>
 
-        <div className="space-y-6">
-          {sortedCategories
-            .filter((category) =>
-              grouped[category].some((asset) => asset.type === "ASSET"),
-            )
-            .map((category) => (
-              <div key={category}>
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(category)}
-                  className="flex items-center justify-between w-full text-left"
-                >
-                  <span className="text-lg font-medium text-gray-900">
-                    {category}
-                  </span>
-                  <DisclosureIcon open={openCategories[category]} />
-                </button>
+                  {openCategories[category] ? (
+                    <ul className="category-items">
+                      {grouped[category]
+                        .filter((asset) => asset.type === "ASSET")
+                        .map((asset) => {
+                          const displayValue =
+                            asset.currentValue ?? asset.referenceValue;
+                          const referenceDiffers =
+                            asset.referenceValue != null &&
+                            asset.currentValue != null &&
+                            Math.abs(
+                              asset.referenceValue - asset.currentValue,
+                            ) > 0.005;
 
-                {openCategories[category] ? (
-                  <ul className="space-y-2 mt-2 transition-all duration-200 ease-in-out">
-                    {grouped[category]
-                      .filter((asset) => asset.type === "ASSET")
-                      .map((asset) => {
-                        const displayValue =
-                          asset.currentValue ?? asset.referenceValue;
-                        const referenceDiffers =
-                          asset.referenceValue != null &&
-                          asset.currentValue != null &&
-                          Math.abs(asset.referenceValue - asset.currentValue) >
-                            0.005;
+                          const liveUnitPrice =
+                            asset.quantity && asset.currentValue
+                              ? Number(asset.currentValue) /
+                                Number(asset.quantity)
+                              : null;
 
-                        return (
-                          <li
-                            key={asset.id}
-                            className="bg-white shadow rounded-2xl p-4 flex items-center justify-between"
-                          >
-                            <div className="flex flex-col">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900">
-                                  {asset.name}
-                                </p>
-                                {asset.ticker ? (
-                                  <span className="text-xs text-gray-500">
-                                    ({asset.ticker})
-                                  </span>
-                                ) : null}
+                          const quantityDisplay =
+                            asset.quantity != null
+                              ? `${asset.quantity} × ${formatCurrency(liveUnitPrice ?? Number(asset.unitPrice), asset.currency ?? baseCurrency)}`
+                              : "Stored balance";
+
+                          return (
+                            <li key={asset.id} className="glass-card asset-row">
+                              <div className="asset-row-info">
+                                <div className="asset-row-headline">
+                                  <p className="asset-row-name">{asset.name}</p>
+                                  {asset.ticker ? (
+                                    <span className="asset-row-ticker">
+                                      {asset.ticker}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="asset-row-meta">
+                                  <p className="asset-row-meta-text">
+                                    {quantityDisplay}
+                                  </p>
+                                  {liveUnitPrice != null ? (
+                                    <span className="asset-row-live-badge">
+                                      LIVE
+                                    </span>
+                                  ) : null}
+                                  {asset.notes ? (
+                                    <>
+                                      <span className="asset-row-bullet">
+                                        •
+                                      </span>
+                                      <span className="asset-row-notes">
+                                        {asset.notes}
+                                      </span>
+                                    </>
+                                  ) : null}
+                                </div>
                               </div>
 
-                              <div className="flex flex-wrap items-center gap-2 mt-1">
-                                <span
-                                  className={
-                                    "px-2 py-0.5 rounded-full text-xs font-medium text-white " +
-                                    (asset.kind === "STOCK"
-                                      ? "bg-indigo-600"
-                                      : asset.kind === "CRYPTO"
-                                        ? "bg-yellow-500"
-                                        : asset.kind === "CASH"
-                                          ? "bg-green-600"
-                                          : "bg-gray-500")
-                                  }
-                                >
-                                  {asset.kind}
-                                </span>
-
-                                {asset.quantity != null &&
-                                asset.unitPrice != null ? (
-                                  <span className="text-xs text-gray-600">
-                                    {asset.quantity} ×{" "}
-                                    {formatCurrency(
-                                      Number(asset.unitPrice),
-                                      asset.currency ?? baseCurrency,
-                                    )}
-                                  </span>
-                                ) : null}
-
-                                {asset.notes ? (
-                                  <span className="text-xs text-gray-400 italic truncate max-w-[150px]">
-                                    {asset.notes}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-4">
-                              <div className="flex flex-col items-end">
-                                <p className="text-lg font-semibold text-gray-900">
-                                  {displayValue != null
-                                    ? formatCurrency(displayValue, baseCurrency)
-                                    : `Unavailable in ${baseCurrency}`}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  {getValuationLabel(asset)}
+                              <div className="asset-row-value">
+                                <p className="asset-row-value-amount">
+                                  {formatSensitiveCurrency(
+                                    displayValue,
+                                    baseCurrency,
+                                    shouldHideMoney,
+                                  )}
                                 </p>
                                 {referenceDiffers ? (
-                                  <p className="text-xs text-gray-500">
+                                  <p className="asset-row-value-sub is-ref">
                                     Ref:{" "}
-                                    {formatCurrency(
-                                      asset.referenceValue!,
+                                    {formatSensitiveCurrency(
+                                      asset.referenceValue,
                                       baseCurrency,
+                                      shouldHideMoney,
                                     )}
                                   </p>
-                                ) : null}
-                                {displayValue == null ? (
-                                  <p className="text-xs text-gray-500">
-                                    Stored amount:{" "}
-                                    {formatCurrency(
-                                      Number(asset.balance),
-                                      asset.currency ?? baseCurrency,
-                                    )}
+                                ) : (
+                                  <p className="asset-row-value-sub">
+                                    {getValuationLabel(asset)}
                                   </p>
-                                ) : null}
+                                )}
                               </div>
 
-                              <button
-                                type="button"
-                                onClick={() => setEditAssetId(asset.id)}
-                                className="text-blue-600 hover:underline"
-                              >
-                                Edit
-                              </button>
-
-                              <DeleteAssetButton id={asset.id} />
-                            </div>
-                          </li>
-                        );
-                      })}
-                  </ul>
-                ) : null}
-              </div>
-            ))}
+                              <div className="asset-row-actions">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditAssetId(asset.id)}
+                                  className="asset-row-edit-btn"
+                                >
+                                  Edit
+                                </button>
+                                <DeleteAssetButton id={asset.id} />
+                              </div>
+                            </li>
+                          );
+                        })}
+                    </ul>
+                  ) : null}
+                </div>
+              ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-4 mt-10">
-          <div className="flex-1 h-px bg-gray-300"></div>
-          <span className="text-lg font-semibold text-gray-700">
+        <div className="space-y-4">
+          <h3 className="dashboard-section-heading is-secondary">
             Liabilities
-          </span>
-          <div className="flex-1 h-px bg-gray-300"></div>
-        </div>
+          </h3>
+          <div className="dashboard-grid">
+            {sortedCategories
+              .filter((category) =>
+                grouped[category].some((asset) => asset.type === "LIABILITY"),
+              )
+              .map((category) => (
+                <div key={category} className="category-block">
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(category)}
+                    className="category-toggle"
+                  >
+                    <div className="category-toggle-label">
+                      <div
+                        className="category-dot"
+                        style={{ background: "var(--color-expense)" }}
+                      />
+                      <span className="category-toggle-name">{category}</span>
+                    </div>
+                    <div className="category-toggle-meta">
+                      <span className="category-toggle-total">
+                        {formatSensitiveCurrency(
+                          grouped[category]
+                            .filter((a) => a.type === "LIABILITY")
+                            .reduce(
+                              (sum, a) =>
+                                sum +
+                                (a.currentValue ??
+                                  a.referenceValue ??
+                                  Number(a.balance)),
+                              0,
+                            ),
+                          baseCurrency,
+                          shouldHideMoney,
+                        )}
+                      </span>
+                      <DisclosureIcon open={openCategories[category]} />
+                    </div>
+                  </button>
 
-        <div className="space-y-6">
-          {sortedCategories
-            .filter((category) =>
-              grouped[category].some((asset) => asset.type === "LIABILITY"),
-            )
-            .map((category) => (
-              <div key={category}>
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(category)}
-                  className="flex items-center justify-between w-full text-left"
-                >
-                  <span className="text-lg font-medium text-red-600">
-                    {category}
-                  </span>
-                  <DisclosureIcon open={openCategories[category]} />
-                </button>
+                  {openCategories[category] ? (
+                    <ul className="category-items">
+                      {grouped[category]
+                        .filter((asset) => asset.type === "LIABILITY")
+                        .map((asset) => {
+                          const displayValue =
+                            asset.currentValue ?? asset.referenceValue;
 
-                {openCategories[category] ? (
-                  <ul className="space-y-2 mt-2 transition-all duration-200 ease-in-out">
-                    {grouped[category]
-                      .filter((asset) => asset.type === "LIABILITY")
-                      .map((asset) => {
-                        const displayValue =
-                          asset.currentValue ?? asset.referenceValue;
-
-                        return (
-                          <li
-                            key={asset.id}
-                            className="bg-white shadow rounded-2xl p-4 flex items-center justify-between"
-                          >
-                            <div className="flex flex-col">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900">
-                                  {asset.name}
-                                </p>
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-2 mt-1">
-                                <span className="px-2 py-0.5 rounded-full text-xs font-medium text-white bg-red-600">
-                                  {asset.liabilityKind}
-                                </span>
-
-                                {asset.notes ? (
-                                  <span className="text-xs text-gray-400 italic truncate max-w-[150px]">
-                                    {asset.notes}
+                          return (
+                            <li key={asset.id} className="glass-card asset-row">
+                              <div className="asset-row-info">
+                                <p className="asset-row-name">{asset.name}</p>
+                                <div className="asset-row-meta">
+                                  <span className="asset-row-meta-text">
+                                    {asset.liabilityKind ?? "Stored balance"}
                                   </span>
-                                ) : null}
+                                  {asset.notes ? (
+                                    <>
+                                      <span className="asset-row-bullet">
+                                        •
+                                      </span>
+                                      <span className="asset-row-notes">
+                                        {asset.notes}
+                                      </span>
+                                    </>
+                                  ) : null}
+                                </div>
                               </div>
-                            </div>
 
-                            <div className="flex items-center gap-4">
-                              <div className="flex flex-col items-end">
-                                <p className="text-lg font-semibold text-gray-900">
-                                  {displayValue != null
-                                    ? formatCurrency(displayValue, baseCurrency)
-                                    : `Unavailable in ${baseCurrency}`}
+                              <div className="asset-row-value">
+                                <p className="asset-row-value-amount">
+                                  {formatSensitiveCurrency(
+                                    displayValue,
+                                    baseCurrency,
+                                    shouldHideMoney,
+                                  )}
                                 </p>
-                                <p className="text-xs text-gray-500">
+                                <p className="asset-row-value-sub">
                                   {getValuationLabel(asset)}
                                 </p>
                               </div>
 
-                              <button
-                                type="button"
-                                onClick={() => setEditAssetId(asset.id)}
-                                className="text-blue-600 hover:underline"
-                              >
-                                Edit
-                              </button>
-
-                              <DeleteAssetButton id={asset.id} />
-                            </div>
-                          </li>
-                        );
-                      })}
-                  </ul>
-                ) : null}
-              </div>
-            ))}
+                              <div className="asset-row-actions">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditAssetId(asset.id)}
+                                  className="asset-row-edit-btn"
+                                >
+                                  Edit
+                                </button>
+                                <DeleteAssetButton id={asset.id} />
+                              </div>
+                            </li>
+                          );
+                        })}
+                    </ul>
+                  ) : null}
+                </div>
+              ))}
+          </div>
         </div>
       </div>
 

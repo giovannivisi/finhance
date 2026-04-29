@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CategoryResponse } from "@finhance/shared";
 import CategoryForm from "@components/CategoryForm";
+import Modal from "@components/Modal";
 import {
   categoryToFormValues,
   createEmptyCategoryFormValues,
@@ -21,6 +22,7 @@ export default function CategoriesPageClient({
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(
     null,
   );
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingArchiveCategoryId, setPendingArchiveCategoryId] = useState<
@@ -130,71 +132,72 @@ export default function CategoriesPageClient({
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,420px)]">
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900">Categories</h2>
-            <p className="text-sm text-gray-500">
-              Categories drive income and expense reporting without affecting
-              holdings.
-            </p>
-          </div>
+    <div className="page-shell is-relaxed">
+      <section className="route-stack-desktop-xl">
+        <div className="page-hero">
+          <div className="page-hero-row">
+            <div className="page-hero-copy">
+              <p className="page-kicker">Classification</p>
+              <h2 className="page-title is-compact">Categories</h2>
+              <p className="page-description">
+                Categories drive income and expense reporting without affecting
+                holdings.
+              </p>
+            </div>
 
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-gray-600">
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={(event) => setShowArchived(event.target.checked)}
-              />
-              Show archived
-            </label>
+            <div className="page-hero-actions">
+              <label className="page-pill">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(event) => setShowArchived(event.target.checked)}
+                />
+                Show archived
+              </label>
 
-            <button
-              type="button"
-              onClick={() => setEditingCategoryId(null)}
-              className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              New category
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingCategoryId(null);
+                  setIsCreateModalOpen(true);
+                }}
+                className="btn-primary"
+              >
+                New category
+              </button>
+            </div>
           </div>
         </div>
 
         {actionError ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="page-inline-notice surface-danger">
             {actionError}
           </p>
         ) : null}
 
         {visibleCategories.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
+          <div className="page-inline-notice surface-dashed">
             No categories yet.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="list-stack is-loose">
             {visibleCategories.map((category) => (
-              <article
-                key={category.id}
-                className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100"
-              >
+              <article key={category.id} className="list-card is-roomy">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-1">
+                  <div className="section-stack-tight">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
+                      <h3 className="text-lg font-semibold text-[var(--text-primary)]">
                         {category.name}
                       </h3>
-                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                      <span className="status-chip is-neutral">
                         {CATEGORY_TYPE_LABELS[category.type]}
                       </span>
                       {category.archivedAt ? (
-                        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
-                          Archived
-                        </span>
+                        <span className="status-chip is-warning">Archived</span>
                       ) : null}
                     </div>
 
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-[var(--text-secondary)]">
                       Order {category.order}
                     </p>
                   </div>
@@ -203,7 +206,7 @@ export default function CategoriesPageClient({
                     <button
                       type="button"
                       onClick={() => setEditingCategoryId(category.id)}
-                      className="text-sm font-medium text-blue-600 hover:underline"
+                      className="link-button mobile-hit-target"
                     >
                       Edit
                     </button>
@@ -213,7 +216,7 @@ export default function CategoriesPageClient({
                         type="button"
                         onClick={() => void handleArchive(category.id)}
                         disabled={pendingArchiveCategoryId === category.id}
-                        className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                        className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {pendingArchiveCategoryId === category.id
                           ? "Archiving..."
@@ -225,7 +228,7 @@ export default function CategoriesPageClient({
                           type="button"
                           onClick={() => void handleUnarchive(category.id)}
                           disabled={pendingUnarchiveCategoryId === category.id}
-                          className="text-sm font-medium text-blue-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                          className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {pendingUnarchiveCategoryId === category.id
                             ? "Unarchiving..."
@@ -238,7 +241,7 @@ export default function CategoriesPageClient({
                               void handleDeletePermanently(category.id)
                             }
                             disabled={pendingDeleteCategoryId === category.id}
-                            className="text-sm font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                            className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {pendingDeleteCategoryId === category.id
                               ? "Deleting..."
@@ -251,7 +254,7 @@ export default function CategoriesPageClient({
                 </div>
 
                 {category.archivedAt && category.deleteBlockReason ? (
-                  <p className="mt-4 text-sm text-gray-500">
+                  <p className="mt-4 text-sm text-[var(--text-secondary)]">
                     Permanent delete blocked: {category.deleteBlockReason}
                   </p>
                 ) : null}
@@ -261,32 +264,50 @@ export default function CategoriesPageClient({
         )}
       </section>
 
-      <aside className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-        <h2 className="text-xl font-semibold text-gray-900">
-          {editingCategory ? "Edit category" : "Create category"}
-        </h2>
-        <p className="mt-1 text-sm text-gray-500">
-          {editingCategory
-            ? "Update category naming or ordering."
-            : "Add a new income or expense category."}
+      <Modal
+        open={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Create category"
+        maxWidth={560}
+      >
+        <p className="section-subtitle">
+          Add a new income or expense category.
         </p>
-
         <div className="mt-6">
           <CategoryForm
-            mode={editingCategory ? "edit" : "create"}
-            categoryId={editingCategory?.id}
-            initialValues={
-              editingCategory
-                ? categoryToFormValues(editingCategory)
-                : createEmptyCategoryFormValues()
-            }
-            onSuccess={() => setEditingCategoryId(null)}
-            onCancel={
-              editingCategory ? () => setEditingCategoryId(null) : undefined
-            }
+            mode="create"
+            initialValues={createEmptyCategoryFormValues()}
+            onSuccess={() => setIsCreateModalOpen(false)}
+            onCancel={() => setIsCreateModalOpen(false)}
           />
         </div>
-      </aside>
+      </Modal>
+
+      <Modal
+        open={editingCategory !== null}
+        onClose={() => setEditingCategoryId(null)}
+        title={
+          editingCategory ? `Edit ${editingCategory.name}` : "Edit category"
+        }
+        maxWidth={560}
+      >
+        {editingCategory ? (
+          <>
+            <p className="section-subtitle">
+              Update category naming or ordering.
+            </p>
+            <div className="mt-6">
+              <CategoryForm
+                mode="edit"
+                categoryId={editingCategory.id}
+                initialValues={categoryToFormValues(editingCategory)}
+                onSuccess={() => setEditingCategoryId(null)}
+                onCancel={() => setEditingCategoryId(null)}
+              />
+            </div>
+          </>
+        ) : null}
+      </Modal>
     </div>
   );
 }

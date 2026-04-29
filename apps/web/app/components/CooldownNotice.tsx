@@ -9,9 +9,11 @@ import {
 export default function CooldownNotice({
   notice,
   className,
+  style,
 }: {
   notice: string;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   const parsedNotice = useMemo(() => parseCooldownNotice(notice), [notice]);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -43,5 +45,9 @@ export default function CooldownNotice({
       ? formatCooldownNotice(parsedNotice, secondsRemaining)
       : notice;
 
-  return <p className={className}>{text}</p>;
+  return (
+    <p className={className} style={style}>
+      {text}
+    </p>
+  );
 }

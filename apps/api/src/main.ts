@@ -9,6 +9,9 @@ import {
   createCorsOptions,
   resolveBootstrapRuntimeConfig,
 } from '@/config/bootstrap.config';
+import { loadApiEnv } from '@/config/env-loader';
+
+loadApiEnv();
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);

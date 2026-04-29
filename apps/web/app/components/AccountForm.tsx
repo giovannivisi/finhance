@@ -89,34 +89,22 @@ export default function AccountForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-name`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Name
-        </label>
+    <form onSubmit={handleSubmit} className="app-form">
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-name`}>Name</label>
         <input
           id={`${fieldPrefix}-name`}
-          className="rounded-lg border px-3 py-2"
           value={form.name}
           onChange={(event) => updateField("name", event.target.value)}
           required
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-type`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Type
-          </label>
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-type`}>Type</label>
           <select
             id={`${fieldPrefix}-type`}
-            className="rounded-lg border px-3 py-2"
             value={form.type}
             onChange={(event) =>
               updateField(
@@ -124,6 +112,7 @@ export default function AccountForm({
                 event.target.value as AccountFormValues["type"],
               )
             }
+            required
           >
             {ACCOUNT_TYPE_OPTIONS.map((type) => (
               <option key={type} value={type}>
@@ -133,48 +122,42 @@ export default function AccountForm({
           </select>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-currency`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Currency
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-currency`} className="is-optional">
+            <span>Currency</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-currency`}
-            className="rounded-lg border px-3 py-2"
             value={form.currency}
             onChange={(event) => updateField("currency", event.target.value)}
           />
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-institution`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Institution
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-institution`} className="is-optional">
+            <span>Institution</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-institution`}
-            className="rounded-lg border px-3 py-2"
             value={form.institution}
             onChange={(event) => updateField("institution", event.target.value)}
           />
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="app-form-field">
           <label
             htmlFor={`${fieldPrefix}-opening-balance`}
-            className="text-sm font-medium text-gray-600"
+            className="is-optional"
           >
-            Opening balance
+            <span>Opening balance</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-opening-balance`}
-            className="rounded-lg border px-3 py-2"
             type="number"
             step="0.01"
             value={form.openingBalance}
@@ -185,17 +168,17 @@ export default function AccountForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
           <label
             htmlFor={`${fieldPrefix}-opening-balance-date`}
-            className="text-sm font-medium text-gray-600"
+            className="is-optional"
           >
-            Opening balance date
+            <span>Opening balance date</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-opening-balance-date`}
-            className="rounded-lg border px-3 py-2"
             type="date"
             value={form.openingBalanceDate}
             onChange={(event) =>
@@ -204,16 +187,13 @@ export default function AccountForm({
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-order`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Order
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-order`} className="is-optional">
+            <span>Order</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-order`}
-            className="rounded-lg border px-3 py-2"
             type="number"
             value={form.order}
             onChange={(event) => updateField("order", event.target.value)}
@@ -221,33 +201,27 @@ export default function AccountForm({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-notes`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Notes
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">
+          <span>Notes</span>
+          <span>Optional</span>
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}
-          className="min-h-28 rounded-lg border px-3 py-2"
+          className="min-h-24"
           value={form.notes}
           onChange={(event) => updateField("notes", event.target.value)}
         />
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="app-form-error">
           {error}
         </p>
       ) : null}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+      <div className="app-form-actions">
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting
             ? "Saving..."
             : isCreateMode
@@ -256,11 +230,7 @@ export default function AccountForm({
         </button>
 
         {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
         ) : null}

@@ -45,14 +45,7 @@ export default function DeleteAssetButton({ id }: DeleteAssetButtonProps) {
         disabled={actions.isRunning("delete")}
         aria-label="Delete asset"
         title={error ?? undefined}
-        style={{
-          marginLeft: "10px",
-          color: "red",
-          cursor: actions.isRunning("delete") ? "not-allowed" : "pointer",
-          border: "none",
-          background: "transparent",
-          opacity: actions.isRunning("delete") ? 0.6 : 1,
-        }}
+        className="asset-row-delete-btn"
       >
         ✕
       </button>

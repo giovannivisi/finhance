@@ -5,14 +5,61 @@ export const metadata = {
   description: "Finance dashboard",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
+};
+
+import TabBar from "@components/TabBar";
+import TopHeader from "@components/TopHeader";
+import Sidebar from "@components/Sidebar";
+import { ThemeProvider } from "@components/ThemeProvider";
+import Script from "next/script";
+
+const themeScript = `
+  (function() {
+    try {
+      var savedTheme = localStorage.getItem('finhance-theme');
+      var theme = savedTheme || 'dark';
+      var hideMoney = localStorage.getItem('finhance-hide-money') === 'true';
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-hide-money', String(hideMoney));
+    } catch (e) {}
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="bg-gray-50 text-gray-900">{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script
+          id="theme-script"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: themeScript }}
+        />
+      </head>
+      <body>
+        <ThemeProvider>
+          <a href="#main" className="skip-link">
+            Skip to content
+          </a>
+          <div className="layout-app">
+            <TopHeader />
+            <div className="layout-shell">
+              <Sidebar />
+              <main id="main" className="layout-main">
+                {children}
+              </main>
+            </div>
+            <TabBar />
+          </div>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

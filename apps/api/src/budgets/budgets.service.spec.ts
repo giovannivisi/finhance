@@ -305,7 +305,7 @@ describe('BudgetsService', () => {
     expect(prisma.categoryBudget.update).toHaveBeenCalledWith({
       where: { id: 'budget-1' },
       data: {
-        endMonth: new Date('2026-04-30T22:00:00.000Z'),
+        endMonth: new Date('2026-05-01T00:00:00.000Z'),
       },
     });
     expect(prisma.categoryBudgetOverride.updateMany).toHaveBeenCalledWith({
@@ -313,7 +313,7 @@ describe('BudgetsService', () => {
         userId: OWNER_ID,
         categoryBudgetId: 'budget-1',
         month: {
-          gte: new Date('2026-05-31T22:00:00.000Z'),
+          gte: new Date('2026-06-01T00:00:00.000Z'),
         },
       },
       data: {
@@ -333,7 +333,7 @@ describe('BudgetsService', () => {
     expect(prisma.categoryBudget.update).toHaveBeenCalledWith({
       where: { id: 'budget-1' },
       data: {
-        endMonth: new Date('2026-04-30T22:00:00.000Z'),
+        endMonth: new Date('2026-05-01T00:00:00.000Z'),
       },
     });
     expect(prisma.categoryBudgetOverride.deleteMany).toHaveBeenCalledWith({
@@ -341,7 +341,7 @@ describe('BudgetsService', () => {
         userId: OWNER_ID,
         categoryBudgetId: 'budget-1',
         month: {
-          gte: new Date('2026-05-31T22:00:00.000Z'),
+          gte: new Date('2026-06-01T00:00:00.000Z'),
         },
       },
     });

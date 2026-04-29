@@ -124,26 +124,22 @@ export default function BudgetOverrideForm({
     overrides.find((override) => override.month === month) ?? null;
 
   return (
-    <div className="space-y-4">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-          <p className="font-medium text-gray-900">{budget.categoryName}</p>
-          <p className="mt-1">
+    <div className="section-stack-tight">
+      <form onSubmit={handleSubmit} className="app-form">
+        <div className="app-form-note">
+          <p>
+            <strong>{budget.categoryName}</strong>
+          </p>
+          <p className="mb-0 text-sm">
             {month} in {budget.currency}. Base budget{" "}
             {budget.budgetAmount.toFixed(2)}.
           </p>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-amount`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Override amount
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-amount`}>Override amount</label>
           <input
             id={`${fieldPrefix}-amount`}
-            className="rounded-lg border px-3 py-2"
             type="number"
             step="0.01"
             min="0"
@@ -158,17 +154,14 @@ export default function BudgetOverrideForm({
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-note`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Note
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-note`} className="is-optional">
+            <span>Note</span>
+            <span>Optional</span>
           </label>
           <textarea
             id={`${fieldPrefix}-note`}
-            className="rounded-lg border px-3 py-2"
-            rows={3}
+            className="min-h-24"
             value={form.note}
             onChange={(event) =>
               setForm((previous) => ({
@@ -180,17 +173,13 @@ export default function BudgetOverrideForm({
         </div>
 
         {error ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="app-form-error">
             {error}
           </p>
         ) : null}
 
-        <div className="flex gap-3">
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
+        <div className="app-form-actions">
+          <button type="submit" disabled={isSubmitting} className="btn-primary">
             {isSubmitting
               ? "Saving..."
               : currentOverride
@@ -203,18 +192,14 @@ export default function BudgetOverrideForm({
               type="button"
               onClick={() => void handleClear()}
               disabled={isSubmitting}
-              className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-secondary"
             >
-              Clear override
+              Clear
             </button>
           ) : null}
 
           {onCancel ? (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50"
-            >
+            <button type="button" onClick={onCancel} className="btn-secondary">
               Cancel
             </button>
           ) : null}
@@ -222,21 +207,30 @@ export default function BudgetOverrideForm({
       </form>
 
       {overrides.length > 0 ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-gray-900">
-            Saved month overrides
-          </h3>
-          <ul className="mt-3 space-y-2 text-sm text-gray-600">
+        <div className="app-form-note">
+          <p>
+            <strong>Saved month overrides</strong>
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
             {overrides.map((override) => (
-              <li key={override.id} className="rounded-xl bg-gray-50 px-3 py-2">
+              <li
+                key={override.id}
+                className={`detail-panel is-compact ${
+                  override.month === month ? "" : "surface-muted"
+                }`}
+              >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium text-gray-900">
+                  <span className="text-sm font-semibold text-[var(--text-primary)]">
                     {override.month}
                   </span>
-                  <span>{override.amount.toFixed(2)}</span>
+                  <span className="text-sm font-semibold text-[var(--text-primary)]">
+                    {override.amount.toFixed(2)}
+                  </span>
                 </div>
                 {override.note ? (
-                  <p className="mt-1 text-xs text-gray-500">{override.note}</p>
+                  <p className="mt-1 text-xs italic text-[var(--text-tertiary)]">
+                    {override.note}
+                  </p>
                 ) : null}
               </li>
             ))}

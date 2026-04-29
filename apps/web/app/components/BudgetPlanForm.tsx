@@ -19,6 +19,11 @@ interface BudgetPlanFormProps {
   defaultMonth: string;
   preferredCategoryId?: string;
   preferredCurrency?: string;
+  quickFillSuggestions?: Array<{
+    key: "previous" | "average";
+    label: string;
+    amount: number;
+  }>;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -70,6 +75,7 @@ export default function BudgetPlanForm({
   defaultMonth,
   preferredCategoryId,
   preferredCurrency,
+  quickFillSuggestions = [],
   onSuccess,
   onCancel,
 }: BudgetPlanFormProps) {
@@ -195,20 +201,15 @@ export default function BudgetPlanForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="app-form">
       {isCreateMode ? (
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-category`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Expense category
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-category`}>Expense category</label>
           <select
             id={`${fieldPrefix}-category`}
-            className="rounded-lg border px-3 py-2"
             value={form.categoryId}
             onChange={(event) => updateField("categoryId", event.target.value)}
+            required
           >
             <option value="">Choose a category</option>
             {selectableCategories.map((category) => (
@@ -219,26 +220,22 @@ export default function BudgetPlanForm({
           </select>
         </div>
       ) : budget ? (
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-          <p className="font-medium text-gray-900">{budget.categoryName}</p>
-          <p className="mt-1">
+        <div className="app-form-note">
+          <p>
+            <strong>{budget.categoryName}</strong>
+          </p>
+          <p className="mb-0 text-sm">
             {budget.currency} budget, active from {budget.startMonth}
             {budget.endMonth ? ` through ${budget.endMonth}` : " onward"}.
           </p>
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-currency`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Currency
-          </label>
+      <div className="app-form-grid">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-currency`}>Currency</label>
           <input
             id={`${fieldPrefix}-currency`}
-            className="rounded-lg border px-3 py-2"
             value={form.currency}
             onChange={(event) => updateField("currency", event.target.value)}
             disabled={!isCreateMode}
@@ -246,16 +243,10 @@ export default function BudgetPlanForm({
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-amount`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Monthly budget
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-amount`}>Monthly budget</label>
           <input
             id={`${fieldPrefix}-amount`}
-            className="rounded-lg border px-3 py-2"
             type="number"
             step="0.01"
             min="0"
@@ -267,17 +258,11 @@ export default function BudgetPlanForm({
       </div>
 
       {isCreateMode ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-start-month`}
-              className="text-sm font-medium text-gray-600"
-            >
-              Start month
-            </label>
+        <div className="app-form-grid">
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-start-month`}>Start month</label>
             <input
               id={`${fieldPrefix}-start-month`}
-              className="rounded-lg border px-3 py-2"
               type="month"
               value={form.startMonth}
               onChange={(event) =>
@@ -287,16 +272,13 @@ export default function BudgetPlanForm({
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-end-month`}
-              className="text-sm font-medium text-gray-600"
-            >
-              End month
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-end-month`} className="is-optional">
+              <span>End month</span>
+              <span>Optional</span>
             </label>
             <input
               id={`${fieldPrefix}-end-month`}
-              className="rounded-lg border px-3 py-2"
               type="month"
               value={form.endMonth}
               onChange={(event) => updateField("endMonth", event.target.value)}
@@ -304,17 +286,13 @@ export default function BudgetPlanForm({
           </div>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-effective-month`}
-              className="text-sm font-medium text-gray-600"
-            >
+        <div className="app-form-grid">
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-effective-month`}>
               Apply from month
             </label>
             <input
               id={`${fieldPrefix}-effective-month`}
-              className="rounded-lg border px-3 py-2"
               type="month"
               value={form.effectiveMonth}
               onChange={(event) =>
@@ -324,16 +302,16 @@ export default function BudgetPlanForm({
             />
           </div>
 
-          <div className="flex flex-col gap-1">
+          <div className="app-form-field">
             <label
               htmlFor={`${fieldPrefix}-edit-end-month`}
-              className="text-sm font-medium text-gray-600"
+              className="is-optional"
             >
-              End month
+              <span>End month</span>
+              <span>Optional</span>
             </label>
             <input
               id={`${fieldPrefix}-edit-end-month`}
-              className="rounded-lg border px-3 py-2"
               type="month"
               value={form.endMonth}
               onChange={(event) => updateField("endMonth", event.target.value)}
@@ -342,18 +320,36 @@ export default function BudgetPlanForm({
         </div>
       )}
 
+      {quickFillSuggestions.length > 0 ? (
+        <div className="app-form-note">
+          <p>
+            <strong>Quick-fill from recent spending</strong>
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {quickFillSuggestions.map((suggestion) => (
+              <button
+                key={suggestion.key}
+                type="button"
+                onClick={() =>
+                  updateField("amount", suggestion.amount.toFixed(2))
+                }
+                className="btn-secondary"
+              >
+                {suggestion.label}: {suggestion.amount.toFixed(2)}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="app-form-error">
           {error}
         </p>
       ) : null}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+      <div className="app-form-actions">
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting
             ? "Saving..."
             : isCreateMode
@@ -362,11 +358,7 @@ export default function BudgetPlanForm({
         </button>
 
         {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
         ) : null}

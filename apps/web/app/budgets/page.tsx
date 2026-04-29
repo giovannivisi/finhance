@@ -1,10 +1,20 @@
 import Link from "next/link";
-import type { CategoryResponse, MonthlyBudgetResponse } from "@finhance/shared";
+import type {
+  CategoryResponse,
+  MonthlyBudgetResponse,
+  SetupStatusResponse,
+} from "@finhance/shared";
 import BudgetsPageClient from "@components/BudgetsPageClient";
 import Container from "@components/Container";
-import Header from "@components/Header";
+
+import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/api";
-import { buildBudgetsQueryString, getBudgetFilters } from "@lib/budgets";
+import {
+  buildBudgetMonthNavigationLink,
+  buildBudgetsQueryString,
+  getBudgetFilters,
+} from "@lib/budgets";
+import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +31,7 @@ export default async function BudgetsPage({
 
   let budgetView: MonthlyBudgetResponse | null = null;
   let categories: CategoryResponse[] | null = null;
+  let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
@@ -35,79 +46,118 @@ export default async function BudgetsPage({
         : "Budget data is currently unavailable.";
   }
 
+  if (budgetView) {
+    try {
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
+    } catch {
+      setup = null;
+    }
+  }
+
   return (
     <>
-      <Header />
       <Container>
         {!budgetView || !categories ? (
-          <>
-            <h1 className="text-3xl font-semibold text-gray-900">Budgets</h1>
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
+          <section className="page-shell">
+            <div className="page-hero">
+              <p className="page-kicker">Planning</p>
+              <h1 className="page-title is-compact">Budgets</h1>
+            </div>
+            <div className="page-inline-notice surface-warning">
               <p className="font-medium">
                 The web app could not reach the API.
               </p>
-              <p className="mt-2 text-sm text-amber-900/80">
+              <p className="mt-2 text-sm">
                 {errorMessage ?? "Start the API and refresh the page."}
               </p>
             </div>
-          </>
+          </section>
         ) : (
-          <div className="space-y-8">
-            <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h1 className="text-3xl font-semibold text-gray-900">
-                    Budgets
-                  </h1>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Monthly expense plans with manual month overrides and clear
-                    visibility into uncovered spend.
-                  </p>
-                </div>
-                <div className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
-                  Month {budgetView.month}
-                </div>
-              </div>
-
-              <form className="mt-6 flex flex-wrap items-end gap-4">
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-600">
-                    Month
-                  </label>
-                  <input
-                    className="rounded-lg border px-3 py-2"
-                    type="month"
-                    name="month"
-                    defaultValue={filters.month}
-                  />
+          <div className="route-stack-desktop-xl">
+            <section className="page-hero">
+              <div className="section-stack-relaxed">
+                <div className="page-hero-row">
+                  <div className="page-hero-copy">
+                    <p className="page-kicker">Planning</p>
+                    <h1 className="page-title is-compact">Budgets</h1>
+                    <p className="page-description">
+                      Monthly expense plans with manual month overrides and
+                      clear visibility into uncovered spend.
+                    </p>
+                  </div>
                 </div>
 
-                <label className="flex items-center gap-2 text-sm text-gray-600">
-                  <input
-                    type="checkbox"
-                    name="includeArchivedCategories"
-                    value="true"
-                    defaultChecked={filters.includeArchivedCategories}
-                  />
-                  Include archived categories
-                </label>
-
-                <div className="flex gap-3">
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                  >
-                    Apply
-                  </button>
+                <div className="page-hero-actions">
                   <Link
-                    href="/budgets"
-                    className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    href={buildBudgetMonthNavigationLink({
+                      month: budgetView.month,
+                      delta: -1,
+                      includeArchivedCategories:
+                        filters.includeArchivedCategories,
+                    })}
+                    className="btn-secondary"
                   >
-                    Clear
+                    Previous month
+                  </Link>
+                  <div className="page-pill">Month {budgetView.month}</div>
+                  <Link
+                    href={buildBudgetMonthNavigationLink({
+                      month: budgetView.month,
+                      delta: 1,
+                      includeArchivedCategories:
+                        filters.includeArchivedCategories,
+                    })}
+                    className="btn-secondary"
+                  >
+                    Next month
                   </Link>
                 </div>
-              </form>
+
+                <form className="filter-grid is-relaxed budget-filter-grid lg:grid-cols-[minmax(0,220px)_minmax(280px,1fr)_auto]">
+                  <div className="app-form-field">
+                    <label htmlFor="budget-month">Month</label>
+                    <input
+                      id="budget-month"
+                      type="month"
+                      name="month"
+                      defaultValue={filters.month}
+                    />
+                  </div>
+
+                  <label className="page-pill budget-toggle-pill">
+                    <input
+                      type="checkbox"
+                      name="includeArchivedCategories"
+                      value="true"
+                      defaultChecked={filters.includeArchivedCategories}
+                    />
+                    Include archived categories
+                  </label>
+
+                  <div className="filter-actions is-equal">
+                    <button type="submit" className="btn-primary">
+                      Apply
+                    </button>
+                    <Link href="/budgets" className="btn-secondary">
+                      Clear
+                    </Link>
+                  </div>
+                </form>
+              </div>
             </section>
+
+            <WorkflowSection
+              title="Use this month in context"
+              description={`Keep ${budgetView.month} connected to review and trend analysis instead of treating budgets as a standalone page.`}
+              className="is-roomy"
+              cards={getWorkflowCards({
+                currentPage: "budgets",
+                month: budgetView.month,
+                setup,
+              })}
+            />
 
             <BudgetsPageClient
               budgetView={budgetView}

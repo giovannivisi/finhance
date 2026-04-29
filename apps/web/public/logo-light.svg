@@ -1,0 +1,10 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Top Curve with 2px rounded tip -->
+  <path d="M28 28V20C28 13.3726 33.3726 8 40 8H46C47.1046 8 48 8.8954 48 10V14C48 15.1046 47.1046 16 46 16H40C37.7909 16 36 17.7909 36 20V28H28Z" fill="#050505"/>
+  <!-- Stem with 2px rounded corners -->
+  <rect x="28" y="24" width="8" height="32" rx="2" fill="#050505"/>
+  <!-- Right Crossbar with 2px rounded corners -->
+  <rect x="32" y="28" width="16" height="8" rx="2" fill="#050505"/>
+  <!-- Mint Green Triangle with 2px rounded corners via stroke -->
+  <path d="M20 34 L24 30 V34 Z" fill="#10b981" stroke="#10b981" stroke-width="4" stroke-linejoin="round"/>
+</svg>

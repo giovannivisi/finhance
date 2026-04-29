@@ -157,18 +157,12 @@ export default function TransactionForm({
   const isAdjustment = form.kind === "ADJUSTMENT";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-posted-at`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Posted at
-          </label>
+    <form onSubmit={handleSubmit} className="app-form">
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-posted-at`}>Posted at</label>
           <input
             id={`${fieldPrefix}-posted-at`}
-            className="rounded-lg border px-3 py-2"
             type="datetime-local"
             value={form.postedAt}
             onChange={(event) => updateField("postedAt", event.target.value)}
@@ -176,16 +170,10 @@ export default function TransactionForm({
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-kind`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Kind
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-kind`}>Kind</label>
           <select
             id={`${fieldPrefix}-kind`}
-            className="rounded-lg border px-3 py-2"
             value={form.kind}
             disabled={!isCreateMode}
             onChange={(event) =>
@@ -204,17 +192,11 @@ export default function TransactionForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-amount`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Amount
-          </label>
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-amount`}>Amount</label>
           <input
             id={`${fieldPrefix}-amount`}
-            className="rounded-lg border px-3 py-2"
             type="number"
             step="0.01"
             value={form.amount}
@@ -224,16 +206,10 @@ export default function TransactionForm({
         </div>
 
         {!isTransfer ? (
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-account`}
-              className="text-sm font-medium text-gray-600"
-            >
-              Account
-            </label>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-account`}>Account</label>
             <select
               id={`${fieldPrefix}-account`}
-              className="rounded-lg border px-3 py-2"
               value={form.accountId}
               onChange={(event) => updateField("accountId", event.target.value)}
               required
@@ -247,24 +223,20 @@ export default function TransactionForm({
             </select>
           </div>
         ) : (
-          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+          <div className="app-form-note">
             Transfers create one outflow row and one inflow row underneath.
           </div>
         )}
       </div>
 
       {isTransfer ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-source-account`}
-              className="text-sm font-medium text-gray-600"
-            >
+        <div className="app-form-grid is-relaxed">
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-source-account`}>
               Source account
             </label>
             <select
               id={`${fieldPrefix}-source-account`}
-              className="rounded-lg border px-3 py-2"
               value={form.sourceAccountId}
               onChange={(event) =>
                 updateField("sourceAccountId", event.target.value)
@@ -280,16 +252,12 @@ export default function TransactionForm({
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-destination-account`}
-              className="text-sm font-medium text-gray-600"
-            >
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-destination-account`}>
               Destination account
             </label>
             <select
               id={`${fieldPrefix}-destination-account`}
-              className="rounded-lg border px-3 py-2"
               value={form.destinationAccountId}
               onChange={(event) =>
                 updateField("destinationAccountId", event.target.value)
@@ -308,16 +276,10 @@ export default function TransactionForm({
       ) : null}
 
       {!isTransfer && isAdjustment ? (
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-direction`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Direction
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-direction`}>Direction</label>
           <select
             id={`${fieldPrefix}-direction`}
-            className="rounded-lg border px-3 py-2"
             value={form.direction}
             onChange={(event) =>
               updateField(
@@ -336,18 +298,18 @@ export default function TransactionForm({
       ) : null}
 
       {!isTransfer ? (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="app-form-grid is-relaxed">
           {!isAdjustment ? (
-            <div className="flex flex-col gap-1">
+            <div className="app-form-field">
               <label
                 htmlFor={`${fieldPrefix}-category`}
-                className="text-sm font-medium text-gray-600"
+                className="is-optional"
               >
-                Category
+                <span>Category</span>
+                <span>Optional</span>
               </label>
               <select
                 id={`${fieldPrefix}-category`}
-                className="rounded-lg border px-3 py-2"
                 value={form.categoryId}
                 onChange={(event) =>
                   updateField("categoryId", event.target.value)
@@ -361,23 +323,23 @@ export default function TransactionForm({
                 ))}
               </select>
               {!visibleCategories.length ? (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-[var(--text-tertiary)]">
                   No matching categories available.
                 </p>
               ) : null}
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-1">
+          <div className="app-form-field">
             <label
               htmlFor={`${fieldPrefix}-counterparty`}
-              className="text-sm font-medium text-gray-600"
+              className="is-optional"
             >
-              Counterparty
+              <span>Counterparty</span>
+              <span>Optional</span>
             </label>
             <input
               id={`${fieldPrefix}-counterparty`}
-              className="rounded-lg border px-3 py-2"
               value={form.counterparty}
               onChange={(event) =>
                 updateField("counterparty", event.target.value)
@@ -387,56 +349,44 @@ export default function TransactionForm({
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-description`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Description
-        </label>
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-description`}>Description</label>
         <input
           id={`${fieldPrefix}-description`}
-          className="rounded-lg border px-3 py-2"
           value={form.description}
           onChange={(event) => updateField("description", event.target.value)}
           required
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-notes`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Notes
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">
+          <span>Notes</span>
+          <span>Optional</span>
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}
-          className="min-h-28 rounded-lg border px-3 py-2"
+          className="min-h-24"
           value={form.notes}
           onChange={(event) => updateField("notes", event.target.value)}
         />
       </div>
 
       {editingTransaction?.kind === "TRANSFER" ? (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-[var(--text-tertiary)]">
           This transaction keeps its transfer identity. To convert it into a
           non-transfer entry, delete it and create a new one.
         </p>
       ) : null}
 
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="app-form-error">
           {error}
         </p>
       ) : null}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+      <div className="app-form-actions">
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting
             ? "Saving..."
             : isCreateMode
@@ -445,11 +395,7 @@ export default function TransactionForm({
         </button>
 
         {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
         ) : null}

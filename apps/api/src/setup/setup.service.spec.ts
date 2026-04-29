@@ -82,6 +82,7 @@ describe('SetupService', () => {
     expect(result.handoff.map((item) => item.code)).toEqual([
       'REVIEW',
       'ANALYTICS',
+      'BUDGETS',
       'HISTORY',
     ]);
   });

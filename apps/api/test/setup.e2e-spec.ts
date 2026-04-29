@@ -91,6 +91,7 @@ describe('Setup routes (e2e)', () => {
           isComplete: boolean;
           requiredSteps: Array<{ code: string; status: string }>;
           recommendedSteps: Array<{ code: string; status: string }>;
+          handoff: Array<{ code: string }>;
           hasAppliedImportBatch: boolean;
           hasSnapshot: boolean;
         }>(response);
@@ -107,6 +108,12 @@ describe('Setup routes (e2e)', () => {
         ).toEqual([
           ['RECURRING', 'COMPLETE'],
           ['BUDGETS', 'COMPLETE'],
+        ]);
+        expect(body.handoff.map((item) => item.code)).toEqual([
+          'REVIEW',
+          'ANALYTICS',
+          'BUDGETS',
+          'HISTORY',
         ]);
         expect(body.hasAppliedImportBatch).toBe(true);
         expect(body.hasSnapshot).toBe(true);

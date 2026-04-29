@@ -1,5 +1,4 @@
-"use client";
-
+import { createPortal } from "react-dom";
 import {
   useEffect,
   useId,
@@ -25,11 +24,13 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
 
 export default function Modal({
   children,
+  maxWidth = 500,
   open,
   onClose,
   title,
 }: {
   children: ReactNode;
+  maxWidth?: number | string;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -111,9 +112,21 @@ export default function Modal({
 
   if (!open) return null;
 
-  return (
+  const modalContent = (
     <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.6)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 99999,
+      }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -127,23 +140,87 @@ export default function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto relative outline-none"
+        className="glass-card"
+        style={{
+          width: "100%",
+          maxWidth,
+          maxHeight: "85vh",
+          position: "relative",
+          outline: "none",
+          display: "flex",
+          flexDirection: "column",
+          background: "var(--bg-modal)",
+          borderRadius: "var(--radius-lg)",
+          overflow: "hidden", // Important: clip children to the supercircle radius
+          border: "1px solid var(--border-glass-strong)",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
+        }}
       >
-        <div className="mb-6 pr-10">
-          <h2 id={titleId} className="text-xl font-semibold text-gray-900">
-            {title}
-          </h2>
-        </div>
+        {/* Close Button - remains fixed at the top right of the modal frame */}
         <button
           type="button"
           onClick={onClose}
           aria-label="Close dialog"
-          className="absolute top-4 right-4 text-gray-500 hover:text-black rounded-full p-1"
+          style={{
+            position: "absolute",
+            top: "24px",
+            right: "24px",
+            zIndex: 10, // Ensure it's above the scrolling content
+            color: "var(--text-secondary)",
+            background: "var(--bg-app)", // Added slight background for visibility over content
+            width: "32px",
+            height: "32px",
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "1px solid var(--border-glass-strong)",
+            cursor: "pointer",
+            fontSize: "14px",
+            transition: "all 0.2s",
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.color = "var(--text-primary)";
+            e.currentTarget.style.background = "var(--bg-card-hover)";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.color = "var(--text-secondary)";
+            e.currentTarget.style.background = "var(--bg-app)";
+          }}
         >
           ✕
         </button>
-        {children}
+
+        <div
+          className="custom-scrollbar"
+          style={{
+            padding: "32px",
+            overflowY: "auto",
+            flex: 1,
+          }}
+        >
+          <div style={{ marginBottom: "24px", paddingRight: "40px" }}>
+            <h2
+              id={titleId}
+              style={{
+                fontSize: "22px",
+                fontWeight: 700,
+                color: "var(--text-primary)",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {title}
+            </h2>
+          </div>
+          {children}
+        </div>
       </div>
     </div>
   );
+
+  if (typeof document !== "undefined") {
+    return createPortal(modalContent, document.body);
+  }
+
+  return null;
 }

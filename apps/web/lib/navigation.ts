@@ -1,3 +1,44 @@
+import type { LucideIcon } from "lucide-react";
+import {
+  ArrowLeftRight,
+  ClipboardCheck,
+  History,
+  Import,
+  LayoutDashboard,
+  PieChart,
+  Repeat,
+  Tag,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
+
+export type AppNavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+};
+
+export const PRIMARY_NAV_ITEMS: readonly AppNavItem[] = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/transactions", label: "Activity", icon: ArrowLeftRight },
+  { href: "/accounts", label: "Wallets", icon: Wallet },
+  { href: "/history", label: "History", icon: History },
+] as const;
+
+export const SECONDARY_NAV_ITEMS: readonly AppNavItem[] = [
+  { href: "/analytics", label: "Analytics", icon: TrendingUp },
+  { href: "/budgets", label: "Budgets", icon: PieChart },
+  { href: "/recurring", label: "Recurring", icon: Repeat },
+  { href: "/review", label: "Review", icon: ClipboardCheck },
+  { href: "/categories", label: "Categories", icon: Tag },
+  { href: "/import", label: "Import", icon: Import },
+] as const;
+
+export const DESKTOP_NAV_ITEMS: readonly AppNavItem[] = [
+  ...PRIMARY_NAV_ITEMS,
+  ...SECONDARY_NAV_ITEMS,
+] as const;
+
 function normalizePath(path: string | null): string | null {
   if (!path) {
     return null;
@@ -24,4 +65,22 @@ export function isRedundantTabNavigation(input: {
   }
 
   return currentPath === targetPath || pendingPath === targetPath;
+}
+
+export function isActivePath(
+  currentPath: string | null,
+  targetPath: string,
+): boolean {
+  const normalizedCurrentPath = normalizePath(currentPath);
+  const normalizedTargetPath = normalizePath(targetPath);
+
+  if (!normalizedCurrentPath || !normalizedTargetPath) {
+    return false;
+  }
+
+  if (normalizedTargetPath === "/") {
+    return normalizedCurrentPath === "/";
+  }
+
+  return normalizedCurrentPath.startsWith(normalizedTargetPath);
 }

@@ -9,8 +9,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useAppPreferences } from "@components/ThemeProvider";
 import type { NetWorthSnapshotResponse } from "@finhance/shared";
-import { formatCurrency } from "@lib/format";
+import { formatSensitiveCurrency } from "@lib/money";
 
 const DATE_LABEL_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   day: "2-digit",
@@ -28,6 +29,9 @@ export default function NetWorthHistoryChart({
   snapshots: NetWorthSnapshotResponse[];
   baseCurrency: string;
 }) {
+  const { hideMoney, isHydrated } = useAppPreferences();
+  const shouldHideMoney = !isHydrated || hideMoney;
+
   return (
     <div className="w-full min-w-0">
       <ResponsiveContainer width="100%" height={320} minWidth={0}>
@@ -35,37 +39,42 @@ export default function NetWorthHistoryChart({
           data={snapshots}
           margin={{ top: 16, right: 16, left: 8, bottom: 0 }}
         >
-          <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" />
+          <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="4 4" />
           <XAxis
             dataKey="snapshotDate"
             tickFormatter={formatSnapshotDate}
-            stroke="#6b7280"
+            stroke="var(--chart-axis)"
             tickLine={false}
             axisLine={false}
           />
           <YAxis
-            stroke="#6b7280"
+            stroke="var(--chart-axis)"
             tickLine={false}
             axisLine={false}
             tickFormatter={(value: number) =>
-              formatCurrency(value, baseCurrency)
+              formatSensitiveCurrency(value, baseCurrency, shouldHideMoney)
             }
             width={110}
           />
           <Tooltip
-            formatter={(value: number) => formatCurrency(value, baseCurrency)}
+            formatter={(value: number) =>
+              formatSensitiveCurrency(value, baseCurrency, shouldHideMoney)
+            }
             labelFormatter={(label) => formatSnapshotDate(String(label))}
             contentStyle={{
               borderRadius: "1rem",
-              border: "1px solid #e5e7eb",
+              border: "1px solid var(--chart-tooltip-border)",
+              background: "var(--chart-tooltip-bg)",
+              color: "var(--text-primary)",
+              boxShadow: "var(--shadow-glass)",
             }}
           />
           <Line
             type="monotone"
             dataKey="netWorthTotal"
-            stroke="#111827"
+            stroke="var(--chart-history)"
             strokeWidth={3}
-            dot={{ r: 4, fill: "#111827" }}
+            dot={{ r: 4, fill: "var(--chart-history)" }}
             activeDot={{ r: 6 }}
           />
         </LineChart>

@@ -256,6 +256,13 @@ export class SetupService {
         actionLabel: 'Open analytics',
       },
       {
+        code: 'BUDGETS',
+        title: 'Check monthly budgets',
+        detail: `Compare planned expense limits with ${currentMonth} spending before you change next month’s plan.`,
+        href: `/budgets?month=${encodeURIComponent(currentMonth)}`,
+        actionLabel: 'Open budgets',
+      },
+      {
         code: 'HISTORY',
         title: hasSnapshot
           ? 'Review snapshot history'

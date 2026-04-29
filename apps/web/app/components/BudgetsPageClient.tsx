@@ -11,27 +11,50 @@ import type {
 } from "@finhance/shared";
 import BudgetOverrideForm from "@components/BudgetOverrideForm";
 import BudgetPlanForm from "@components/BudgetPlanForm";
+import Modal from "@components/Modal";
+import { useAppPreferences } from "@components/ThemeProvider";
 import { api, apiMutation } from "@lib/api";
 import {
   buildBudgetTransactionsLink,
-  getBudgetStatusClasses,
+  getBudgetConfidenceMessage,
+  getBudgetCreatePanelContext,
+  getBudgetQuickFillSuggestions,
   getBudgetStatusLabel,
+  sortBudgetItemsForDisplay,
 } from "@lib/budgets";
-import { formatCurrency } from "@lib/format";
+import { formatSensitiveCurrency } from "@lib/money";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 type PanelMode = "create" | "edit" | "override";
 
-function formatBudgetDelta(item: MonthlyBudgetItemResponse): string {
+interface CreatePanelContext {
+  categoryId: string;
+  currency: string;
+  previousMonthExpense: number | null;
+  averageExpenseLast3Months: number | null;
+}
+
+function formatBudgetDelta(
+  item: MonthlyBudgetItemResponse,
+  hidden: boolean,
+): string {
   if (item.remainingAmount < 0) {
-    return `Over by ${formatCurrency(Math.abs(item.remainingAmount), item.currency)}`;
+    return `Over by ${formatSensitiveCurrency(
+      Math.abs(item.remainingAmount),
+      item.currency,
+      hidden,
+    )}`;
   }
 
   if (item.remainingAmount === 0) {
     return "Exactly at limit";
   }
 
-  return `${formatCurrency(item.remainingAmount, item.currency)} remaining`;
+  return `${formatSensitiveCurrency(
+    item.remainingAmount,
+    item.currency,
+    hidden,
+  )} remaining`;
 }
 
 function progressWidth(item: MonthlyBudgetItemResponse): string {
@@ -42,6 +65,21 @@ function progressWidth(item: MonthlyBudgetItemResponse): string {
   return `${Math.max(0, Math.min(100, item.usageRatio * 100))}%`;
 }
 
+function getBudgetStatusChipClass(
+  status: MonthlyBudgetItemResponse["status"],
+): string {
+  switch (status) {
+    case "OVER_BUDGET":
+      return "is-danger";
+    case "AT_LIMIT":
+      return "is-warning";
+    case "WITHIN_BUDGET":
+      return "is-success";
+    default:
+      return "is-neutral";
+  }
+}
+
 export default function BudgetsPageClient({
   budgetView,
   categories,
@@ -50,10 +88,12 @@ export default function BudgetsPageClient({
   categories: CategoryResponse[];
 }) {
   const router = useRouter();
-  const [panelMode, setPanelMode] = useState<PanelMode>("create");
+  const [panelMode, setPanelMode] = useState<PanelMode | null>(null);
   const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
   const [preferredCategoryId, setPreferredCategoryId] = useState<string>("");
   const [preferredCurrency, setPreferredCurrency] = useState<string>("EUR");
+  const [createPanelContext, setCreatePanelContext] =
+    useState<CreatePanelContext | null>(null);
   const [overrides, setOverrides] = useState<CategoryBudgetOverrideResponse[]>(
     [],
   );
@@ -61,6 +101,8 @@ export default function BudgetsPageClient({
   const [isLoadingOverrides, setIsLoadingOverrides] = useState(false);
   const [busyBudgetId, setBusyBudgetId] = useState<string | null>(null);
   const actions = useSingleFlightActions<string>();
+  const { hideMoney, isHydrated } = useAppPreferences();
+  const shouldHideMoney = !isHydrated || hideMoney;
 
   const allBudgetItems = useMemo(
     () => budgetView.currencies.flatMap((currency) => currency.items),
@@ -106,11 +148,21 @@ export default function BudgetsPageClient({
   function openCreatePanel(
     nextCategoryId = "",
     nextCurrency = preferredCurrency || "EUR",
+    nextContext: CreatePanelContext | null = null,
   ) {
     setPanelMode("create");
     setSelectedBudgetId(null);
     setPreferredCategoryId(nextCategoryId);
     setPreferredCurrency(nextCurrency);
+    setCreatePanelContext(nextContext);
+    setOverrides([]);
+    setActionError(null);
+  }
+
+  function closePanel() {
+    setPanelMode(null);
+    setSelectedBudgetId(null);
+    setCreatePanelContext(null);
     setOverrides([]);
     setActionError(null);
   }
@@ -200,7 +252,11 @@ export default function BudgetsPageClient({
         title: `${currency.overBudgetCount} over-budget categor${
           currency.overBudgetCount === 1 ? "y" : "ies"
         } in ${currency.currency}`,
-        detail: `${formatCurrency(currency.overBudgetTotal, currency.currency)} above planned spend.`,
+        detail: `${formatSensitiveCurrency(
+          currency.overBudgetTotal,
+          currency.currency,
+          shouldHideMoney,
+        )} above planned spend.`,
       });
     }
 
@@ -208,9 +264,10 @@ export default function BudgetsPageClient({
       cards.push({
         key: `${currency.currency}:unbudgeted`,
         title: `Unbudgeted spend in ${currency.currency}`,
-        detail: `${formatCurrency(
+        detail: `${formatSensitiveCurrency(
           currency.unbudgetedExpenseTotal,
           currency.currency,
+          shouldHideMoney,
         )} is categorized but has no matching budget.`,
       });
     }
@@ -219,9 +276,10 @@ export default function BudgetsPageClient({
       cards.push({
         key: `${currency.currency}:uncategorized`,
         title: `Uncategorized spend in ${currency.currency}`,
-        detail: `${formatCurrency(
+        detail: `${formatSensitiveCurrency(
           currency.uncategorizedExpenseTotal,
           currency.currency,
+          shouldHideMoney,
         )} still needs category cleanup before budgets tell the full story.`,
       });
     }
@@ -230,38 +288,41 @@ export default function BudgetsPageClient({
   });
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,420px)]">
-      <section className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900">Budgets</h2>
-            <p className="text-sm text-gray-500">
-              Monthly expense plans, manual month overrides, and the gaps that
-              still weaken budget trust.
-            </p>
-          </div>
+    <div className="page-shell is-relaxed">
+      <section className="route-stack-desktop-xl">
+        <div className="page-section is-spacious section-stack-tight">
+          <div className="compact-toolbar">
+            <div className="page-hero-copy">
+              <p className="page-kicker">Planning</p>
+              <h2 className="section-title">Budget workspace</h2>
+              <p className="section-subtitle">
+                Monthly expense plans, manual month overrides, and the gaps that
+                still weaken budget trust.
+              </p>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => openCreatePanel()}
-            className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            New budget
-          </button>
+            <button
+              type="button"
+              onClick={() => openCreatePanel()}
+              className="btn-primary"
+            >
+              New budget
+            </button>
+          </div>
         </div>
 
         {actionError ? (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="page-inline-notice surface-danger">
             {actionError}
           </p>
         ) : null}
 
         {warningCards.length > 0 ? (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             {warningCards.map((warning) => (
               <div
                 key={warning.key}
-                className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+                className="page-inline-notice surface-warning"
               >
                 <p className="font-medium">{warning.title}</p>
                 <p className="mt-1 text-amber-900/80">{warning.detail}</p>
@@ -269,356 +330,436 @@ export default function BudgetsPageClient({
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <div className="page-inline-notice surface-success">
             No budget warnings for {budgetView.month}.
           </div>
         )}
 
         {budgetView.currencies.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-sm text-gray-500">
+          <div className="page-inline-notice surface-dashed">
             No budgets or expense activity match the selected month.
           </div>
         ) : (
-          budgetView.currencies.map((currency) => (
-            <section
-              key={currency.currency}
-              className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-900">
-                    {currency.currency}
-                  </h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    {budgetView.month} budget coverage and uncovered expense.
-                  </p>
-                </div>
-                <div className="text-sm text-gray-500">
-                  {currency.budgetedCategoryCount} budgeted categor
-                  {currency.budgetedCategoryCount === 1 ? "y" : "ies"}
-                </div>
-              </div>
+          <div className="list-stack is-loose">
+            {budgetView.currencies.map((currency) => (
+              <section
+                key={currency.currency}
+                className="page-section is-spacious section-stack-desktop-xl"
+              >
+                {(() => {
+                  const confidence = getBudgetConfidenceMessage(currency);
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <SummaryCard
-                  label="Budgeted"
-                  value={formatCurrency(
-                    currency.budgetTotal,
-                    currency.currency,
-                  )}
-                />
-                <SummaryCard
-                  label="Spent vs budget"
-                  value={formatCurrency(currency.spentTotal, currency.currency)}
-                />
-                <SummaryCard
-                  label="Remaining"
-                  value={formatCurrency(
-                    currency.remainingTotal,
-                    currency.currency,
-                  )}
-                />
-                <SummaryCard
-                  label="Over budget"
-                  value={formatCurrency(
-                    currency.overBudgetTotal,
-                    currency.currency,
-                  )}
-                />
-                <SummaryCard
-                  label="Unbudgeted"
-                  value={formatCurrency(
-                    currency.unbudgetedExpenseTotal,
-                    currency.currency,
-                  )}
-                />
-                <SummaryCard
-                  label="Uncategorized"
-                  value={formatCurrency(
-                    currency.uncategorizedExpenseTotal,
-                    currency.currency,
-                  )}
-                />
-              </div>
+                  return (
+                    <div
+                      className={`mb-5 page-inline-notice ${
+                        confidence.tone === "warning"
+                          ? "surface-warning"
+                          : confidence.tone === "info"
+                            ? "surface-info"
+                            : "surface-success"
+                      }`}
+                    >
+                      <p className="font-medium">{confidence.title}</p>
+                      <p className="mt-1">{confidence.detail}</p>
+                    </div>
+                  );
+                })()}
 
-              {currency.items.length === 0 ? (
-                <div className="mt-6 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5 text-sm text-gray-500">
-                  No budgeted categories in {currency.currency} for this month.
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-xl font-semibold text-[var(--text-primary)]">
+                      {currency.currency}
+                    </h3>
+                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                      {budgetView.month} budget coverage and uncovered expense.
+                    </p>
+                  </div>
+                  <div className="text-sm text-[var(--text-secondary)]">
+                    {currency.budgetedCategoryCount} budgeted categor
+                    {currency.budgetedCategoryCount === 1 ? "y" : "ies"}
+                  </div>
                 </div>
-              ) : (
-                <div className="mt-6 space-y-3">
-                  {currency.items.map((item) => {
-                    const isBusy = busyBudgetId === item.budgetId;
-                    const hasCurrentOverride =
-                      item.override?.month === budgetView.month;
 
-                    return (
-                      <article
-                        key={item.budgetId}
-                        className="rounded-2xl border border-gray-200 p-4"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-4">
-                          <div className="space-y-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h4 className="text-lg font-semibold text-gray-900">
-                                {item.categoryName}
-                              </h4>
-                              <span
-                                className={`rounded-full px-2.5 py-1 text-xs font-medium ${getBudgetStatusClasses(
-                                  item.status,
-                                )}`}
-                              >
-                                {getBudgetStatusLabel(item.status)}
-                              </span>
-                              {hasCurrentOverride ? (
-                                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-800">
-                                  Month override
+                <div className="summary-grid is-loose mt-5 sm:grid-cols-2 xl:grid-cols-3">
+                  <SummaryCard
+                    label="Budgeted"
+                    value={formatSensitiveCurrency(
+                      currency.budgetTotal,
+                      currency.currency,
+                      shouldHideMoney,
+                    )}
+                  />
+                  <SummaryCard
+                    label="Spent vs budget"
+                    value={formatSensitiveCurrency(
+                      currency.spentTotal,
+                      currency.currency,
+                      shouldHideMoney,
+                    )}
+                  />
+                  <SummaryCard
+                    label="Remaining"
+                    value={formatSensitiveCurrency(
+                      currency.remainingTotal,
+                      currency.currency,
+                      shouldHideMoney,
+                    )}
+                  />
+                  <SummaryCard
+                    label="Over budget"
+                    value={formatSensitiveCurrency(
+                      currency.overBudgetTotal,
+                      currency.currency,
+                      shouldHideMoney,
+                    )}
+                  />
+                  <SummaryCard
+                    label="Unbudgeted"
+                    value={formatSensitiveCurrency(
+                      currency.unbudgetedExpenseTotal,
+                      currency.currency,
+                      shouldHideMoney,
+                    )}
+                  />
+                  <SummaryCard
+                    label="Uncategorized"
+                    value={formatSensitiveCurrency(
+                      currency.uncategorizedExpenseTotal,
+                      currency.currency,
+                      shouldHideMoney,
+                    )}
+                  />
+                </div>
+
+                {currency.items.length === 0 ? (
+                  <div className="mt-6 page-inline-notice surface-dashed">
+                    No budgeted categories in {currency.currency} for this month
+                    yet. Start with the categories already showing spend below
+                    or create a fresh plan in the editor.
+                  </div>
+                ) : (
+                  <div className="mt-6 list-stack is-loose">
+                    {sortBudgetItemsForDisplay(currency.items).map((item) => {
+                      const isBusy = busyBudgetId === item.budgetId;
+                      const hasCurrentOverride =
+                        item.override?.month === budgetView.month;
+
+                      return (
+                        <article
+                          key={item.budgetId}
+                          className={`list-card is-roomy ${
+                            item.status === "OVER_BUDGET"
+                              ? "surface-danger"
+                              : item.status === "AT_LIMIT"
+                                ? "surface-warning"
+                                : ""
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-5">
+                            <div className="section-stack-tight">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="text-lg font-semibold text-[var(--text-primary)]">
+                                  {item.categoryName}
+                                </h4>
+                                <span
+                                  className={`status-chip ${getBudgetStatusChipClass(item.status)}`}
+                                >
+                                  {getBudgetStatusLabel(item.status)}
                                 </span>
+                                {hasCurrentOverride ? (
+                                  <span className="status-chip is-info">
+                                    Month override
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <p className="text-sm text-[var(--text-secondary)]">
+                                {formatSensitiveCurrency(
+                                  item.spentAmount,
+                                  item.currency,
+                                  shouldHideMoney,
+                                )}{" "}
+                                spent against{" "}
+                                {formatSensitiveCurrency(
+                                  item.budgetAmount,
+                                  item.currency,
+                                  shouldHideMoney,
+                                )}
+                                . {formatBudgetDelta(item, shouldHideMoney)}.
+                              </p>
+
+                              <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-gray-100">
+                                <div
+                                  className={`h-full ${
+                                    item.status === "OVER_BUDGET"
+                                      ? "bg-red-500"
+                                      : item.status === "AT_LIMIT"
+                                        ? "bg-amber-500"
+                                        : "bg-emerald-500"
+                                  }`}
+                                  style={{ width: progressWidth(item) }}
+                                />
+                              </div>
+
+                              <div className="flex flex-wrap gap-3 text-xs font-medium">
+                                <span
+                                  className={
+                                    item.remainingAmount < 0
+                                      ? "text-[var(--color-expense)]"
+                                      : "text-[var(--text-secondary)]"
+                                  }
+                                >
+                                  Variance{" "}
+                                  {formatBudgetDelta(item, shouldHideMoney)}
+                                </span>
+                                <span className="text-[var(--text-tertiary)]">
+                                  Status {getBudgetStatusLabel(item.status)}
+                                </span>
+                              </div>
+
+                              <div className="metric-strip is-relaxed">
+                                <div className="detail-panel is-roomy">
+                                  <p className="detail-metric-label">
+                                    Prev month
+                                  </p>
+                                  <p className="detail-metric-value">
+                                    {item.previousMonthExpense === null
+                                      ? "No history"
+                                      : formatSensitiveCurrency(
+                                          item.previousMonthExpense,
+                                          item.currency,
+                                          shouldHideMoney,
+                                        )}
+                                  </p>
+                                </div>
+                                <div className="detail-panel is-roomy">
+                                  <p className="detail-metric-label">
+                                    Avg last 3 months
+                                  </p>
+                                  <p className="detail-metric-value">
+                                    {item.averageExpenseLast3Months === null
+                                      ? "No history"
+                                      : formatSensitiveCurrency(
+                                          item.averageExpenseLast3Months,
+                                          item.currency,
+                                          shouldHideMoney,
+                                        )}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3 text-sm">
+                              <Link
+                                href={buildBudgetTransactionsLink({
+                                  month: budgetView.month,
+                                  categoryId: item.categoryId,
+                                })}
+                                className="link-button"
+                              >
+                                Transactions
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => openEditPanel(item.budgetId)}
+                                className="link-button"
+                              >
+                                Edit plan
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openOverridePanel(item.budgetId)}
+                                className="link-button"
+                              >
+                                Override month
+                              </button>
+                              {hasCurrentOverride ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void handleClearCurrentOverride(item)
+                                  }
+                                  disabled={isBusy}
+                                  className="link-button disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {isBusy ? "Clearing..." : "Clear override"}
+                                </button>
                               ) : null}
-                            </div>
-
-                            <p className="text-sm text-gray-600">
-                              {formatCurrency(item.spentAmount, item.currency)}{" "}
-                              spent against{" "}
-                              {formatCurrency(item.budgetAmount, item.currency)}
-                              . {formatBudgetDelta(item)}.
-                            </p>
-
-                            <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-gray-100">
-                              <div
-                                className={`h-full ${
-                                  item.status === "OVER_BUDGET"
-                                    ? "bg-red-500"
-                                    : item.status === "AT_LIMIT"
-                                      ? "bg-amber-500"
-                                      : "bg-emerald-500"
-                                }`}
-                                style={{ width: progressWidth(item) }}
-                              />
-                            </div>
-
-                            <div className="flex flex-wrap gap-4 text-xs text-gray-500">
-                              <span>
-                                Prev month:{" "}
-                                {item.previousMonthExpense === null
-                                  ? "No history"
-                                  : formatCurrency(
-                                      item.previousMonthExpense,
-                                      item.currency,
-                                    )}
-                              </span>
-                              <span>
-                                Avg last 3 months:{" "}
-                                {item.averageExpenseLast3Months === null
-                                  ? "No history"
-                                  : formatCurrency(
-                                      item.averageExpenseLast3Months,
-                                      item.currency,
-                                    )}
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleEndBudget(item.budgetId)
+                                }
+                                disabled={isBusy}
+                                className="link-button is-danger disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {isBusy ? "Ending..." : "End from this month"}
+                              </button>
                             </div>
                           </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
 
-                          <div className="flex flex-wrap items-center gap-3 text-sm">
+                {currency.unbudgetedCategories.length > 0 ? (
+                  <div className="mt-6 page-inline-notice surface-warning">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-[var(--text-primary)]">
+                          Unbudgeted categorized spend
+                        </h4>
+                        <p className="mt-1 text-sm">
+                          These expense categories were used this month without
+                          a matching budget.
+                        </p>
+                      </div>
+                      <span className="text-sm font-medium text-[var(--text-primary)]">
+                        {formatSensitiveCurrency(
+                          currency.unbudgetedExpenseTotal,
+                          currency.currency,
+                          shouldHideMoney,
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 subcard-stack is-loose">
+                      {currency.unbudgetedCategories.map((item) => (
+                        <div
+                          key={item.categoryId}
+                          className="detail-panel flex flex-wrap items-center justify-between gap-3 text-sm"
+                        >
+                          <div>
+                            <p className="font-medium text-[var(--text-primary)]">
+                              {item.categoryName}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                              Prev month:{" "}
+                              {item.previousMonthExpense === null
+                                ? "No history"
+                                : formatSensitiveCurrency(
+                                    item.previousMonthExpense,
+                                    item.currency,
+                                    shouldHideMoney,
+                                  )}{" "}
+                              • Avg last 3 months:{" "}
+                              {item.averageExpenseLast3Months === null
+                                ? "No history"
+                                : formatSensitiveCurrency(
+                                    item.averageExpenseLast3Months,
+                                    item.currency,
+                                    shouldHideMoney,
+                                  )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-medium text-[var(--text-primary)]">
+                              {formatSensitiveCurrency(
+                                item.spentAmount,
+                                item.currency,
+                                shouldHideMoney,
+                              )}
+                            </span>
                             <Link
                               href={buildBudgetTransactionsLink({
                                 month: budgetView.month,
                                 categoryId: item.categoryId,
                               })}
-                              className="font-medium text-blue-600 hover:underline"
+                              className="link-button"
                             >
                               Transactions
                             </Link>
                             <button
                               type="button"
-                              onClick={() => openEditPanel(item.budgetId)}
-                              className="font-medium text-gray-700 hover:underline"
-                            >
-                              Edit plan
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => openOverridePanel(item.budgetId)}
-                              className="font-medium text-gray-700 hover:underline"
-                            >
-                              Override month
-                            </button>
-                            {hasCurrentOverride ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void handleClearCurrentOverride(item)
-                                }
-                                disabled={isBusy}
-                                className="font-medium text-gray-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {isBusy ? "Clearing..." : "Clear override"}
-                              </button>
-                            ) : null}
-                            <button
-                              type="button"
                               onClick={() =>
-                                void handleEndBudget(item.budgetId)
+                                openCreatePanel(
+                                  item.categoryId,
+                                  item.currency,
+                                  getBudgetCreatePanelContext({
+                                    categoryId: item.categoryId,
+                                    currency: item.currency,
+                                    previousMonthExpense:
+                                      item.previousMonthExpense,
+                                    averageExpenseLast3Months:
+                                      item.averageExpenseLast3Months,
+                                  }),
+                                )
                               }
-                              disabled={isBusy}
-                              className="font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                              className="link-button"
                             >
-                              {isBusy ? "Ending..." : "End from this month"}
+                              Create budget
                             </button>
                           </div>
                         </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-
-              {currency.unbudgetedCategories.length > 0 ? (
-                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-amber-950">
-                        Unbudgeted categorized spend
-                      </h4>
-                      <p className="mt-1 text-sm text-amber-900/80">
-                        These expense categories were used this month without a
-                        matching budget.
-                      </p>
+                      ))}
                     </div>
-                    <span className="text-sm font-medium text-amber-900">
-                      {formatCurrency(
-                        currency.unbudgetedExpenseTotal,
+                  </div>
+                ) : null}
+
+                {currency.uncategorizedExpenseTotal > 0 ? (
+                  <div className="mt-4 page-inline-notice surface-warning surface-dashed">
+                    <p className="font-medium">
+                      Uncategorized expenses are not budgeted automatically.
+                    </p>
+                    <p className="mt-1">
+                      {formatSensitiveCurrency(
+                        currency.uncategorizedExpenseTotal,
                         currency.currency,
-                      )}
-                    </span>
+                        shouldHideMoney,
+                      )}{" "}
+                      in {currency.currency} still needs category cleanup before
+                      budget coverage is complete.
+                    </p>
+                    <Link
+                      href={buildBudgetTransactionsLink({
+                        month: budgetView.month,
+                      })}
+                      className="mt-2 inline-block link-button"
+                    >
+                      Open transactions
+                    </Link>
                   </div>
-
-                  <div className="mt-4 space-y-2">
-                    {currency.unbudgetedCategories.map((item) => (
-                      <div
-                        key={item.categoryId}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white/80 px-4 py-3 text-sm"
-                      >
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {item.categoryName}
-                          </p>
-                          <p className="mt-1 text-xs text-gray-500">
-                            Prev month:{" "}
-                            {item.previousMonthExpense === null
-                              ? "No history"
-                              : formatCurrency(
-                                  item.previousMonthExpense,
-                                  item.currency,
-                                )}{" "}
-                            • Avg last 3 months:{" "}
-                            {item.averageExpenseLast3Months === null
-                              ? "No history"
-                              : formatCurrency(
-                                  item.averageExpenseLast3Months,
-                                  item.currency,
-                                )}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-medium text-gray-900">
-                            {formatCurrency(item.spentAmount, item.currency)}
-                          </span>
-                          <Link
-                            href={buildBudgetTransactionsLink({
-                              month: budgetView.month,
-                              categoryId: item.categoryId,
-                            })}
-                            className="font-medium text-blue-600 hover:underline"
-                          >
-                            Transactions
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openCreatePanel(item.categoryId, item.currency)
-                            }
-                            className="font-medium text-gray-700 hover:underline"
-                          >
-                            Create budget
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {currency.uncategorizedExpenseTotal > 0 ? (
-                <div className="mt-4 rounded-2xl border border-dashed border-amber-300 bg-amber-50/60 p-4 text-sm text-amber-950">
-                  <p className="font-medium">
-                    Uncategorized expenses are not budgeted automatically.
-                  </p>
-                  <p className="mt-1">
-                    {formatCurrency(
-                      currency.uncategorizedExpenseTotal,
-                      currency.currency,
-                    )}{" "}
-                    in {currency.currency} still needs category cleanup before
-                    budget coverage is complete.
-                  </p>
-                  <Link
-                    href={buildBudgetTransactionsLink({
-                      month: budgetView.month,
-                    })}
-                    className="mt-2 inline-block font-medium text-blue-600 hover:underline"
-                  >
-                    Open transactions
-                  </Link>
-                </div>
-              ) : null}
-            </section>
-          ))
+                ) : null}
+              </section>
+            ))}
+          </div>
         )}
       </section>
 
-      <aside className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">
-              {panelMode === "create"
-                ? "Create budget"
-                : panelMode === "edit"
-                  ? "Edit repeating budget"
-                  : `Override ${budgetView.month}`}
-            </h2>
-            <p className="mt-1 text-sm text-gray-500">
-              {panelMode === "create"
-                ? "Add a monthly expense target for a category and currency."
-                : panelMode === "edit"
-                  ? "Change the repeating plan from the selected month forward."
-                  : "Set a one-month amount without changing the repeating plan."}
-            </p>
-          </div>
-          {panelMode !== "create" ? (
-            <button
-              type="button"
-              onClick={() => openCreatePanel()}
-              className="text-sm font-medium text-gray-600 hover:text-gray-900"
-            >
-              New budget
-            </button>
-          ) : null}
-        </div>
+      <Modal
+        open={panelMode !== null}
+        onClose={closePanel}
+        title={
+          panelMode === "override"
+            ? `Override ${budgetView.month}`
+            : panelMode === "edit"
+              ? "Edit repeating budget"
+              : "Create budget"
+        }
+        maxWidth={680}
+      >
+        <p className="section-subtitle">
+          {panelMode === "override"
+            ? "Set a one-month amount without changing the repeating plan."
+            : panelMode === "edit"
+              ? "Change the repeating plan from the selected month forward."
+              : "Add a monthly expense target for a category and currency."}
+        </p>
 
         <div className="mt-6">
           {panelMode === "override" && selectedBudget ? (
             isLoadingOverrides ? (
-              <p className="text-sm text-gray-500">Loading overrides...</p>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Loading overrides...
+              </p>
             ) : (
               <BudgetOverrideForm
                 budget={selectedBudget}
                 month={budgetView.month}
                 overrides={overrides}
-                onSuccess={() => {
-                  void loadOverrides(selectedBudget.budgetId);
-                }}
-                onCancel={() => openCreatePanel()}
+                onSuccess={closePanel}
+                onCancel={closePanel}
               />
             )
           ) : (
@@ -629,27 +770,31 @@ export default function BudgetsPageClient({
               defaultMonth={budgetView.month}
               preferredCategoryId={preferredCategoryId}
               preferredCurrency={preferredCurrency}
-              onSuccess={() => {
-                if (panelMode !== "create") {
-                  openCreatePanel();
-                }
-              }}
-              onCancel={
-                panelMode === "create" ? undefined : () => openCreatePanel()
-              }
+              quickFillSuggestions={getBudgetQuickFillSuggestions({
+                previousMonthExpense:
+                  panelMode === "edit"
+                    ? (selectedBudget?.previousMonthExpense ?? null)
+                    : (createPanelContext?.previousMonthExpense ?? null),
+                averageExpenseLast3Months:
+                  panelMode === "edit"
+                    ? (selectedBudget?.averageExpenseLast3Months ?? null)
+                    : (createPanelContext?.averageExpenseLast3Months ?? null),
+              })}
+              onSuccess={closePanel}
+              onCancel={closePanel}
             />
           )}
         </div>
-      </aside>
+      </Modal>
     </div>
   );
 }
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-gray-50 px-4 py-3 text-sm">
-      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="mt-1 font-semibold text-gray-900">{value}</p>
+    <div className="summary-card text-sm">
+      <p className="summary-card-label">{label}</p>
+      <p className="summary-card-value">{value}</p>
     </div>
   );
 }

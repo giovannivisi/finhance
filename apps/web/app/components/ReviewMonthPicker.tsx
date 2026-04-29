@@ -35,11 +35,11 @@ export default function ReviewMonthPicker({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-3">
+    <form onSubmit={handleSubmit} className="filter-actions items-end">
       <div className="flex flex-col gap-1">
         <label
           htmlFor="review-month"
-          className="text-sm font-medium text-gray-600"
+          className="text-sm font-medium text-[var(--text-secondary)]"
         >
           Month
         </label>
@@ -54,7 +54,7 @@ export default function ReviewMonthPicker({
       <button
         type="submit"
         disabled={navigation.isRunning}
-        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
       >
         {navigation.isRunning ? "Loading..." : "Load"}
       </button>

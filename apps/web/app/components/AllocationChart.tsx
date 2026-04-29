@@ -1,34 +1,21 @@
 "use client";
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
-import type { PieLabelRenderProps } from "recharts";
-import { formatCurrency } from "@lib/format";
+import { useAppPreferences } from "@components/ThemeProvider";
 import { COLORS } from "@lib/asset-ui";
-
-const renderLabel = (props: PieLabelRenderProps) => {
-  const { name, percent, x, y } = props;
-  if (!percent || percent === 0) return null;
-  return (
-    <text
-      x={x}
-      y={y}
-      fill="#111827"
-      textAnchor="middle"
-      dominantBaseline="central"
-      style={{ fontSize: "12px", fontWeight: 500 }}
-    >
-      {`${name} ${(percent * 100).toFixed(0)}%`}
-    </text>
-  );
-};
+import { formatSensitiveCurrency } from "@lib/money";
 
 export default function AllocationChart({
   data,
   size = 400,
+  currency = "EUR",
 }: {
   data: { label: string; total: number }[];
   size?: number;
+  currency?: string;
 }) {
+  const { hideMoney, isHydrated } = useAppPreferences();
+  const shouldHideMoney = !isHydrated || hideMoney;
   const cleaned = data.filter((d) => d.total > 0);
   const isSingle = cleaned.length === 1;
   const single = isSingle ? cleaned[0] : null;
@@ -44,11 +31,13 @@ export default function AllocationChart({
             cx="50%"
             cy="50%"
             innerRadius={50}
-            outerRadius={90}
-            stroke="#fff"
-            strokeWidth={2}
+            outerRadius={80}
+            paddingAngle={5}
+            cornerRadius={10}
+            stroke="none"
+            strokeWidth={0}
             labelLine={false}
-            label={isSingle ? false : renderLabel}
+            label={false}
           >
             {cleaned.map((entry, index) => (
               <Cell
@@ -64,7 +53,11 @@ export default function AllocationChart({
               y="50%"
               textAnchor="middle"
               dominantBaseline="middle"
-              style={{ fontSize: "16px", fontWeight: 600, fill: "#111827" }}
+              style={{
+                fontSize: "16px",
+                fontWeight: 600,
+                fill: "var(--text-primary)",
+              }}
             >
               {single.label}{" "}
               {(
@@ -77,7 +70,26 @@ export default function AllocationChart({
           ) : null}
 
           {!isSingle ? (
-            <Tooltip formatter={(value: number) => formatCurrency(value)} />
+            <Tooltip
+              formatter={(value: number) =>
+                formatSensitiveCurrency(
+                  value,
+                  currency,
+                  shouldHideMoney,
+                  "Unavailable",
+                )
+              }
+              contentStyle={{
+                backgroundColor: "var(--chart-tooltip-bg)",
+                borderColor: "var(--chart-tooltip-border)",
+                borderRadius: "12px",
+                color: "var(--text-primary)",
+                fontSize: "12px",
+                padding: "8px 12px",
+                boxShadow: "var(--shadow-glass)",
+              }}
+              itemStyle={{ color: "var(--text-primary)" }}
+            />
           ) : null}
         </PieChart>
       </ResponsiveContainer>
