@@ -75,17 +75,20 @@ export default async function BudgetsPage({
             </div>
           </section>
         ) : (
-          <div className="space-y-8">
+          <div className="route-stack-desktop-xl">
             <section className="page-hero">
-              <div className="page-hero-row">
-                <div className="page-hero-copy">
-                  <p className="page-kicker">Planning</p>
-                  <h1 className="page-title is-compact">Budgets</h1>
-                  <p className="page-description">
-                    Monthly expense plans with manual month overrides and clear
-                    visibility into uncovered spend.
-                  </p>
+              <div className="section-stack-relaxed">
+                <div className="page-hero-row">
+                  <div className="page-hero-copy">
+                    <p className="page-kicker">Planning</p>
+                    <h1 className="page-title is-compact">Budgets</h1>
+                    <p className="page-description">
+                      Monthly expense plans with manual month overrides and
+                      clear visibility into uncovered spend.
+                    </p>
+                  </div>
                 </div>
+
                 <div className="page-hero-actions">
                   <Link
                     href={buildBudgetMonthNavigationLink({
@@ -111,45 +114,44 @@ export default async function BudgetsPage({
                     Next month
                   </Link>
                 </div>
-              </div>
 
-              <form className="filter-grid sm:grid-cols-[minmax(0,220px)_auto_auto]">
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-[var(--text-secondary)]">
-                    Month
+                <form className="filter-grid is-relaxed budget-filter-grid lg:grid-cols-[minmax(0,220px)_minmax(280px,1fr)_auto]">
+                  <div className="app-form-field">
+                    <label htmlFor="budget-month">Month</label>
+                    <input
+                      id="budget-month"
+                      type="month"
+                      name="month"
+                      defaultValue={filters.month}
+                    />
+                  </div>
+
+                  <label className="page-pill budget-toggle-pill">
+                    <input
+                      type="checkbox"
+                      name="includeArchivedCategories"
+                      value="true"
+                      defaultChecked={filters.includeArchivedCategories}
+                    />
+                    Include archived categories
                   </label>
-                  <input
-                    className="rounded-lg border px-3 py-2"
-                    type="month"
-                    name="month"
-                    defaultValue={filters.month}
-                  />
-                </div>
 
-                <label className="page-pill">
-                  <input
-                    type="checkbox"
-                    name="includeArchivedCategories"
-                    value="true"
-                    defaultChecked={filters.includeArchivedCategories}
-                  />
-                  Include archived categories
-                </label>
-
-                <div className="filter-actions">
-                  <button type="submit" className="btn-primary">
-                    Apply
-                  </button>
-                  <Link href="/budgets" className="btn-secondary">
-                    Clear
-                  </Link>
-                </div>
-              </form>
+                  <div className="filter-actions is-equal">
+                    <button type="submit" className="btn-primary">
+                      Apply
+                    </button>
+                    <Link href="/budgets" className="btn-secondary">
+                      Clear
+                    </Link>
+                  </div>
+                </form>
+              </div>
             </section>
 
             <WorkflowSection
               title="Use this month in context"
               description={`Keep ${budgetView.month} connected to review and trend analysis instead of treating budgets as a standalone page.`}
+              className="is-roomy"
               cards={getWorkflowCards({
                 currentPage: "budgets",
                 month: budgetView.month,

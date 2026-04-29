@@ -182,76 +182,73 @@ export default function DashboardClient({
               shouldHideMoney,
             )}
           </h1>
-          <div className="dashboard-hero-stats">
-            <div>
-              <p className="dashboard-hero-stat-label">Assets</p>
-              <p className="dashboard-hero-stat-value is-positive">
-                {formatSensitiveCurrency(
-                  summary.assets,
-                  baseCurrency,
-                  shouldHideMoney,
-                )}
-              </p>
-            </div>
-            <div>
-              <p className="dashboard-hero-stat-label">Liabilities</p>
-              <p className="dashboard-hero-stat-value is-negative">
-                {formatSensitiveCurrency(
-                  summary.liabilities,
-                  baseCurrency,
-                  shouldHideMoney,
-                )}
-              </p>
-            </div>
+        </div>
+
+        <div className="dashboard-hero-controls">
+          <button
+            type="button"
+            onClick={toggleHideMoney}
+            aria-pressed={hideMoney}
+            className="btn-secondary dashboard-hero-privacy-btn"
+          >
+            {shouldHideMoney ? (
+              <Eye size={16} aria-hidden="true" />
+            ) : (
+              <EyeOff size={16} aria-hidden="true" />
+            )}
+            <span>{shouldHideMoney ? "Show balances" : "Hide balances"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="btn-secondary dashboard-hero-refresh-btn"
+          >
+            {isRefreshing ? "Refreshing..." : "Refresh data"}
+          </button>
+        </div>
+
+        <div className="dashboard-hero-stats">
+          <div>
+            <p className="dashboard-hero-stat-label">Assets</p>
+            <p className="dashboard-hero-stat-value is-positive">
+              {formatSensitiveCurrency(
+                summary.assets,
+                baseCurrency,
+                shouldHideMoney,
+              )}
+            </p>
+          </div>
+          <div>
+            <p className="dashboard-hero-stat-label">Liabilities</p>
+            <p className="dashboard-hero-stat-value is-negative">
+              {formatSensitiveCurrency(
+                summary.liabilities,
+                baseCurrency,
+                shouldHideMoney,
+              )}
+            </p>
           </div>
         </div>
 
-        <div className="dashboard-hero-aside">
-          <div className="dashboard-hero-controls">
-            <button
-              type="button"
-              onClick={toggleHideMoney}
-              aria-pressed={hideMoney}
-              className="btn-secondary dashboard-hero-privacy-btn"
-            >
-              {shouldHideMoney ? (
-                <Eye size={16} aria-hidden="true" />
-              ) : (
-                <EyeOff size={16} aria-hidden="true" />
-              )}
-              <span>{shouldHideMoney ? "Show balances" : "Hide balances"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="btn-secondary dashboard-hero-refresh-btn"
-            >
-              {isRefreshing ? "Refreshing..." : "Refresh data"}
-            </button>
-          </div>
-
-          <div
-            className={`dashboard-refresh-card${refreshToneClass ? ` ${refreshToneClass}` : ""}`}
-          >
-            <p className="dashboard-hero-aside-status">{refreshStatus}</p>
-            <p className="dashboard-refresh-hint">
-              This tab refreshes once automatically, then stays manual.
-            </p>
-            {refreshNotice ? (
-              <CooldownNotice
-                notice={refreshNotice}
-                style={{
-                  fontSize: "12px",
-                  color: "#f59e0b",
-                  marginBottom: "0",
-                }}
-              />
-            ) : null}
-            {refreshError ? (
-              <p className="dashboard-hero-aside-error">{refreshError}</p>
-            ) : null}
-          </div>
+        <div
+          className={`dashboard-refresh-card${refreshToneClass ? ` ${refreshToneClass}` : ""}`}
+        >
+          <p className="dashboard-hero-aside-status">{refreshStatus}</p>
+          {refreshNotice ? (
+            <CooldownNotice
+              notice={refreshNotice}
+              style={{
+                fontSize: "12px",
+                color: "#f59e0b",
+                margin: "6px 0 0",
+                textAlign: "right",
+              }}
+            />
+          ) : null}
+          {refreshError ? (
+            <p className="dashboard-hero-aside-error">{refreshError}</p>
+          ) : null}
         </div>
       </div>
 

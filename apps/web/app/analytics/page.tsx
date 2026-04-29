@@ -104,7 +104,7 @@ export default async function AnalyticsPage({
             </div>
           </>
         ) : (
-          <div className="space-y-8">
+          <div className="route-stack-desktop-xl">
             <section className="page-hero">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
@@ -120,38 +120,18 @@ export default async function AnalyticsPage({
                 </div>
               </div>
 
-              <form className="filter-grid lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-600">
-                    From
-                  </label>
-                  <input
-                    className="rounded-lg border px-3 py-2"
-                    type="month"
-                    name="from"
-                    defaultValue={filters.from}
-                  />
+              <form className="filter-grid is-relaxed lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+                <div className="app-form-field">
+                  <label>From</label>
+                  <input type="month" name="from" defaultValue={filters.from} />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-600">
-                    To
-                  </label>
-                  <input
-                    className="rounded-lg border px-3 py-2"
-                    type="month"
-                    name="to"
-                    defaultValue={filters.to}
-                  />
+                <div className="app-form-field">
+                  <label>To</label>
+                  <input type="month" name="to" defaultValue={filters.to} />
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-600">
-                    Account
-                  </label>
-                  <select
-                    className="rounded-lg border px-3 py-2"
-                    name="accountId"
-                    defaultValue={filters.accountId}
-                  >
+                <div className="app-form-field">
+                  <label>Account</label>
+                  <select name="accountId" defaultValue={filters.accountId}>
                     <option value="">All accounts</option>
                     {accounts.map((account) => (
                       <option key={account.id} value={account.id}>
@@ -160,15 +140,9 @@ export default async function AnalyticsPage({
                     ))}
                   </select>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-600">
-                    Category
-                  </label>
-                  <select
-                    className="rounded-lg border px-3 py-2"
-                    name="categoryId"
-                    defaultValue={filters.categoryId}
-                  >
+                <div className="app-form-field">
+                  <label>Category</label>
+                  <select name="categoryId" defaultValue={filters.categoryId}>
                     <option value="">All categories</option>
                     {categories.map((category) => (
                       <option key={category.id} value={category.id}>
@@ -177,7 +151,7 @@ export default async function AnalyticsPage({
                     ))}
                   </select>
                 </div>
-                <div className="flex flex-col justify-end gap-3">
+                <div className="section-stack-tight justify-end">
                   <label className="flex items-center gap-2 text-sm text-gray-600">
                     <input
                       type="checkbox"
@@ -187,7 +161,7 @@ export default async function AnalyticsPage({
                     />
                     Include archived accounts
                   </label>
-                  <div className="flex gap-3">
+                  <div className="filter-actions is-equal">
                     <button type="submit" className="btn-primary">
                       Apply
                     </button>
@@ -202,6 +176,7 @@ export default async function AnalyticsPage({
             <WorkflowSection
               title="Turn the focus month into action"
               description={`Use ${analytics.focusMonth} as the bridge between trend analysis, monthly review, and budgets.`}
+              className="is-roomy"
               cards={getWorkflowCards({
                 currentPage: "analytics",
                 month: analytics.focusMonth,
@@ -250,8 +225,11 @@ export default async function AnalyticsPage({
                 const seriesMax = maxSeriesValue(currency.monthlySeries);
 
                 return (
-                  <div key={currency.currency} className="space-y-8">
-                    <section className="page-section">
+                  <div
+                    key={currency.currency}
+                    className="route-stack-desktop-xl"
+                  >
+                    <section className="page-section is-spacious section-stack-desktop-xl">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <h2 className="text-2xl font-semibold text-gray-900">
@@ -261,7 +239,7 @@ export default async function AnalyticsPage({
                             Range {analytics.from} to {analytics.to}
                           </p>
                         </div>
-                        <div className="summary-grid sm:grid-cols-2">
+                        <div className="summary-grid is-loose sm:grid-cols-2">
                           <div className="summary-card text-sm">
                             <p className="summary-card-label">
                               Avg monthly income
@@ -295,7 +273,7 @@ export default async function AnalyticsPage({
                       </div>
                     </section>
 
-                    <section className="page-section">
+                    <section className="page-section is-spacious section-stack-desktop-xl">
                       <h3 className="text-xl font-semibold text-gray-900">
                         Trend
                       </h3>
@@ -303,7 +281,7 @@ export default async function AnalyticsPage({
                         Income, expense, adjustments, and net cashflow by month.
                       </p>
 
-                      <div className="mt-5 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                      <div className="mt-5 grid gap-6 lg:grid-cols-2">
                         {currency.monthlySeries.map((month) => (
                           <Link
                             key={month.month}
@@ -314,7 +292,7 @@ export default async function AnalyticsPage({
                               includeArchivedAccounts:
                                 filters.includeArchivedAccounts,
                             })}
-                            className="list-card is-muted transition hover:bg-[var(--bg-card-hover)]"
+                            className="list-card is-muted is-roomy transition hover:bg-[var(--bg-card-hover)]"
                           >
                             <div className="flex items-center justify-between gap-3">
                               <p className="font-semibold text-gray-900">
@@ -328,7 +306,7 @@ export default async function AnalyticsPage({
                               </span>
                             </div>
 
-                            <div className="mt-4 space-y-3">
+                            <div className="mt-4 subcard-stack-spacious">
                               {[
                                 {
                                   label: "Income",
@@ -397,7 +375,7 @@ export default async function AnalyticsPage({
                       </div>
                     </section>
 
-                    <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+                    <section className="page-section is-spacious section-stack-spacious">
                       <h3 className="text-xl font-semibold text-gray-900">
                         Where did my money go this month
                       </h3>
@@ -412,7 +390,7 @@ export default async function AnalyticsPage({
                             Expense breakdown
                           </h4>
                           {currency.focusMonthExpenseBreakdown.length > 0 ? (
-                            <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                            <div className="detail-panel">
                               <AnalyticsCategoryBarChart
                                 currency={currency.currency}
                                 data={currency.focusMonthExpenseBreakdown}
@@ -425,7 +403,7 @@ export default async function AnalyticsPage({
                               No expense categories in the focus month.
                             </p>
                           ) : (
-                            <div className="mt-2 space-y-2">
+                            <div className="mt-2 subcard-stack is-loose">
                               {currency.focusMonthExpenseBreakdown.map(
                                 (item) => (
                                   <Link
@@ -438,7 +416,7 @@ export default async function AnalyticsPage({
                                       includeArchivedAccounts:
                                         filters.includeArchivedAccounts,
                                     })}
-                                    className="flex items-center justify-between rounded-2xl bg-gray-50 px-4 py-3 text-sm transition hover:bg-gray-100"
+                                    className="detail-panel is-roomy flex items-center justify-between gap-4 text-sm transition hover:bg-[var(--bg-card-hover)]"
                                   >
                                     <span className="font-medium text-gray-900">
                                       {item.name}
@@ -465,7 +443,7 @@ export default async function AnalyticsPage({
                               No income categories in the focus month.
                             </p>
                           ) : (
-                            <div className="mt-2 space-y-2">
+                            <div className="mt-2 subcard-stack is-loose">
                               {currency.focusMonthIncomeBreakdown.map(
                                 (item) => (
                                   <Link
@@ -478,7 +456,7 @@ export default async function AnalyticsPage({
                                       includeArchivedAccounts:
                                         filters.includeArchivedAccounts,
                                     })}
-                                    className="flex items-center justify-between rounded-2xl bg-gray-50 px-4 py-3 text-sm transition hover:bg-gray-100"
+                                    className="detail-panel is-roomy flex items-center justify-between gap-4 text-sm transition hover:bg-[var(--bg-card-hover)]"
                                   >
                                     <span className="font-medium text-gray-900">
                                       {item.name}
@@ -498,7 +476,7 @@ export default async function AnalyticsPage({
                       </div>
                     </section>
 
-                    <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+                    <section className="page-section is-spacious section-stack-desktop-xl">
                       <h3 className="text-xl font-semibold text-gray-900">
                         Biggest changes
                       </h3>
@@ -513,7 +491,7 @@ export default async function AnalyticsPage({
                             Expense movers
                           </h4>
                           {currency.expenseMonthOverMonthChanges.length > 0 ? (
-                            <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                            <div className="detail-panel">
                               <AnalyticsCategoryBarChart
                                 currency={currency.currency}
                                 data={currency.expenseMonthOverMonthChanges.map(
@@ -533,7 +511,7 @@ export default async function AnalyticsPage({
                               comparison.
                             </p>
                           ) : (
-                            <div className="mt-2 space-y-2">
+                            <div className="mt-2 subcard-stack is-loose">
                               {currency.expenseMonthOverMonthChanges.map(
                                 (item) => (
                                   <Link
@@ -547,7 +525,7 @@ export default async function AnalyticsPage({
                                       includeArchivedAccounts:
                                         filters.includeArchivedAccounts,
                                     })}
-                                    className="block rounded-2xl bg-gray-50 px-4 py-3 text-sm transition hover:bg-gray-100"
+                                    className="detail-panel is-roomy block text-sm transition hover:bg-[var(--bg-card-hover)]"
                                   >
                                     <div className="flex items-center justify-between gap-3">
                                       <span className="font-medium text-gray-900">
@@ -595,7 +573,7 @@ export default async function AnalyticsPage({
                               No previous month available for income comparison.
                             </p>
                           ) : (
-                            <div className="mt-2 space-y-2">
+                            <div className="mt-2 subcard-stack is-loose">
                               {currency.incomeMonthOverMonthChanges.map(
                                 (item) => (
                                   <Link
@@ -609,7 +587,7 @@ export default async function AnalyticsPage({
                                       includeArchivedAccounts:
                                         filters.includeArchivedAccounts,
                                     })}
-                                    className="block rounded-2xl bg-gray-50 px-4 py-3 text-sm transition hover:bg-gray-100"
+                                    className="detail-panel is-roomy block text-sm transition hover:bg-[var(--bg-card-hover)]"
                                   >
                                     <div className="flex items-center justify-between gap-3">
                                       <span className="font-medium text-gray-900">
@@ -650,7 +628,7 @@ export default async function AnalyticsPage({
                       </div>
                     </section>
 
-                    <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+                    <section className="page-section is-spacious section-stack-desktop-xl">
                       <h3 className="text-xl font-semibold text-gray-900">
                         Category trends
                       </h3>
@@ -680,7 +658,7 @@ export default async function AnalyticsPage({
                                 No category trends in this range.
                               </p>
                             ) : (
-                              <div className="mt-2 space-y-3">
+                              <div className="mt-2 subcard-stack is-loose">
                                 {section.items.map((item) => {
                                   const trendMax = maxTrendValue(item);
 
@@ -698,7 +676,7 @@ export default async function AnalyticsPage({
                                         includeArchivedAccounts:
                                           filters.includeArchivedAccounts,
                                       })}
-                                      className="block rounded-2xl bg-gray-50 px-4 py-3 text-sm transition hover:bg-gray-100"
+                                      className="detail-panel is-roomy block text-sm transition hover:bg-[var(--bg-card-hover)]"
                                     >
                                       <div className="flex items-center justify-between gap-3">
                                         <span className="font-medium text-gray-900">
@@ -715,7 +693,7 @@ export default async function AnalyticsPage({
                                         {item.series.map((point) => (
                                           <div
                                             key={`${item.name}:${point.month}`}
-                                            className="rounded-xl bg-white px-3 py-2"
+                                            className="detail-panel is-roomy"
                                           >
                                             <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
                                               <span>{point.month}</span>

@@ -138,70 +138,74 @@ export default async function ReviewPage({
   return (
     <>
       <Container>
-        <div className="page-shell">
+        <div className="page-shell is-relaxed route-stack-desktop-xl">
           <section className="page-hero">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="page-kicker">Monthly close</p>
-                <h1 className="page-title is-compact">Monthly review</h1>
-                <p className="page-description">
-                  Explain what happened in {review.month}, what still needs
-                  attention, and what changed your trajectory.
-                </p>
+            <div className="section-stack-desktop-xl">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="page-kicker">Monthly close</p>
+                  <h1 className="page-title is-compact">Monthly review</h1>
+                  <p className="page-description">
+                    Explain what happened in {review.month}, what still needs
+                    attention, and what changed your trajectory.
+                  </p>
+                </div>
+
+                <ReviewMonthPicker currentMonth={review.month} />
               </div>
 
-              <ReviewMonthPicker currentMonth={review.month} />
+              <div className="summary-grid is-loose md:grid-cols-2 xl:grid-cols-3">
+                <div className="summary-card">
+                  <p className="summary-card-label">Opening net worth</p>
+                  <p className="summary-card-value">
+                    {review.openingNetWorth === null ? (
+                      "Unavailable"
+                    ) : (
+                      <MoneyValue value={review.openingNetWorth} />
+                    )}
+                  </p>
+                  <p className="summary-card-note">
+                    {review.openingSnapshotDate
+                      ? `Snapshot ${review.openingSnapshotDate}`
+                      : "No opening snapshot boundary"}
+                  </p>
+                </div>
+
+                <div className="summary-card">
+                  <p className="summary-card-label">Closing net worth</p>
+                  <p className="summary-card-value">
+                    {review.closingNetWorth === null ? (
+                      "Unavailable"
+                    ) : (
+                      <MoneyValue value={review.closingNetWorth} />
+                    )}
+                  </p>
+                  <p className="summary-card-note">
+                    {review.closingSnapshotDate
+                      ? `Snapshot ${review.closingSnapshotDate}`
+                      : "No closing snapshot boundary"}
+                  </p>
+                </div>
+
+                <div className="summary-card">
+                  <p className="summary-card-label">Net worth delta</p>
+                  <p className="summary-card-value">
+                    {review.netWorthDelta === null ? (
+                      "Unavailable"
+                    ) : (
+                      <MoneyValue value={review.netWorthDelta} />
+                    )}
+                  </p>
+                  <p className="summary-card-note">
+                    Based on the nearest available snapshots around the month.
+                  </p>
+                </div>
+              </div>
             </div>
+          </section>
 
-            <div className="summary-grid mt-6 md:grid-cols-3">
-              <div className="summary-card">
-                <p className="summary-card-label">Opening net worth</p>
-                <p className="summary-card-value">
-                  {review.openingNetWorth === null ? (
-                    "Unavailable"
-                  ) : (
-                    <MoneyValue value={review.openingNetWorth} />
-                  )}
-                </p>
-                <p className="summary-card-note">
-                  {review.openingSnapshotDate
-                    ? `Snapshot ${review.openingSnapshotDate}`
-                    : "No opening snapshot boundary"}
-                </p>
-              </div>
-
-              <div className="summary-card">
-                <p className="summary-card-label">Closing net worth</p>
-                <p className="summary-card-value">
-                  {review.closingNetWorth === null ? (
-                    "Unavailable"
-                  ) : (
-                    <MoneyValue value={review.closingNetWorth} />
-                  )}
-                </p>
-                <p className="summary-card-note">
-                  {review.closingSnapshotDate
-                    ? `Snapshot ${review.closingSnapshotDate}`
-                    : "No closing snapshot boundary"}
-                </p>
-              </div>
-
-              <div className="summary-card">
-                <p className="summary-card-label">Net worth delta</p>
-                <p className="summary-card-value">
-                  {review.netWorthDelta === null ? (
-                    "Unavailable"
-                  ) : (
-                    <MoneyValue value={review.netWorthDelta} />
-                  )}
-                </p>
-                <p className="summary-card-note">
-                  Based on the nearest available snapshots around the month.
-                </p>
-              </div>
-            </div>
-
-            <div className="summary-grid mt-4 md:grid-cols-3">
+          <section className="page-section is-spacious section-stack-desktop-xl">
+            <div className="summary-grid is-loose md:grid-cols-2 xl:grid-cols-3">
               <div className="summary-card">
                 <p className="summary-card-label">Review warnings</p>
                 <p className="summary-card-value">{review.warnings.length}</p>
@@ -233,7 +237,7 @@ export default async function ReviewPage({
               </div>
             </div>
 
-            <div className="mt-6 page-inline-notice surface-info">
+            <div className="page-inline-notice surface-info section-stack-desktop-xl">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h2 className="section-title">Why net worth moved</h2>
@@ -255,7 +259,7 @@ export default async function ReviewPage({
                 </span>
               </div>
 
-              <div className="mt-4 detail-panel">
+              <div className="mt-4 detail-panel is-roomy">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <h3 className="text-sm font-semibold text-[var(--text-primary)]">
@@ -272,7 +276,7 @@ export default async function ReviewPage({
                 </div>
               </div>
 
-              <div className="summary-grid mt-4 md:grid-cols-2">
+              <div className="summary-grid is-loose md:grid-cols-2">
                 <div className="summary-card">
                   <p className="summary-card-label">Cashflow contribution</p>
                   <p className="summary-card-value">
@@ -300,10 +304,11 @@ export default async function ReviewPage({
           <WorkflowSection
             title="Continue the workflow"
             description="Once this month makes sense, move into budgets and multi-month analytics without losing the same month context."
+            className="is-roomy"
             cards={workflowCards}
           />
 
-          <section className="page-section">
+          <section className="page-section is-spacious section-stack-relaxed">
             <h2 className="section-title">Warnings and actions</h2>
             <p className="section-subtitle">
               Use these as your checklist before you trust the monthly story.
@@ -400,9 +405,12 @@ export default async function ReviewPage({
               </div>
 
               {review.reconciliationHighlights.length === 0 ? null : (
-                <div className="mt-3 space-y-2">
+                <div className="mt-4 subcard-stack is-loose">
                   {review.reconciliationHighlights.map((item) => (
-                    <div key={item.accountId} className="detail-panel text-sm">
+                    <div
+                      key={item.accountId}
+                      className="detail-panel is-roomy text-sm"
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <p className="font-medium text-[var(--text-primary)]">
@@ -428,7 +436,7 @@ export default async function ReviewPage({
                           {item.status}
                         </span>
                       </div>
-                      <div className="mt-3 space-y-2">
+                      <div className="mt-4 subcard-stack is-loose">
                         {item.diagnostics.length === 0 ? (
                           <p className="text-xs text-[var(--text-secondary)]">
                             No structural diagnostics were recorded for this
@@ -438,7 +446,7 @@ export default async function ReviewPage({
                           item.diagnostics.map((diagnostic) => (
                             <div
                               key={`${item.accountId}:${diagnostic.code}`}
-                              className="detail-panel text-xs"
+                              className="detail-panel is-roomy text-xs"
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <p className="font-medium text-[var(--text-primary)]">
@@ -462,7 +470,7 @@ export default async function ReviewPage({
             </div>
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+          <section className="page-section is-spacious section-stack-relaxed">
             <h2 className="text-xl font-semibold text-gray-900">
               Budget status
             </h2>
@@ -472,12 +480,12 @@ export default async function ReviewPage({
             </p>
 
             {review.budgetSummary.length === 0 ? (
-              <div className="mt-4 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+              <div className="page-inline-notice surface-dashed">
                 No budget data is available for this month.
               </div>
             ) : (
-              <div className="mt-4 space-y-4">
-                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+              <div className="section-stack-desktop-xl">
+                <div className="detail-panel">
                   <ReviewBudgetStatusChart summaries={review.budgetSummary} />
                 </div>
 
@@ -485,7 +493,7 @@ export default async function ReviewPage({
                   {review.budgetSummary.map((summary) => (
                     <article
                       key={summary.currency}
-                      className="rounded-2xl border border-gray-200 p-4"
+                      className="list-card is-roomy"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -506,7 +514,7 @@ export default async function ReviewPage({
                       </div>
 
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-2xl bg-gray-50 p-4">
+                        <div className="detail-panel is-roomy">
                           <p className="text-xs uppercase tracking-wide text-gray-500">
                             Spent vs budget
                           </p>
@@ -523,7 +531,7 @@ export default async function ReviewPage({
                           </p>
                         </div>
 
-                        <div className="rounded-2xl bg-gray-50 p-4">
+                        <div className="detail-panel is-roomy">
                           <p className="text-xs uppercase tracking-wide text-gray-500">
                             Remaining
                           </p>
@@ -561,15 +569,15 @@ export default async function ReviewPage({
                 </div>
 
                 {review.budgetHighlights.length > 0 ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="page-inline-notice surface-warning">
                     <h3 className="text-sm font-semibold text-amber-950">
                       Most important over-budget categories
                     </h3>
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-4 subcard-stack is-loose">
                       {review.budgetHighlights.map((item) => (
                         <div
                           key={item.budgetId}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white/80 px-3 py-2 text-sm"
+                          className="detail-panel is-roomy flex flex-wrap items-center justify-between gap-3 text-sm"
                         >
                           <div>
                             <p className="font-medium text-gray-900">
@@ -593,7 +601,7 @@ export default async function ReviewPage({
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                  <div className="page-inline-notice surface-success">
                     No budgeted categories are over limit in this review month.
                   </div>
                 )}
@@ -601,7 +609,7 @@ export default async function ReviewPage({
             )}
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+          <section className="page-section is-spacious section-stack-desktop-xl">
             <h2 className="text-xl font-semibold text-gray-900">
               Recurring vs actual
             </h2>
@@ -611,15 +619,15 @@ export default async function ReviewPage({
             </p>
 
             {review.recurringComparison.length === 0 ? (
-              <div className="mt-4 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
+              <div className="page-inline-notice surface-dashed">
                 No recurring rules were due in {review.month}.
               </div>
             ) : (
-              <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-4 xl:grid-cols-2">
                 {review.recurringComparison.map((comparison) => (
                   <article
                     key={comparison.currency}
-                    className="rounded-2xl bg-gray-50 p-5"
+                    className="list-card is-muted is-roomy"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -632,7 +640,7 @@ export default async function ReviewPage({
                         </p>
                       </div>
                       {comparison.transferRulesExcludedCount > 0 ? (
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-700 ring-1 ring-gray-200">
+                        <span className="status-chip is-neutral">
                           {comparison.transferRulesExcludedCount} transfer
                           {comparison.transferRulesExcludedCount === 1
                             ? ""
@@ -643,7 +651,7 @@ export default async function ReviewPage({
                     </div>
 
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl bg-white p-4">
+                      <div className="detail-panel is-roomy">
                         <p className="text-xs uppercase tracking-wide text-gray-500">
                           Expected income
                         </p>
@@ -662,7 +670,7 @@ export default async function ReviewPage({
                         </p>
                       </div>
 
-                      <div className="rounded-2xl bg-white p-4">
+                      <div className="detail-panel is-roomy">
                         <p className="text-xs uppercase tracking-wide text-gray-500">
                           Expected expenses
                         </p>
@@ -683,10 +691,10 @@ export default async function ReviewPage({
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-gray-700">
-                      <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-gray-200">
+                      <span className="status-chip is-neutral">
                         {comparison.skippedCount} skipped
                       </span>
-                      <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-gray-200">
+                      <span className="status-chip is-neutral">
                         {comparison.overriddenCount} overridden
                       </span>
                     </div>
@@ -695,7 +703,7 @@ export default async function ReviewPage({
               </div>
             )}
 
-            <div className="mt-8">
+            <div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900">
@@ -720,11 +728,11 @@ export default async function ReviewPage({
                   No recurring skips or overrides were saved for this month.
                 </p>
               ) : (
-                <div className="mt-3 space-y-2">
+                <div className="mt-4 subcard-stack is-loose">
                   {review.recurringExceptions.map((item) => (
                     <div
                       key={`${item.recurringRuleId}:${item.occurrenceMonth}`}
-                      className="rounded-2xl bg-gray-50 px-4 py-3 text-sm"
+                      className="detail-panel is-roomy text-sm"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -736,10 +744,8 @@ export default async function ReviewPage({
                           </p>
                         </div>
                         <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                            item.status === "SKIPPED"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-blue-100 text-blue-800"
+                          className={`status-chip ${
+                            item.status === "SKIPPED" ? "is-warning" : "is-info"
                           }`}
                         >
                           {item.status}
@@ -761,7 +767,7 @@ export default async function ReviewPage({
             </div>
           </section>
 
-          <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-100">
+          <section className="page-section is-spacious section-stack-desktop-xl">
             <h2 className="text-xl font-semibold text-gray-900">Drivers</h2>
             <p className="mt-1 text-sm text-gray-500">
               The biggest category and account movements behind this month’s
@@ -769,11 +775,11 @@ export default async function ReviewPage({
             </p>
 
             {review.currencyInsights.length === 0 ? (
-              <div className="mt-4 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
+              <div className="page-inline-notice surface-dashed">
                 No income or expense drivers were recorded in {review.month}.
               </div>
             ) : (
-              <div className="mt-4 space-y-6">
+              <div className="list-stack is-loose">
                 {review.currencyInsights.map((insight) => {
                   const cashflowBucket = cashflowByCurrency.get(
                     insight.currency,
@@ -796,7 +802,7 @@ export default async function ReviewPage({
                   return (
                     <article
                       key={insight.currency}
-                      className="rounded-3xl bg-gray-50 p-6"
+                      className="list-card is-muted is-roomy section-stack-desktop-xl"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -808,7 +814,7 @@ export default async function ReviewPage({
                             for {review.month}.
                           </p>
                         </div>
-                        <div className="rounded-full bg-white px-3 py-1 text-sm font-medium text-gray-700 ring-1 ring-gray-200">
+                        <div className="page-pill">
                           Net{" "}
                           {formatCurrency(
                             cashflowBucket?.netCashflow ?? 0,
@@ -817,8 +823,8 @@ export default async function ReviewPage({
                         </div>
                       </div>
 
-                      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                        <div className="rounded-2xl bg-white p-4">
+                      <div className="summary-grid is-loose mt-5 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="detail-panel is-roomy">
                           <p className="text-xs uppercase tracking-wide text-gray-500">
                             Income
                           </p>
@@ -829,7 +835,7 @@ export default async function ReviewPage({
                             )}
                           </p>
                         </div>
-                        <div className="rounded-2xl bg-white p-4">
+                        <div className="detail-panel is-roomy">
                           <p className="text-xs uppercase tracking-wide text-gray-500">
                             Expenses
                           </p>
@@ -840,7 +846,7 @@ export default async function ReviewPage({
                             )}
                           </p>
                         </div>
-                        <div className="rounded-2xl bg-white p-4">
+                        <div className="detail-panel is-roomy">
                           <p className="text-xs uppercase tracking-wide text-gray-500">
                             Savings rate
                           </p>
@@ -850,7 +856,7 @@ export default async function ReviewPage({
                               : `${(insight.savingsRate * 100).toFixed(1)}%`}
                           </p>
                         </div>
-                        <div className="rounded-2xl bg-white p-4">
+                        <div className="detail-panel is-roomy">
                           <p className="text-xs uppercase tracking-wide text-gray-500">
                             Uncategorized
                           </p>
@@ -871,7 +877,7 @@ export default async function ReviewPage({
                         </div>
                       </div>
 
-                      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+                      <div className="mt-8 grid gap-10 lg:grid-cols-3">
                         <div>
                           <h4 className="text-sm font-semibold text-gray-900">
                             Top expense categories
@@ -881,11 +887,11 @@ export default async function ReviewPage({
                               No expense drivers.
                             </p>
                           ) : (
-                            <div className="mt-2 space-y-2">
+                            <div className="mt-3 subcard-stack is-loose">
                               {insight.topExpenseCategories.map((item) => (
                                 <div
                                   key={item.categoryId ?? item.name}
-                                  className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-sm"
+                                  className="detail-panel is-roomy flex items-center justify-between text-sm"
                                 >
                                   <div className="min-w-0 flex-1">
                                     <p className="font-medium text-gray-900">
@@ -927,11 +933,11 @@ export default async function ReviewPage({
                               No income drivers.
                             </p>
                           ) : (
-                            <div className="mt-2 space-y-2">
+                            <div className="mt-3 subcard-stack is-loose">
                               {insight.topIncomeCategories.map((item) => (
                                 <div
                                   key={item.categoryId ?? item.name}
-                                  className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-sm"
+                                  className="detail-panel is-roomy flex items-center justify-between text-sm"
                                 >
                                   <div className="min-w-0 flex-1">
                                     <p className="font-medium text-gray-900">
@@ -973,11 +979,11 @@ export default async function ReviewPage({
                               No account drivers.
                             </p>
                           ) : (
-                            <div className="mt-2 space-y-2">
+                            <div className="mt-3 subcard-stack is-loose">
                               {insight.topAccounts.map((item) => (
                                 <div
                                   key={item.accountId}
-                                  className="rounded-2xl bg-white px-4 py-3 text-sm"
+                                  className="detail-panel is-roomy text-sm"
                                 >
                                   <div className="flex items-center justify-between gap-3">
                                     <p className="font-medium text-gray-900">
@@ -994,7 +1000,7 @@ export default async function ReviewPage({
                                     <div
                                       className={`h-2 rounded-full ${
                                         item.netCashflow >= 0
-                                          ? "bg-sky-500"
+                                          ? "bg-emerald-500"
                                           : "bg-amber-500"
                                       }`}
                                       style={{

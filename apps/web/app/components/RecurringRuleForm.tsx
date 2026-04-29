@@ -151,34 +151,22 @@ export default function RecurringRuleForm({
   const isAdjustment = form.kind === "ADJUSTMENT";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="app-form">
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-name`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Name
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-name`}>Name</label>
           <input
             id={`${fieldPrefix}-name`}
-            className="rounded-lg border px-3 py-2"
             value={form.name}
             onChange={(event) => updateField("name", event.target.value)}
             required
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-kind`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Kind
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-kind`}>Kind</label>
           <select
             id={`${fieldPrefix}-kind`}
-            className="rounded-lg border px-3 py-2"
             value={form.kind}
             onChange={(event) =>
               updateField(
@@ -197,16 +185,10 @@ export default function RecurringRuleForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-amount`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Amount
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-amount`}>Amount</label>
           <input
             id={`${fieldPrefix}-amount`}
-            className="rounded-lg border px-3 py-2"
             type="number"
             step="0.01"
             value={form.amount}
@@ -215,16 +197,10 @@ export default function RecurringRuleForm({
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-day-of-month`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Day of month
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-day-of-month`}>Day of month</label>
           <input
             id={`${fieldPrefix}-day-of-month`}
-            className="rounded-lg border px-3 py-2"
             type="number"
             min={1}
             max={31}
@@ -235,16 +211,10 @@ export default function RecurringRuleForm({
         </div>
 
         {!isTransfer && !isAdjustment ? (
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-direction`}
-              className="text-sm font-medium text-gray-600"
-            >
-              Direction
-            </label>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-direction`}>Direction</label>
             <select
               id={`${fieldPrefix}-direction`}
-              className="rounded-lg border px-3 py-2"
               value={form.direction}
               onChange={(event) =>
                 updateField(
@@ -261,7 +231,7 @@ export default function RecurringRuleForm({
             </select>
           </div>
         ) : (
-          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+          <div className="page-inline-notice surface-info">
             {isTransfer
               ? "Transfers create one outflow and one inflow row each month."
               : "Adjustments stay uncategorized and use the chosen direction."}
@@ -270,16 +240,10 @@ export default function RecurringRuleForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-start-date`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Start date
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-start-date`}>Start date</label>
           <input
             id={`${fieldPrefix}-start-date`}
-            className="rounded-lg border px-3 py-2"
             type="date"
             value={form.startDate}
             onChange={(event) => updateField("startDate", event.target.value)}
@@ -287,16 +251,13 @@ export default function RecurringRuleForm({
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-end-date`}
-            className="text-sm font-medium text-gray-600"
-          >
-            End date
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-end-date`} className="is-optional">
+            <span>End date</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-end-date`}
-            className="rounded-lg border px-3 py-2"
             type="date"
             value={form.endDate}
             onChange={(event) => updateField("endDate", event.target.value)}
@@ -306,16 +267,12 @@ export default function RecurringRuleForm({
 
       {isTransfer ? (
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-source-account`}
-              className="text-sm font-medium text-gray-600"
-            >
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-source-account`}>
               Source account
             </label>
             <select
               id={`${fieldPrefix}-source-account`}
-              className="rounded-lg border px-3 py-2"
               value={form.sourceAccountId}
               onChange={(event) =>
                 updateField("sourceAccountId", event.target.value)
@@ -330,16 +287,12 @@ export default function RecurringRuleForm({
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-destination-account`}
-              className="text-sm font-medium text-gray-600"
-            >
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-destination-account`}>
               Destination account
             </label>
             <select
               id={`${fieldPrefix}-destination-account`}
-              className="rounded-lg border px-3 py-2"
               value={form.destinationAccountId}
               onChange={(event) =>
                 updateField("destinationAccountId", event.target.value)
@@ -356,16 +309,10 @@ export default function RecurringRuleForm({
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-account`}
-              className="text-sm font-medium text-gray-600"
-            >
-              Account
-            </label>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-account`}>Account</label>
             <select
               id={`${fieldPrefix}-account`}
-              className="rounded-lg border px-3 py-2"
               value={form.accountId}
               onChange={(event) => updateField("accountId", event.target.value)}
             >
@@ -378,16 +325,10 @@ export default function RecurringRuleForm({
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-category`}
-              className="text-sm font-medium text-gray-600"
-            >
-              Category
-            </label>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-category`}>Category</label>
             <select
               id={`${fieldPrefix}-category`}
-              className="rounded-lg border px-3 py-2"
               value={form.categoryId}
               onChange={(event) =>
                 updateField("categoryId", event.target.value)
@@ -407,16 +348,10 @@ export default function RecurringRuleForm({
         </div>
       )}
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-description`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Description
-        </label>
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-description`}>Description</label>
         <input
           id={`${fieldPrefix}-description`}
-          className="rounded-lg border px-3 py-2"
           value={form.description}
           onChange={(event) => updateField("description", event.target.value)}
           required
@@ -424,16 +359,16 @@ export default function RecurringRuleForm({
       </div>
 
       {!isTransfer ? (
-        <div className="flex flex-col gap-1">
+        <div className="app-form-field">
           <label
             htmlFor={`${fieldPrefix}-counterparty`}
-            className="text-sm font-medium text-gray-600"
+            className="is-optional"
           >
-            Counterparty
+            <span>Counterparty</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-counterparty`}
-            className="rounded-lg border px-3 py-2"
             value={form.counterparty}
             onChange={(event) =>
               updateField("counterparty", event.target.value)
@@ -442,22 +377,20 @@ export default function RecurringRuleForm({
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-notes`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Notes
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">
+          <span>Notes</span>
+          <span>Optional</span>
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}
-          className="min-h-24 rounded-lg border px-3 py-2"
+          className="min-h-24"
           value={form.notes}
           onChange={(event) => updateField("notes", event.target.value)}
         />
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-600">
+      <label className="page-pill max-w-max">
         <input
           type="checkbox"
           checked={form.isActive}
@@ -467,17 +400,13 @@ export default function RecurringRuleForm({
       </label>
 
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="app-form-error">
           {error}
         </p>
       ) : null}
 
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+      <div className="app-form-actions">
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting
             ? "Saving..."
             : isCreateMode
@@ -486,11 +415,7 @@ export default function RecurringRuleForm({
         </button>
 
         {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-gray-700 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
         ) : null}

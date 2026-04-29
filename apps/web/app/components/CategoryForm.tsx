@@ -88,67 +88,23 @@ export default function CategoryForm({
     });
   }
 
-  const getLabelStyle = (required: boolean) => ({
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: "12px",
-    fontWeight: required ? 700 : 500,
-    color: required ? "var(--text-primary)" : "var(--text-tertiary)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
-    marginBottom: "8px",
-  });
-
-  const inputStyle = {
-    width: "100%",
-    background: "var(--bg-app)",
-    border: "1px solid var(--border-glass-strong)",
-    borderRadius: "8px",
-    padding: "10px 14px",
-    color: "var(--text-primary)",
-    fontSize: "15px",
-    outline: "none",
-    transition: "border-color 0.2s",
-    boxSizing: "border-box" as const,
-  };
-
-  const handleFocus = (
-    e: React.FocusEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
-  ) => (e.target.style.borderColor = "var(--text-secondary)");
-  const handleBlur = (
-    e: React.FocusEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
-  ) => (e.target.style.borderColor = "var(--border-glass-strong)");
-
   return (
     <form onSubmit={handleSubmit} className="app-form">
-      <div>
-        <label htmlFor={`${fieldPrefix}-name`} style={getLabelStyle(true)}>
-          <span>Name</span>
-        </label>
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-name`}>Name</label>
         <input
           id={`${fieldPrefix}-name`}
-          style={inputStyle}
           value={form.name}
           onChange={(event) => updateField("name", event.target.value)}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
           required
         />
       </div>
 
-      <div className="app-form-grid">
-        <div>
-          <label htmlFor={`${fieldPrefix}-type`} style={getLabelStyle(true)}>
-            <span>Type</span>
-          </label>
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-type`}>Type</label>
           <select
             id={`${fieldPrefix}-type`}
-            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
             value={form.type}
             onChange={(event) =>
               updateField(
@@ -156,8 +112,6 @@ export default function CategoryForm({
                 event.target.value as CategoryFormValues["type"],
               )
             }
-            onFocus={handleFocus}
-            onBlur={handleBlur}
             required
           >
             {CATEGORY_TYPE_OPTIONS.map((type) => (
@@ -168,19 +122,16 @@ export default function CategoryForm({
           </select>
         </div>
 
-        <div>
-          <label htmlFor={`${fieldPrefix}-order`} style={getLabelStyle(false)}>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-order`} className="is-optional">
             <span>Order</span>
-            <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-order`}
-            style={inputStyle}
             type="number"
             value={form.order}
             onChange={(event) => updateField("order", event.target.value)}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
           />
         </div>
       </div>

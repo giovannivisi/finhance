@@ -5,17 +5,21 @@ export default function WorkflowSection({
   title,
   description,
   cards,
+  className,
 }: {
   title: string;
   description: string;
   cards: WorkflowCard[];
+  className?: string;
 }) {
   if (cards.length === 0) {
     return null;
   }
 
   return (
-    <section className="page-section workflow-section">
+    <section
+      className={`page-section workflow-section${className ? ` ${className}` : ""}`}
+    >
       <h2 className="section-title">{title}</h2>
       <p className="section-subtitle">{description}</p>
 

@@ -24,11 +24,13 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
 
 export default function Modal({
   children,
+  maxWidth = 500,
   open,
   onClose,
   title,
 }: {
   children: ReactNode;
+  maxWidth?: number | string;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -141,7 +143,7 @@ export default function Modal({
         className="glass-card"
         style={{
           width: "100%",
-          maxWidth: "500px",
+          maxWidth,
           maxHeight: "85vh",
           position: "relative",
           outline: "none",

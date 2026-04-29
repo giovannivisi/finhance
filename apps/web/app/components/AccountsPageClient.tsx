@@ -7,6 +7,7 @@ import type {
   AccountResponse,
 } from "@finhance/shared";
 import AccountForm from "@components/AccountForm";
+import Modal from "@components/Modal";
 import {
   accountToFormValues,
   createEmptyAccountFormValues,
@@ -42,6 +43,7 @@ export default function AccountsPageClient({
 }) {
   const router = useRouter();
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reconciliationError, setReconciliationError] = useState<string | null>(
@@ -221,8 +223,8 @@ export default function AccountsPageClient({
   }
 
   return (
-    <div className="page-split">
-      <section className="space-y-4">
+    <div className="page-shell is-relaxed">
+      <section className="route-stack-desktop-xl">
         <div className="page-hero">
           <div className="page-hero-row">
             <div className="page-hero-copy">
@@ -246,7 +248,10 @@ export default function AccountsPageClient({
 
               <button
                 type="button"
-                onClick={() => setEditingAccountId(null)}
+                onClick={() => {
+                  setEditingAccountId(null);
+                  setIsCreateModalOpen(true);
+                }}
                 className="btn-primary"
               >
                 New account
@@ -272,16 +277,16 @@ export default function AccountsPageClient({
             No accounts yet.
           </div>
         ) : (
-          <div className="list-stack">
+          <div className="list-stack is-loose">
             {visibleAccounts.map((account) =>
               (() => {
                 const reconciliation =
                   reconciliationByAccountId.get(account.id) ?? null;
 
                 return (
-                  <article key={account.id} className="list-card">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="space-y-1">
+                  <article key={account.id} className="list-card is-roomy">
+                    <div className="flex flex-wrap items-start justify-between gap-5">
+                      <div className="section-stack-tight">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-lg font-semibold text-[var(--text-primary)]">
                             {account.name}
@@ -317,7 +322,7 @@ export default function AccountsPageClient({
                         ) : null}
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-4">
                         {reconciliation?.canCreateAdjustment ? (
                           <button
                             type="button"
@@ -385,7 +390,7 @@ export default function AccountsPageClient({
                       </div>
                     </div>
                     {reconciliation ? (
-                      <div className="detail-panel">
+                      <div className="detail-panel is-roomy section-stack-relaxed">
                         <p className="text-xs text-[var(--text-secondary)]">
                           {account.openingBalanceDate
                             ? `Baseline: ${formatCurrency(
@@ -401,8 +406,8 @@ export default function AccountsPageClient({
                             : "Full history baseline"}
                         </p>
 
-                        <div className="mt-4 detail-panel-grid sm:grid-cols-3">
-                          <div>
+                        <div className="metric-strip is-relaxed">
+                          <div className="detail-panel is-roomy">
                             <p className="detail-metric-label">Tracked</p>
                             <p className="detail-metric-value">
                               {reconciliation.trackedBalance === null
@@ -414,7 +419,7 @@ export default function AccountsPageClient({
                             </p>
                           </div>
 
-                          <div>
+                          <div className="detail-panel is-roomy">
                             <p className="detail-metric-label">Expected</p>
                             <p className="detail-metric-value">
                               {reconciliation.expectedBalance === null
@@ -426,7 +431,7 @@ export default function AccountsPageClient({
                             </p>
                           </div>
 
-                          <div>
+                          <div className="detail-panel is-roomy">
                             <p className="detail-metric-label">Delta</p>
                             <p className="detail-metric-value">
                               {reconciliation.delta === null
@@ -439,7 +444,7 @@ export default function AccountsPageClient({
                           </div>
                         </div>
 
-                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-[var(--text-secondary)]">
+                        <div className="flex flex-wrap gap-4 text-xs text-[var(--text-secondary)]">
                           <span>
                             {reconciliation.assetCount} assets assigned
                           </span>
@@ -449,7 +454,7 @@ export default function AccountsPageClient({
                         </div>
 
                         <div
-                          className={`mt-4 ${GUIDANCE_STYLES[reconciliation.adjustmentGuidance.status]}`}
+                          className={`${GUIDANCE_STYLES[reconciliation.adjustmentGuidance.status]}`}
                         >
                           <p className="font-medium">
                             Adjustment guidance:{" "}
@@ -461,7 +466,7 @@ export default function AccountsPageClient({
                         </div>
 
                         {reconciliation.openingBalanceBaselineGuidance ? (
-                          <div className="mt-4 page-inline-notice surface-info">
+                          <div className="page-inline-notice surface-info">
                             <p className="font-medium">
                               Opening balance baseline
                             </p>
@@ -488,7 +493,7 @@ export default function AccountsPageClient({
                         ) : null}
 
                         {reconciliation.diagnostics.length > 0 ? (
-                          <div className="mt-4 space-y-3">
+                          <div className="space-y-3">
                             {reconciliation.diagnostics.map((diagnostic) => (
                               <article
                                 key={`${account.id}:${diagnostic.code}`}
@@ -515,14 +520,14 @@ export default function AccountsPageClient({
                             ))}
                           </div>
                         ) : (
-                          <p className="mt-4 text-sm text-gray-500">
+                          <p className="text-sm text-[var(--text-secondary)]">
                             No structural reconciliation warnings for this
                             account.
                           </p>
                         )}
 
                         {account.archivedAt && account.deleteBlockReason ? (
-                          <p className="mt-4 text-sm text-gray-500">
+                          <p className="mt-4 text-sm text-[var(--text-secondary)]">
                             Permanent delete blocked:{" "}
                             {account.deleteBlockReason}
                           </p>
@@ -537,32 +542,48 @@ export default function AccountsPageClient({
         )}
       </section>
 
-      <aside className="page-form-card">
-        <h2 className="text-xl font-semibold text-gray-900">
-          {editingAccount ? "Edit account" : "Create account"}
-        </h2>
-        <p className="mt-1 text-sm text-gray-500">
-          {editingAccount
-            ? "Update account details or ordering."
-            : "Add a new container for assets and liabilities."}
+      <Modal
+        open={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Create account"
+        maxWidth={640}
+      >
+        <p className="section-subtitle">
+          Add a new container for assets and liabilities.
         </p>
-
         <div className="mt-6">
           <AccountForm
-            mode={editingAccount ? "edit" : "create"}
-            accountId={editingAccount?.id}
-            initialValues={
-              editingAccount
-                ? accountToFormValues(editingAccount)
-                : createEmptyAccountFormValues()
-            }
-            onSuccess={() => setEditingAccountId(null)}
-            onCancel={
-              editingAccount ? () => setEditingAccountId(null) : undefined
-            }
+            mode="create"
+            initialValues={createEmptyAccountFormValues()}
+            onSuccess={() => setIsCreateModalOpen(false)}
+            onCancel={() => setIsCreateModalOpen(false)}
           />
         </div>
-      </aside>
+      </Modal>
+
+      <Modal
+        open={editingAccount !== null}
+        onClose={() => setEditingAccountId(null)}
+        title={editingAccount ? `Edit ${editingAccount.name}` : "Edit account"}
+        maxWidth={640}
+      >
+        {editingAccount ? (
+          <>
+            <p className="section-subtitle">
+              Update account details or reconciliation context.
+            </p>
+            <div className="mt-6">
+              <AccountForm
+                mode="edit"
+                accountId={editingAccount.id}
+                initialValues={accountToFormValues(editingAccount)}
+                onSuccess={() => setEditingAccountId(null)}
+                onCancel={() => setEditingAccountId(null)}
+              />
+            </div>
+          </>
+        ) : null}
+      </Modal>
     </div>
   );
 }

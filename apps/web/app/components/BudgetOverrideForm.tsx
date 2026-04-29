@@ -120,83 +120,26 @@ export default function BudgetOverrideForm({
     });
   }
 
-  const getLabelStyle = (required: boolean) => ({
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: "12px",
-    fontWeight: required ? 700 : 500,
-    color: required ? "var(--text-primary)" : "var(--text-tertiary)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
-    marginBottom: "8px",
-  });
-
-  const inputStyle = {
-    width: "100%",
-    background: "var(--bg-app)",
-    border: "1px solid var(--border-glass-strong)",
-    borderRadius: "8px",
-    padding: "10px 14px",
-    color: "var(--text-primary)",
-    fontSize: "15px",
-    outline: "none",
-    transition: "border-color 0.2s",
-    boxSizing: "border-box" as const,
-  };
-
-  const handleFocus = (
-    e: React.FocusEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
-  ) => (e.target.style.borderColor = "var(--text-secondary)");
-  const handleBlur = (
-    e: React.FocusEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
-  ) => (e.target.style.borderColor = "var(--border-glass-strong)");
-
   const currentOverride =
     overrides.find((override) => override.month === month) ?? null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-      >
-        <div
-          style={{
-            padding: "16px",
-            borderRadius: "16px",
-            background: "var(--bg-card-hover)",
-            border: "1px solid var(--border-glass-strong)",
-            fontSize: "14px",
-            color: "var(--text-secondary)",
-          }}
-        >
-          <p
-            style={{
-              fontWeight: 600,
-              color: "var(--text-primary)",
-              marginBottom: "4px",
-            }}
-          >
-            {budget.categoryName}
+    <div className="section-stack-tight">
+      <form onSubmit={handleSubmit} className="app-form">
+        <div className="app-form-note">
+          <p>
+            <strong>{budget.categoryName}</strong>
           </p>
-          <p style={{ fontSize: "13px" }}>
+          <p className="mb-0 text-sm">
             {month} in {budget.currency}. Base budget{" "}
             {budget.budgetAmount.toFixed(2)}.
           </p>
         </div>
 
-        <div>
-          <label htmlFor={`${fieldPrefix}-amount`} style={getLabelStyle(true)}>
-            <span>Override amount</span>
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-amount`}>Override amount</label>
           <input
             id={`${fieldPrefix}-amount`}
-            style={inputStyle}
             type="number"
             step="0.01"
             min="0"
@@ -207,20 +150,18 @@ export default function BudgetOverrideForm({
                 amount: event.target.value,
               }))
             }
-            onFocus={handleFocus}
-            onBlur={handleBlur}
             required
           />
         </div>
 
-        <div>
-          <label htmlFor={`${fieldPrefix}-note`} style={getLabelStyle(false)}>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-note`} className="is-optional">
             <span>Note</span>
-            <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+            <span>Optional</span>
           </label>
           <textarea
             id={`${fieldPrefix}-note`}
-            style={{ ...inputStyle, minHeight: "80px", resize: "vertical" }}
+            className="min-h-24"
             value={form.note}
             onChange={(event) =>
               setForm((previous) => ({
@@ -228,45 +169,17 @@ export default function BudgetOverrideForm({
                 note: event.target.value,
               }))
             }
-            onFocus={handleFocus}
-            onBlur={handleBlur}
           />
         </div>
 
         {error ? (
-          <p
-            role="alert"
-            style={{
-              fontSize: "14px",
-              color: "var(--color-expense)",
-              background: "rgba(239, 68, 68, 0.1)",
-              padding: "12px",
-              borderRadius: "8px",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
-            }}
-          >
+          <p role="alert" className="app-form-error">
             {error}
           </p>
         ) : null}
 
-        <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            style={{
-              flex: 2,
-              background: "var(--text-primary)",
-              color: "var(--bg-app)",
-              padding: "12px 24px",
-              borderRadius: "8px",
-              fontWeight: 600,
-              fontSize: "15px",
-              border: "none",
-              cursor: isSubmitting ? "not-allowed" : "pointer",
-              opacity: isSubmitting ? 0.6 : 1,
-              transition: "opacity 0.2s",
-            }}
-          >
+        <div className="app-form-actions">
+          <button type="submit" disabled={isSubmitting} className="btn-primary">
             {isSubmitting
               ? "Saving..."
               : currentOverride
@@ -279,52 +192,14 @@ export default function BudgetOverrideForm({
               type="button"
               onClick={() => void handleClear()}
               disabled={isSubmitting}
-              style={{
-                flex: 1,
-                padding: "12px 24px",
-                borderRadius: "8px",
-                border: "1px solid var(--border-glass-strong)",
-                background: "transparent",
-                color: "var(--color-expense)",
-                fontWeight: 500,
-                fontSize: "15px",
-                cursor: "pointer",
-                transition: "background 0.2s",
-              }}
-              onMouseOver={(e) =>
-                (e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)")
-              }
-              onMouseOut={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
+              className="btn-secondary"
             >
               Clear
             </button>
           ) : null}
 
           {onCancel ? (
-            <button
-              type="button"
-              onClick={onCancel}
-              style={{
-                flex: 1,
-                padding: "12px 24px",
-                borderRadius: "8px",
-                border: "1px solid var(--border-glass-strong)",
-                background: "transparent",
-                color: "var(--text-secondary)",
-                fontWeight: 500,
-                fontSize: "15px",
-                cursor: "pointer",
-                transition: "background 0.2s",
-              }}
-              onMouseOver={(e) =>
-                (e.currentTarget.style.background = "var(--bg-card-hover)")
-              }
-              onMouseOut={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
-            >
+            <button type="button" onClick={onCancel} className="btn-secondary">
               Cancel
             </button>
           ) : null}
@@ -332,77 +207,28 @@ export default function BudgetOverrideForm({
       </form>
 
       {overrides.length > 0 ? (
-        <div
-          style={{
-            padding: "20px",
-            borderRadius: "24px",
-            background: "var(--bg-glass-card)",
-            border: "1px solid var(--border-glass-strong)",
-          }}
-        >
-          <h3
-            style={{
-              fontSize: "14px",
-              fontWeight: 600,
-              color: "var(--text-primary)",
-              marginBottom: "16px",
-            }}
-          >
-            Saved month overrides
-          </h3>
-          <ul
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-            }}
-          >
+        <div className="app-form-note">
+          <p>
+            <strong>Saved month overrides</strong>
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
             {overrides.map((override) => (
               <li
                 key={override.id}
-                style={{
-                  padding: "12px 16px",
-                  borderRadius: "12px",
-                  background: "var(--bg-card-hover)",
-                  border: "1px solid var(--border-glass-strong)",
-                }}
+                className={`detail-panel is-compact ${
+                  override.month === month ? "" : "surface-muted"
+                }`}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "var(--text-primary)",
-                    }}
-                  >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-[var(--text-primary)]">
                     {override.month}
                   </span>
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      color: "var(--text-primary)",
-                    }}
-                  >
+                  <span className="text-sm font-semibold text-[var(--text-primary)]">
                     {override.amount.toFixed(2)}
                   </span>
                 </div>
                 {override.note ? (
-                  <p
-                    style={{
-                      marginTop: "4px",
-                      fontSize: "12px",
-                      color: "var(--text-tertiary)",
-                      fontStyle: "italic",
-                    }}
-                  >
+                  <p className="mt-1 text-xs italic text-[var(--text-tertiary)]">
                     {override.note}
                   </p>
                 ) : null}

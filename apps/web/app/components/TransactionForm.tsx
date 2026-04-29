@@ -153,74 +153,27 @@ export default function TransactionForm({
     });
   }
 
-  const getLabelStyle = (required: boolean) => ({
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: "12px",
-    fontWeight: required ? 700 : 500,
-    color: required ? "var(--text-primary)" : "var(--text-tertiary)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
-    marginBottom: "8px",
-  });
-
-  const inputStyle = {
-    width: "100%",
-    background: "var(--bg-app)",
-    border: "1px solid var(--border-glass-strong)",
-    borderRadius: "8px",
-    padding: "10px 14px",
-    color: "var(--text-primary)",
-    fontSize: "15px",
-    outline: "none",
-    transition: "border-color 0.2s",
-    boxSizing: "border-box" as const,
-  };
-
-  const handleFocus = (
-    e: React.FocusEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
-  ) => (e.target.style.borderColor = "var(--text-secondary)");
-  const handleBlur = (
-    e: React.FocusEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
-  ) => (e.target.style.borderColor = "var(--border-glass-strong)");
-
   const isTransfer = form.kind === "TRANSFER";
   const isAdjustment = form.kind === "ADJUSTMENT";
 
   return (
     <form onSubmit={handleSubmit} className="app-form">
-      <div className="app-form-grid">
-        <div>
-          <label
-            htmlFor={`${fieldPrefix}-posted-at`}
-            style={getLabelStyle(true)}
-          >
-            <span>Posted at</span>
-          </label>
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-posted-at`}>Posted at</label>
           <input
             id={`${fieldPrefix}-posted-at`}
-            style={inputStyle}
             type="datetime-local"
             value={form.postedAt}
             onChange={(event) => updateField("postedAt", event.target.value)}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
             required
           />
         </div>
 
-        <div>
-          <label htmlFor={`${fieldPrefix}-kind`} style={getLabelStyle(true)}>
-            <span>Kind</span>
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-kind`}>Kind</label>
           <select
             id={`${fieldPrefix}-kind`}
-            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
             value={form.kind}
             disabled={!isCreateMode}
             onChange={(event) =>
@@ -229,8 +182,6 @@ export default function TransactionForm({
                 event.target.value as TransactionFormValues["kind"],
               )
             }
-            onFocus={handleFocus}
-            onBlur={handleBlur}
           >
             {TRANSACTION_KIND_OPTIONS.map((kind) => (
               <option key={kind} value={kind}>
@@ -241,39 +192,26 @@ export default function TransactionForm({
         </div>
       </div>
 
-      <div className="app-form-grid">
-        <div>
-          <label htmlFor={`${fieldPrefix}-amount`} style={getLabelStyle(true)}>
-            <span>Amount</span>
-          </label>
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-amount`}>Amount</label>
           <input
             id={`${fieldPrefix}-amount`}
-            style={inputStyle}
             type="number"
             step="0.01"
             value={form.amount}
             onChange={(event) => updateField("amount", event.target.value)}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
             required
           />
         </div>
 
         {!isTransfer ? (
-          <div>
-            <label
-              htmlFor={`${fieldPrefix}-account`}
-              style={getLabelStyle(true)}
-            >
-              <span>Account</span>
-            </label>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-account`}>Account</label>
             <select
               id={`${fieldPrefix}-account`}
-              style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
               value={form.accountId}
               onChange={(event) => updateField("accountId", event.target.value)}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
               required
             >
               <option value="">Select an account</option>
@@ -285,47 +223,24 @@ export default function TransactionForm({
             </select>
           </div>
         ) : (
-          <div
-            style={{
-              padding: "12px 16px",
-              borderRadius: "12px",
-              border: "1px solid rgba(59, 130, 246, 0.2)",
-              background: "rgba(59, 130, 246, 0.1)",
-              fontSize: "13px",
-              color: "var(--text-secondary)",
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
+          <div className="app-form-note">
             Transfers create one outflow row and one inflow row underneath.
           </div>
         )}
       </div>
 
       {isTransfer ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "16px",
-          }}
-        >
-          <div>
-            <label
-              htmlFor={`${fieldPrefix}-source-account`}
-              style={getLabelStyle(true)}
-            >
-              <span>Source account</span>
+        <div className="app-form-grid is-relaxed">
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-source-account`}>
+              Source account
             </label>
             <select
               id={`${fieldPrefix}-source-account`}
-              style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
               value={form.sourceAccountId}
               onChange={(event) =>
                 updateField("sourceAccountId", event.target.value)
               }
-              onFocus={handleFocus}
-              onBlur={handleBlur}
               required
             >
               <option value="">Select a source account</option>
@@ -337,22 +252,16 @@ export default function TransactionForm({
             </select>
           </div>
 
-          <div>
-            <label
-              htmlFor={`${fieldPrefix}-destination-account`}
-              style={getLabelStyle(true)}
-            >
-              <span>Destination account</span>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-destination-account`}>
+              Destination account
             </label>
             <select
               id={`${fieldPrefix}-destination-account`}
-              style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
               value={form.destinationAccountId}
               onChange={(event) =>
                 updateField("destinationAccountId", event.target.value)
               }
-              onFocus={handleFocus}
-              onBlur={handleBlur}
               required
             >
               <option value="">Select a destination account</option>
@@ -367,16 +276,10 @@ export default function TransactionForm({
       ) : null}
 
       {!isTransfer && isAdjustment ? (
-        <div>
-          <label
-            htmlFor={`${fieldPrefix}-direction`}
-            style={getLabelStyle(true)}
-          >
-            <span>Direction</span>
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-direction`}>Direction</label>
           <select
             id={`${fieldPrefix}-direction`}
-            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
             value={form.direction}
             onChange={(event) =>
               updateField(
@@ -384,8 +287,6 @@ export default function TransactionForm({
                 event.target.value as TransactionFormValues["direction"],
               )
             }
-            onFocus={handleFocus}
-            onBlur={handleBlur}
           >
             {TRANSACTION_DIRECTION_OPTIONS.map((direction) => (
               <option key={direction} value={direction}>
@@ -397,31 +298,22 @@ export default function TransactionForm({
       ) : null}
 
       {!isTransfer ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "16px",
-          }}
-        >
+        <div className="app-form-grid is-relaxed">
           {!isAdjustment ? (
-            <div>
+            <div className="app-form-field">
               <label
                 htmlFor={`${fieldPrefix}-category`}
-                style={getLabelStyle(false)}
+                className="is-optional"
               >
                 <span>Category</span>
-                <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+                <span>Optional</span>
               </label>
               <select
                 id={`${fieldPrefix}-category`}
-                style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
                 value={form.categoryId}
                 onChange={(event) =>
                   updateField("categoryId", event.target.value)
                 }
-                onFocus={handleFocus}
-                onBlur={handleBlur}
               >
                 <option value="">No category</option>
                 {visibleCategories.map((category) => (
@@ -431,76 +323,57 @@ export default function TransactionForm({
                 ))}
               </select>
               {!visibleCategories.length ? (
-                <p
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--text-tertiary)",
-                    marginTop: "4px",
-                  }}
-                >
+                <p className="text-xs text-[var(--text-tertiary)]">
                   No matching categories available.
                 </p>
               ) : null}
             </div>
           ) : null}
 
-          <div>
+          <div className="app-form-field">
             <label
               htmlFor={`${fieldPrefix}-counterparty`}
-              style={getLabelStyle(false)}
+              className="is-optional"
             >
               <span>Counterparty</span>
-              <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+              <span>Optional</span>
             </label>
             <input
               id={`${fieldPrefix}-counterparty`}
-              style={inputStyle}
               value={form.counterparty}
               onChange={(event) =>
                 updateField("counterparty", event.target.value)
               }
-              onFocus={handleFocus}
-              onBlur={handleBlur}
             />
           </div>
         </div>
       ) : null}
 
-      <div>
-        <label
-          htmlFor={`${fieldPrefix}-description`}
-          style={getLabelStyle(true)}
-        >
-          <span>Description</span>
-        </label>
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-description`}>Description</label>
         <input
           id={`${fieldPrefix}-description`}
-          style={inputStyle}
           value={form.description}
           onChange={(event) => updateField("description", event.target.value)}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
           required
         />
       </div>
 
-      <div>
-        <label htmlFor={`${fieldPrefix}-notes`} style={getLabelStyle(false)}>
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">
           <span>Notes</span>
-          <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+          <span>Optional</span>
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}
-          style={{ ...inputStyle, minHeight: "80px", resize: "vertical" }}
+          className="min-h-24"
           value={form.notes}
           onChange={(event) => updateField("notes", event.target.value)}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
         />
       </div>
 
       {editingTransaction?.kind === "TRANSFER" ? (
-        <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
+        <p className="text-xs text-[var(--text-tertiary)]">
           This transaction keeps its transfer identity. To convert it into a
           non-transfer entry, delete it and create a new one.
         </p>

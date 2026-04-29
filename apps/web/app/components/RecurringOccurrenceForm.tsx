@@ -143,40 +143,30 @@ export default function RecurringOccurrenceForm({
   const isAdjustment = form.kind === "ADJUSTMENT";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-month`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Month
-          </label>
+    <form onSubmit={handleSubmit} className="app-form">
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-month`}>Month</label>
           <input
             id={`${fieldPrefix}-month`}
-            className="rounded-lg border px-3 py-2"
             type="month"
             value={form.occurrenceMonth}
             readOnly
           />
         </div>
 
-        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+        <div className="app-form-note">
           {TRANSACTION_KIND_LABELS[form.kind]} override
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-posted-at-date`}
-            className="text-sm font-medium text-gray-600"
-          >
+      <div className="app-form-grid is-relaxed">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-posted-at-date`}>
             Occurrence date
           </label>
           <input
             id={`${fieldPrefix}-posted-at-date`}
-            className="rounded-lg border px-3 py-2"
             type="date"
             value={form.postedAtDate}
             onChange={(event) =>
@@ -186,16 +176,10 @@ export default function RecurringOccurrenceForm({
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-amount`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Amount
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-amount`}>Amount</label>
           <input
             id={`${fieldPrefix}-amount`}
-            className="rounded-lg border px-3 py-2"
             type="number"
             step="0.01"
             value={form.amount}
@@ -206,17 +190,13 @@ export default function RecurringOccurrenceForm({
       </div>
 
       {isTransfer ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-source-account`}
-              className="text-sm font-medium text-gray-600"
-            >
+        <div className="app-form-grid is-relaxed">
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-source-account`}>
               Source account
             </label>
             <select
               id={`${fieldPrefix}-source-account`}
-              className="rounded-lg border px-3 py-2"
               value={form.sourceAccountId}
               onChange={(event) =>
                 updateField("sourceAccountId", event.target.value)
@@ -232,16 +212,12 @@ export default function RecurringOccurrenceForm({
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-destination-account`}
-              className="text-sm font-medium text-gray-600"
-            >
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-destination-account`}>
               Destination account
             </label>
             <select
               id={`${fieldPrefix}-destination-account`}
-              className="rounded-lg border px-3 py-2"
               value={form.destinationAccountId}
               onChange={(event) =>
                 updateField("destinationAccountId", event.target.value)
@@ -258,17 +234,11 @@ export default function RecurringOccurrenceForm({
           </div>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-account`}
-              className="text-sm font-medium text-gray-600"
-            >
-              Account
-            </label>
+        <div className="app-form-grid is-relaxed">
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-account`}>Account</label>
             <select
               id={`${fieldPrefix}-account`}
-              className="rounded-lg border px-3 py-2"
               value={form.accountId}
               onChange={(event) => updateField("accountId", event.target.value)}
               required
@@ -282,16 +252,10 @@ export default function RecurringOccurrenceForm({
             </select>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label
-              htmlFor={`${fieldPrefix}-direction`}
-              className="text-sm font-medium text-gray-600"
-            >
-              Direction
-            </label>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-direction`}>Direction</label>
             <select
               id={`${fieldPrefix}-direction`}
-              className="rounded-lg border px-3 py-2"
               value={form.direction}
               disabled={form.kind === "EXPENSE" || form.kind === "INCOME"}
               onChange={(event) =>
@@ -313,16 +277,13 @@ export default function RecurringOccurrenceForm({
       )}
 
       {!isTransfer && !isAdjustment ? (
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={`${fieldPrefix}-category`}
-            className="text-sm font-medium text-gray-600"
-          >
-            Category
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-category`} className="is-optional">
+            <span>Category</span>
+            <span>Optional</span>
           </label>
           <select
             id={`${fieldPrefix}-category`}
-            className="rounded-lg border px-3 py-2"
             value={form.categoryId}
             onChange={(event) => updateField("categoryId", event.target.value)}
           >
@@ -337,16 +298,16 @@ export default function RecurringOccurrenceForm({
       ) : null}
 
       {!isTransfer ? (
-        <div className="flex flex-col gap-1">
+        <div className="app-form-field">
           <label
             htmlFor={`${fieldPrefix}-counterparty`}
-            className="text-sm font-medium text-gray-600"
+            className="is-optional"
           >
-            Counterparty
+            <span>Counterparty</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-counterparty`}
-            className="rounded-lg border px-3 py-2"
             value={form.counterparty}
             onChange={(event) =>
               updateField("counterparty", event.target.value)
@@ -356,62 +317,45 @@ export default function RecurringOccurrenceForm({
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-description`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Description
-        </label>
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-description`}>Description</label>
         <input
           id={`${fieldPrefix}-description`}
-          className="rounded-lg border px-3 py-2"
           value={form.description}
           onChange={(event) => updateField("description", event.target.value)}
           required
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor={`${fieldPrefix}-notes`}
-          className="text-sm font-medium text-gray-600"
-        >
-          Notes
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">
+          <span>Notes</span>
+          <span>Optional</span>
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}
-          className="min-h-28 rounded-lg border px-3 py-2"
+          className="min-h-28"
           value={form.notes}
           onChange={(event) => updateField("notes", event.target.value)}
-          placeholder="Optional"
         />
       </div>
 
       {error ? (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="app-form-error">
           {error}
         </p>
       ) : null}
 
-      <div className="flex items-center justify-end gap-3">
+      <div className="app-form-actions">
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
+          {isSubmitting ? "Saving..." : "Save override"}
+        </button>
+
         {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
         ) : null}
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isSubmitting ? "Saving..." : "Save override"}
-        </button>
       </div>
     </form>
   );

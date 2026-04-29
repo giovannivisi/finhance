@@ -200,62 +200,15 @@ export default function BudgetPlanForm({
     });
   }
 
-  const getLabelStyle = (required: boolean) => ({
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: "12px",
-    fontWeight: required ? 700 : 500,
-    color: required ? "var(--text-primary)" : "var(--text-tertiary)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
-    marginBottom: "8px",
-  });
-
-  const inputStyle = {
-    width: "100%",
-    background: "var(--bg-app)",
-    border: "1px solid var(--border-glass-strong)",
-    borderRadius: "8px",
-    padding: "10px 14px",
-    color: "var(--text-primary)",
-    fontSize: "15px",
-    outline: "none",
-    transition: "border-color 0.2s",
-    boxSizing: "border-box" as const,
-  };
-
-  const handleFocus = (
-    e: React.FocusEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
-  ) => (e.target.style.borderColor = "var(--text-secondary)");
-  const handleBlur = (
-    e: React.FocusEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >,
-  ) => (e.target.style.borderColor = "var(--border-glass-strong)");
-
   return (
-    <form
-      onSubmit={handleSubmit}
-      style={{ display: "flex", flexDirection: "column", gap: "16px" }}
-    >
+    <form onSubmit={handleSubmit} className="app-form">
       {isCreateMode ? (
-        <div>
-          <label
-            htmlFor={`${fieldPrefix}-category`}
-            style={getLabelStyle(true)}
-          >
-            <span>Expense category</span>
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-category`}>Expense category</label>
           <select
             id={`${fieldPrefix}-category`}
-            style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
             value={form.categoryId}
             onChange={(event) => updateField("categoryId", event.target.value)}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
             required
           >
             <option value="">Choose a category</option>
@@ -267,191 +220,112 @@ export default function BudgetPlanForm({
           </select>
         </div>
       ) : budget ? (
-        <div
-          style={{
-            padding: "16px",
-            borderRadius: "16px",
-            background: "var(--bg-card-hover)",
-            border: "1px solid var(--border-glass-strong)",
-            fontSize: "14px",
-            color: "var(--text-secondary)",
-          }}
-        >
-          <p
-            style={{
-              fontWeight: 600,
-              color: "var(--text-primary)",
-              marginBottom: "4px",
-            }}
-          >
-            {budget.categoryName}
+        <div className="app-form-note">
+          <p>
+            <strong>{budget.categoryName}</strong>
           </p>
-          <p style={{ fontSize: "13px" }}>
+          <p className="mb-0 text-sm">
             {budget.currency} budget, active from {budget.startMonth}
             {budget.endMonth ? ` through ${budget.endMonth}` : " onward"}.
           </p>
         </div>
       ) : null}
 
-      <div
-        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}
-      >
-        <div>
-          <label
-            htmlFor={`${fieldPrefix}-currency`}
-            style={getLabelStyle(true)}
-          >
-            <span>Currency</span>
-          </label>
+      <div className="app-form-grid">
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-currency`}>Currency</label>
           <input
             id={`${fieldPrefix}-currency`}
-            style={inputStyle}
             value={form.currency}
             onChange={(event) => updateField("currency", event.target.value)}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
             disabled={!isCreateMode}
             required
           />
         </div>
 
-        <div>
-          <label htmlFor={`${fieldPrefix}-amount`} style={getLabelStyle(true)}>
-            <span>Monthly budget</span>
-          </label>
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-amount`}>Monthly budget</label>
           <input
             id={`${fieldPrefix}-amount`}
-            style={inputStyle}
             type="number"
             step="0.01"
             min="0"
             value={form.amount}
             onChange={(event) => updateField("amount", event.target.value)}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
             required
           />
         </div>
       </div>
 
       {isCreateMode ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "16px",
-          }}
-        >
-          <div>
-            <label
-              htmlFor={`${fieldPrefix}-start-month`}
-              style={getLabelStyle(true)}
-            >
-              <span>Start month</span>
-            </label>
+        <div className="app-form-grid">
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-start-month`}>Start month</label>
             <input
               id={`${fieldPrefix}-start-month`}
-              style={inputStyle}
               type="month"
               value={form.startMonth}
               onChange={(event) =>
                 updateField("startMonth", event.target.value)
               }
-              onFocus={handleFocus}
-              onBlur={handleBlur}
               required
             />
           </div>
 
-          <div>
-            <label
-              htmlFor={`${fieldPrefix}-end-month`}
-              style={getLabelStyle(false)}
-            >
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-end-month`} className="is-optional">
               <span>End month</span>
-              <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+              <span>Optional</span>
             </label>
             <input
               id={`${fieldPrefix}-end-month`}
-              style={inputStyle}
               type="month"
               value={form.endMonth}
               onChange={(event) => updateField("endMonth", event.target.value)}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
             />
           </div>
         </div>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "16px",
-          }}
-        >
-          <div>
-            <label
-              htmlFor={`${fieldPrefix}-effective-month`}
-              style={getLabelStyle(true)}
-            >
-              <span>Apply from month</span>
+        <div className="app-form-grid">
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-effective-month`}>
+              Apply from month
             </label>
             <input
               id={`${fieldPrefix}-effective-month`}
-              style={inputStyle}
               type="month"
               value={form.effectiveMonth}
               onChange={(event) =>
                 updateField("effectiveMonth", event.target.value)
               }
-              onFocus={handleFocus}
-              onBlur={handleBlur}
               required
             />
           </div>
 
-          <div>
+          <div className="app-form-field">
             <label
               htmlFor={`${fieldPrefix}-edit-end-month`}
-              style={getLabelStyle(false)}
+              className="is-optional"
             >
               <span>End month</span>
-              <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+              <span>Optional</span>
             </label>
             <input
               id={`${fieldPrefix}-edit-end-month`}
-              style={inputStyle}
               type="month"
               value={form.endMonth}
               onChange={(event) => updateField("endMonth", event.target.value)}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
             />
           </div>
         </div>
       )}
 
       {quickFillSuggestions.length > 0 ? (
-        <div
-          style={{
-            padding: "16px",
-            borderRadius: "16px",
-            background: "var(--bg-card-hover)",
-            border: "1px solid var(--border-glass-strong)",
-          }}
-        >
-          <p
-            style={{
-              fontSize: "13px",
-              fontWeight: 600,
-              color: "var(--text-secondary)",
-              marginBottom: "12px",
-            }}
-          >
-            Quick-fill from recent spending
+        <div className="app-form-note">
+          <p>
+            <strong>Quick-fill from recent spending</strong>
           </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+          <div className="mt-3 flex flex-wrap gap-2">
             {quickFillSuggestions.map((suggestion) => (
               <button
                 key={suggestion.key}
@@ -459,23 +333,7 @@ export default function BudgetPlanForm({
                 onClick={() =>
                   updateField("amount", suggestion.amount.toFixed(2))
                 }
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border-glass-strong)",
-                  background: "var(--bg-app)",
-                  color: "var(--text-primary)",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  transition: "background 0.2s",
-                }}
-                onMouseOver={(e) =>
-                  (e.currentTarget.style.background = "var(--bg-card-hover)")
-                }
-                onMouseOut={(e) =>
-                  (e.currentTarget.style.background = "var(--bg-app)")
-                }
+                className="btn-secondary"
               >
                 {suggestion.label}: {suggestion.amount.toFixed(2)}
               </button>
@@ -485,39 +343,13 @@ export default function BudgetPlanForm({
       ) : null}
 
       {error ? (
-        <p
-          role="alert"
-          style={{
-            fontSize: "14px",
-            color: "var(--color-expense)",
-            background: "rgba(239, 68, 68, 0.1)",
-            padding: "12px",
-            borderRadius: "8px",
-            border: "1px solid rgba(239, 68, 68, 0.2)",
-          }}
-        >
+        <p role="alert" className="app-form-error">
           {error}
         </p>
       ) : null}
 
-      <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          style={{
-            flex: 2,
-            background: "var(--text-primary)",
-            color: "var(--bg-app)",
-            padding: "12px 24px",
-            borderRadius: "8px",
-            fontWeight: 600,
-            fontSize: "15px",
-            border: "none",
-            cursor: isSubmitting ? "not-allowed" : "pointer",
-            opacity: isSubmitting ? 0.6 : 1,
-            transition: "opacity 0.2s",
-          }}
-        >
+      <div className="app-form-actions">
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting
             ? "Saving..."
             : isCreateMode
@@ -526,28 +358,7 @@ export default function BudgetPlanForm({
         </button>
 
         {onCancel ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              flex: 1,
-              padding: "12px 24px",
-              borderRadius: "8px",
-              border: "1px solid var(--border-glass-strong)",
-              background: "transparent",
-              color: "var(--text-secondary)",
-              fontWeight: 500,
-              fontSize: "15px",
-              cursor: "pointer",
-              transition: "background 0.2s",
-            }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.background = "var(--bg-card-hover)")
-            }
-            onMouseOut={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary">
             Cancel
           </button>
         ) : null}

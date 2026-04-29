@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CategoryResponse } from "@finhance/shared";
 import CategoryForm from "@components/CategoryForm";
+import Modal from "@components/Modal";
 import {
   categoryToFormValues,
   createEmptyCategoryFormValues,
@@ -21,6 +22,7 @@ export default function CategoriesPageClient({
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(
     null,
   );
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingArchiveCategoryId, setPendingArchiveCategoryId] = useState<
@@ -130,8 +132,8 @@ export default function CategoriesPageClient({
   }
 
   return (
-    <div className="page-split">
-      <section className="space-y-4">
+    <div className="page-shell is-relaxed">
+      <section className="route-stack-desktop-xl">
         <div className="page-hero">
           <div className="page-hero-row">
             <div className="page-hero-copy">
@@ -155,7 +157,10 @@ export default function CategoriesPageClient({
 
               <button
                 type="button"
-                onClick={() => setEditingCategoryId(null)}
+                onClick={() => {
+                  setEditingCategoryId(null);
+                  setIsCreateModalOpen(true);
+                }}
                 className="btn-primary"
               >
                 New category
@@ -175,11 +180,11 @@ export default function CategoriesPageClient({
             No categories yet.
           </div>
         ) : (
-          <div className="list-stack">
+          <div className="list-stack is-loose">
             {visibleCategories.map((category) => (
-              <article key={category.id} className="list-card">
+              <article key={category.id} className="list-card is-roomy">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-1">
+                  <div className="section-stack-tight">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-lg font-semibold text-[var(--text-primary)]">
                         {category.name}
@@ -259,32 +264,50 @@ export default function CategoriesPageClient({
         )}
       </section>
 
-      <aside className="page-form-card">
-        <h2 className="text-xl font-semibold text-gray-900">
-          {editingCategory ? "Edit category" : "Create category"}
-        </h2>
-        <p className="mt-1 text-sm text-gray-500">
-          {editingCategory
-            ? "Update category naming or ordering."
-            : "Add a new income or expense category."}
+      <Modal
+        open={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Create category"
+        maxWidth={560}
+      >
+        <p className="section-subtitle">
+          Add a new income or expense category.
         </p>
-
         <div className="mt-6">
           <CategoryForm
-            mode={editingCategory ? "edit" : "create"}
-            categoryId={editingCategory?.id}
-            initialValues={
-              editingCategory
-                ? categoryToFormValues(editingCategory)
-                : createEmptyCategoryFormValues()
-            }
-            onSuccess={() => setEditingCategoryId(null)}
-            onCancel={
-              editingCategory ? () => setEditingCategoryId(null) : undefined
-            }
+            mode="create"
+            initialValues={createEmptyCategoryFormValues()}
+            onSuccess={() => setIsCreateModalOpen(false)}
+            onCancel={() => setIsCreateModalOpen(false)}
           />
         </div>
-      </aside>
+      </Modal>
+
+      <Modal
+        open={editingCategory !== null}
+        onClose={() => setEditingCategoryId(null)}
+        title={
+          editingCategory ? `Edit ${editingCategory.name}` : "Edit category"
+        }
+        maxWidth={560}
+      >
+        {editingCategory ? (
+          <>
+            <p className="section-subtitle">
+              Update category naming or ordering.
+            </p>
+            <div className="mt-6">
+              <CategoryForm
+                mode="edit"
+                categoryId={editingCategory.id}
+                initialValues={categoryToFormValues(editingCategory)}
+                onSuccess={() => setEditingCategoryId(null)}
+                onCancel={() => setEditingCategoryId(null)}
+              />
+            </div>
+          </>
+        ) : null}
+      </Modal>
     </div>
   );
 }

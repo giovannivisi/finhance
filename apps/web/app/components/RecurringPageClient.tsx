@@ -10,6 +10,7 @@ import type {
   RecurringTransactionRuleResponse,
 } from "@finhance/shared";
 import CooldownNotice from "@components/CooldownNotice";
+import Modal from "@components/Modal";
 import RecurringOccurrenceForm from "@components/RecurringOccurrenceForm";
 import RecurringRuleForm from "@components/RecurringRuleForm";
 import { createRecurringOccurrenceFormValuesFromRule } from "@lib/recurring-occurrence-form";
@@ -41,6 +42,7 @@ export default function RecurringPageClient({
 }) {
   const router = useRouter();
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [occurrenceRuleId, setOccurrenceRuleId] = useState<string | null>(null);
   const [occurrenceMonth, setOccurrenceMonth] = useState<string>(
     MONTH_FORMATTER.format(new Date()),
@@ -268,8 +270,8 @@ export default function RecurringPageClient({
   }
 
   return (
-    <div className="page-split">
-      <section className="space-y-4">
+    <div className="page-shell is-relaxed">
+      <section className="route-stack-desktop-xl">
         <div className="page-hero">
           <div className="page-hero-row">
             <div className="page-hero-copy">
@@ -284,10 +286,11 @@ export default function RecurringPageClient({
               <button
                 type="button"
                 onClick={() => {
+                  setIsCreateModalOpen(true);
                   setOccurrenceRuleId(null);
                   setEditingRuleId(null);
                 }}
-                className="btn-secondary"
+                className="btn-primary"
               >
                 New rule
               </button>
@@ -329,45 +332,45 @@ export default function RecurringPageClient({
             No recurring rules yet.
           </div>
         ) : (
-          <div className="list-stack">
+          <div className="list-stack is-loose">
             {rules.map((rule) => (
-              <article key={rule.id} className="list-card">
+              <article key={rule.id} className="list-card is-roomy">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-1">
+                  <div className="section-stack-tight">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
+                      <h3 className="text-lg font-semibold text-[var(--text-primary)]">
                         {rule.name}
                       </h3>
-                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+                      <span className="status-chip is-neutral">
                         {TRANSACTION_KIND_LABELS[rule.kind]}
                       </span>
                       <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                          rule.isActive
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-amber-100 text-amber-800"
-                        }`}
+                        className={`status-chip ${rule.isActive ? "is-success" : "is-warning"}`}
                       >
                         {rule.isActive ? "Active" : "Inactive"}
                       </span>
                     </div>
 
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-[var(--text-secondary)]">
                       Every month on day {rule.dayOfMonth}
                       {rule.endDate
                         ? ` · ${rule.startDate} to ${rule.endDate}`
                         : ` · from ${rule.startDate}`}
                     </p>
 
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-[var(--text-secondary)]">
                       {describeRule(rule)} ·{" "}
                       {formatCurrency(rule.amount, ruleCurrency(rule))}
                     </p>
 
-                    <p className="text-sm text-gray-500">{rule.description}</p>
+                    {rule.description ? (
+                      <p className="text-sm text-[var(--text-tertiary)]">
+                        {rule.description}
+                      </p>
+                    ) : null}
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
                       onClick={() => {
@@ -399,11 +402,11 @@ export default function RecurringPageClient({
                 </div>
 
                 {rule.lastMaterializationError ? (
-                  <div className="mt-4 rounded-2xl border px-4 py-3 text-sm surface-danger">
+                  <div className="mt-4 page-inline-notice surface-danger">
                     <p className="font-medium">Last materialization error</p>
                     <p className="mt-1">{rule.lastMaterializationError}</p>
                     {rule.lastMaterializationErrorAt ? (
-                      <p className="mt-1 text-xs text-red-600">
+                      <p className="mt-1 text-xs text-[var(--text-secondary)]">
                         {new Date(
                           rule.lastMaterializationErrorAt,
                         ).toLocaleString("it-IT")}
@@ -417,32 +420,77 @@ export default function RecurringPageClient({
         )}
       </section>
 
-      <aside className="page-form-card">
-        <h2 className="text-xl font-semibold text-gray-900">
-          {occurrenceRule
-            ? `Occurrence exceptions · ${occurrenceRule.name}`
-            : editingRule
-              ? "Edit recurring rule"
-              : "Create recurring rule"}
-        </h2>
-        <p className="mt-1 text-sm text-gray-500">
-          {occurrenceRule
-            ? "Skip one month or save a linked override without detaching it from the rule."
-            : editingRule
-              ? "Update cadence, accounts, or the active state."
-              : "Define a monthly transaction or transfer that can materialize due rows."}
+      <Modal
+        open={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Create recurring rule"
+        maxWidth={720}
+      >
+        <p className="section-subtitle">
+          Define a monthly transaction or transfer that can materialize due
+          rows.
         </p>
-
         <div className="mt-6">
-          {occurrenceRule ? (
-            <div className="space-y-5">
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-gray-600">
-                    Month
-                  </label>
+          <RecurringRuleForm
+            mode="create"
+            accounts={accounts}
+            categories={categories}
+            initialValues={createEmptyRecurringRuleFormValues()}
+            onSuccess={() => setIsCreateModalOpen(false)}
+            onCancel={() => setIsCreateModalOpen(false)}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        open={editingRule !== null}
+        onClose={() => setEditingRuleId(null)}
+        title={editingRule ? `Edit ${editingRule.name}` : "Edit recurring rule"}
+        maxWidth={720}
+      >
+        {editingRule ? (
+          <>
+            <p className="section-subtitle">
+              Update cadence, accounts, or the active state.
+            </p>
+            <div className="mt-6">
+              <RecurringRuleForm
+                mode="edit"
+                ruleId={editingRule.id}
+                accounts={accounts}
+                categories={categories}
+                initialValues={recurringRuleToFormValues(editingRule)}
+                onSuccess={() => setEditingRuleId(null)}
+                onCancel={() => setEditingRuleId(null)}
+              />
+            </div>
+          </>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={occurrenceRule !== null}
+        onClose={() => setOccurrenceRuleId(null)}
+        title={
+          occurrenceRule
+            ? `Occurrence exceptions · ${occurrenceRule.name}`
+            : "Occurrence exceptions"
+        }
+        maxWidth={860}
+      >
+        {occurrenceRule ? (
+          <div className="section-stack-relaxed">
+            <p className="section-subtitle">
+              Skip one month or save a linked override without detaching it from
+              the rule.
+            </p>
+
+            <div className="page-section section-stack-relaxed">
+              <div className="compact-toolbar">
+                <div className="app-form-field">
+                  <label htmlFor="occurrence-month">Month</label>
                   <input
-                    className="rounded-lg border px-3 py-2"
+                    id="occurrence-month"
                     type="month"
                     min={occurrenceRule.startDate.slice(0, 7)}
                     max={occurrenceRule.endDate?.slice(0, 7)}
@@ -450,50 +498,52 @@ export default function RecurringPageClient({
                     onChange={(event) => setOccurrenceMonth(event.target.value)}
                   />
                 </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void handleSkipOccurrence(
-                      occurrenceRule.id,
-                      occurrenceMonth,
-                    )
-                  }
-                  disabled={
-                    !ruleAppliesToMonth(occurrenceRule, occurrenceMonth) ||
-                    busyOccurrenceKey ===
-                      `${occurrenceRule.id}:${occurrenceMonth}:skip`
-                  }
-                  className="self-end rounded-lg border border-amber-200 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {busyOccurrenceKey ===
-                  `${occurrenceRule.id}:${occurrenceMonth}:skip`
-                    ? "Skipping..."
-                    : "Skip month"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void handleClearOccurrence(
-                      occurrenceRule.id,
-                      occurrenceMonth,
-                    )
-                  }
-                  disabled={
-                    !selectedOccurrence ||
-                    busyOccurrenceKey ===
-                      `${occurrenceRule.id}:${occurrenceMonth}:clear`
-                  }
-                  className="self-end rounded-lg border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {busyOccurrenceKey ===
-                  `${occurrenceRule.id}:${occurrenceMonth}:clear`
-                    ? "Clearing..."
-                    : "Use rule defaults"}
-                </button>
+                <div className="compact-toolbar-actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void handleSkipOccurrence(
+                        occurrenceRule.id,
+                        occurrenceMonth,
+                      )
+                    }
+                    disabled={
+                      !ruleAppliesToMonth(occurrenceRule, occurrenceMonth) ||
+                      busyOccurrenceKey ===
+                        `${occurrenceRule.id}:${occurrenceMonth}:skip`
+                    }
+                    className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {busyOccurrenceKey ===
+                    `${occurrenceRule.id}:${occurrenceMonth}:skip`
+                      ? "Skipping..."
+                      : "Skip month"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void handleClearOccurrence(
+                        occurrenceRule.id,
+                        occurrenceMonth,
+                      )
+                    }
+                    disabled={
+                      !selectedOccurrence ||
+                      busyOccurrenceKey ===
+                        `${occurrenceRule.id}:${occurrenceMonth}:clear`
+                    }
+                    className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {busyOccurrenceKey ===
+                    `${occurrenceRule.id}:${occurrenceMonth}:clear`
+                      ? "Clearing..."
+                      : "Use rule defaults"}
+                  </button>
+                </div>
               </div>
 
               {!ruleAppliesToMonth(occurrenceRule, occurrenceMonth) ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <div className="page-inline-notice surface-warning">
                   This rule does not apply to {occurrenceMonth}. Pick a month
                   inside the rule schedule.
                 </div>
@@ -513,75 +563,61 @@ export default function RecurringPageClient({
                   onCancel={() => setOccurrenceRuleId(null)}
                 />
               )}
+            </div>
 
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">
-                  Exception history
-                </h3>
-                {isLoadingOccurrences ? (
-                  <p className="mt-2 text-sm text-gray-500">Loading...</p>
-                ) : occurrences.length === 0 ? (
-                  <p className="mt-2 text-sm text-gray-500">
-                    No saved exceptions for this rule yet.
-                  </p>
-                ) : (
-                  <div className="mt-2 space-y-2">
-                    {occurrences.map((occurrence) => (
-                      <button
-                        key={`${occurrence.recurringRuleId}:${occurrence.occurrenceMonth}`}
-                        type="button"
-                        onClick={() =>
-                          setOccurrenceMonth(occurrence.occurrenceMonth)
-                        }
-                        className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm ${
-                          occurrence.occurrenceMonth === occurrenceMonth
-                            ? "bg-blue-50 text-blue-950 ring-1 ring-blue-200"
-                            : "bg-gray-50 text-gray-700"
+            <div className="page-section section-stack-tight">
+              <h3 className="section-title">Exception history</h3>
+              {isLoadingOccurrences ? (
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Loading...
+                </p>
+              ) : occurrences.length === 0 ? (
+                <p className="text-sm text-[var(--text-secondary)]">
+                  No saved exceptions for this rule yet.
+                </p>
+              ) : (
+                <div className="list-stack is-relaxed">
+                  {occurrences.map((occurrence) => (
+                    <button
+                      key={`${occurrence.recurringRuleId}:${occurrence.occurrenceMonth}`}
+                      type="button"
+                      onClick={() =>
+                        setOccurrenceMonth(occurrence.occurrenceMonth)
+                      }
+                      className={`detail-panel is-roomy flex w-full items-center justify-between gap-3 text-left ${
+                        occurrence.occurrenceMonth === occurrenceMonth
+                          ? "surface-info"
+                          : "surface-muted"
+                      }`}
+                    >
+                      <div>
+                        <p className="font-medium text-[var(--text-primary)]">
+                          {occurrence.occurrenceMonth}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                          {occurrence.status === "SKIPPED"
+                            ? "Skipped occurrence"
+                            : (occurrence.description ??
+                              "Overridden occurrence")}
+                        </p>
+                      </div>
+                      <span
+                        className={`status-chip ${
+                          occurrence.status === "SKIPPED"
+                            ? "is-warning"
+                            : "is-info"
                         }`}
                       >
-                        <div>
-                          <p className="font-medium">
-                            {occurrence.occurrenceMonth}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {occurrence.status === "SKIPPED"
-                              ? "Skipped occurrence"
-                              : (occurrence.description ??
-                                "Overridden occurrence")}
-                          </p>
-                        </div>
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                            occurrence.status === "SKIPPED"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-blue-100 text-blue-800"
-                          }`}
-                        >
-                          {occurrence.status}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                        {occurrence.status}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          ) : (
-            <RecurringRuleForm
-              mode={editingRule ? "edit" : "create"}
-              ruleId={editingRule?.id}
-              accounts={accounts}
-              categories={categories}
-              initialValues={
-                editingRule
-                  ? recurringRuleToFormValues(editingRule)
-                  : createEmptyRecurringRuleFormValues()
-              }
-              onSuccess={() => setEditingRuleId(null)}
-              onCancel={editingRule ? () => setEditingRuleId(null) : undefined}
-            />
-          )}
-        </div>
-      </aside>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

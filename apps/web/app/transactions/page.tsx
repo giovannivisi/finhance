@@ -5,8 +5,6 @@ import type {
   TransactionResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
-
-import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import TransactionsPageClient from "@components/TransactionsPageClient";
 import { api } from "@lib/api";
 
@@ -120,31 +118,13 @@ export default async function TransactionsPage({
             </div>
           </section>
         ) : (
-          <div className="space-y-6">
-            <section className="page-inline-notice surface-info">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                    Recurring sync
-                  </h2>
-                  <p className="mt-1 text-sm">
-                    This page no longer creates transactions during render. Sync
-                    due transactions when you want the ledger and cashflow below
-                    to include any missing recurring entries.
-                  </p>
-                </div>
-                <RecurringMaterializeButton />
-              </div>
-            </section>
-
-            <TransactionsPageClient
-              transactions={transactions}
-              cashflow={cashflow}
-              accounts={accounts}
-              categories={categories}
-              initialFilters={filters}
-            />
-          </div>
+          <TransactionsPageClient
+            transactions={transactions}
+            cashflow={cashflow}
+            accounts={accounts}
+            categories={categories}
+            initialFilters={filters}
+          />
         )}
       </Container>
     </>

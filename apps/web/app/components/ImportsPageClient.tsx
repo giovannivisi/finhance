@@ -214,8 +214,35 @@ export default function ImportsPageClient({
           merges safely, and carry definitions like recurring rules and budgets
           without losing the monthly workflow.
         </p>
+      </section>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <section className="page-section section-stack-tight">
+        <div className="compact-toolbar">
+          <div>
+            <h2 className="section-title">Templates and round-trip export</h2>
+            <p className="section-subtitle">
+              Download the CSV schema, or export the full package before
+              previewing inbound files.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={isExporting}
+            className="btn-secondary"
+          >
+            {isExporting ? "Exporting..." : "Export ZIP"}
+          </button>
+        </div>
+
+        {exportError ? (
+          <p role="alert" className="page-inline-notice surface-danger">
+            {exportError}
+          </p>
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-2">
           <div className="page-inline-notice surface-info">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-800">
               What apply does
@@ -253,62 +280,40 @@ export default function ImportsPageClient({
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {TEMPLATE_LINKS.map((template) => (
             <a
               key={template.file}
               href={template.href}
               download
-              className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              className="list-card is-compact text-sm font-medium text-[var(--text-primary)] transition hover:bg-[var(--bg-card-hover)]"
             >
               Download {template.file}.csv
             </a>
           ))}
         </div>
+      </section>
 
-        <div className="mt-6 page-inline-notice">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
-                Export ZIP
-              </h2>
-              <p className="mt-1 text-sm text-gray-500">
-                Download the full round-trip package, including opening
-                balances, recurring rules and exceptions, and budget plans.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleExport()}
-              disabled={isExporting}
-              className="btn-secondary"
-            >
-              {isExporting ? "Exporting..." : "Export ZIP"}
-            </button>
-          </div>
-
-          {exportError ? (
-            <p role="alert" className="mt-3 text-sm text-red-600">
-              {exportError}
-            </p>
-          ) : null}
+      <section className="page-section section-stack-tight">
+        <div>
+          <h2 className="section-title">Preview inbound files</h2>
+          <p className="section-subtitle">
+            Choose only the CSVs you want to merge. Preview first, then apply
+            from the result below.
+          </p>
         </div>
 
-        <form
-          onSubmit={handlePreview}
-          className="mt-8 grid gap-6 lg:grid-cols-2"
-        >
+        <form onSubmit={handlePreview} className="grid gap-6 lg:grid-cols-2">
           {TEMPLATE_LINKS.map((template) => (
-            <label key={template.file} className="flex flex-col gap-2">
-              <span className="text-sm font-medium text-gray-700">
+            <label key={template.file} className="app-form-field">
+              <span className="text-sm font-medium text-[var(--text-primary)]">
                 {template.file}.csv
               </span>
               <input
                 type="file"
                 accept=".csv,text/csv"
                 onChange={(event) => updateFileSelection(template.file, event)}
-                className="rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                className="text-sm"
               />
             </label>
           ))}
