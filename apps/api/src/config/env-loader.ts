@@ -2,9 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const CANDIDATE_ENV_PATHS = [
-  resolve(process.cwd(), '.env'),
-  resolve(process.cwd(), 'apps/api/.env'),
   resolve(__dirname, '../../.env'),
+  resolve(__dirname, '../.env'),
 ];
 
 function parseEnvLine(line: string): [string, string] | null {
@@ -33,28 +32,42 @@ function parseEnvLine(line: string): [string, string] | null {
   return [key, value];
 }
 
-export function loadApiEnv(): void {
-  for (const envPath of CANDIDATE_ENV_PATHS) {
+export function getApiEnvPath(
+  candidatePaths: readonly string[] = CANDIDATE_ENV_PATHS,
+): string | null {
+  for (const envPath of candidatePaths) {
     if (!existsSync(envPath)) {
       continue;
     }
 
-    const contents = readFileSync(envPath, 'utf8');
+    return envPath;
+  }
 
-    for (const line of contents.split(/\r?\n/)) {
-      const parsed = parseEnvLine(line);
+  return null;
+}
 
-      if (!parsed) {
-        continue;
-      }
+export function loadApiEnv(
+  candidatePaths: readonly string[] = CANDIDATE_ENV_PATHS,
+): void {
+  const envPath = getApiEnvPath(candidatePaths);
 
-      const [key, value] = parsed;
+  if (!envPath) {
+    return;
+  }
 
-      if (process.env[key] === undefined) {
-        process.env[key] = value;
-      }
+  const contents = readFileSync(envPath, 'utf8');
+
+  for (const line of contents.split(/\r?\n/)) {
+    const parsed = parseEnvLine(line);
+
+    if (!parsed) {
+      continue;
     }
 
-    return;
+    const [key, value] = parsed;
+
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
   }
 }
