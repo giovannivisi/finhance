@@ -2707,7 +2707,6 @@ html[data-theme="dark"] .text-red-800 {
   );
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -3153,4 +3152,19 @@ html[data-theme="dark"] .text-red-800 {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+html,
+body,
+*,
+.custom-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  display: none;
 }
