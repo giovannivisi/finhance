@@ -88,6 +88,16 @@ FINHANCE_PRIVACY_SUPERVISORY_AUTHORITY_NAME="Garante per la protezione dei dati 
 FINHANCE_PRIVACY_SUPERVISORY_AUTHORITY_URL=https://www.garanteprivacy.it/
 ```
 
+For managed or mixed deployments, the controller contact and rights contact
+must each expose at least one reachable contact channel:
+
+- `*_EMAIL`
+- `*_WEBSITE`
+- `*_POSTAL_ADDRESS`
+
+`*_INSTRUCTIONS` is supplemental routing text and does not count as the only
+contact route by itself.
+
 ### Structured JSON fields
 
 `FINHANCE_PRIVACY_LEGAL_BASES_JSON` must be a JSON object with one entry for

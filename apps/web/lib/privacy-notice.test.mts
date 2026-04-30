@@ -68,6 +68,7 @@ test("resolvePrivacyNoticeConfig provides local defaults for self-hosted mode", 
   assert.equal(config.isUsingDefaultLocalNotice, true);
   assert.match(config.importSummary.retention, /15 minutes/i);
   assert.match(config.importSummary.recipients, /loopback browser origins/i);
+  assert.match(config.importSummary.recipients, /Yahoo Finance/i);
   assert.ok(
     config.processors.some((processor) =>
       processor.name.includes("Yahoo Finance"),
@@ -101,6 +102,8 @@ test("resolvePrivacyNoticeConfig accepts mixed-deployment overrides", () => {
       (transfer) => transfer.destination === "United States",
     ),
   );
+  assert.match(config.importSummary.recipients, /Neon/i);
+  assert.match(config.importSummary.recipients, /United States/i);
   assert.equal(config.isUsingDefaultLocalNotice, false);
 });
 
@@ -111,6 +114,17 @@ test("resolvePrivacyNoticeConfig rejects managed or mixed mode when required ope
         FINHANCE_PRIVACY_DEPLOYMENT_MODE: "managed",
       }),
     /FINHANCE_PRIVACY_CONTROLLER_NAME/,
+  );
+});
+
+test("resolvePrivacyNoticeConfig rejects managed or mixed mode when rights contact has no reachable channel", () => {
+  assert.throws(
+    () =>
+      resolvePrivacyNoticeConfig({
+        ...COMPLETE_ENV,
+        FINHANCE_PRIVACY_RIGHTS_EMAIL: undefined,
+      }),
+    /FINHANCE_PRIVACY_RIGHTS/,
   );
 });
 
@@ -187,4 +201,22 @@ test("resolvePrivacyNoticeConfig applies retention overrides while preserving co
     "Configured override for hosted deployments.",
   );
   assert.match(requestSafety?.retention ?? "", /24 hours/i);
+});
+
+test("resolvePrivacyNoticeConfig includes postal and routing instructions in the rights summary", () => {
+  const config = resolvePrivacyNoticeConfig({
+    ...COMPLETE_ENV,
+    FINHANCE_PRIVACY_RIGHTS_EMAIL: undefined,
+    FINHANCE_PRIVACY_RIGHTS_WEBSITE: "https://example.com/privacy-requests",
+    FINHANCE_PRIVACY_RIGHTS_POSTAL_ADDRESS: "Via Example 1, Rome",
+    FINHANCE_PRIVACY_RIGHTS_INSTRUCTIONS:
+      "Include the workspace name in your request.",
+  });
+
+  assert.match(
+    config.importSummary.rights,
+    /https:\/\/example\.com\/privacy-requests/i,
+  );
+  assert.match(config.importSummary.rights, /Via Example 1, Rome/i);
+  assert.match(config.importSummary.rights, /Include the workspace name/i);
 });

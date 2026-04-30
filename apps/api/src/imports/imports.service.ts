@@ -4,8 +4,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  OnModuleDestroy,
-  OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -130,7 +128,6 @@ interface BudgetImportRef {
 const CSV_IMPORT_SOURCE = ImportSource.CSV_TEMPLATE;
 const RECENT_BATCH_LIMIT = 20;
 const IMPORT_PREVIEW_TTL_MS = 15 * 60 * 1000;
-const IMPORT_PREVIEW_CLEANUP_INTERVAL_MS = 60 * 1000;
 const MAX_UPLOAD_FILE_BYTES = 1024 * 1024;
 const MAX_IMPORT_KEY_LENGTH = 128;
 const MAX_NAME_LENGTH = 120;
@@ -170,32 +167,15 @@ const CRC32_TABLE = buildCrc32Table();
 type CsvRecord = Record<string, string>;
 
 @Injectable()
-export class ImportsService implements OnModuleInit, OnModuleDestroy {
+export class ImportsService {
   private readonly logger = new Logger(ImportsService.name);
   private readonly previewPayloads = new Map<string, StoredPreviewPayload>();
-  private persistedPreviewCleanupTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricesService: PricesService,
     private readonly recurringService: RecurringService,
   ) {}
-
-  async onModuleInit(): Promise<void> {
-    await this.cleanupExpiredPersistedPreviewPayloadsSafely();
-
-    this.persistedPreviewCleanupTimer = setInterval(() => {
-      void this.cleanupExpiredPersistedPreviewPayloadsSafely();
-    }, IMPORT_PREVIEW_CLEANUP_INTERVAL_MS);
-    this.persistedPreviewCleanupTimer.unref?.();
-  }
-
-  onModuleDestroy(): void {
-    if (this.persistedPreviewCleanupTimer) {
-      clearInterval(this.persistedPreviewCleanupTimer);
-      this.persistedPreviewCleanupTimer = null;
-    }
-  }
 
   async listRecent(ownerId: string): Promise<ImportBatchResponse[]> {
     await this.clearExpiredPersistedPreviewPayloads(ownerId);
@@ -5428,16 +5408,6 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
         payloadJson: Prisma.DbNull,
       },
     });
-  }
-
-  private async cleanupExpiredPersistedPreviewPayloadsSafely(): Promise<void> {
-    try {
-      await this.clearExpiredPersistedPreviewPayloads();
-    } catch (error) {
-      this.logger.warn(
-        `Import preview cleanup failed: ${this.describeError(error)}`,
-      );
-    }
   }
 
   private toImportBatchResponse(batch: ImportBatch): ImportBatchResponse {

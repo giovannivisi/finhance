@@ -497,6 +497,22 @@ function createContact(
   };
 }
 
+function hasReachableContactChannel(contact: PrivacyContact): boolean {
+  return Boolean(contact.email || contact.website || contact.postalAddress);
+}
+
+function assertReachableContactChannel(
+  contact: PrivacyContact,
+  prefix: string,
+  deploymentMode: PrivacyDeploymentMode,
+): void {
+  if (deploymentMode !== "local" && !hasReachableContactChannel(contact)) {
+    throw new Error(
+      `${prefix} must include at least one reachable contact channel: ${prefix}_EMAIL, ${prefix}_WEBSITE, or ${prefix}_POSTAL_ADDRESS.`,
+    );
+  }
+}
+
 function parseLegalBases(
   env: EnvSource,
   deploymentMode: PrivacyDeploymentMode,
@@ -696,16 +712,64 @@ function parseRetention(env: EnvSource): PrivacyRetentionEntry[] {
   });
 }
 
+function joinList(values: string[]): string {
+  if (values.length <= 1) {
+    return values[0] ?? "";
+  }
+
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
+  }
+
+  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
+}
+
 function formatRightsLine(contact: PrivacyContact): string {
+  const channels: string[] = [];
+
   if (contact.email) {
-    return `To exercise your rights, contact ${contact.name} at ${contact.email}.`;
+    channels.push(`by email at ${contact.email}`);
   }
 
   if (contact.website) {
-    return `To exercise your rights, contact ${contact.name} using ${contact.website}.`;
+    channels.push(`using ${contact.website}`);
   }
 
-  return `To exercise your rights, contact ${contact.name}.`;
+  if (contact.postalAddress) {
+    channels.push(`by post at ${contact.postalAddress}`);
+  }
+
+  const base =
+    channels.length > 0
+      ? `To exercise your rights, contact ${contact.name} ${joinList(channels)}.`
+      : `To exercise your rights, contact ${contact.name}.`;
+
+  if (!contact.instructions) {
+    return base;
+  }
+
+  return `${base} ${contact.instructions}`;
+}
+
+function formatImportRecipientsSummary(input: {
+  controllerName: string;
+  processors: PrivacyProcessor[];
+  transfers: PrivacyTransfer[];
+}): string {
+  const processorNames = input.processors.map((processor) => processor.name);
+  const processorSummary =
+    processorNames.length > 0
+      ? `and the processors configured for this deployment, including ${joinList(processorNames)}`
+      : "and the backing infrastructure configured for this deployment";
+  const transferDestinations = Array.from(
+    new Set(input.transfers.map((transfer) => transfer.destination)),
+  );
+  const transferSummary =
+    transferDestinations.length > 0
+      ? ` International transfers listed for this deployment include ${joinList(transferDestinations)}.`
+      : "";
+
+  return `Import files are handled by ${input.controllerName} ${processorSummary}.${transferSummary} The current import endpoints also reject non-loopback browser origins while authentication is disabled.`;
 }
 
 export function resolvePrivacyNoticeConfig(
@@ -738,6 +802,16 @@ export function resolvePrivacyNoticeConfig(
       : undefined,
   );
   const dpo = createContact(env, "FINHANCE_PRIVACY_DPO", false).contact;
+  assertReachableContactChannel(
+    controller.contact!,
+    "FINHANCE_PRIVACY_CONTROLLER",
+    deploymentMode,
+  );
+  assertReachableContactChannel(
+    rightsContact.contact!,
+    "FINHANCE_PRIVACY_RIGHTS",
+    deploymentMode,
+  );
   const isUsingDefaultLocalNotice =
     isLocalMode && (controller.usedFallback || rightsContact.usedFallback);
   const legalBases = parseLegalBases(env, deploymentMode);
@@ -818,8 +892,11 @@ export function resolvePrivacyNoticeConfig(
       purpose: importBasis.explanation,
       legalBasis: importBasis.basis,
       retention: importRetention.retention,
-      recipients:
-        "Import files are handled by the operator of this workspace and the backing infrastructure configured for this deployment. The current import endpoints also reject non-loopback browser origins while authentication is disabled.",
+      recipients: formatImportRecipientsSummary({
+        controllerName: controller.contact!.name,
+        processors,
+        transfers,
+      }),
       rights: formatRightsLine(rightsContact.contact!),
       fullNoticeHref: PRIVACY_NOTICE_PATH,
       fullNoticeLabel: "Read the full privacy notice",

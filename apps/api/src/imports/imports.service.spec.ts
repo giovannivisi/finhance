@@ -1198,47 +1198,6 @@ describe('ImportsService', () => {
     });
   });
 
-  it('starts a background cleanup loop for expired persisted preview payloads', async () => {
-    jest.useFakeTimers();
-
-    try {
-      await service.onModuleInit();
-
-      let updateManyCall = nthCallArg<ImportBatchUpdateManyCall>(
-        prisma.importBatch.updateMany,
-        0,
-      );
-      expect(updateManyCall.where.userId).toBeUndefined();
-      expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
-      expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
-      expect(updateManyCall.where.payloadJson).toEqual({
-        not: Prisma.AnyNull,
-      });
-      expect(updateManyCall.data).toEqual({
-        payloadJson: Prisma.DbNull,
-      });
-
-      await jest.advanceTimersByTimeAsync(60 * 1000);
-
-      updateManyCall = nthCallArg<ImportBatchUpdateManyCall>(
-        prisma.importBatch.updateMany,
-        1,
-      );
-      expect(updateManyCall.where.userId).toBeUndefined();
-      expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
-      expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
-      expect(updateManyCall.where.payloadJson).toEqual({
-        not: Prisma.AnyNull,
-      });
-      expect(updateManyCall.data).toEqual({
-        payloadJson: Prisma.DbNull,
-      });
-    } finally {
-      service.onModuleDestroy();
-      jest.useRealTimers();
-    }
-  });
-
   it('rejects oversized import keys during preview before persistence', async () => {
     const result = await service.previewCsv(OWNER_ID, {
       accounts: {
