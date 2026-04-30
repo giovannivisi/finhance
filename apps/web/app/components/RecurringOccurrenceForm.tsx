@@ -312,7 +312,6 @@ export default function RecurringOccurrenceForm({
             onChange={(event) =>
               updateField("counterparty", event.target.value)
             }
-            placeholder="Optional"
           />
         </div>
       ) : null}
