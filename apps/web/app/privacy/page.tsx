@@ -423,6 +423,10 @@ export default function PrivacyPage() {
 
             <div className="privacy-footer-note">
               <p className="privacy-meta-label">References</p>
+              <p className="privacy-detail-copy">
+                Legal reference material for this notice, plus the import
+                workflow entry point.
+              </p>
               <div className="privacy-reference-links">
                 <a
                   href="https://eur-lex.europa.eu/eli/reg/2016/679/oj"
@@ -440,13 +444,10 @@ export default function PrivacyPage() {
                 >
                   EDPB transparency guidance
                 </a>
-                <Link href="/import" className="import-disclosure-link">
-                  Back to import
-                </Link>
-                <Link href="/setup" className="import-disclosure-link">
-                  Back to setup
-                </Link>
               </div>
+              <Link href="/import" className="import-disclosure-link">
+                Back to import
+              </Link>
             </div>
           </div>
         </section>
