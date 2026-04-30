@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Moon, Sun } from "lucide-react";
+import { FileText, Moon, Sun } from "lucide-react";
 import {
   DESKTOP_NAV_ITEMS,
   isActivePath,
@@ -34,6 +34,7 @@ function DesktopNavLink({
 export default function Sidebar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
+  const privacyIsActive = isActivePath(pathname, "/privacy");
 
   return (
     <aside className="desktop-nav" aria-label="Primary navigation">
@@ -47,6 +48,19 @@ export default function Sidebar() {
             />
           ))}
         </nav>
+
+        <div className="desktop-nav-meta">
+          <Link
+            href="/privacy"
+            aria-current={privacyIsActive ? "page" : undefined}
+            className={`desktop-nav-link desktop-nav-link--subtle${
+              privacyIsActive ? " is-active" : ""
+            }`}
+          >
+            <FileText size={18} aria-hidden="true" />
+            <span>Privacy notice</span>
+          </Link>
+        </div>
 
         <button
           type="button"

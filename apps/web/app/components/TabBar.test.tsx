@@ -73,6 +73,18 @@ describe("TabBar", () => {
     });
   });
 
+  it("shows the privacy notice link in the More panel", async () => {
+    const user = userEvent.setup();
+    render(<TabBar />);
+
+    await user.click(screen.getByRole("button", { name: /more navigation/i }));
+    await user.click(screen.getByRole("link", { name: "Privacy notice" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/privacy");
+    });
+  });
+
   it("toggles theme from the More panel and closes it", async () => {
     const user = userEvent.setup();
     render(<TabBar />);

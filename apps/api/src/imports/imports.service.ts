@@ -254,6 +254,7 @@ export class ImportsService {
     batchId: string,
   ): Promise<ImportBatchResponse> {
     this.pruneExpiredPreviewPayloads();
+    await this.clearExpiredPersistedPreviewPayloads(ownerId);
 
     const batch = await this.prisma.importBatch.findFirst({
       where: { id: batchId, userId: ownerId },
@@ -5391,16 +5392,17 @@ export class ImportsService {
   }
 
   private async clearExpiredPersistedPreviewPayloads(
-    ownerId: string,
+    ownerId?: string,
     now: Date = new Date(),
   ): Promise<void> {
     const previewCutoff = new Date(now.getTime() - IMPORT_PREVIEW_TTL_MS);
 
     await this.prisma.importBatch.updateMany({
       where: {
-        userId: ownerId,
+        ...(ownerId ? { userId: ownerId } : {}),
         status: ImportBatchStatus.PREVIEW,
         createdAt: { lt: previewCutoff },
+        payloadJson: { not: Prisma.AnyNull },
       },
       data: {
         payloadJson: Prisma.DbNull,

@@ -8,15 +8,21 @@ import type {
 } from "@finhance/shared";
 import { api } from "@lib/api";
 import DashboardClient from "@components/DashboardClient";
+import MoneyValue from "@components/MoneyValue";
 import WorkflowSection from "@components/WorkflowSection";
 import { getCurrentRomeMonth } from "@lib/budgets";
-import { formatCurrency } from "@lib/format";
 import { getPrimarySetupAction, getSetupProgressLabel } from "@lib/setup";
 import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
-function BudgetMetric({ label, value }: { label: string; value: string }) {
+function BudgetMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div className="glass-card home-budget-metric">
       <p className="detail-metric-label home-budget-metric-label">{label}</p>
@@ -222,14 +228,28 @@ export default async function Home() {
                     <div className="home-budget-metrics">
                       <BudgetMetric
                         label="Spent vs budget"
-                        value={`${formatCurrency(currency.spentTotal, currency.currency)} / ${formatCurrency(currency.budgetTotal, currency.currency)}`}
+                        value={
+                          <>
+                            <MoneyValue
+                              value={currency.spentTotal}
+                              currency={currency.currency}
+                            />{" "}
+                            /{" "}
+                            <MoneyValue
+                              value={currency.budgetTotal}
+                              currency={currency.currency}
+                            />
+                          </>
+                        }
                       />
                       <BudgetMetric
                         label="Remaining"
-                        value={formatCurrency(
-                          currency.remainingTotal,
-                          currency.currency,
-                        )}
+                        value={
+                          <MoneyValue
+                            value={currency.remainingTotal}
+                            currency={currency.currency}
+                          />
+                        }
                       />
                     </div>
 
@@ -245,10 +265,10 @@ export default async function Home() {
                           >
                             <span>{item.categoryName}</span>
                             <span className="font-medium">
-                              {formatCurrency(
-                                item.spentAmount - item.budgetAmount,
-                                item.currency,
-                              )}
+                              <MoneyValue
+                                value={item.spentAmount - item.budgetAmount}
+                                currency={item.currency}
+                              />
                             </span>
                           </div>
                         ))}
@@ -262,10 +282,10 @@ export default async function Home() {
                     {currency.unbudgetedExpenseTotal > 0 ? (
                       <p className="home-budget-unbudgeted">
                         Unbudgeted spend:{" "}
-                        {formatCurrency(
-                          currency.unbudgetedExpenseTotal,
-                          currency.currency,
-                        )}
+                        <MoneyValue
+                          value={currency.unbudgetedExpenseTotal}
+                          currency={currency.currency}
+                        />
                       </p>
                     ) : null}
                   </div>

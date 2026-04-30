@@ -90,6 +90,14 @@ export default async function SetupPage() {
                     ? "An import batch has already been applied in this workspace."
                     : "No applied import batch yet. You can still import later if you start manually now."}
                 </p>
+                <p className="mt-3 text-sm text-gray-500">
+                  Review the{" "}
+                  <Link href="/privacy" className="import-disclosure-link">
+                    privacy notice
+                  </Link>{" "}
+                  before uploading finance files or sharing this workspace with
+                  someone else.
+                </p>
                 <Link href="/import" className="btn-secondary mt-4 self-start">
                   Open import
                 </Link>

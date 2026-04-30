@@ -1,6 +1,16 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import Link from "next/link";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import type {
   ImportBatchResponse,
   ImportFileType,
@@ -12,6 +22,7 @@ import {
   groupImportSummaries,
   splitImportIssues,
 } from "@lib/imports";
+import type { ImportPrivacySummary } from "@lib/privacy-notice";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 const TEMPLATE_LINKS: Array<{ file: ImportFileType; href: string }> = [
@@ -36,6 +47,12 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   timeStyle: "short",
 });
 
+type ImportDisclosureId = "apply" | "bestUse" | "privacy";
+type ImportDisclosurePointerIntent = ImportDisclosureId | null;
+type ImportDisclosureStyle = CSSProperties & {
+  "--import-disclosure-arrow-left"?: string;
+};
+
 function upsertBatch(
   batches: ImportBatchResponse[],
   nextBatch: ImportBatchResponse,
@@ -57,8 +74,10 @@ function getDownloadFilename(contentDisposition: string | null): string | null {
 
 export default function ImportsPageClient({
   initialBatches,
+  privacySummary,
 }: {
   initialBatches: ImportBatchResponse[];
+  privacySummary: ImportPrivacySummary;
 }) {
   const [selectedFiles, setSelectedFiles] = useState<
     Partial<Record<ImportFileType, File | null>>
@@ -71,7 +90,17 @@ export default function ImportsPageClient({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [activeDisclosure, setActiveDisclosure] =
+    useState<ImportDisclosureId | null>(null);
+  const [popoverStyle, setPopoverStyle] = useState<ImportDisclosureStyle>({});
   const actions = useSingleFlightActions<"preview" | "apply" | "export">();
+  const disclosureRef = useRef<HTMLDivElement | null>(null);
+  const disclosureButtonRefs = useRef<
+    Partial<Record<ImportDisclosureId, HTMLButtonElement | null>>
+  >({});
+  const disclosureCloseTimerRef = useRef<number | null>(null);
+  const disclosurePointerIntentRef =
+    useRef<ImportDisclosurePointerIntent>(null);
 
   const selectedCount = useMemo(
     () => Object.values(selectedFiles).filter(Boolean).length,
@@ -80,6 +109,230 @@ export default function ImportsPageClient({
   const previewReadiness = preview ? getImportReadiness(preview) : null;
   const previewGroups = preview ? groupImportSummaries(preview.summary) : [];
   const previewIssues = preview ? splitImportIssues(preview.issues) : null;
+
+  useEffect(() => {
+    if (!activeDisclosure) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!disclosureRef.current?.contains(event.target as Node)) {
+        setActiveDisclosure(null);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setActiveDisclosure(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [activeDisclosure]);
+
+  useEffect(() => {
+    if (!activeDisclosure) {
+      setPopoverStyle({});
+      return;
+    }
+
+    const disclosureId = activeDisclosure;
+    const popoverWidthByDisclosure: Record<ImportDisclosureId, number> = {
+      apply: 352,
+      bestUse: 360,
+      privacy: 420,
+    };
+
+    function updatePopoverPosition() {
+      const shell = disclosureRef.current;
+      const button = disclosureButtonRefs.current[disclosureId];
+
+      if (!shell || !button) {
+        return;
+      }
+
+      const shellRect = shell.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const fallbackTop =
+        button.offsetTop +
+        (button.offsetHeight || buttonRect.height || 42) +
+        12;
+
+      if (shellRect.width <= 0) {
+        setPopoverStyle({
+          left: "0px",
+          top: `${fallbackTop}px`,
+          width: `${popoverWidthByDisclosure[disclosureId]}px`,
+          "--import-disclosure-arrow-left": "28px",
+        });
+        return;
+      }
+
+      const width = Math.min(
+        popoverWidthByDisclosure[disclosureId],
+        Math.max(shellRect.width - 16, 0),
+      );
+      const idealLeft =
+        buttonRect.left - shellRect.left + buttonRect.width / 2 - width / 2;
+      const clampedLeft = Math.min(
+        Math.max(idealLeft, 0),
+        Math.max(shellRect.width - width, 0),
+      );
+      const buttonCenter =
+        buttonRect.left - shellRect.left + buttonRect.width / 2;
+      const arrowLeft = Math.min(
+        Math.max(buttonCenter - clampedLeft, 28),
+        Math.max(width - 28, 28),
+      );
+
+      setPopoverStyle({
+        left: `${clampedLeft}px`,
+        top: `${fallbackTop + 2}px`,
+        width: `${width}px`,
+        "--import-disclosure-arrow-left": `${arrowLeft}px`,
+      });
+    }
+
+    updatePopoverPosition();
+    window.addEventListener("resize", updatePopoverPosition);
+    window.addEventListener("scroll", updatePopoverPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePopoverPosition);
+      window.removeEventListener("scroll", updatePopoverPosition, true);
+    };
+  }, [activeDisclosure]);
+
+  useEffect(() => {
+    return () => {
+      clearDisclosureCloseTimer();
+    };
+  }, []);
+
+  function clearDisclosureCloseTimer() {
+    if (disclosureCloseTimerRef.current !== null) {
+      window.clearTimeout(disclosureCloseTimerRef.current);
+      disclosureCloseTimerRef.current = null;
+    }
+  }
+
+  function scheduleDisclosureClose() {
+    clearDisclosureCloseTimer();
+    disclosureCloseTimerRef.current = window.setTimeout(() => {
+      setActiveDisclosure(null);
+    }, 120);
+  }
+
+  function openDisclosure(disclosure: ImportDisclosureId) {
+    clearDisclosureCloseTimer();
+    setActiveDisclosure(disclosure);
+  }
+
+  function handleDisclosureToggle(disclosure: ImportDisclosureId) {
+    clearDisclosureCloseTimer();
+    setActiveDisclosure((current) =>
+      current === disclosure ? null : disclosure,
+    );
+    disclosurePointerIntentRef.current = null;
+  }
+
+  const disclosureContent: Record<
+    ImportDisclosureId,
+    {
+      title: string;
+      panelClassName: string;
+      body: ReactNode;
+    }
+  > = {
+    apply: {
+      title: "What apply does",
+      panelClassName: "import-disclosure-panel--apply",
+      body: (
+        <ul className="import-disclosure-list">
+          <li>
+            Matches rows by import key and merges creates, updates, and
+            unchanged rows safely.
+          </li>
+          <li>
+            `transactions.csv` covers manual transactions only, not
+            recurring-generated rows.
+          </li>
+          <li>
+            Recurring-generated transactions are recreated from recurring rules
+            and exceptions after apply.
+          </li>
+          <li>
+            Opening balances, recurring definitions, budgets, and overrides are
+            part of the round-trip package.
+          </li>
+        </ul>
+      ),
+    },
+    bestUse: {
+      title: "Best use of import/export",
+      panelClassName: "import-disclosure-panel--best-use",
+      body: (
+        <p className="import-disclosure-copy">
+          Import is best when you are starting from existing finance data or
+          moving the same finhance model between workspaces. Export is a
+          round-trip backup of definitions and manual history, not a raw dump of
+          every generated occurrence.
+        </p>
+      ),
+    },
+    privacy: {
+      title: "Import privacy",
+      panelClassName: "import-disclosure-panel--privacy",
+      body: (
+        <div className="import-disclosure-privacy">
+          <p className="import-disclosure-lead">{privacySummary.controller}</p>
+          <dl className="import-disclosure-facts">
+            <div className="import-disclosure-fact">
+              <dt>Purpose</dt>
+              <dd>{privacySummary.purpose}</dd>
+            </div>
+            <div className="import-disclosure-fact">
+              <dt>Legal basis</dt>
+              <dd>{privacySummary.legalBasis}</dd>
+            </div>
+            <div className="import-disclosure-fact">
+              <dt>Retention</dt>
+              <dd>{privacySummary.retention}</dd>
+            </div>
+            <div className="import-disclosure-fact">
+              <dt>Recipients and transfers</dt>
+              <dd>{privacySummary.recipients}</dd>
+            </div>
+            <div className="import-disclosure-fact">
+              <dt>Rights</dt>
+              <dd>{privacySummary.rights}</dd>
+            </div>
+          </dl>
+          <Link
+            href={privacySummary.fullNoticeHref}
+            className="import-disclosure-link"
+          >
+            {privacySummary.fullNoticeLabel}
+          </Link>
+        </div>
+      ),
+    },
+  };
+
+  const disclosureButtons: Array<{
+    id: ImportDisclosureId;
+    label: string;
+  }> = [
+    { id: "apply", label: "What apply does" },
+    { id: "bestUse", label: "Best use" },
+    { id: "privacy", label: "Import privacy" },
+  ];
 
   function updateFileSelection(
     file: ImportFileType,
@@ -216,7 +469,7 @@ export default function ImportsPageClient({
         </p>
       </section>
 
-      <section className="page-section section-stack-tight">
+      <section className="page-section page-section--allow-overflow section-stack-tight">
         <div className="compact-toolbar">
           <div>
             <h2 className="section-title">Templates and round-trip export</h2>
@@ -242,42 +495,70 @@ export default function ImportsPageClient({
           </p>
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="page-inline-notice surface-info">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-800">
-              What apply does
-            </h2>
-            <ul className="mt-3 space-y-2 text-sm text-blue-950">
-              <li>
-                Matches rows by import key and merges creates, updates, and
-                unchanged rows safely.
-              </li>
-              <li>
-                `transactions.csv` covers manual transactions only, not
-                recurring-generated rows.
-              </li>
-              <li>
-                Recurring-generated transactions are recreated from recurring
-                rules and exceptions after apply.
-              </li>
-              <li>
-                Opening balances, recurring definitions, budgets, and overrides
-                are part of the round-trip package.
-              </li>
-            </ul>
+        <div
+          ref={disclosureRef}
+          className="import-disclosure-shell"
+          onMouseLeave={scheduleDisclosureClose}
+          onBlurCapture={(event) => {
+            const nextTarget = event.relatedTarget as Node | null;
+            if (!disclosureRef.current?.contains(nextTarget)) {
+              clearDisclosureCloseTimer();
+              setActiveDisclosure(null);
+            }
+          }}
+        >
+          <div className="import-disclosure-rail">
+            {disclosureButtons.map((button) => {
+              const isActive = activeDisclosure === button.id;
+
+              return (
+                <button
+                  key={button.id}
+                  ref={(node) => {
+                    disclosureButtonRefs.current[button.id] = node;
+                  }}
+                  type="button"
+                  aria-expanded={isActive}
+                  aria-controls={`import-disclosure-${button.id}`}
+                  onPointerDown={() => {
+                    disclosurePointerIntentRef.current = button.id;
+                  }}
+                  onClick={() => handleDisclosureToggle(button.id)}
+                  onFocus={() => {
+                    if (disclosurePointerIntentRef.current !== button.id) {
+                      openDisclosure(button.id);
+                    }
+                  }}
+                  onMouseEnter={() => openDisclosure(button.id)}
+                  onMouseLeave={scheduleDisclosureClose}
+                  className={`import-disclosure-trigger${
+                    isActive ? " is-active" : ""
+                  }`}
+                >
+                  {button.label}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="page-inline-notice">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
-              Best use of import/export
-            </h2>
-            <p className="mt-3 text-sm text-gray-600">
-              Import is best when you are starting from existing finance data or
-              moving the same finhance model between workspaces. Export is a
-              round-trip backup of definitions and manual history, not a raw
-              dump of every generated occurrence.
-            </p>
-          </div>
+          {activeDisclosure ? (
+            <div
+              id={`import-disclosure-${activeDisclosure}`}
+              role="region"
+              aria-label={disclosureContent[activeDisclosure].title}
+              style={popoverStyle}
+              onMouseEnter={clearDisclosureCloseTimer}
+              onMouseLeave={scheduleDisclosureClose}
+              className={`import-disclosure-panel ${disclosureContent[activeDisclosure].panelClassName}`}
+            >
+              <h2 className="import-disclosure-panel-title">
+                {disclosureContent[activeDisclosure].title}
+              </h2>
+              <div className="import-disclosure-panel-body">
+                {disclosureContent[activeDisclosure].body}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

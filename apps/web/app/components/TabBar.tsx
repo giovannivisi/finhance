@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { MoreHorizontal, Moon, Sun } from "lucide-react";
+import { FileText, MoreHorizontal, Moon, Sun } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useTheme } from "@components/ThemeProvider";
@@ -140,6 +140,28 @@ export default function TabBar() {
                   </Link>
                 );
               })}
+
+              <div className="tab-more-divider" aria-hidden="true" />
+
+              <Link
+                href="/privacy"
+                prefetch={false}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleNavigate("/privacy");
+                }}
+                aria-current={
+                  isActivePath(currentPath, "/privacy") ? "page" : undefined
+                }
+                className="tab-menu-link group"
+              >
+                <FileText
+                  size={18}
+                  aria-hidden="true"
+                  className="tab-menu-icon"
+                />
+                <span className="tab-menu-label">Privacy notice</span>
+              </Link>
 
               <div className="tab-more-divider" aria-hidden="true" />
 
