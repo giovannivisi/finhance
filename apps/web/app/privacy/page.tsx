@@ -71,7 +71,7 @@ export default function PrivacyPage() {
 
   return (
     <Container>
-      <div className="page-shell">
+      <div className="page-shell is-relaxed route-stack-desktop-xl">
         <section className="page-hero">
           <p className="page-kicker">Trust</p>
           <h1 className="page-title is-compact">Privacy notice</h1>

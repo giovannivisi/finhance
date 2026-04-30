@@ -166,9 +166,7 @@ export default function AssetForm({
   }
 
   const getLabelStyle = (required: boolean) => ({
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
+    display: "block",
     fontSize: "12px",
     fontWeight: required ? 700 : 500,
     color: required ? "var(--text-primary)" : "var(--text-tertiary)",
@@ -418,8 +416,7 @@ export default function AssetForm({
             htmlFor={`${fieldPrefix}-currency`}
             style={getLabelStyle(false)}
           >
-            <span>Currency</span>
-            <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+            Currency
           </label>
           <input
             id={`${fieldPrefix}-currency`}
@@ -440,8 +437,7 @@ export default function AssetForm({
             htmlFor={`${fieldPrefix}-account`}
             style={getLabelStyle(false)}
           >
-            <span>Account</span>
-            <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+            Account
           </label>
           <select
             id={`${fieldPrefix}-account`}
@@ -478,8 +474,7 @@ export default function AssetForm({
 
       <div>
         <label htmlFor={`${fieldPrefix}-notes`} style={getLabelStyle(false)}>
-          <span>Notes</span>
-          <span style={{ fontSize: "10px", opacity: 0.6 }}>Optional</span>
+          Notes
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}

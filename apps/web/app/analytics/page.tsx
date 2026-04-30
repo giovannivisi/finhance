@@ -92,85 +92,94 @@ export default async function AnalyticsPage({
     <>
       <Container>
         {!analytics || !accounts || !categories ? (
-          <>
-            <h1 className="text-3xl font-semibold text-gray-900">Analytics</h1>
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
+          <section className="page-shell">
+            <div className="page-hero">
+              <p className="page-kicker">Analysis</p>
+              <h1 className="page-title is-compact">Analytics</h1>
+            </div>
+            <div className="page-inline-notice surface-warning">
               <p className="font-medium">
                 The web app could not reach the API.
               </p>
-              <p className="mt-2 text-sm text-amber-900/80">
+              <p className="mt-2 text-sm">
                 {errorMessage ?? "Start the API and refresh the page."}
               </p>
             </div>
-          </>
+          </section>
         ) : (
-          <div className="route-stack-desktop-xl">
+          <div className="page-shell is-relaxed route-stack-desktop-xl">
             <section className="page-hero">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="page-kicker">Analysis</p>
-                  <h1 className="page-title is-compact">Analytics</h1>
-                  <p className="page-description">
-                    Multi-month cashflow trends, biggest category changes, and
-                    drill-down links into the ledger.
-                  </p>
-                </div>
-                <div className="page-pill">
-                  Focus month {analytics.focusMonth}
-                </div>
-              </div>
-
-              <form className="filter-grid is-relaxed lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
-                <div className="app-form-field">
-                  <label>From</label>
-                  <input type="month" name="from" defaultValue={filters.from} />
-                </div>
-                <div className="app-form-field">
-                  <label>To</label>
-                  <input type="month" name="to" defaultValue={filters.to} />
-                </div>
-                <div className="app-form-field">
-                  <label>Account</label>
-                  <select name="accountId" defaultValue={filters.accountId}>
-                    <option value="">All accounts</option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="app-form-field">
-                  <label>Category</label>
-                  <select name="categoryId" defaultValue={filters.categoryId}>
-                    <option value="">All categories</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="section-stack-tight justify-end">
-                  <label className="flex items-center gap-2 text-sm text-gray-600">
-                    <input
-                      type="checkbox"
-                      name="includeArchivedAccounts"
-                      value="true"
-                      defaultChecked={filters.includeArchivedAccounts}
-                    />
-                    Include archived accounts
-                  </label>
-                  <div className="filter-actions is-equal">
-                    <button type="submit" className="btn-primary">
-                      Apply
-                    </button>
-                    <Link href="/analytics" className="btn-secondary">
-                      Clear
-                    </Link>
+              <div className="section-stack-relaxed">
+                <div className="page-hero-row">
+                  <div className="page-hero-copy">
+                    <p className="page-kicker">Analysis</p>
+                    <h1 className="page-title is-compact">Analytics</h1>
+                    <p className="page-description">
+                      Multi-month cashflow trends, biggest category changes, and
+                      drill-down links into the ledger.
+                    </p>
+                  </div>
+                  <div className="page-pill">
+                    Focus month {analytics.focusMonth}
                   </div>
                 </div>
-              </form>
+
+                <form className="filter-grid is-relaxed lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+                  <div className="app-form-field">
+                    <label>From</label>
+                    <input
+                      type="month"
+                      name="from"
+                      defaultValue={filters.from}
+                    />
+                  </div>
+                  <div className="app-form-field">
+                    <label>To</label>
+                    <input type="month" name="to" defaultValue={filters.to} />
+                  </div>
+                  <div className="app-form-field">
+                    <label>Account</label>
+                    <select name="accountId" defaultValue={filters.accountId}>
+                      <option value="">All accounts</option>
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="app-form-field">
+                    <label>Category</label>
+                    <select name="categoryId" defaultValue={filters.categoryId}>
+                      <option value="">All categories</option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="section-stack-tight justify-end">
+                    <label className="page-pill">
+                      <input
+                        type="checkbox"
+                        name="includeArchivedAccounts"
+                        value="true"
+                        defaultChecked={filters.includeArchivedAccounts}
+                      />
+                      Include archived accounts
+                    </label>
+                    <div className="filter-actions is-equal">
+                      <button type="submit" className="btn-primary">
+                        Apply
+                      </button>
+                      <Link href="/analytics" className="btn-secondary">
+                        Clear
+                      </Link>
+                    </div>
+                  </div>
+                </form>
+              </div>
             </section>
 
             <WorkflowSection

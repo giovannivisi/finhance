@@ -458,7 +458,7 @@ export default function ImportsPageClient({
   }
 
   return (
-    <div className="page-shell">
+    <div className="page-shell is-relaxed route-stack-desktop-xl">
       <section className="page-hero">
         <p className="page-kicker">Migration</p>
         <h1 className="page-title is-compact">Import & export</h1>
@@ -599,7 +599,7 @@ export default function ImportsPageClient({
             </label>
           ))}
 
-          <div className="lg:col-span-2 flex flex-wrap items-center gap-3">
+          <div className="compact-toolbar lg:col-span-2">
             <button
               type="submit"
               disabled={isPreviewing}
@@ -624,13 +624,11 @@ export default function ImportsPageClient({
       </section>
 
       {preview ? (
-        <section className="page-section">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+        <section className="page-section section-stack-tight">
+          <div className="compact-toolbar">
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900">
-                Preview result
-              </h2>
-              <p className="mt-1 text-sm text-gray-500">
+              <h2 className="section-title">Preview result</h2>
+              <p className="section-subtitle">
                 Batch {preview.id} • {preview.status}
               </p>
             </div>
@@ -655,18 +653,16 @@ export default function ImportsPageClient({
 
           {previewReadiness ? (
             <div
-              className={`mt-6 rounded-2xl border p-4 ${
+              className={`page-inline-notice ${
                 previewReadiness.tone === "blocked"
-                  ? "border-red-200 bg-red-50 text-red-950"
+                  ? "surface-danger"
                   : previewReadiness.tone === "warning"
-                    ? "border-amber-200 bg-amber-50 text-amber-950"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-950"
+                    ? "surface-warning"
+                    : "surface-success"
               }`}
             >
               <p className="font-medium">{previewReadiness.title}</p>
-              <p className="mt-1 text-sm opacity-90">
-                {previewReadiness.detail}
-              </p>
+              <p className="mt-1 text-sm">{previewReadiness.detail}</p>
             </div>
           ) : null}
 
@@ -813,11 +809,13 @@ export default function ImportsPageClient({
         </section>
       ) : null}
 
-      <section className="page-section">
-        <h2 className="text-2xl font-semibold text-gray-900">Recent batches</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Preview and apply history stays visible here for auditability.
-        </p>
+      <section className="page-section section-stack-tight">
+        <div>
+          <h2 className="section-title">Recent batches</h2>
+          <p className="section-subtitle">
+            Preview and apply history stays visible here for auditability.
+          </p>
+        </div>
 
         {batches.length === 0 ? (
           <div className="mt-6 page-inline-notice surface-dashed">
