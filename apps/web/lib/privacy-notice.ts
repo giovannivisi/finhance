@@ -140,6 +140,11 @@ type PrivacyContactFallback = {
   instructions?: string;
 };
 
+type CreatedContactResult = {
+  contact: PrivacyContact | null;
+  usedFallback: boolean;
+};
+
 const PRIVACY_NOTICE_PATH = "/privacy";
 const DEFAULT_LAST_UPDATED = "2026-04-30";
 const DEFAULT_SUPERVISORY_AUTHORITY_URL =
@@ -429,32 +434,66 @@ function isStringArray(value: unknown): value is string[] {
   );
 }
 
+function normalizeHttpsUrl(
+  value: string | null,
+  fieldName: string,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${fieldName} must be a valid absolute HTTPS URL.`);
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error(`${fieldName} must use the https: scheme.`);
+  }
+
+  return parsed.toString();
+}
+
 function createContact(
   env: EnvSource,
   prefix: string,
   required: boolean,
   fallback?: PrivacyContactFallback,
-): PrivacyContact | null {
-  const name = readValue(env, `${prefix}_NAME`) ?? fallback?.name ?? null;
+): CreatedContactResult {
+  const configuredName = readValue(env, `${prefix}_NAME`);
+  const name = configuredName ?? fallback?.name ?? null;
   const email = readValue(env, `${prefix}_EMAIL`);
-  const website = readValue(env, `${prefix}_WEBSITE`);
+  const website = normalizeHttpsUrl(
+    readValue(env, `${prefix}_WEBSITE`),
+    `${prefix}_WEBSITE`,
+  );
   const postalAddress = readValue(env, `${prefix}_POSTAL_ADDRESS`);
-  const instructions =
-    readValue(env, `${prefix}_INSTRUCTIONS`) ?? fallback?.instructions ?? null;
+  const configuredInstructions = readValue(env, `${prefix}_INSTRUCTIONS`);
+  const instructions = configuredInstructions ?? fallback?.instructions ?? null;
 
   if (!name) {
     if (!required) {
-      return null;
+      return {
+        contact: null,
+        usedFallback: false,
+      };
     }
     throw new Error(`Missing required privacy configuration: ${prefix}_NAME`);
   }
 
   return {
-    name,
-    email,
-    website,
-    postalAddress,
-    instructions,
+    contact: {
+      name,
+      email,
+      website,
+      postalAddress,
+      instructions,
+    },
+    usedFallback:
+      fallback !== undefined &&
+      (configuredName === null || configuredInstructions === null),
   };
 }
 
@@ -555,7 +594,13 @@ function parseProcessors(
       purpose,
       location,
       dataCategories,
-      website: typeof website === "string" ? website : undefined,
+      website:
+        typeof website === "string"
+          ? (normalizeHttpsUrl(
+              website,
+              `FINHANCE_PRIVACY_PROCESSORS_JSON[${index}].website`,
+            ) ?? undefined)
+          : undefined,
     } satisfies PrivacyProcessorInput;
   });
 
@@ -668,9 +713,6 @@ export function resolvePrivacyNoticeConfig(
 ): PrivacyNoticeConfig {
   const deploymentMode = parseDeploymentMode(env);
   const isLocalMode = deploymentMode === "local";
-  const isUsingDefaultLocalNotice =
-    isLocalMode && readValue(env, "FINHANCE_PRIVACY_CONTROLLER_NAME") === null;
-
   const controller = createContact(
     env,
     "FINHANCE_PRIVACY_CONTROLLER",
@@ -695,7 +737,9 @@ export function resolvePrivacyNoticeConfig(
         }
       : undefined,
   );
-  const dpo = createContact(env, "FINHANCE_PRIVACY_DPO", false);
+  const dpo = createContact(env, "FINHANCE_PRIVACY_DPO", false).contact;
+  const isUsingDefaultLocalNotice =
+    isLocalMode && (controller.usedFallback || rightsContact.usedFallback);
   const legalBases = parseLegalBases(env, deploymentMode);
   const processors = parseProcessors(env, deploymentMode);
   const transfers = parseTransfers(env, deploymentMode);
@@ -713,9 +757,11 @@ export function resolvePrivacyNoticeConfig(
   const supervisoryAuthorityName =
     readValue(env, "FINHANCE_PRIVACY_SUPERVISORY_AUTHORITY_NAME") ??
     (isLocalMode ? "Your local data protection authority" : null);
-  const supervisoryAuthorityUrl =
+  const supervisoryAuthorityUrl = normalizeHttpsUrl(
     readValue(env, "FINHANCE_PRIVACY_SUPERVISORY_AUTHORITY_URL") ??
-    (isLocalMode ? DEFAULT_SUPERVISORY_AUTHORITY_URL : null);
+      (isLocalMode ? DEFAULT_SUPERVISORY_AUTHORITY_URL : null),
+    "FINHANCE_PRIVACY_SUPERVISORY_AUTHORITY_URL",
+  );
 
   if (!supervisoryAuthorityName) {
     throw new Error(
@@ -749,9 +795,9 @@ export function resolvePrivacyNoticeConfig(
   return {
     deploymentMode,
     lastUpdated,
-    controller: controller!,
+    controller: controller.contact!,
     dpo,
-    rightsContact: rightsContact!,
+    rightsContact: rightsContact.contact!,
     supervisoryAuthority: {
       name: supervisoryAuthorityName,
       complaintUrl: supervisoryAuthorityUrl,
@@ -768,13 +814,13 @@ export function resolvePrivacyNoticeConfig(
     automatedDecisionMaking:
       "The current code reviewed for this notice does not use solely automated decision-making or profiling to make decisions with legal or similarly significant effects about a person.",
     importSummary: {
-      controller: `${controller!.name} decides how the import flow is run for this deployment.`,
+      controller: `${controller.contact!.name} decides how the import flow is run for this deployment.`,
       purpose: importBasis.explanation,
       legalBasis: importBasis.basis,
       retention: importRetention.retention,
       recipients:
         "Import files are handled by the operator of this workspace and the backing infrastructure configured for this deployment. The current import endpoints also reject non-loopback browser origins while authentication is disabled.",
-      rights: formatRightsLine(rightsContact!),
+      rights: formatRightsLine(rightsContact.contact!),
       fullNoticeHref: PRIVACY_NOTICE_PATH,
       fullNoticeLabel: "Read the full privacy notice",
     },

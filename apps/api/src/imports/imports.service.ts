@@ -5422,6 +5422,7 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
         ...(ownerId ? { userId: ownerId } : {}),
         status: ImportBatchStatus.PREVIEW,
         createdAt: { lt: previewCutoff },
+        payloadJson: { not: Prisma.AnyNull },
       },
       data: {
         payloadJson: Prisma.DbNull,

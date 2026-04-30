@@ -75,6 +75,18 @@ test("resolvePrivacyNoticeConfig provides local defaults for self-hosted mode", 
   );
 });
 
+test("resolvePrivacyNoticeConfig keeps the local warning visible when required privacy contacts still use fallbacks", () => {
+  const config = resolvePrivacyNoticeConfig({
+    FINHANCE_PRIVACY_CONTROLLER_NAME: "Self-hosted operator",
+  });
+
+  assert.equal(config.isUsingDefaultLocalNotice, true);
+  assert.equal(
+    config.rightsContact.name,
+    "The operator of this finhance workspace",
+  );
+});
+
 test("resolvePrivacyNoticeConfig accepts mixed-deployment overrides", () => {
   const config = resolvePrivacyNoticeConfig(COMPLETE_ENV);
 
@@ -89,6 +101,7 @@ test("resolvePrivacyNoticeConfig accepts mixed-deployment overrides", () => {
       (transfer) => transfer.destination === "United States",
     ),
   );
+  assert.equal(config.isUsingDefaultLocalNotice, false);
 });
 
 test("resolvePrivacyNoticeConfig rejects managed or mixed mode when required operator facts are missing", () => {
@@ -115,6 +128,35 @@ test("resolvePrivacyNoticeConfig rejects transfer entries without safeguard word
         ]),
       }),
     /safeguard/i,
+  );
+});
+
+test("resolvePrivacyNoticeConfig rejects unsafe operator-supplied external URLs", () => {
+  assert.throws(
+    () =>
+      resolvePrivacyNoticeConfig({
+        ...COMPLETE_ENV,
+        FINHANCE_PRIVACY_CONTROLLER_WEBSITE: "javascript:alert(1)",
+      }),
+    /FINHANCE_PRIVACY_CONTROLLER_WEBSITE/,
+  );
+
+  assert.throws(
+    () =>
+      resolvePrivacyNoticeConfig({
+        ...COMPLETE_ENV,
+        FINHANCE_PRIVACY_PROCESSORS_JSON: JSON.stringify([
+          {
+            name: "Neon",
+            role: "Hosted Postgres",
+            purpose: "Primary database hosting",
+            location: "EU region selected by the operator",
+            dataCategories: ["Workspace finance records", "Snapshot history"],
+            website: "http://neon.tech/",
+          },
+        ]),
+      }),
+    /website/,
   );
 });
 

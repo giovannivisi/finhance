@@ -38,6 +38,9 @@ type ImportBatchUpdateManyCall = {
     createdAt: {
       lt: Date;
     };
+    payloadJson: {
+      not: unknown;
+    };
   };
   data: {
     payloadJson: unknown;
@@ -1043,6 +1046,9 @@ describe('ImportsService', () => {
     expect(updateManyCall.where.userId).toBe(OWNER_ID);
     expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
     expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
+    expect(updateManyCall.where.payloadJson).toEqual({
+      not: Prisma.AnyNull,
+    });
     expect(updateManyCall.data).toEqual({
       payloadJson: Prisma.DbNull,
     });
@@ -1205,6 +1211,9 @@ describe('ImportsService', () => {
       expect(updateManyCall.where.userId).toBeUndefined();
       expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
       expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
+      expect(updateManyCall.where.payloadJson).toEqual({
+        not: Prisma.AnyNull,
+      });
       expect(updateManyCall.data).toEqual({
         payloadJson: Prisma.DbNull,
       });
@@ -1218,6 +1227,9 @@ describe('ImportsService', () => {
       expect(updateManyCall.where.userId).toBeUndefined();
       expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
       expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
+      expect(updateManyCall.where.payloadJson).toEqual({
+        not: Prisma.AnyNull,
+      });
       expect(updateManyCall.data).toEqual({
         payloadJson: Prisma.DbNull,
       });
