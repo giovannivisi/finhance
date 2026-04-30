@@ -25,7 +25,7 @@ import {
   Prisma,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import type {
   CashflowAnalyticsBreakdownItemResponse,
   CashflowAnalyticsCategoryTrendResponse,

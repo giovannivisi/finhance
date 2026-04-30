@@ -11,7 +11,7 @@ import type {
   DashboardResponse,
   NetWorthSnapshotResponse,
 } from '@finhance/shared';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 type ResponseWithBody = { body: unknown };

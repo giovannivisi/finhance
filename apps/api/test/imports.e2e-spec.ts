@@ -9,7 +9,7 @@ import { PrismaService } from '@prisma/prisma.service';
 import { RecurringService } from '@recurring/recurring.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { IdempotencyService } from '@/request-safety/idempotency.service';
-import { AccountType, ImportBatchStatus, ImportSource } from '@prisma/client';
+import { AccountType, ImportBatchStatus, ImportSource } from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 type ResponseWithBody = { body: unknown };

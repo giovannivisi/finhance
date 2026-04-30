@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@finhance/db';
 import { loadApiEnv } from '@/config/env-loader';
 
 const API_DIR = resolve(__dirname, '..');
+const DB_PACKAGE_DIR = resolve(API_DIR, '../../packages/db');
 
 function buildSchemaDatabaseUrl(baseUrl: string, schema: string): string {
   const url = new URL(baseUrl);
@@ -34,8 +35,8 @@ export async function createPrismaTestSchema(prefix: string) {
   await admin.$connect();
   await admin.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
 
-  execFileSync('pnpm', ['exec', 'prisma', 'db', 'push', '--skip-generate'], {
-    cwd: API_DIR,
+  execFileSync('pnpm', ['run', 'prisma:db:push', '--', '--skip-generate'], {
+    cwd: DB_PACKAGE_DIR,
     env: {
       ...process.env,
       DATABASE_URL: databaseUrl,

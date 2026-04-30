@@ -20,7 +20,7 @@ import {
   RecurringTransactionOccurrence,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import type {
   CashflowSummaryResponse,
   MaterializeRecurringRulesResponse,

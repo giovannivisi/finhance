@@ -19,7 +19,7 @@ import type {
   Transaction,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 
 export interface ImportUploadFile {
   originalName: string;

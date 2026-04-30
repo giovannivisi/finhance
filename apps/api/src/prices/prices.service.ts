@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AssetKind, Prisma } from '@prisma/client';
+import { AssetKind, Prisma } from '@finhance/db';
 
 interface CachedPrice {
   price: Prisma.Decimal;

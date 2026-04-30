@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 import type { TransactionResponse } from '@finhance/shared';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
 

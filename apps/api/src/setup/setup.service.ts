@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
 import { PrismaService } from '@prisma/prisma.service';
-import { CategoryType, ImportBatchStatus, type Account } from '@prisma/client';
+import { CategoryType, ImportBatchStatus, type Account } from '@finhance/db';
 import type {
   SetupHandoffResponse,
   SetupStatusResponse,

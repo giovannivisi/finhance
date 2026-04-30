@@ -7,7 +7,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { IdempotencyRequestStatus, Prisma } from '@prisma/client';
+import { IdempotencyRequestStatus, Prisma } from '@finhance/db';
 import { PrismaService } from '@prisma/prisma.service';
 
 const IDEMPOTENCY_KEY_REQUIRED_MESSAGE = 'Idempotency-Key header is required.';

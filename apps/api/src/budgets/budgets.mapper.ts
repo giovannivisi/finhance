@@ -1,4 +1,4 @@
-import { CategoryBudgetOverride, Prisma } from '@prisma/client';
+import { CategoryBudgetOverride, Prisma } from '@finhance/db';
 import type {
   CategoryBudgetOverrideResponse,
   CategoryBudgetResponse,

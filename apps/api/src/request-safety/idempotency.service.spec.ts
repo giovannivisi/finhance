@@ -1,4 +1,4 @@
-import { IdempotencyRequestStatus, Prisma } from '@prisma/client';
+import { IdempotencyRequestStatus, Prisma } from '@finhance/db';
 import {
   IDEMPOTENCY_MAX_CACHED_BODY_BYTES,
   IdempotencyService,

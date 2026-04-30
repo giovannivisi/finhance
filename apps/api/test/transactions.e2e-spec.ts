@@ -18,7 +18,7 @@ import {
   Prisma,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import { PrismaService } from '@prisma/prisma.service';
 
 const OWNER_ID = 'local-dev';

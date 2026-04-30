@@ -5,7 +5,7 @@ import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { MonthlyReviewController } from '@recurring/monthly-review.controller';
 import { RecurringController } from '@recurring/recurring.controller';
 import { RecurringService } from '@recurring/recurring.service';
-import { Prisma, TransactionDirection, TransactionKind } from '@prisma/client';
+import { Prisma, TransactionDirection, TransactionKind } from '@finhance/db';
 import type {
   MaterializeRecurringRulesResponse,
   MonthlyReviewResponse,

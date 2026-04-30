@@ -1,4 +1,4 @@
-import { CategoryType, TransactionKind } from '@prisma/client';
+import { CategoryType, TransactionKind } from '@finhance/db';
 import { CategoriesService } from '@transactions/categories.service';
 
 const OWNER_ID = 'local-dev';

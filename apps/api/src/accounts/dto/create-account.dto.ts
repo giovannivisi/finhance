@@ -10,7 +10,7 @@ import {
   IsString,
   Matches,
 } from 'class-validator';
-import { AccountType as PrismaAccountType } from '@prisma/client';
+import { AccountType as PrismaAccountType } from '@finhance/db';
 import type { AccountType, UpsertAccountRequest } from '@finhance/shared';
 
 function trimStringValue({ value }: TransformFnParams): unknown {

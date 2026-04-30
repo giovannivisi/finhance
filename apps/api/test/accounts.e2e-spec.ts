@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AccountsController } from '@accounts/accounts.controller';
 import { AccountsService } from '@accounts/accounts.service';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 import type {
   AccountReconciliationResponse,
   AccountResponse,
@@ -20,7 +20,7 @@ import {
   AssetType,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 type ResponseWithBody = { body: unknown };

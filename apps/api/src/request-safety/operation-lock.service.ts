@@ -5,7 +5,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { OperationType, Prisma } from '@prisma/client';
+import { OperationType, Prisma } from '@finhance/db';
 import { PrismaService } from '@prisma/prisma.service';
 
 interface RunExclusiveOptions {

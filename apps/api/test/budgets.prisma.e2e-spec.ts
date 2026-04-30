@@ -1,6 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@finhance/db';
 import request from 'supertest';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { BudgetsController } from '@budgets/budgets.controller';

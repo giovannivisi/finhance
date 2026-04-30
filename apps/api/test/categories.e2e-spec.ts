@@ -5,7 +5,7 @@ import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { CategoriesController } from '@transactions/categories.controller';
 import { CategoriesService } from '@transactions/categories.service';
 import type { CategoryResponse } from '@finhance/shared';
-import { Category, CategoryType } from '@prisma/client';
+import { Category, CategoryType } from '@finhance/db';
 import { PrismaService } from '@prisma/prisma.service';
 
 const OWNER_ID = 'local-dev';

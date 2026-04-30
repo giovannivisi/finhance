@@ -1,7 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
-import { AssetKind, AssetType, Prisma } from '@prisma/client';
+import { AssetKind, AssetType, Prisma } from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 type MarketPositionWhere = {

@@ -100,17 +100,17 @@ Important local assumption for this repo:
 Typical API routine:
 
 ```bash
-pnpm --filter api exec prisma generate
+pnpm --filter @finhance/db run prisma:generate
 pnpm --filter api dev
 ```
 
 Only run migrations when you are intentionally changing the schema:
 
 ```bash
-pnpm --filter api exec prisma migrate dev
+pnpm --filter @finhance/db run prisma:migrate:dev
 ```
 
-If you need more API detail, inspect [apps/api/package.json](/Users/giovannivisi/Code/finhance/apps/api/package.json) and the Prisma schema at [apps/api/prisma/schema.prisma](/Users/giovannivisi/Code/finhance/apps/api/prisma/schema.prisma).
+If you need more API detail, inspect [apps/api/package.json](/Users/giovannivisi/Code/finhance/apps/api/package.json) and the shared Prisma schema at [packages/db/prisma/schema.prisma](/Users/giovannivisi/Code/finhance/packages/db/prisma/schema.prisma).
 
 ### Web
 

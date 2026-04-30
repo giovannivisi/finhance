@@ -15,7 +15,7 @@ import {
   AssetKind as PrismaAssetKind,
   AssetType as PrismaAssetType,
   LiabilityKind as PrismaLiabilityKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import type {
   AssetKind,
   AssetType,

@@ -37,7 +37,7 @@ import {
   Transaction,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import { RecurringService } from '@recurring/recurring.service';
 import { IMPORT_TEMPLATE_HEADERS } from '@imports/imports.types';
 import type {
