@@ -123,6 +123,16 @@ describe("PrivacyPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", {
+        name: /controller and rights contact/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        name: /notice status and complaints/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
         name: /what personal data finhance processes/i,
       }),
     ).toBeInTheDocument();

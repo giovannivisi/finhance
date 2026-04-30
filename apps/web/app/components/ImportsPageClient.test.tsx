@@ -1,7 +1,6 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import ImportsPageClient from "@components/ImportsPageClient";
 import type { ImportBatchResponse } from "@finhance/shared";
 
@@ -25,10 +24,12 @@ vi.mock("@lib/api", () => ({
 
 const initialBatches: ImportBatchResponse[] = [];
 
-describe("ImportsPageClient", () => {
-  it("uses compact disclosures and links the privacy summary to the full notice", async () => {
-    const user = userEvent.setup();
+afterEach(() => {
+  vi.useRealTimers();
+});
 
+describe("ImportsPageClient", () => {
+  function renderPage() {
     render(
       <ImportsPageClient
         initialBatches={initialBatches}
@@ -45,6 +46,10 @@ describe("ImportsPageClient", () => {
         }}
       />,
     );
+  }
+
+  it("uses anchored disclosures without reserving layout space at rest", async () => {
+    renderPage();
 
     expect(
       screen.getByRole("button", { name: "What apply does" }),
@@ -56,6 +61,9 @@ describe("ImportsPageClient", () => {
       screen.getByRole("button", { name: "Import privacy" }),
     ).toBeInTheDocument();
     expect(
+      screen.queryByRole("region", { name: "What apply does" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByText(/Matches rows by import key and merges creates/i),
     ).not.toBeInTheDocument();
     expect(
@@ -64,35 +72,95 @@ describe("ImportsPageClient", () => {
       ),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "What apply does" }));
-    expect(
-      screen.getByText(/Matches rows by import key and merges creates/i),
-    ).toBeInTheDocument();
+    const bestUseButton = screen.getByRole("button", { name: "Best use" });
+    const privacyButton = screen.getByRole("button", {
+      name: "Import privacy",
+    });
 
-    await user.click(screen.getByRole("button", { name: "Best use" }));
+    fireEvent.focus(bestUseButton);
     expect(
-      screen.queryByText(/Matches rows by import key and merges creates/i),
-    ).not.toBeInTheDocument();
+      screen.getByRole("region", { name: "Best use of import/export" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         /Import is best when you are starting from existing finance data/i,
       ),
     ).toBeInTheDocument();
 
-    await user.keyboard("{Escape}");
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(
-      screen.queryByText(
-        /Import is best when you are starting from existing finance data/i,
-      ),
+      screen.queryByRole("region", { name: "Best use of import/export" }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Import privacy" }));
+    fireEvent.pointerDown(privacyButton);
+    fireEvent.click(privacyButton);
+    expect(
+      screen.getByRole("region", { name: "Import privacy" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Finhance Ops Ltd. controls this import workflow."),
     ).toBeInTheDocument();
+    expect(screen.getByText("Purpose")).toBeInTheDocument();
+    expect(screen.getByText("Legal basis")).toBeInTheDocument();
+    expect(screen.getByText("Retention")).toBeInTheDocument();
+    expect(screen.getByText("Recipients and transfers")).toBeInTheDocument();
+    expect(screen.getByText("Rights")).toBeInTheDocument();
     expect(screen.getByText(/Art\. 6\(1\)\(b\) GDPR/i)).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Read the full privacy notice" }),
     ).toHaveAttribute("href", "/privacy");
+
+    fireEvent.mouseDown(document.body);
+    expect(
+      screen.queryByRole("region", { name: "Import privacy" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(privacyButton);
+    fireEvent.click(privacyButton);
+    expect(
+      screen.getByRole("region", { name: "Import privacy" }),
+    ).toBeInTheDocument();
+
+    fireEvent.pointerDown(privacyButton);
+    fireEvent.click(privacyButton);
+    expect(
+      screen.queryByRole("region", { name: "Import privacy" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the hover popover open while the pointer moves into it", () => {
+    vi.useFakeTimers();
+    renderPage();
+
+    const applyButton = screen.getByRole("button", { name: "What apply does" });
+    fireEvent.mouseEnter(applyButton);
+
+    expect(
+      screen.getByRole("region", { name: "What apply does" }),
+    ).toBeInTheDocument();
+
+    const applyPopover = screen.getByRole("region", {
+      name: "What apply does",
+    });
+    fireEvent.mouseLeave(applyButton);
+    fireEvent.mouseEnter(applyPopover);
+
+    act(() => {
+      vi.advanceTimersByTime(140);
+    });
+
+    expect(
+      screen.getByRole("region", { name: "What apply does" }),
+    ).toBeInTheDocument();
+
+    fireEvent.mouseLeave(applyPopover);
+
+    act(() => {
+      vi.advanceTimersByTime(140);
+    });
+
+    expect(
+      screen.queryByRole("region", { name: "What apply does" }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -47,6 +48,10 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
 });
 
 type ImportDisclosureId = "apply" | "bestUse" | "privacy";
+type ImportDisclosurePointerIntent = ImportDisclosureId | null;
+type ImportDisclosureStyle = CSSProperties & {
+  "--import-disclosure-arrow-left"?: string;
+};
 
 function upsertBatch(
   batches: ImportBatchResponse[],
@@ -87,8 +92,15 @@ export default function ImportsPageClient({
   const [isExporting, setIsExporting] = useState(false);
   const [activeDisclosure, setActiveDisclosure] =
     useState<ImportDisclosureId | null>(null);
+  const [popoverStyle, setPopoverStyle] = useState<ImportDisclosureStyle>({});
   const actions = useSingleFlightActions<"preview" | "apply" | "export">();
   const disclosureRef = useRef<HTMLDivElement | null>(null);
+  const disclosureButtonRefs = useRef<
+    Partial<Record<ImportDisclosureId, HTMLButtonElement | null>>
+  >({});
+  const disclosureCloseTimerRef = useRef<number | null>(null);
+  const disclosurePointerIntentRef =
+    useRef<ImportDisclosurePointerIntent>(null);
 
   const selectedCount = useMemo(
     () => Object.values(selectedFiles).filter(Boolean).length,
@@ -124,19 +136,125 @@ export default function ImportsPageClient({
     };
   }, [activeDisclosure]);
 
+  useEffect(() => {
+    if (!activeDisclosure) {
+      setPopoverStyle({});
+      return;
+    }
+
+    const disclosureId = activeDisclosure;
+    const popoverWidthByDisclosure: Record<ImportDisclosureId, number> = {
+      apply: 352,
+      bestUse: 360,
+      privacy: 420,
+    };
+
+    function updatePopoverPosition() {
+      const shell = disclosureRef.current;
+      const button = disclosureButtonRefs.current[disclosureId];
+
+      if (!shell || !button) {
+        return;
+      }
+
+      const shellRect = shell.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const fallbackTop =
+        button.offsetTop +
+        (button.offsetHeight || buttonRect.height || 42) +
+        12;
+
+      if (shellRect.width <= 0) {
+        setPopoverStyle({
+          left: "0px",
+          top: `${fallbackTop}px`,
+          width: `${popoverWidthByDisclosure[disclosureId]}px`,
+          "--import-disclosure-arrow-left": "28px",
+        });
+        return;
+      }
+
+      const width = Math.min(
+        popoverWidthByDisclosure[disclosureId],
+        Math.max(shellRect.width - 16, 0),
+      );
+      const idealLeft =
+        buttonRect.left - shellRect.left + buttonRect.width / 2 - width / 2;
+      const clampedLeft = Math.min(
+        Math.max(idealLeft, 0),
+        Math.max(shellRect.width - width, 0),
+      );
+      const buttonCenter =
+        buttonRect.left - shellRect.left + buttonRect.width / 2;
+      const arrowLeft = Math.min(
+        Math.max(buttonCenter - clampedLeft, 28),
+        Math.max(width - 28, 28),
+      );
+
+      setPopoverStyle({
+        left: `${clampedLeft}px`,
+        top: `${fallbackTop + 2}px`,
+        width: `${width}px`,
+        "--import-disclosure-arrow-left": `${arrowLeft}px`,
+      });
+    }
+
+    updatePopoverPosition();
+    window.addEventListener("resize", updatePopoverPosition);
+    window.addEventListener("scroll", updatePopoverPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePopoverPosition);
+      window.removeEventListener("scroll", updatePopoverPosition, true);
+    };
+  }, [activeDisclosure]);
+
+  useEffect(() => {
+    return () => {
+      clearDisclosureCloseTimer();
+    };
+  }, []);
+
+  function clearDisclosureCloseTimer() {
+    if (disclosureCloseTimerRef.current !== null) {
+      window.clearTimeout(disclosureCloseTimerRef.current);
+      disclosureCloseTimerRef.current = null;
+    }
+  }
+
+  function scheduleDisclosureClose() {
+    clearDisclosureCloseTimer();
+    disclosureCloseTimerRef.current = window.setTimeout(() => {
+      setActiveDisclosure(null);
+    }, 120);
+  }
+
+  function openDisclosure(disclosure: ImportDisclosureId) {
+    clearDisclosureCloseTimer();
+    setActiveDisclosure(disclosure);
+  }
+
+  function handleDisclosureToggle(disclosure: ImportDisclosureId) {
+    clearDisclosureCloseTimer();
+    setActiveDisclosure((current) =>
+      current === disclosure ? null : disclosure,
+    );
+    disclosurePointerIntentRef.current = null;
+  }
+
   const disclosureContent: Record<
     ImportDisclosureId,
     {
       title: string;
-      toneClassName: string;
+      panelClassName: string;
       body: ReactNode;
     }
   > = {
     apply: {
       title: "What apply does",
-      toneClassName: "surface-info",
+      panelClassName: "import-disclosure-panel--apply",
       body: (
-        <ul className="space-y-2 text-sm text-blue-950">
+        <ul className="import-disclosure-list">
           <li>
             Matches rows by import key and merges creates, updates, and
             unchanged rows safely.
@@ -158,9 +276,9 @@ export default function ImportsPageClient({
     },
     bestUse: {
       title: "Best use of import/export",
-      toneClassName: "",
+      panelClassName: "import-disclosure-panel--best-use",
       body: (
-        <p className="text-sm text-gray-600">
+        <p className="import-disclosure-copy">
           Import is best when you are starting from existing finance data or
           moving the same finhance model between workspaces. Export is a
           round-trip backup of definitions and manual history, not a raw dump of
@@ -170,30 +288,32 @@ export default function ImportsPageClient({
     },
     privacy: {
       title: "Import privacy",
-      toneClassName: "surface-warning",
+      panelClassName: "import-disclosure-panel--privacy",
       body: (
-        <div className="space-y-3 text-sm text-amber-950">
-          <p>{privacySummary.controller}</p>
-          <p>
-            <span className="font-medium">Purpose:</span>{" "}
-            {privacySummary.purpose}
-          </p>
-          <p>
-            <span className="font-medium">Legal basis:</span>{" "}
-            {privacySummary.legalBasis}
-          </p>
-          <p>
-            <span className="font-medium">Retention:</span>{" "}
-            {privacySummary.retention}
-          </p>
-          <p>
-            <span className="font-medium">Recipients and transfers:</span>{" "}
-            {privacySummary.recipients}
-          </p>
-          <p>
-            <span className="font-medium">Your rights:</span>{" "}
-            {privacySummary.rights}
-          </p>
+        <div className="import-disclosure-privacy">
+          <p className="import-disclosure-lead">{privacySummary.controller}</p>
+          <dl className="import-disclosure-facts">
+            <div className="import-disclosure-fact">
+              <dt>Purpose</dt>
+              <dd>{privacySummary.purpose}</dd>
+            </div>
+            <div className="import-disclosure-fact">
+              <dt>Legal basis</dt>
+              <dd>{privacySummary.legalBasis}</dd>
+            </div>
+            <div className="import-disclosure-fact">
+              <dt>Retention</dt>
+              <dd>{privacySummary.retention}</dd>
+            </div>
+            <div className="import-disclosure-fact">
+              <dt>Recipients and transfers</dt>
+              <dd>{privacySummary.recipients}</dd>
+            </div>
+            <div className="import-disclosure-fact">
+              <dt>Rights</dt>
+              <dd>{privacySummary.rights}</dd>
+            </div>
+          </dl>
           <Link
             href={privacySummary.fullNoticeHref}
             className="import-disclosure-link"
@@ -349,7 +469,7 @@ export default function ImportsPageClient({
         </p>
       </section>
 
-      <section className="page-section section-stack-tight">
+      <section className="page-section page-section--allow-overflow section-stack-tight">
         <div className="compact-toolbar">
           <div>
             <h2 className="section-title">Templates and round-trip export</h2>
@@ -375,7 +495,18 @@ export default function ImportsPageClient({
           </p>
         ) : null}
 
-        <div ref={disclosureRef} className="section-stack-tight">
+        <div
+          ref={disclosureRef}
+          className="import-disclosure-shell"
+          onMouseLeave={scheduleDisclosureClose}
+          onBlurCapture={(event) => {
+            const nextTarget = event.relatedTarget as Node | null;
+            if (!disclosureRef.current?.contains(nextTarget)) {
+              clearDisclosureCloseTimer();
+              setActiveDisclosure(null);
+            }
+          }}
+        >
           <div className="import-disclosure-rail">
             {disclosureButtons.map((button) => {
               const isActive = activeDisclosure === button.id;
@@ -383,12 +514,23 @@ export default function ImportsPageClient({
               return (
                 <button
                   key={button.id}
+                  ref={(node) => {
+                    disclosureButtonRefs.current[button.id] = node;
+                  }}
                   type="button"
                   aria-expanded={isActive}
                   aria-controls={`import-disclosure-${button.id}`}
-                  onClick={() => setActiveDisclosure(button.id)}
-                  onFocus={() => setActiveDisclosure(button.id)}
-                  onMouseEnter={() => setActiveDisclosure(button.id)}
+                  onPointerDown={() => {
+                    disclosurePointerIntentRef.current = button.id;
+                  }}
+                  onClick={() => handleDisclosureToggle(button.id)}
+                  onFocus={() => {
+                    if (disclosurePointerIntentRef.current !== button.id) {
+                      openDisclosure(button.id);
+                    }
+                  }}
+                  onMouseEnter={() => openDisclosure(button.id)}
+                  onMouseLeave={scheduleDisclosureClose}
                   className={`import-disclosure-trigger${
                     isActive ? " is-active" : ""
                   }`}
@@ -404,20 +546,19 @@ export default function ImportsPageClient({
               id={`import-disclosure-${activeDisclosure}`}
               role="region"
               aria-label={disclosureContent[activeDisclosure].title}
-              className={`page-inline-notice import-disclosure-panel ${disclosureContent[activeDisclosure].toneClassName}`}
+              style={popoverStyle}
+              onMouseEnter={clearDisclosureCloseTimer}
+              onMouseLeave={scheduleDisclosureClose}
+              className={`import-disclosure-panel ${disclosureContent[activeDisclosure].panelClassName}`}
             >
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--text-primary)]">
+              <h2 className="import-disclosure-panel-title">
                 {disclosureContent[activeDisclosure].title}
               </h2>
-              <div className="mt-3">
+              <div className="import-disclosure-panel-body">
                 {disclosureContent[activeDisclosure].body}
               </div>
             </div>
-          ) : (
-            <p className="text-sm text-gray-500">
-              Open a topic for quick guidance without expanding the whole page.
-            </p>
-          )}
+          ) : null}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
