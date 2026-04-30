@@ -62,7 +62,7 @@ export default async function ImportPage() {
             </section>
           </>
         ) : (
-          <div className="page-shell">
+          <div className="page-shell is-relaxed route-stack-desktop-xl">
             <ImportsPageClient
               initialBatches={batches}
               privacySummary={privacyNotice.importSummary}
