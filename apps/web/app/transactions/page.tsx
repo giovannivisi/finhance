@@ -6,7 +6,7 @@ import type {
 } from "@finhance/shared";
 import Container from "@components/Container";
 import TransactionsPageClient from "@components/TransactionsPageClient";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 
 export const dynamic = "force-dynamic";
 

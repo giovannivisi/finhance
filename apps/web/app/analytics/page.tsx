@@ -11,7 +11,7 @@ import Container from "@components/Container";
 import MoneyValue from "@components/MoneyValue";
 
 import WorkflowSection from "@components/WorkflowSection";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 import {
   buildAnalyticsQueryString,
   buildTransactionsLink,

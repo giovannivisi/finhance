@@ -9,6 +9,7 @@ import {
   isLoopbackIp,
   resolveClientIp,
 } from '@/security/client-ip';
+import { isHostedAuthMode } from '@/config/auth-mode';
 
 type RequestLike = {
   ips?: unknown;
@@ -22,6 +23,10 @@ type RequestLike = {
 @Injectable()
 export class LocalOnlyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
+    if (isHostedAuthMode()) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest<RequestLike>();
     const clientIp = resolveClientIp(request);
 

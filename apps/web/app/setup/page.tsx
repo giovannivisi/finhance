@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { SetupStatusResponse } from "@finhance/shared";
 import Container from "@components/Container";
 
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 import { getPrimarySetupAction, getSetupProgressLabel } from "@lib/setup";
 
 export const dynamic = "force-dynamic";

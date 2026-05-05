@@ -6,7 +6,7 @@ import type {
 import Container from "@components/Container";
 
 import RecurringPageClient from "@components/RecurringPageClient";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 
 export const dynamic = "force-dynamic";
 
