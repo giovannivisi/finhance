@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
 
-export default auth((request) => {
+const authenticatedProxy = auth((request) => {
   if (!isHostedAuthMode()) {
     return NextResponse.next();
   }
@@ -19,6 +19,12 @@ export default auth((request) => {
 
   return NextResponse.redirect(signInUrl);
 });
+
+export function proxy(...args: Parameters<typeof authenticatedProxy>) {
+  return authenticatedProxy(...args);
+}
+
+export default proxy;
 
 export const config = {
   matcher: [

@@ -1,38 +1,25 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthConfig } from "next-auth";
 import GitHub, {
   type GitHubEmail,
   type GitHubProfile,
 } from "next-auth/providers/github";
 import Google, { type GoogleProfile } from "next-auth/providers/google";
 import { FinhanceAuthAdapter } from "@lib/auth-adapter";
-import { AUTH_MODE_HOSTED, isHostedAuthMode } from "@lib/auth-mode";
+import { isHostedAuthMode } from "@lib/auth-mode";
+import {
+  readRequiredHostedEnv,
+  resolveAuthSecret,
+  resolveBootstrapEmail,
+} from "@lib/auth-config";
 import { prisma } from "@lib/prisma";
 
 type VerifiedGitHubProfile = GitHubProfile & {
   email_verified?: boolean;
 };
 
-type NextAuthConfig = Parameters<typeof NextAuth>[0];
-
-function readRequiredHostedEnv(key: string): string {
-  const value = process.env[key]?.trim();
-
-  if (!value) {
-    throw new Error(
-      `${key} must be configured when AUTH_MODE=${AUTH_MODE_HOSTED}.`,
-    );
-  }
-
-  return value;
-}
-
-function resolveBootstrapEmail(): string {
-  return readRequiredHostedEnv("AUTH_BOOTSTRAP_EMAIL").toLowerCase();
-}
-
-function createGitHubProvider() {
-  const clientId = readRequiredHostedEnv("AUTH_GITHUB_ID");
-  const clientSecret = readRequiredHostedEnv("AUTH_GITHUB_SECRET");
+function createGitHubProvider(env: NodeJS.ProcessEnv = process.env) {
+  const clientId = readRequiredHostedEnv("AUTH_GITHUB_ID", env);
+  const clientSecret = readRequiredHostedEnv("AUTH_GITHUB_SECRET", env);
 
   return GitHub({
     clientId,
@@ -117,52 +104,57 @@ function hasVerifiedEmail(
   return false;
 }
 
-const authConfig: NextAuthConfig = {
-  adapter: FinhanceAuthAdapter(prisma),
-  session: {
-    strategy: "database",
-  },
-  secret: process.env.AUTH_SECRET?.trim() || "local-dev-auth-secret",
-  trustHost: true,
-  providers: createProviders(),
-  callbacks: {
-    async signIn({ account, profile, user }) {
-      if (!isHostedAuthMode()) {
-        return true;
-      }
-
-      const normalizedEmail =
-        typeof user.email === "string" && user.email.trim()
-          ? user.email.trim().toLowerCase()
-          : typeof profile?.email === "string" && profile.email.trim()
-            ? profile.email.trim().toLowerCase()
-            : null;
-
-      if (
-        !normalizedEmail ||
-        !hasVerifiedEmail(account?.provider ?? undefined, profile ?? undefined)
-      ) {
-        return false;
-      }
-
-      const existingUser = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
-      });
-
-      if (existingUser) {
-        return existingUser.isActive;
-      }
-
-      return normalizedEmail === resolveBootstrapEmail();
+function buildAuthConfig(): NextAuthConfig {
+  return {
+    adapter: FinhanceAuthAdapter(prisma),
+    session: {
+      strategy: "database",
     },
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
-      }
+    secret: resolveAuthSecret(),
+    trustHost: true,
+    providers: createProviders(),
+    callbacks: {
+      async signIn({ account, profile, user }) {
+        if (!isHostedAuthMode()) {
+          return true;
+        }
 
-      return session;
+        const normalizedEmail =
+          typeof user.email === "string" && user.email.trim()
+            ? user.email.trim().toLowerCase()
+            : typeof profile?.email === "string" && profile.email.trim()
+              ? profile.email.trim().toLowerCase()
+              : null;
+
+        if (
+          !normalizedEmail ||
+          !hasVerifiedEmail(
+            account?.provider ?? undefined,
+            profile ?? undefined,
+          )
+        ) {
+          return false;
+        }
+
+        const existingUser = await prisma.user.findUnique({
+          where: { email: normalizedEmail },
+        });
+
+        if (existingUser) {
+          return existingUser.isActive;
+        }
+
+        return normalizedEmail === resolveBootstrapEmail();
+      },
+      async session({ session, user }) {
+        if (session.user) {
+          session.user.id = user.id;
+        }
+
+        return session;
+      },
     },
-  },
-};
+  };
+}
 
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+export const { handlers, auth, signIn, signOut } = NextAuth(buildAuthConfig());
