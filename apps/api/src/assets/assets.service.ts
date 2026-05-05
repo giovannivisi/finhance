@@ -16,7 +16,7 @@ import {
   LiabilityKind,
   OperationType,
   Prisma,
-} from '@prisma/client';
+} from '@finhance/db';
 import { toAssetResponse } from '@assets/assets.mapper';
 import {
   BASE_CURRENCY,

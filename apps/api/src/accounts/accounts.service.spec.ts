@@ -1,13 +1,13 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 import {
   AccountType,
   AssetKind,
   AssetType,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 const ZERO = new Prisma.Decimal(0);

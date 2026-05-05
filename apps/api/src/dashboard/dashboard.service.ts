@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
 import { SnapshotsService } from '@snapshots/snapshots.service';
 import type { DashboardResponse } from '@finhance/shared';
-import type { NetWorthSnapshot } from '@prisma/client';
+import type { NetWorthSnapshot } from '@finhance/db';
 
 @Injectable()
 export class DashboardService {

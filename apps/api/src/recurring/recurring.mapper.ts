@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 import type {
   MonthlyReviewCurrencyInsightResponse,
   MonthlyReviewNetWorthExplanationResponse,
@@ -10,10 +10,7 @@ import type {
 } from '@finhance/shared';
 import type { AccountReconciliationModel } from '@accounts/accounts.service';
 import { toAccountReconciliationResponse } from '@accounts/accounts.mapper';
-import type {
-  RecurringTransactionRule,
-  NetWorthSnapshot,
-} from '@prisma/client';
+import type { RecurringTransactionRule, NetWorthSnapshot } from '@finhance/db';
 
 const USER_VISIBLE_MATERIALIZATION_ERROR =
   'Unable to materialize this recurring rule. Review the rule configuration and try again.';

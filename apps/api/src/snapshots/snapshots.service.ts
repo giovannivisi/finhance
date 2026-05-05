@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { OperationType } from '@prisma/client';
+import { OperationType } from '@finhance/db';
 import { AssetsService } from '@assets/assets.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
@@ -7,7 +7,7 @@ import type {
   DashboardAssetResponse,
   DashboardResponse,
 } from '@finhance/shared';
-import { NetWorthSnapshot, Prisma } from '@prisma/client';
+import { NetWorthSnapshot, Prisma } from '@finhance/db';
 
 const SNAPSHOT_TIME_ZONE = 'Europe/Rome';
 const SNAPSHOT_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {

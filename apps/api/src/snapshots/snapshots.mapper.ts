@@ -1,4 +1,4 @@
-import type { NetWorthSnapshot, Prisma } from '@prisma/client';
+import type { NetWorthSnapshot, Prisma } from '@finhance/db';
 import type {
   NetWorthSnapshotResponse,
   SnapshotCaptureResponse,

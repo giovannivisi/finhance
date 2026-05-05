@@ -1,7 +1,7 @@
 import { SnapshotsService } from '@snapshots/snapshots.service';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
 import type { DashboardResponse } from '@finhance/shared';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 

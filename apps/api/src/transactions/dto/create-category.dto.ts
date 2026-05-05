@@ -8,7 +8,7 @@ import {
   IsOptional,
   IsString,
 } from 'class-validator';
-import { CategoryType as PrismaCategoryType } from '@prisma/client';
+import { CategoryType as PrismaCategoryType } from '@finhance/db';
 import type { CategoryType, UpsertCategoryRequest } from '@finhance/shared';
 
 function trimStringValue({ value }: TransformFnParams): unknown {

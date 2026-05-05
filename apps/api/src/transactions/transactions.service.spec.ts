@@ -4,7 +4,7 @@ import {
   Prisma,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import { CategoriesService } from '@transactions/categories.service';
 import { TransactionsService } from '@transactions/transactions.service';
 

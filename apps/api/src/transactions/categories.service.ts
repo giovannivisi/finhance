@@ -5,12 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
-import {
-  Category,
-  CategoryType,
-  Prisma,
-  TransactionKind,
-} from '@prisma/client';
+import { Category, CategoryType, Prisma, TransactionKind } from '@finhance/db';
 import { CreateCategoryDto } from '@transactions/dto/create-category.dto';
 import { UpdateCategoryDto } from '@transactions/dto/update-category.dto';
 

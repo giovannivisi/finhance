@@ -1,4 +1,4 @@
-import { Prisma, TransactionKind } from '@prisma/client';
+import { Prisma, TransactionKind } from '@finhance/db';
 
 export type TransactionRecord = Prisma.TransactionGetPayload<{
   include: {

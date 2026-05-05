@@ -37,6 +37,9 @@ importers:
 
   apps/api:
     dependencies:
+      "@finhance/db":
+        specifier: workspace:^
+        version: link:../../packages/db
       "@finhance/shared":
         specifier: workspace:^
         version: link:../../packages/shared
@@ -55,9 +58,6 @@ importers:
       "@nestjs/throttler":
         specifier: ^6.5.0
         version: 6.5.0(@nestjs/common@11.1.18(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.18(@nestjs/common@11.1.18(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.18)(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)
-      "@prisma/client":
-        specifier: ^6.19.0
-        version: 6.19.0(prisma@6.19.0(typescript@5.9.2))(typescript@5.9.2)
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -119,9 +119,6 @@ importers:
       prettier:
         specifier: ^3.4.2
         version: 3.6.2
-      prisma:
-        specifier: ^6.19.0
-        version: 6.19.0(typescript@5.9.2)
       source-map-support:
         specifier: ^0.5.21
         version: 0.5.21
@@ -219,6 +216,22 @@ importers:
       vitest:
         specifier: ^4.1.5
         version: 4.1.5(@types/node@20.19.25)(jsdom@29.1.0(@noble/hashes@1.8.0))(vite@8.0.10(@types/node@20.19.25)(jiti@2.6.1)(terser@5.44.1))
+
+  packages/db:
+    dependencies:
+      "@prisma/client":
+        specifier: ^6.19.0
+        version: 6.19.0(prisma@6.19.0(typescript@5.9.2))(typescript@5.9.2)
+    devDependencies:
+      "@repo/typescript-config":
+        specifier: workspace:*
+        version: link:../typescript-config
+      prisma:
+        specifier: ^6.19.0
+        version: 6.19.0(typescript@5.9.2)
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
 
   packages/eslint-config:
     devDependencies:
@@ -7991,6 +8004,7 @@ packages:
         integrity: sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==,
       }
     engines: { node: ">=14.17" }
+    hasBin: true
 
   typescript@5.9.3:
     resolution:
@@ -10855,7 +10869,7 @@ snapshots:
 
   effect@3.20.0:
     dependencies:
-      "@standard-schema/spec": 1.0.0
+      "@standard-schema/spec": 1.1.0
       fast-check: 3.23.2
 
   electron-to-chromium@1.5.259: {}

@@ -14,7 +14,7 @@ import {
   RecurringOccurrenceStatus,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 type ImportBatchCreateCall = {

@@ -1,4 +1,4 @@
-import type { Category } from '@prisma/client';
+import type { Category } from '@finhance/db';
 import type { CategoryResponse } from '@finhance/shared';
 import type { CategoryDeletionState } from '@transactions/categories.service';
 

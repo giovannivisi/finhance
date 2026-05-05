@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 import type {
   AccountReconciliationResponse,
   AccountResponse,
@@ -6,7 +6,7 @@ import type {
 import type { AccountReconciliationModel } from '@accounts/accounts.service';
 import type { AccountDeletionState } from '@accounts/accounts.service';
 
-import type { Account } from '@prisma/client';
+import type { Account } from '@finhance/db';
 
 function decimalToNumber(value: Prisma.Decimal | null): number | null {
   return value?.toNumber() ?? null;

@@ -1,9 +1,9 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 import {
   CategoryType,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import { BudgetsService } from '@budgets/budgets.service';
 
 const OWNER_ID = 'local-dev';

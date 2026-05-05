@@ -13,7 +13,7 @@ import {
 import {
   RecurringOccurrenceStatus as PrismaRecurringOccurrenceStatus,
   TransactionDirection as PrismaTransactionDirection,
-} from '@prisma/client';
+} from '@finhance/db';
 
 function trimOptionalStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() || undefined : value;

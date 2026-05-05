@@ -1,6 +1,6 @@
 import { DashboardService } from '@/dashboard/dashboard.service';
 import type { DashboardResponse } from '@finhance/shared';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 

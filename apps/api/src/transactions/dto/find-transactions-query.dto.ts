@@ -10,7 +10,7 @@ import {
   IsString,
   Matches,
 } from 'class-validator';
-import { TransactionKind as PrismaTransactionKind } from '@prisma/client';
+import { TransactionKind as PrismaTransactionKind } from '@finhance/db';
 import type { TransactionKind } from '@finhance/shared';
 
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

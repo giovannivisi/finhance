@@ -29,7 +29,7 @@ import {
   AssetType,
   NetWorthSnapshot,
   Prisma,
-} from '@prisma/client';
+} from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 type ResponseWithBody = { body: unknown };

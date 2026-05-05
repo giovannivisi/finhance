@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
 import { BudgetsService } from '@budgets/budgets.service';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 import {
   CategoryType,
   NetWorthSnapshot,
@@ -9,7 +9,7 @@ import {
   RecurringTransactionRule,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import type { MonthlyCashflowResponse } from '@finhance/shared';
 import { RecurringService } from '@recurring/recurring.service';
 import { CategoriesService } from '@transactions/categories.service';

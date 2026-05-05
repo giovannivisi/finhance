@@ -1,4 +1,4 @@
-import { AssetKind } from '@prisma/client';
+import { AssetKind } from '@finhance/db';
 import { PricesService } from '@prices/prices.service';
 
 describe('PricesService', () => {

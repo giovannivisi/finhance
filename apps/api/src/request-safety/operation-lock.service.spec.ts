@@ -1,5 +1,5 @@
 import { ConflictException, HttpStatus } from '@nestjs/common';
-import { OperationType, Prisma } from '@prisma/client';
+import { OperationType, Prisma } from '@finhance/db';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
 
 type OperationStateRecord = {

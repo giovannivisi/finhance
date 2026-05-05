@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
-import { CategoryType, Prisma, TransactionKind } from '@prisma/client';
+import { CategoryType, Prisma, TransactionKind } from '@finhance/db';
 import type {
   CategoryBudgetOverrideResponse,
   CategoryBudgetResponse,
