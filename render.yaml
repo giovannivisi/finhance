@@ -5,8 +5,8 @@ services:
     plan: free
     region: frankfurt
     autoDeployTrigger: commit
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm db:generate && pnpm --filter api build
-    startCommand: corepack enable && pnpm --filter api start:prod
+    buildCommand: pnpm install --frozen-lockfile && pnpm db:generate && pnpm --filter api build
+    startCommand: pnpm --filter api start:prod
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
