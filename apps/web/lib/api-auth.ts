@@ -2,6 +2,7 @@ import "server-only";
 
 import { importPKCS8, SignJWT } from "jose";
 import { AUTH_MODE_HOSTED, isHostedAuthMode } from "./auth-mode";
+import { resolveDirectApiUrl } from "./api-url";
 
 interface HostedApiJwtConfig {
   issuer: string;
@@ -93,5 +94,7 @@ export function getDirectApiUrl(path: string): string {
     throw new Error("NEXT_PUBLIC_API_URL is not configured.");
   }
 
-  return new URL(path, baseUrl).toString();
+  return resolveDirectApiUrl(path, baseUrl);
 }
+
+export { InvalidApiPathError, normalizeDirectApiPath } from "./api-url";

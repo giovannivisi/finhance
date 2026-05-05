@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   Adapter,
   AdapterAccount,
@@ -5,6 +6,17 @@ import type {
   AdapterUser,
 } from "next-auth/adapters";
 import { Prisma, PrismaClient } from "@finhance/db";
+
+const STORED_AUTH_TOKEN_NAMESPACE = "finhance:auth-token";
+
+function hashStoredAuthToken(
+  token: string,
+  purpose: "session" | "verification",
+): string {
+  return createHash("sha256")
+    .update(`${STORED_AUTH_TOKEN_NAMESPACE}:${purpose}:${token}`)
+    .digest("hex");
+}
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -35,6 +47,18 @@ function mapSession(session: {
     sessionToken: session.sessionToken,
     userId: session.userId,
     expires: session.expires,
+  };
+}
+
+function mapVerificationToken(token: {
+  identifier: string;
+  token: string;
+  expires: Date;
+}) {
+  return {
+    identifier: token.identifier,
+    token: token.token,
+    expires: token.expires,
   };
 }
 
@@ -146,19 +170,25 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
       }
     },
     async createSession(session) {
-      return mapSession(
-        await prisma.authSession.create({
+      const sessionTokenHash = hashStoredAuthToken(
+        session.sessionToken,
+        "session",
+      );
+      return mapSession({
+        ...(await prisma.authSession.create({
           data: {
-            sessionToken: session.sessionToken,
+            sessionToken: sessionTokenHash,
             userId: session.userId,
             expires: session.expires,
           },
-        }),
-      );
+        })),
+        sessionToken: session.sessionToken,
+      });
     },
     async getSessionAndUser(sessionToken) {
+      const sessionTokenHash = hashStoredAuthToken(sessionToken, "session");
       const session = await prisma.authSession.findUnique({
-        where: { sessionToken },
+        where: { sessionToken: sessionTokenHash },
         include: {
           user: true,
         },
@@ -176,21 +206,32 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
       }
 
       return {
-        session: mapSession(session),
+        session: mapSession({
+          ...session,
+          sessionToken,
+        }),
         user: mapUser(session.user),
       };
     },
     async updateSession(session) {
+      const sessionTokenHash = hashStoredAuthToken(
+        session.sessionToken,
+        "session",
+      );
+
       try {
         const updated = await prisma.authSession.update({
-          where: { sessionToken: session.sessionToken },
+          where: { sessionToken: sessionTokenHash },
           data: {
             expires: session.expires,
             userId: session.userId,
           },
         });
 
-        return mapSession(updated);
+        return mapSession({
+          ...updated,
+          sessionToken: session.sessionToken,
+        });
       } catch (error) {
         if (isNotFoundError(error)) {
           return null;
@@ -200,12 +241,15 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
       }
     },
     async deleteSession(sessionToken) {
+      const sessionTokenHash = hashStoredAuthToken(sessionToken, "session");
+
       try {
-        return mapSession(
-          await prisma.authSession.delete({
-            where: { sessionToken },
-          }),
-        );
+        return mapSession({
+          ...(await prisma.authSession.delete({
+            where: { sessionToken: sessionTokenHash },
+          })),
+          sessionToken,
+        });
       } catch (error) {
         if (isNotFoundError(error)) {
           return null;
@@ -215,19 +259,33 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
       }
     },
     async createVerificationToken(token) {
-      return prisma.authVerificationToken.create({
-        data: token,
+      const tokenHash = hashStoredAuthToken(token.token, "verification");
+
+      return mapVerificationToken({
+        ...(await prisma.authVerificationToken.create({
+          data: {
+            identifier: token.identifier,
+            token: tokenHash,
+            expires: token.expires,
+          },
+        })),
+        token: token.token,
       });
     },
     async useVerificationToken({ identifier, token }) {
+      const tokenHash = hashStoredAuthToken(token, "verification");
+
       try {
-        return await prisma.authVerificationToken.delete({
-          where: {
-            identifier_token: {
-              identifier,
-              token,
+        return mapVerificationToken({
+          ...(await prisma.authVerificationToken.delete({
+            where: {
+              identifier_token: {
+                identifier,
+                token: tokenHash,
+              },
             },
-          },
+          })),
+          token,
         });
       } catch (error) {
         if (isNotFoundError(error)) {
