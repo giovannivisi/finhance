@@ -11,6 +11,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "db:generate": "pnpm --filter @finhance/db run prisma:generate",
+    "db:migrate:deploy": "pnpm --filter @finhance/db run prisma:migrate:deploy",
     "db:migrate:dev": "pnpm --filter @finhance/db run prisma:migrate:dev",
     "db:migrate:reset": "pnpm --filter @finhance/db run prisma:migrate:reset",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
@@ -23,7 +24,7 @@
   },
   "packageManager": "pnpm@9.0.0",
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9.0 <21"
   },
   "pnpm": {
     "overrides": {

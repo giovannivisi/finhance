@@ -4,12 +4,14 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { isHostedAuthMode } from '@/config/auth-mode';
 import {
   getHostedApiJwtPublicKey,
   resolveHostedApiJwtConfig,
 } from '@/security/api-jwt.config';
 import type { RequestWithApiAuth } from '@/security/api-auth.types';
+import { isPublicRoute } from '@/security/public-route';
 
 type RequestLike = RequestWithApiAuth & {
   headers?: Record<string, string | string[] | undefined>;
@@ -17,7 +19,13 @@ type RequestLike = RequestWithApiAuth & {
 
 @Injectable()
 export class ApiJwtGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (isPublicRoute(context, this.reflector)) {
+      return true;
+    }
+
     if (!isHostedAuthMode()) {
       return true;
     }

@@ -4,6 +4,9 @@
   "description": "",
   "author": "giovisi",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0 <21"
+  },
   "license": "MIT",
   "scripts": {
     "build": "nest build",

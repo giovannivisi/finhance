@@ -51,7 +51,7 @@ Useful entry points:
 
 ## Stack
 
-- Node.js 18+
+- Node.js 20.9+
 - pnpm 9
 - TypeScript
 - Turborepo
@@ -128,6 +128,33 @@ of API JSON and many pages will fail with API reachability errors.
 
 More web-specific setup notes live in
 [apps/web/README.md](/Users/giovannivisi/Code/finhance/apps/web/README.md).
+
+## Private hosted deployment
+
+The intended private hosted shape is:
+
+- `apps/web` on Vercel
+- `apps/api` on Render
+- Neon as the database
+
+Hosted deployment details live in:
+
+- [docs/deploy/private-hosted.md](/Users/giovannivisi/Code/finhance/docs/deploy/private-hosted.md)
+- [render.yaml](/Users/giovannivisi/Code/finhance/render.yaml)
+
+The hosted rollout depends on the Phase 1 auth foundation:
+
+- web-owned Auth.js sessions
+- Google + GitHub providers
+- single bootstrap email allowlist at first access
+- short-lived ES256 API JWTs minted by the web app
+
+Before the first hosted deploy, and after any future Prisma migration changes,
+run:
+
+```bash
+pnpm db:migrate:deploy
+```
 
 ## Common commands
 

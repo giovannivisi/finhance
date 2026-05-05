@@ -1,6 +1,8 @@
 import { createPrivateKey, generateKeyPairSync } from 'node:crypto';
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { ApiJwtGuard } from '@/security/api-jwt.guard';
+import { IS_PUBLIC_ROUTE_KEY } from '@/security/public-route';
 
 const VALID_KEY_PAIR = generateKeyPairSync('ec', {
   namedCurve: 'P-256',
@@ -42,8 +44,15 @@ type RequestLike = {
   };
 };
 
-function createContext(request: RequestLike): ExecutionContext {
+function createContext(
+  request: RequestLike,
+  handler: () => unknown = () => undefined,
+): ExecutionContext {
+  const classRef = class TestController {};
+
   return {
+    getClass: () => classRef,
+    getHandler: () => handler,
     switchToHttp: () => ({
       getRequest: () => request,
     }),
@@ -51,7 +60,7 @@ function createContext(request: RequestLike): ExecutionContext {
 }
 
 describe('ApiJwtGuard', () => {
-  const guard = new ApiJwtGuard();
+  const guard = new ApiJwtGuard(new Reflector());
   const originalEnv = {
     AUTH_MODE: process.env.AUTH_MODE,
     AUTH_API_JWT_ISSUER: process.env.AUTH_API_JWT_ISSUER,
@@ -129,6 +138,22 @@ describe('ApiJwtGuard', () => {
         }),
       ),
     ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('allows public routes without bearer validation', async () => {
+    const handler = () => undefined;
+    Reflect.defineMetadata(IS_PUBLIC_ROUTE_KEY, true, handler);
+
+    await expect(
+      guard.canActivate(
+        createContext(
+          {
+            headers: {},
+          },
+          handler,
+        ),
+      ),
+    ).resolves.toBe(true);
   });
 });
 

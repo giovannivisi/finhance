@@ -53,9 +53,8 @@ describe('bootstrap config', () => {
     expect(() =>
       resolveBootstrapRuntimeConfig({
         AUTH_MODE: 'hosted',
-        API_HOST: '0.0.0.0',
       } as NodeJS.ProcessEnv),
-    ).toThrow('AUTH_API_JWT_ISSUER must be configured in hosted auth mode.');
+    ).toThrow('API_HOST must be configured in hosted auth mode.');
   });
 
   it('allows non-loopback hosts in hosted mode with explicit config', () => {
@@ -64,6 +63,7 @@ describe('bootstrap config', () => {
         AUTH_MODE: 'hosted',
         API_HOST: '0.0.0.0',
         API_ALLOWED_ORIGINS: 'https://finhance.example',
+        API_TRUST_PROXY: 'true',
         AUTH_API_JWT_ISSUER: 'https://web.example',
         AUTH_API_JWT_AUDIENCE: 'finhance-api',
         AUTH_API_JWT_KID: 'test-key',
@@ -73,8 +73,22 @@ describe('bootstrap config', () => {
       authMode: 'hosted',
       host: '0.0.0.0',
       allowedOrigins: ['https://finhance.example'],
-      trustProxy: false,
+      trustProxy: true,
     });
+  });
+
+  it('requires explicit trust proxy settings in hosted mode', () => {
+    expect(() =>
+      resolveBootstrapRuntimeConfig({
+        AUTH_MODE: 'hosted',
+        API_HOST: '127.0.0.1',
+        API_ALLOWED_ORIGINS: 'http://localhost:3001',
+        AUTH_API_JWT_ISSUER: 'https://web.example',
+        AUTH_API_JWT_AUDIENCE: 'finhance-api',
+        AUTH_API_JWT_KID: 'test-key',
+        AUTH_API_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY,
+      } as NodeJS.ProcessEnv),
+    ).toThrow('API_TRUST_PROXY must be configured in hosted auth mode.');
   });
 
   it('parses trust proxy settings for proxied deployments', () => {
