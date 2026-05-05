@@ -6,7 +6,7 @@ import type {
   MonthlyBudgetResponse,
   SetupStatusResponse,
 } from "@finhance/shared";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 import DashboardClient from "@components/DashboardClient";
 import MoneyValue from "@components/MoneyValue";
 import WorkflowSection from "@components/WorkflowSection";

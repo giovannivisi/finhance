@@ -11,6 +11,20 @@ function createContext(request: Record<string, unknown>): ExecutionContext {
 
 describe('LocalOnlyGuard', () => {
   const guard = new LocalOnlyGuard();
+  const originalAuthMode = process.env.AUTH_MODE;
+
+  beforeEach(() => {
+    delete process.env.AUTH_MODE;
+  });
+
+  afterAll(() => {
+    if (originalAuthMode === undefined) {
+      delete process.env.AUTH_MODE;
+      return;
+    }
+
+    process.env.AUTH_MODE = originalAuthMode;
+  });
 
   it('allows loopback requests with a loopback host header', () => {
     expect(
@@ -76,5 +90,18 @@ describe('LocalOnlyGuard', () => {
         }),
       ),
     ).toThrow(ForbiddenException);
+  });
+
+  it('skips loopback enforcement in hosted mode', () => {
+    process.env.AUTH_MODE = 'hosted';
+
+    expect(
+      guard.canActivate(
+        createContext({
+          ip: '198.51.100.10',
+          headers: { host: 'finhance.example' },
+        }),
+      ),
+    ).toBe(true);
   });
 });

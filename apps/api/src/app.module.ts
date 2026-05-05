@@ -12,6 +12,7 @@ import { SetupModule } from '@/setup/setup.module';
 import { SnapshotsModule } from '@snapshots/snapshots.module';
 import { TransactionsModule } from '@transactions/transactions.module';
 import { LocalOnlyGuard } from '@/security/local-only.guard';
+import { ApiJwtGuard } from '@/security/api-jwt.guard';
 import { ProxyAwareThrottlerGuard } from '@/security/proxy-aware-throttler.guard';
 import { RequestSafetyModule } from '@/request-safety/request-safety.module';
 import { IdempotencyInterceptor } from '@/request-safety/idempotency.interceptor';
@@ -36,6 +37,10 @@ import { createThrottlerOptions } from '@/config/throttle.config';
     {
       provide: APP_GUARD,
       useClass: LocalOnlyGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ApiJwtGuard,
     },
     {
       provide: APP_GUARD,

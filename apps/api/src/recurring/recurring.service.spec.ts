@@ -65,6 +65,8 @@ function createRecurringRule(
   return {
     id: 'rule-1',
     userId: OWNER_ID,
+    importSource: null,
+    importKey: null,
     name: 'Salary',
     isActive: true,
     kind: TransactionKind.INCOME,

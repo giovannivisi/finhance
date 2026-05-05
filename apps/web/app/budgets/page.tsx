@@ -8,7 +8,7 @@ import BudgetsPageClient from "@components/BudgetsPageClient";
 import Container from "@components/Container";
 
 import WorkflowSection from "@components/WorkflowSection";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 import {
   buildBudgetMonthNavigationLink,
   buildBudgetsQueryString,

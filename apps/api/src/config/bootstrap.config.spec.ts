@@ -5,9 +5,15 @@ import {
   resolveBootstrapRuntimeConfig,
 } from '@/config/bootstrap.config';
 
+const TEST_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaomm0l20o+4bzZLBKT9Q4hqtjsRR
+b1j86cNrWoAY2tPRUiANQweYphsPxMOAeBRARgh6/eDup2Mkv45IzNGcsQ==
+-----END PUBLIC KEY-----`;
+
 describe('bootstrap config', () => {
   it('uses loopback defaults when env is unset', () => {
     expect(resolveBootstrapRuntimeConfig({} as NodeJS.ProcessEnv)).toEqual({
+      authMode: 'local',
       host: '127.0.0.1',
       allowedOrigins: ['http://localhost:3001', 'http://127.0.0.1:3001'],
       trustProxy: false,
@@ -41,6 +47,34 @@ describe('bootstrap config', () => {
     ).toThrow(
       'Refusing to bind API_HOST=0.0.0.0 while authentication is disabled.',
     );
+  });
+
+  it('requires explicit origins and JWT settings in hosted mode', () => {
+    expect(() =>
+      resolveBootstrapRuntimeConfig({
+        AUTH_MODE: 'hosted',
+        API_HOST: '0.0.0.0',
+      } as NodeJS.ProcessEnv),
+    ).toThrow('AUTH_API_JWT_ISSUER must be configured in hosted auth mode.');
+  });
+
+  it('allows non-loopback hosts in hosted mode with explicit config', () => {
+    expect(
+      resolveBootstrapRuntimeConfig({
+        AUTH_MODE: 'hosted',
+        API_HOST: '0.0.0.0',
+        API_ALLOWED_ORIGINS: 'https://finhance.example',
+        AUTH_API_JWT_ISSUER: 'https://web.example',
+        AUTH_API_JWT_AUDIENCE: 'finhance-api',
+        AUTH_API_JWT_KID: 'test-key',
+        AUTH_API_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY,
+      } as NodeJS.ProcessEnv),
+    ).toEqual({
+      authMode: 'hosted',
+      host: '0.0.0.0',
+      allowedOrigins: ['https://finhance.example'],
+      trustProxy: false,
+    });
   });
 
   it('parses trust proxy settings for proxied deployments', () => {

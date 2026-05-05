@@ -12,7 +12,7 @@ import ReviewMonthPicker from "@components/ReviewMonthPicker";
 import ReviewCaptureSnapshotButton from "@components/ReviewCaptureSnapshotButton";
 import WorkflowSection from "@components/WorkflowSection";
 import MoneyValue from "@components/MoneyValue";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 import { formatCurrency } from "@lib/format";
 import { CATEGORY_TYPE_LABELS } from "@lib/categories";
 import { TRANSACTION_KIND_LABELS } from "@lib/transactions";

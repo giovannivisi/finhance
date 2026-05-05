@@ -2,7 +2,7 @@ import Link from "next/link";
 import Container from "@components/Container";
 import ImportsPageClient from "@components/ImportsPageClient";
 import WorkflowSection from "@components/WorkflowSection";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 import type {
   ImportBatchResponse,
   SetupStatusResponse,

@@ -1,6 +1,6 @@
 import Container from "@components/Container";
 import AccountsPageClient from "@components/AccountsPageClient";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 import type {
   AccountReconciliationResponse,
   AccountResponse,
