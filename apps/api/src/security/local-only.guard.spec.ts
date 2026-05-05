@@ -1,8 +1,17 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { LocalOnlyGuard } from '@/security/local-only.guard';
+import { IS_PUBLIC_ROUTE_KEY } from '@/security/public-route';
 
-function createContext(request: Record<string, unknown>): ExecutionContext {
+function createContext(
+  request: Record<string, unknown>,
+  handler: () => unknown = () => undefined,
+): ExecutionContext {
+  const classRef = class TestController {};
+
   return {
+    getClass: () => classRef,
+    getHandler: () => handler,
     switchToHttp: () => ({
       getRequest: () => request,
     }),
@@ -10,7 +19,7 @@ function createContext(request: Record<string, unknown>): ExecutionContext {
 }
 
 describe('LocalOnlyGuard', () => {
-  const guard = new LocalOnlyGuard();
+  const guard = new LocalOnlyGuard(new Reflector());
   const originalAuthMode = process.env.AUTH_MODE;
 
   beforeEach(() => {
@@ -101,6 +110,23 @@ describe('LocalOnlyGuard', () => {
           ip: '198.51.100.10',
           headers: { host: 'finhance.example' },
         }),
+      ),
+    ).toBe(true);
+  });
+
+  it('allows public routes without loopback enforcement', () => {
+    const handler = () => undefined;
+    Reflect.defineMetadata(IS_PUBLIC_ROUTE_KEY, true, handler);
+
+    expect(
+      guard.canActivate(
+        createContext(
+          {
+            ip: '198.51.100.10',
+            headers: { host: 'finhance.example' },
+          },
+          handler,
+        ),
       ),
     ).toBe(true);
   });

@@ -20,6 +20,16 @@ export interface BootstrapRuntimeConfig {
   trustProxy: boolean | number;
 }
 
+function readRequiredHostedValue(key: string, env: NodeJS.ProcessEnv): string {
+  const value = env[key]?.trim();
+
+  if (!value) {
+    throw new Error(`${key} must be configured in hosted auth mode.`);
+  }
+
+  return value;
+}
+
 export function normalizeHost(rawHost?: string): string {
   const normalized = (rawHost ?? DEFAULT_API_HOST).trim();
 
@@ -65,8 +75,17 @@ export function parseAllowedOrigins(
   return Array.from(new Set(origins));
 }
 
-export function parseTrustProxy(rawTrustProxy?: string): boolean | number {
+export function parseTrustProxy(
+  rawTrustProxy?: string,
+  options?: { requireExplicitValue?: boolean },
+): boolean | number {
   if (!rawTrustProxy || !rawTrustProxy.trim()) {
+    if (options?.requireExplicitValue) {
+      throw new Error(
+        'API_TRUST_PROXY must be configured in hosted auth mode.',
+      );
+    }
+
     return false;
   }
 
@@ -125,7 +144,11 @@ export function resolveBootstrapRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): BootstrapRuntimeConfig {
   const authMode = resolveAuthMode(env);
-  const host = normalizeHost(env.API_HOST);
+  const rawHost =
+    authMode === AUTH_MODE_HOSTED
+      ? readRequiredHostedValue('API_HOST', env)
+      : env.API_HOST;
+  const host = normalizeHost(rawHost);
 
   if (authMode !== AUTH_MODE_HOSTED && !isLoopbackHost(host)) {
     throw new Error(
@@ -143,6 +166,8 @@ export function resolveBootstrapRuntimeConfig(
     allowedOrigins: parseAllowedOrigins(env.API_ALLOWED_ORIGINS, {
       requireExplicitValue: authMode === AUTH_MODE_HOSTED,
     }),
-    trustProxy: parseTrustProxy(env.API_TRUST_PROXY),
+    trustProxy: parseTrustProxy(env.API_TRUST_PROXY, {
+      requireExplicitValue: authMode === AUTH_MODE_HOSTED,
+    }),
   };
 }

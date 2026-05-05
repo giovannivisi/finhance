@@ -4,12 +4,14 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import {
   isLoopbackHostHeader,
   isLoopbackIp,
   resolveClientIp,
 } from '@/security/client-ip';
 import { isHostedAuthMode } from '@/config/auth-mode';
+import { isPublicRoute } from '@/security/public-route';
 
 type RequestLike = {
   ips?: unknown;
@@ -22,7 +24,13 @@ type RequestLike = {
 
 @Injectable()
 export class LocalOnlyGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
   canActivate(context: ExecutionContext): boolean {
+    if (isPublicRoute(context, this.reflector)) {
+      return true;
+    }
+
     if (isHostedAuthMode()) {
       return true;
     }

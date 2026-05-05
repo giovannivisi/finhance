@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { AppController } from '@/app.controller';
+import { AppService } from '@/app.service';
 import { PrismaModule } from '@prisma/prisma.module';
 import { AccountsModule } from '@accounts/accounts.module';
 import { AssetsModule } from '@assets/assets.module';
@@ -19,6 +21,7 @@ import { IdempotencyInterceptor } from '@/request-safety/idempotency.interceptor
 import { createThrottlerOptions } from '@/config/throttle.config';
 
 @Module({
+  controllers: [AppController],
   imports: [
     ThrottlerModule.forRoot(createThrottlerOptions()),
     PrismaModule,
@@ -34,6 +37,7 @@ import { createThrottlerOptions } from '@/config/throttle.config';
     TransactionsModule,
   ],
   providers: [
+    AppService,
     {
       provide: APP_GUARD,
       useClass: LocalOnlyGuard,

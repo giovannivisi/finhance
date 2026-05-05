@@ -18,6 +18,7 @@ async function bootstrap() {
   const config = resolveBootstrapRuntimeConfig();
   const isProduction = process.env.NODE_ENV === 'production';
 
+  app.enableShutdownHooks();
   app.set('trust proxy', config.trustProxy);
   app.use(helmet());
   app.enableCors(createCorsOptions(config.allowedOrigins));
