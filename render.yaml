@@ -5,7 +5,7 @@ services:
     plan: free
     region: frankfurt
     autoDeployTrigger: commit
-    buildCommand: pnpm install --frozen-lockfile && pnpm db:generate && pnpm --filter api build
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm db:generate && pnpm --filter api build
     startCommand: pnpm --filter api start:prod
     healthCheckPath: /health
     envVars:
