@@ -94,7 +94,9 @@ test("requestRecurringMaterialization reuses the same in-flight request", async 
   setApiUrlForTest();
   try {
     let callCount = 0;
-    let resolveFetch: ((response: Response) => void) | null = null;
+    let resolveFetch: (response: Response) => void = () => {
+      throw new Error("fetch resolver was not initialized");
+    };
 
     const fetchImpl = () => {
       callCount += 1;
@@ -113,7 +115,7 @@ test("requestRecurringMaterialization reuses the same in-flight request", async 
 
     assert.equal(callCount, 1);
 
-    resolveFetch?.(
+    resolveFetch(
       new Response(
         JSON.stringify({
           createdCount: 4,

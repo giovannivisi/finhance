@@ -3,9 +3,10 @@ import GitHub, {
   type GitHubEmail,
   type GitHubProfile,
 } from "next-auth/providers/github";
-import Google, { type GoogleProfile } from "next-auth/providers/google";
+import Google from "next-auth/providers/google";
 import { FinhanceAuthAdapter } from "@lib/auth-adapter";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { resolveHostedSignInDecision } from "@lib/auth-policy";
 import {
   readRequiredHostedEnv,
   resolveAuthSecret,
@@ -85,25 +86,6 @@ function createProviders() {
   ];
 }
 
-function hasVerifiedEmail(
-  provider: string | undefined,
-  profile: Record<string, unknown> | undefined,
-): boolean {
-  if (!provider || !profile) {
-    return false;
-  }
-
-  if (provider === "google") {
-    return Boolean((profile as GoogleProfile).email_verified);
-  }
-
-  if (provider === "github") {
-    return Boolean((profile as VerifiedGitHubProfile).email_verified);
-  }
-
-  return false;
-}
-
 function buildAuthConfig(): NextAuthConfig {
   return {
     adapter: FinhanceAuthAdapter(prisma),
@@ -124,27 +106,21 @@ function buildAuthConfig(): NextAuthConfig {
             ? user.email.trim().toLowerCase()
             : typeof profile?.email === "string" && profile.email.trim()
               ? profile.email.trim().toLowerCase()
-              : null;
+              : undefined;
 
-        if (
-          !normalizedEmail ||
-          !hasVerifiedEmail(
-            account?.provider ?? undefined,
-            profile ?? undefined,
-          )
-        ) {
-          return false;
-        }
+        const existingUser = normalizedEmail
+          ? await prisma.user.findUnique({
+              where: { email: normalizedEmail },
+            })
+          : null;
 
-        const existingUser = await prisma.user.findUnique({
-          where: { email: normalizedEmail },
+        return resolveHostedSignInDecision({
+          provider: account?.provider ?? undefined,
+          profile: profile ?? undefined,
+          userEmail: normalizedEmail,
+          existingUser,
+          bootstrapEmail: resolveBootstrapEmail(),
         });
-
-        if (existingUser) {
-          return existingUser.isActive;
-        }
-
-        return normalizedEmail === resolveBootstrapEmail();
       },
       async session({ session, user }) {
         if (session.user) {

@@ -1,6 +1,7 @@
 import { auth } from "@lib/auth";
 import { getDirectApiUrl, mintApiAccessToken } from "@lib/api-auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { resolveProxyAuthorization } from "@lib/proxy-auth";
 
 type RouteContext = {
   params:
@@ -55,25 +56,19 @@ async function forwardRequest(
   const params = await context.params;
   const path = buildProxiedPath(params.path, request);
   const headers = stripForwardedHeaders(request.headers);
+  const session = isHostedAuthMode() ? await auth() : null;
+  const authorization = await resolveProxyAuthorization({
+    hostedAuthMode: isHostedAuthMode(),
+    sessionUser: session?.user,
+    mintToken: mintApiAccessToken,
+  });
 
-  if (isHostedAuthMode()) {
-    const session = await auth();
-    const userId = session?.user?.id;
+  if (!authorization.ok) {
+    return authorization.response;
+  }
 
-    if (!userId) {
-      return Response.json(
-        { message: "Authentication is required." },
-        { status: 401 },
-      );
-    }
-
-    headers.set(
-      "Authorization",
-      `Bearer ${await mintApiAccessToken({
-        userId,
-        email: session.user?.email ?? null,
-      })}`,
-    );
+  if (authorization.authorizationHeader) {
+    headers.set("Authorization", authorization.authorizationHeader);
   }
 
   const upstreamResponse = await fetch(getDirectApiUrl(path), {

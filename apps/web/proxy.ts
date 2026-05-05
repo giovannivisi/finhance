@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { buildSignInRedirectUrl } from "@lib/proxy-auth";
 
 const authenticatedProxy = auth((request) => {
   if (!isHostedAuthMode()) {
@@ -11,13 +12,7 @@ const authenticatedProxy = auth((request) => {
     return NextResponse.next();
   }
 
-  const signInUrl = new URL("/api/auth/signin", request.nextUrl.origin);
-  signInUrl.searchParams.set(
-    "callbackUrl",
-    `${request.nextUrl.pathname}${request.nextUrl.search}`,
-  );
-
-  return NextResponse.redirect(signInUrl);
+  return NextResponse.redirect(buildSignInRedirectUrl(request.url));
 });
 
 export function proxy(...args: Parameters<typeof authenticatedProxy>) {

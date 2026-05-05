@@ -85,19 +85,21 @@ describe('IdempotencyService', () => {
     const firstResult = await service.executeJson({
       ...requestKey,
       fingerprint: { files: ['accounts.csv'] },
-      handler: () => ({
-        statusCode: 201,
-        body,
-      }),
+      handler: () =>
+        Promise.resolve({
+          statusCode: 201,
+          body,
+        }),
     });
 
     const secondResult = await service.executeJson({
       ...requestKey,
       fingerprint: { files: ['accounts.csv'] },
-      handler: () => ({
-        statusCode: 201,
-        body: { payload: 'should not run' },
-      }),
+      handler: () =>
+        Promise.resolve({
+          statusCode: 201,
+          body: { payload: 'should not run' },
+        }),
     });
 
     expect(firstResult).toEqual({

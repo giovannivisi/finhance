@@ -4,6 +4,7 @@ import { auth } from "@lib/auth";
 import { getDirectApiUrl, mintApiAccessToken } from "@lib/api-auth";
 import { readApiError, withDefaultHeaders } from "@lib/api-core";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { resolveProxyAuthorization } from "@lib/proxy-auth";
 
 export async function fetchServerApi(
   path: string,
@@ -14,19 +15,19 @@ export async function fetchServerApi(
 
   if (isHostedAuthMode()) {
     const session = await auth();
-    const userId = session?.user?.id;
+    const authorization = await resolveProxyAuthorization({
+      hostedAuthMode: true,
+      sessionUser: session?.user,
+      mintToken: mintApiAccessToken,
+    });
 
-    if (!userId) {
+    if (!authorization.ok) {
       throw new Error("Authentication is required.");
     }
 
-    headers.set(
-      "Authorization",
-      `Bearer ${await mintApiAccessToken({
-        userId,
-        email: session.user?.email ?? null,
-      })}`,
-    );
+    if (authorization.authorizationHeader) {
+      headers.set("Authorization", authorization.authorizationHeader);
+    }
   }
 
   return fetchImpl(getDirectApiUrl(path), {
