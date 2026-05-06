@@ -2798,7 +2798,32 @@ html[data-theme="dark"] .text-red-800 {
   border: 0.5px solid var(--tab-pill-border);
   border-radius: 9999px;
   box-shadow: var(--tab-pill-shadow);
+  corner-shape: superellipse(0.7);
+  -webkit-tap-highlight-color: transparent;
   overflow: hidden;
+}
+
+.tab-bar-pill.is-draggable {
+  cursor: grab;
+  user-select: none;
+  touch-action: pan-y;
+}
+
+.tab-bar-pill.is-draggable:active {
+  cursor: grabbing;
+}
+
+.tab-bar-pill a {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.tab-active-pill-track {
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 9999px;
 }
 
 .tab-bar-link,
@@ -2811,8 +2836,11 @@ html[data-theme="dark"] .text-red-800 {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
+  background: transparent;
   color: var(--tab-icon-inactive);
-  transition: color 0.15s ease;
+  transition:
+    color 0.18s ease,
+    transform 0.22s ease;
 }
 
 .tab-bar-link.is-active,
@@ -2823,6 +2851,17 @@ html[data-theme="dark"] .text-red-800 {
 .tab-bar-link.is-inactive:hover,
 .tab-more-btn.is-inactive:hover {
   color: var(--tab-icon-hover);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.tab-bar-link:active,
+.tab-more-btn:active {
+  transform: scale(0.92);
+}
+
+.tab-bar-link svg,
+.tab-more-btn svg {
+  pointer-events: none;
 }
 
 .tab-bar-link:focus-visible,
@@ -2836,8 +2875,7 @@ html[data-theme="dark"] .text-red-800 {
 
 .tab-active-pill {
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  height: 100%;
   background:
     linear-gradient(
       180deg,
@@ -2846,9 +2884,11 @@ html[data-theme="dark"] .text-red-800 {
     );
   border: 0.5px solid var(--tab-active-pill-border);
   border-radius: 999px;
+  corner-shape: superellipse(0.72);
   box-shadow: var(--tab-active-pill-shadow);
   backdrop-filter: blur(26px) saturate(185%) brightness(1.12);
   -webkit-backdrop-filter: blur(26px) saturate(185%) brightness(1.12);
+  overflow: hidden;
 }
 
 .tab-active-pill .pill-sheen {
@@ -2879,6 +2919,7 @@ html[data-theme="dark"] .text-red-800 {
   -webkit-backdrop-filter: var(--tab-pill-blur);
   border: 0.5px solid var(--tab-more-panel-border);
   border-radius: 22px;
+  corner-shape: superellipse(0.7);
   box-shadow:
     0 12px 24px rgba(0, 0, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
