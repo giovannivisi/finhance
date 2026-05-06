@@ -301,12 +301,10 @@ export default function ExpenseValidationPageClient({
           <p className="page-inline-notice surface-info">{importSummary}</p>
         ) : null}
 
-        <div className="grid gap-5 xl:grid-cols-2">
+        <div className="expense-validation-card-grid">
           <article className="detail-panel is-roomy expense-validation-card">
             <div className="expense-validation-card-copy">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--accent-green)]/85">
-                Rules CSV
-              </h2>
+              <h2 className="workflow-card-title">Rules</h2>
               <p className="text-sm text-[var(--text-secondary)]">
                 Non-destructive create/update import for description rules.
               </p>
@@ -338,9 +336,7 @@ export default function ExpenseValidationPageClient({
 
           <article className="detail-panel is-roomy expense-validation-card">
             <div className="expense-validation-card-copy">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--accent-green)]/85">
-                Hierarchy CSV
-              </h2>
+              <h2 className="workflow-card-title">Hierarchy</h2>
               <p className="text-sm text-[var(--text-secondary)]">
                 Lossless primary/secondary round-trip with non-destructive
                 import semantics.

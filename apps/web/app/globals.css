@@ -1379,11 +1379,19 @@ button {
   align-items: end;
 }
 
+.expense-validation-card-grid {
+  display: grid;
+  gap: 20px;
+}
+
 .expense-validation-card {
   display: flex;
   flex-direction: column;
   gap: 18px;
   min-height: 100%;
+  border-radius: 28px;
+  corner-shape: superellipse(0.72);
+  overflow: clip;
 }
 
 .expense-validation-card-copy {
@@ -2470,6 +2478,11 @@ html[data-theme="dark"] .text-red-800 {
     align-items: end;
   }
 
+  .expense-validation-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
   .budget-filter-field--offset {
     padding-top: 28px;
   }
@@ -3201,6 +3214,10 @@ html[data-theme="dark"] .text-red-800 {
 
   .budget-filter-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  .expense-validation-card-grid {
+    grid-template-columns: 1fr;
   }
 
   .budget-filter-field--offset {
