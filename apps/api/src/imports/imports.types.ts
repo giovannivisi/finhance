@@ -12,6 +12,7 @@ import type {
   CategoryBudgetOverride,
   Category,
   CategoryType,
+  ExpenseValidationRule,
   LiabilityKind,
   RecurringOccurrenceStatus,
   RecurringTransactionOccurrence,
@@ -43,9 +44,12 @@ export interface AccountImportRow {
 export interface CategoryImportRow {
   rowNumber: number;
   importKey: string;
-  name: string;
   type: CategoryType;
-  order: number | null;
+  level: 'PRIMARY' | 'SECONDARY';
+  primary: string;
+  secondary: string | null;
+  primaryOrder: number | null;
+  secondaryOrder: number | null;
   archived: boolean;
 }
 
@@ -165,6 +169,7 @@ export interface ImportAnalysisState {
   accountImportKeyById: Map<string, string>;
   categoryImportKeyById: Map<string, string>;
   activeCategories: Category[];
+  expenseValidationRulesByNormalizedEntry: Map<string, ExpenseValidationRule>;
   marketAssetsByKey: Map<string, Asset[]>;
 }
 
@@ -191,7 +196,16 @@ export const IMPORT_TEMPLATE_HEADERS: Record<
     'openingBalanceDate',
     'archived',
   ],
-  categories: ['importKey', 'name', 'type', 'order', 'archived'],
+  categories: [
+    'importKey',
+    'type',
+    'level',
+    'primary',
+    'secondary',
+    'primaryOrder',
+    'secondaryOrder',
+    'archived',
+  ],
   assets: [
     'importKey',
     'name',

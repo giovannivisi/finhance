@@ -8,6 +8,10 @@ import type { AccountReconciliationModel } from '@accounts/accounts.service';
 import { BudgetsService } from '@budgets/budgets.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { CategoriesService } from '@transactions/categories.service';
+import {
+  normalizeExpenseValidationEntry,
+  type HierarchicalCategoryRecord,
+} from '@transactions/category-hierarchy';
 import { TransactionsService } from '@transactions/transactions.service';
 import { romeDateTimeToUtc } from '@transactions/transactions.dates';
 import {
@@ -102,12 +106,34 @@ interface ExistingOccurrenceMapEntry {
 type TransactionWriteClient = PrismaService | Prisma.TransactionClient;
 type RecurringMaterializationClient = PrismaService | Prisma.TransactionClient;
 
-type RecurringOccurrenceModel =
+type RawRecurringOccurrenceModel =
   Prisma.RecurringTransactionOccurrenceGetPayload<{
     include: {
-      recurringRule: true;
+      recurringRule: {
+        include: {
+          category: {
+            include: {
+              parentCategory: true;
+            };
+          };
+        };
+      };
     };
   }>;
+
+type RecurringOccurrenceModel = RawRecurringOccurrenceModel & {
+  resolvedCategory: HierarchicalCategoryRecord | null;
+};
+
+type RecurringRuleModel = Prisma.RecurringTransactionRuleGetPayload<{
+  include: {
+    category: {
+      include: {
+        parentCategory: true;
+      };
+    };
+  };
+}>;
 
 interface SkippedOccurrenceInput {
   status: 'SKIPPED';
@@ -192,9 +218,16 @@ export class RecurringService {
     private readonly operationLockService: OperationLockService,
   ) {}
 
-  async findAll(ownerId: string): Promise<RecurringTransactionRule[]> {
+  async findAll(ownerId: string): Promise<RecurringRuleModel[]> {
     return this.prisma.recurringTransactionRule.findMany({
       where: { userId: ownerId },
+      include: {
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
       orderBy: [
         { isActive: 'desc' },
         { dayOfMonth: 'asc' },
@@ -203,12 +236,16 @@ export class RecurringService {
     });
   }
 
-  async findOne(
-    ownerId: string,
-    id: string,
-  ): Promise<RecurringTransactionRule> {
+  async findOne(ownerId: string, id: string): Promise<RecurringRuleModel> {
     const rule = await this.prisma.recurringTransactionRule.findFirst({
       where: { userId: ownerId, id },
+      include: {
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
     });
 
     if (!rule) {
@@ -221,11 +258,18 @@ export class RecurringService {
   async create(
     ownerId: string,
     dto: CreateRecurringTransactionRuleDto,
-  ): Promise<RecurringTransactionRule> {
+  ): Promise<RecurringRuleModel> {
     const prepared = await this.prepareRuleInput(ownerId, dto);
 
     return this.prisma.recurringTransactionRule.create({
       data: prepared,
+      include: {
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
     });
   }
 
@@ -233,7 +277,7 @@ export class RecurringService {
     ownerId: string,
     id: string,
     dto: UpdateRecurringTransactionRuleDto,
-  ): Promise<RecurringTransactionRule> {
+  ): Promise<RecurringRuleModel> {
     await this.findOne(ownerId, id);
     const prepared = await this.prepareRuleInput(ownerId, dto);
 
@@ -243,6 +287,13 @@ export class RecurringService {
         ...prepared,
         lastMaterializationError: null,
         lastMaterializationErrorAt: null,
+      },
+      include: {
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
       },
     });
   }
@@ -263,29 +314,44 @@ export class RecurringService {
       to?: string;
     },
   ): Promise<RecurringOccurrenceModel[]> {
-    await this.findOne(ownerId, ruleId);
+    const rule = await this.findOne(ownerId, ruleId);
     const range = this.resolveOptionalMonthRange(filters?.from, filters?.to);
 
-    return this.prisma.recurringTransactionOccurrence.findMany({
-      where: {
-        userId: ownerId,
-        recurringRuleId: ruleId,
-        ...(range.from || range.to
-          ? {
-              occurrenceMonth: {
-                ...(range.from
-                  ? { gte: this.monthKeyToValue(range.from) }
-                  : {}),
-                ...(range.to ? { lte: this.monthKeyToValue(range.to) } : {}),
+    const occurrences =
+      await this.prisma.recurringTransactionOccurrence.findMany({
+        where: {
+          userId: ownerId,
+          recurringRuleId: ruleId,
+          ...(range.from || range.to
+            ? {
+                occurrenceMonth: {
+                  ...(range.from
+                    ? { gte: this.monthKeyToValue(range.from) }
+                    : {}),
+                  ...(range.to ? { lte: this.monthKeyToValue(range.to) } : {}),
+                },
+              }
+            : {}),
+        },
+        include: {
+          recurringRule: {
+            include: {
+              category: {
+                include: {
+                  parentCategory: true,
+                },
               },
-            }
-          : {}),
-      },
-      include: {
-        recurringRule: true,
-      },
-      orderBy: [{ occurrenceMonth: 'desc' }, { createdAt: 'desc' }],
-    });
+            },
+          },
+        },
+        orderBy: [{ occurrenceMonth: 'desc' }, { createdAt: 'desc' }],
+      });
+
+    return this.attachResolvedOccurrenceCategories(
+      ownerId,
+      occurrences,
+      rule.category ?? null,
+    );
   }
 
   async upsertOccurrence(
@@ -353,7 +419,15 @@ export class RecurringService {
           ...overrideData,
         },
         include: {
-          recurringRule: true,
+          recurringRule: {
+            include: {
+              category: {
+                include: {
+                  parentCategory: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -375,7 +449,14 @@ export class RecurringService {
         },
       });
 
-      return occurrence;
+      const [resolvedOccurrence] =
+        await this.attachResolvedOccurrenceCategories(
+          ownerId,
+          [occurrence],
+          rule.category ?? null,
+        );
+
+      return resolvedOccurrence;
     });
   }
 
@@ -707,7 +788,7 @@ export class RecurringService {
       closingSnapshot,
       accounts,
       reconciliations,
-      recurringExceptions,
+      rawRecurringExceptions,
       recurringRules,
       recurringRows,
     ] = await Promise.all([
@@ -734,7 +815,15 @@ export class RecurringService {
           occurrenceMonth,
         },
         include: {
-          recurringRule: true,
+          recurringRule: {
+            include: {
+              category: {
+                include: {
+                  parentCategory: true,
+                },
+              },
+            },
+          },
         },
         orderBy: [{ createdAt: 'asc' }],
       }),
@@ -761,6 +850,11 @@ export class RecurringService {
         },
       }),
     ]);
+    const recurringExceptions = await this.attachResolvedOccurrenceCategories(
+      ownerId,
+      rawRecurringExceptions,
+      null,
+    );
     const reconciliationHighlights = reconciliations.filter(
       (reconciliation) => reconciliation.status !== 'CLEAN',
     );
@@ -1094,7 +1188,45 @@ export class RecurringService {
         categoryId: item.categoryId,
         name: item.name,
         total: item.total,
+        primaryCategoryId: item.primaryCategoryId,
+        primaryCategoryName: item.primaryCategoryName,
+        secondaryCategoryId: item.secondaryCategoryId,
+        secondaryCategoryName: item.secondaryCategoryName,
       }));
+  }
+
+  private async attachResolvedOccurrenceCategories(
+    ownerId: string,
+    occurrences: RawRecurringOccurrenceModel[],
+    fallbackRuleCategory: HierarchicalCategoryRecord | null,
+  ): Promise<RecurringOccurrenceModel[]> {
+    const overrideCategoryIds = Array.from(
+      new Set(
+        occurrences
+          .map((occurrence) => occurrence.overrideCategoryId)
+          .filter((categoryId): categoryId is string => Boolean(categoryId)),
+      ),
+    );
+    const overrideCategories =
+      overrideCategoryIds.length > 0
+        ? await this.categoriesService.findManyByIds(
+            ownerId,
+            overrideCategoryIds,
+          )
+        : [];
+    const overrideById = new Map(
+      overrideCategories.map((category) => [category.id, category]),
+    );
+
+    return occurrences.map((occurrence) => ({
+      ...occurrence,
+      resolvedCategory:
+        (occurrence.overrideCategoryId
+          ? (overrideById.get(occurrence.overrideCategoryId) ?? null)
+          : null) ??
+        occurrence.recurringRule.category ??
+        fallbackRuleCategory,
+    }));
   }
 
   private sortAndLimitAccountDrivers(
@@ -1464,6 +1596,12 @@ export class RecurringService {
         dto.categoryId,
         rule.kind,
       );
+    } else if (rule.kind === TransactionKind.EXPENSE) {
+      category =
+        await this.categoriesService.findMatchingExpenseSecondaryCategory(
+          ownerId,
+          normalizeExpenseValidationEntry(description),
+        );
     }
 
     const counterparty = this.optionalText(dto.counterparty);
@@ -1932,6 +2070,12 @@ export class RecurringService {
         dto.categoryId,
         dto.kind,
       );
+    } else if (dto.kind === TransactionKind.EXPENSE) {
+      category =
+        await this.categoriesService.findMatchingExpenseSecondaryCategory(
+          ownerId,
+          normalizeExpenseValidationEntry(dto.description),
+        );
     }
 
     return {

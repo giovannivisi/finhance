@@ -115,23 +115,41 @@ model Account {
 }
 
 model Category {
-  id             String                     @id @default(cuid())
-  userId         String
-  name           String
-  type           CategoryType
-  order          Int                        @default(0)
-  archivedAt     DateTime?
-  createdAt      DateTime                   @default(now())
-  updatedAt      DateTime                   @updatedAt
-  importSource   ImportSource?
-  importKey      String?
-  budgets        CategoryBudget[]
-  recurringRules RecurringTransactionRule[]
-  transactions   Transaction[]
+  id                     String                     @id @default(cuid())
+  userId                 String
+  name                   String
+  type                   CategoryType
+  parentCategoryId       String?                    @map("parent_category_id")
+  order                  Int                        @default(0)
+  archivedAt             DateTime?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+  importSource           ImportSource?
+  importKey              String?
+  parentCategory         Category?                  @relation("CategoryHierarchy", fields: [parentCategoryId, userId], references: [id, userId], onDelete: SetNull, onUpdate: Cascade)
+  childCategories        Category[]                 @relation("CategoryHierarchy")
+  budgets                CategoryBudget[]
+  recurringRules         RecurringTransactionRule[]
+  transactions           Transaction[]
+  expenseValidationRules ExpenseValidationRule[]    @relation("ExpenseValidationRuleSecondaryCategory")
 
   @@unique([id, userId])
   @@unique([userId, importSource, importKey])
-  @@index([userId, type, archivedAt, order, createdAt])
+  @@index([userId, type, parentCategoryId, archivedAt, order, createdAt])
+}
+
+model ExpenseValidationRule {
+  id                String   @id @default(cuid())
+  userId            String
+  entry             String
+  normalizedEntry   String   @map("normalized_entry")
+  secondaryCategoryId String @map("secondary_category_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  secondaryCategory Category @relation("ExpenseValidationRuleSecondaryCategory", fields: [secondaryCategoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, normalizedEntry])
+  @@index([userId, secondaryCategoryId])
 }
 
 model CategoryBudget {

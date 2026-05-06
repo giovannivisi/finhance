@@ -173,6 +173,7 @@ describe('RecurringService', () => {
   };
   let categories: {
     getAssignableCategory: jest.Mock;
+    findMatchingExpenseSecondaryCategory: jest.Mock;
   };
   let transactions: {
     getCashflowSummary: jest.Mock;
@@ -220,6 +221,14 @@ describe('RecurringService', () => {
 
     categories = {
       getAssignableCategory: jest.fn().mockResolvedValue(createCategory()),
+      findMatchingExpenseSecondaryCategory: jest.fn().mockResolvedValue(
+        createCategory({
+          id: 'category-expense',
+          name: 'Rent',
+          type: CategoryType.EXPENSE,
+          parentCategoryId: 'category-primary',
+        }),
+      ),
     };
 
     transactions = {

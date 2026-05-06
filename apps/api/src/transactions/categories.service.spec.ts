@@ -35,6 +35,7 @@ describe('CategoriesService', () => {
   let service: CategoriesService;
   let prisma: {
     category: {
+      count: jest.Mock;
       findMany: jest.Mock;
       findFirst: jest.Mock;
       create: jest.Mock;
@@ -46,6 +47,7 @@ describe('CategoriesService', () => {
   beforeEach(() => {
     prisma = {
       category: {
+        count: jest.fn().mockResolvedValue(0),
         findMany: jest.fn(),
         findFirst: jest.fn(),
         create: jest.fn(),

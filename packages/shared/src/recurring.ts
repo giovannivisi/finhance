@@ -39,6 +39,10 @@ export interface RecurringTransactionRuleResponse {
   accountId: string | null;
   direction: TransactionDirection | null;
   categoryId: string | null;
+  primaryCategoryId: string | null;
+  primaryCategoryName: string | null;
+  secondaryCategoryId: string | null;
+  secondaryCategoryName: string | null;
   counterparty: string | null;
   sourceAccountId: string | null;
   destinationAccountId: string | null;
@@ -101,6 +105,10 @@ export interface RecurringOccurrenceResponse {
   accountId: string | null;
   direction: TransactionDirection | null;
   categoryId: string | null;
+  primaryCategoryId: string | null;
+  primaryCategoryName: string | null;
+  secondaryCategoryId: string | null;
+  secondaryCategoryName: string | null;
   counterparty: string | null;
   sourceAccountId: string | null;
   destinationAccountId: string | null;
@@ -158,6 +166,10 @@ export interface MonthlyReviewRecurringComparisonResponse {
 export interface MonthlyReviewCategoryDriverResponse {
   categoryId: string | null;
   name: string;
+  primaryCategoryId: string | null;
+  primaryCategoryName: string | null;
+  secondaryCategoryId: string | null;
+  secondaryCategoryName: string | null;
   total: number;
 }
 

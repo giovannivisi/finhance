@@ -1,6 +1,7 @@
 import type {
   AccountResponse,
   CategoryResponse,
+  ExpenseValidationRuleResponse,
   RecurringTransactionRuleResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
@@ -14,13 +15,15 @@ export default async function RecurringPage() {
   let rules: RecurringTransactionRuleResponse[] | null = null;
   let accounts: AccountResponse[] | null = null;
   let categories: CategoryResponse[] | null = null;
+  let expenseValidationRules: ExpenseValidationRuleResponse[] | null = null;
   let errorMessage: string | null = null;
 
   try {
-    [rules, accounts, categories] = await Promise.all([
+    [rules, accounts, categories, expenseValidationRules] = await Promise.all([
       api<RecurringTransactionRuleResponse[]>("/recurring-rules"),
       api<AccountResponse[]>("/accounts?includeArchived=true"),
       api<CategoryResponse[]>("/categories?includeArchived=true"),
+      api<ExpenseValidationRuleResponse[]>("/expense-validation"),
     ]);
   } catch (error) {
     errorMessage =
@@ -32,7 +35,7 @@ export default async function RecurringPage() {
   return (
     <>
       <Container>
-        {!rules || !accounts || !categories ? (
+        {!rules || !accounts || !categories || !expenseValidationRules ? (
           <section className="page-shell">
             <div className="page-hero">
               <p className="page-kicker">Automation</p>
@@ -52,6 +55,7 @@ export default async function RecurringPage() {
             rules={rules}
             accounts={accounts}
             categories={categories}
+            expenseValidationRules={expenseValidationRules}
           />
         )}
       </Container>

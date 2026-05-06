@@ -5,6 +5,7 @@ import {
   History,
   Import,
   LayoutDashboard,
+  ListChecks,
   PieChart,
   Repeat,
   Tag,
@@ -31,6 +32,11 @@ export const SECONDARY_NAV_ITEMS: readonly AppNavItem[] = [
   { href: "/recurring", label: "Recurring", icon: Repeat },
   { href: "/review", label: "Review", icon: ClipboardCheck },
   { href: "/categories", label: "Categories", icon: Tag },
+  {
+    href: "/expense-validation",
+    label: "Expense validation",
+    icon: ListChecks,
+  },
   { href: "/import", label: "Import", icon: Import },
 ] as const;
 

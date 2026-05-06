@@ -10,7 +10,11 @@ import type {
 } from '@finhance/shared';
 import type { AccountReconciliationModel } from '@accounts/accounts.service';
 import { toAccountReconciliationResponse } from '@accounts/accounts.mapper';
-import type { RecurringTransactionRule, NetWorthSnapshot } from '@finhance/db';
+import type { NetWorthSnapshot } from '@finhance/db';
+import {
+  getCategoryHierarchyMetadata,
+  type HierarchicalCategoryRecord,
+} from '@transactions/category-hierarchy';
 
 const USER_VISIBLE_MATERIALIZATION_ERROR =
   'Unable to materialize this recurring rule. Review the rule configuration and try again.';
@@ -23,9 +27,34 @@ function toDateOnly(value: Date | null): string | null {
   return value?.toISOString().slice(0, 10) ?? null;
 }
 
+export interface RecurringTransactionRuleResponseModel {
+  id: string;
+  name: string;
+  isActive: boolean;
+  kind: RecurringTransactionRuleResponse['kind'];
+  amount: Prisma.Decimal;
+  dayOfMonth: number;
+  startDate: Date;
+  endDate: Date | null;
+  accountId: string | null;
+  direction: RecurringTransactionRuleResponse['direction'];
+  categoryId: string | null;
+  category: HierarchicalCategoryRecord | null;
+  counterparty: string | null;
+  sourceAccountId: string | null;
+  destinationAccountId: string | null;
+  description: string;
+  notes: string | null;
+  lastMaterializationError: string | null;
+  lastMaterializationErrorAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export function toRecurringTransactionRuleResponse(
-  rule: RecurringTransactionRule,
+  rule: RecurringTransactionRuleResponseModel,
 ): RecurringTransactionRuleResponse {
+  const categoryHierarchy = getCategoryHierarchyMetadata(rule.category);
   return {
     id: rule.id,
     name: rule.name,
@@ -38,6 +67,10 @@ export function toRecurringTransactionRuleResponse(
     accountId: rule.accountId,
     direction: rule.direction,
     categoryId: rule.categoryId,
+    primaryCategoryId: categoryHierarchy.primaryCategoryId,
+    primaryCategoryName: categoryHierarchy.primaryCategoryName,
+    secondaryCategoryId: categoryHierarchy.secondaryCategoryId,
+    secondaryCategoryName: categoryHierarchy.secondaryCategoryName,
     counterparty: rule.counterparty,
     sourceAccountId: rule.sourceAccountId,
     destinationAccountId: rule.destinationAccountId,
@@ -53,16 +86,33 @@ export function toRecurringTransactionRuleResponse(
   };
 }
 
-type RecurringOccurrenceWithRule =
-  Prisma.RecurringTransactionOccurrenceGetPayload<{
-    include: {
-      recurringRule: true;
-    };
-  }>;
+export interface RecurringOccurrenceResponseModel {
+  id: string;
+  recurringRuleId: string;
+  occurrenceMonth: Date;
+  status: RecurringOccurrenceResponse['status'];
+  overrideAmount: Prisma.Decimal | null;
+  overridePostedAtDate: Date | null;
+  overrideAccountId: string | null;
+  overrideDirection: RecurringOccurrenceResponse['direction'];
+  overrideCategoryId: string | null;
+  overrideCounterparty: string | null;
+  overrideSourceAccountId: string | null;
+  overrideDestinationAccountId: string | null;
+  overrideDescription: string | null;
+  overrideNotes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  recurringRule: RecurringTransactionRuleResponseModel;
+  resolvedCategory: HierarchicalCategoryRecord | null;
+}
 
 export function toRecurringOccurrenceResponse(
-  occurrence: RecurringOccurrenceWithRule,
+  occurrence: RecurringOccurrenceResponseModel,
 ): RecurringOccurrenceResponse {
+  const categoryHierarchy = getCategoryHierarchyMetadata(
+    occurrence.resolvedCategory,
+  );
   return {
     id: occurrence.id,
     recurringRuleId: occurrence.recurringRuleId,
@@ -74,7 +124,11 @@ export function toRecurringOccurrenceResponse(
     postedAtDate: toDateOnly(occurrence.overridePostedAtDate),
     accountId: occurrence.overrideAccountId,
     direction: occurrence.overrideDirection,
-    categoryId: occurrence.overrideCategoryId,
+    categoryId: occurrence.resolvedCategory?.id ?? null,
+    primaryCategoryId: categoryHierarchy.primaryCategoryId,
+    primaryCategoryName: categoryHierarchy.primaryCategoryName,
+    secondaryCategoryId: categoryHierarchy.secondaryCategoryId,
+    secondaryCategoryName: categoryHierarchy.secondaryCategoryName,
     counterparty: occurrence.overrideCounterparty,
     sourceAccountId: occurrence.overrideSourceAccountId,
     destinationAccountId: occurrence.overrideDestinationAccountId,
@@ -97,7 +151,7 @@ export function toMonthlyReviewResponse(input: {
   budgetSummary: MonthlyReviewResponse['budgetSummary'];
   budgetHighlights: MonthlyReviewResponse['budgetHighlights'];
   reconciliationHighlights: AccountReconciliationModel[];
-  recurringExceptions: RecurringOccurrenceWithRule[];
+  recurringExceptions: RecurringOccurrenceResponseModel[];
 }): MonthlyReviewResponse {
   const openingNetWorth =
     input.openingSnapshot?.netWorthTotal.toNumber() ?? null;

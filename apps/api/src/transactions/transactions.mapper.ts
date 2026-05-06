@@ -1,5 +1,6 @@
 import { Prisma } from '@finhance/db';
 import type { TransactionResponse } from '@finhance/shared';
+import { getCategoryHierarchyMetadata } from '@transactions/category-hierarchy';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
 
 function decimalToNumber(value: Prisma.Decimal): number {
@@ -11,6 +12,7 @@ export function toTransactionResponse(
 ): TransactionResponse {
   if (entry.entryType === 'STANDARD') {
     const { row } = entry;
+    const categoryHierarchy = getCategoryHierarchyMetadata(row.category);
 
     return {
       id: row.id,
@@ -21,6 +23,10 @@ export function toTransactionResponse(
       accountId: row.accountId,
       direction: row.direction,
       categoryId: row.categoryId,
+      primaryCategoryId: categoryHierarchy.primaryCategoryId,
+      primaryCategoryName: categoryHierarchy.primaryCategoryName,
+      secondaryCategoryId: categoryHierarchy.secondaryCategoryId,
+      secondaryCategoryName: categoryHierarchy.secondaryCategoryName,
       description: row.description,
       notes: row.notes,
       counterparty: row.counterparty,
@@ -53,6 +59,10 @@ export function toTransactionResponse(
     accountId: null,
     direction: null,
     categoryId: null,
+    primaryCategoryId: null,
+    primaryCategoryName: null,
+    secondaryCategoryId: null,
+    secondaryCategoryName: null,
     description: entry.outflow.description,
     notes: entry.outflow.notes,
     counterparty: null,

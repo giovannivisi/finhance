@@ -1375,9 +1375,62 @@ button {
   align-items: end;
 }
 
+.transaction-filter-grid {
+  align-items: end;
+}
+
+.expense-validation-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100%;
+}
+
+.expense-validation-card-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.expense-validation-card-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 12px;
+  margin-top: auto;
+  width: max-content;
+  max-width: 100%;
+}
+
+.expense-validation-card-actions > * {
+  width: 220px;
+  min-width: 0;
+  max-width: 220px;
+}
+
 .budget-toggle-pill {
   min-height: 50px;
-  padding-inline: 20px;
+  width: 100%;
+  padding-inline: 18px;
+  align-self: stretch;
+}
+
+.transaction-toggle-pill {
+  min-height: 50px;
+  width: fit-content;
+  max-width: 100%;
+  padding-inline: 18px;
+  align-self: end;
+}
+
+.budget-filter-actions {
+  align-self: stretch;
+  width: 100%;
+}
+
+.budget-filter-actions > * {
+  flex: 1 1 0;
+}
+
+.transaction-filter-actions {
   align-self: end;
 }
 
@@ -1580,6 +1633,15 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.filter-field-label {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }
 
 .app-form-field label {
@@ -2401,6 +2463,22 @@ html[data-theme="dark"] .text-red-800 {
   align-items: start;
 }
 
+@media (min-width: 1024px) {
+  .budget-filter-grid {
+    grid-template-columns: repeat(3, minmax(220px, 300px));
+    justify-content: start;
+    align-items: end;
+  }
+
+  .budget-filter-field--offset {
+    padding-top: 28px;
+  }
+
+  .transaction-filter-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1023px) {
   .page-split {
     grid-template-columns: 1fr;
@@ -3125,8 +3203,22 @@ html[data-theme="dark"] .text-red-800 {
     grid-template-columns: 1fr !important;
   }
 
+  .budget-filter-field--offset {
+    padding-top: 0;
+  }
+
   .budget-toggle-pill {
     width: 100%;
+  }
+
+  .expense-validation-card-actions {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .expense-validation-card-actions > * {
+    width: 100%;
+    max-width: none;
   }
 
   .summary-grid,

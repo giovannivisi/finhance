@@ -6,6 +6,7 @@ import type {
   AccountResponse,
   CashflowSummaryResponse,
   CategoryResponse,
+  ExpenseValidationRuleResponse,
   TransactionResponse,
 } from "@finhance/shared";
 import Modal from "@components/Modal";
@@ -23,7 +24,12 @@ import {
 } from "@lib/transaction-form";
 import { apiMutation } from "@lib/api";
 import { formatSensitiveCurrency } from "@lib/money";
-import { CATEGORY_TYPE_LABELS } from "@lib/categories";
+import { CATEGORY_TYPE_LABELS, formatCategoryName } from "@lib/categories";
+import {
+  expensePrimaryCategories,
+  expenseSecondaryCategories,
+  incomeCategories,
+} from "@lib/hierarchical-categories";
 import {
   TRANSACTION_KIND_LABELS,
   formatTransactionAmount,
@@ -38,6 +44,8 @@ interface TransactionPageFilters {
   to: string;
   accountId: string;
   categoryId: string;
+  primaryCategoryId: string;
+  secondaryCategoryId: string;
   kind: string;
   includeArchivedAccounts: boolean;
 }
@@ -52,12 +60,14 @@ export default function TransactionsPageClient({
   cashflow,
   accounts,
   categories,
+  expenseValidationRules,
   initialFilters,
 }: {
   transactions: TransactionResponse[];
   cashflow: CashflowSummaryResponse;
   accounts: AccountResponse[];
   categories: CategoryResponse[];
+  expenseValidationRules: ExpenseValidationRuleResponse[];
   initialFilters: TransactionPageFilters;
 }) {
   const router = useRouter();
@@ -99,6 +109,30 @@ export default function TransactionsPageClient({
     () => new Map(categories.map((category) => [category.id, category])),
     [categories],
   );
+  const visibleExpensePrimaries = useMemo(
+    () => expensePrimaryCategories(categories, filters.primaryCategoryId),
+    [categories, filters.primaryCategoryId],
+  );
+  const visibleSecondaryCategories = useMemo(() => {
+    if (filters.primaryCategoryId) {
+      return expenseSecondaryCategories(
+        categories,
+        filters.primaryCategoryId,
+        filters.secondaryCategoryId,
+      );
+    }
+
+    return [
+      ...incomeCategories(categories, filters.secondaryCategoryId),
+      ...categories.filter(
+        (category) =>
+          category.type === "EXPENSE" &&
+          category.isSecondary &&
+          (category.archivedAt === null ||
+            category.id === filters.secondaryCategoryId),
+      ),
+    ];
+  }, [categories, filters.primaryCategoryId, filters.secondaryCategoryId]);
   const editingTransaction =
     transactions.find(
       (transaction) => transaction.id === editingTransactionId,
@@ -133,7 +167,13 @@ export default function TransactionsPageClient({
       params.set("accountId", nextFilters.accountId);
     }
 
-    if (nextFilters.categoryId) {
+    if (nextFilters.primaryCategoryId) {
+      params.set("primaryCategoryId", nextFilters.primaryCategoryId);
+    }
+
+    if (nextFilters.secondaryCategoryId) {
+      params.set("secondaryCategoryId", nextFilters.secondaryCategoryId);
+    } else if (nextFilters.categoryId) {
       params.set("categoryId", nextFilters.categoryId);
     }
 
@@ -170,6 +210,8 @@ export default function TransactionsPageClient({
       to: "",
       accountId: "",
       categoryId: "",
+      primaryCategoryId: "",
+      secondaryCategoryId: "",
       kind: "",
       includeArchivedAccounts: false,
     };
@@ -279,7 +321,7 @@ export default function TransactionsPageClient({
 
           <form
             onSubmit={handleFilterSubmit}
-            className="filter-grid is-relaxed lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]"
+            className="filter-grid is-relaxed transaction-filter-grid"
           >
             <div className="app-form-field">
               <label>From</label>
@@ -334,15 +376,20 @@ export default function TransactionsPageClient({
             </div>
 
             <div className="app-form-field">
-              <label>Category</label>
+              <label>Primary</label>
               <select
-                value={filters.categoryId}
+                value={filters.primaryCategoryId}
                 onChange={(event) =>
-                  updateFilter("categoryId", event.target.value)
+                  setFilters((previous) => ({
+                    ...previous,
+                    categoryId: "",
+                    primaryCategoryId: event.target.value,
+                    secondaryCategoryId: "",
+                  }))
                 }
               >
-                <option value="">All categories</option>
-                {categories.map((category) => (
+                <option value="">All primaries</option>
+                {visibleExpensePrimaries.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
                   </option>
@@ -350,38 +397,54 @@ export default function TransactionsPageClient({
               </select>
             </div>
 
-            <div className="section-stack-tight justify-end">
-              <label className="page-pill">
-                <input
-                  type="checkbox"
-                  checked={filters.includeArchivedAccounts}
-                  onChange={(event) =>
-                    updateFilter(
-                      "includeArchivedAccounts",
-                      event.target.checked,
-                    )
-                  }
-                />
-                Include archived accounts
-              </label>
+            <div className="app-form-field">
+              <label>Secondary</label>
+              <select
+                value={filters.secondaryCategoryId}
+                onChange={(event) =>
+                  setFilters((previous) => ({
+                    ...previous,
+                    categoryId: "",
+                    secondaryCategoryId: event.target.value,
+                  }))
+                }
+              >
+                <option value="">All secondaries</option>
+                {visibleSecondaryCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {formatCategoryName(category)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <div className="filter-actions is-equal">
-                <button
-                  type="submit"
-                  disabled={navigation.isRunning}
-                  className="btn-primary"
-                >
-                  {navigation.isRunning ? "Applying..." : "Apply"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleClearFilters}
-                  disabled={navigation.isRunning}
-                  className="btn-secondary"
-                >
-                  Clear
-                </button>
-              </div>
+            <label className="page-pill transaction-toggle-pill">
+              <input
+                type="checkbox"
+                checked={filters.includeArchivedAccounts}
+                onChange={(event) =>
+                  updateFilter("includeArchivedAccounts", event.target.checked)
+                }
+              />
+              Archived accounts
+            </label>
+
+            <div className="filter-actions is-equal transaction-filter-actions">
+              <button
+                type="submit"
+                disabled={navigation.isRunning}
+                className="btn-primary"
+              >
+                {navigation.isRunning ? "Applying..." : "Apply"}
+              </button>
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                disabled={navigation.isRunning}
+                className="btn-secondary"
+              >
+                Clear
+              </button>
             </div>
           </form>
 
@@ -615,7 +678,8 @@ export default function TransactionsPageClient({
                     <th className="pb-3 pr-4 font-medium">Kind</th>
                     <th className="pb-3 pr-4 font-medium">Description</th>
                     <th className="pb-3 pr-4 font-medium">Accounts</th>
-                    <th className="pb-3 pr-4 font-medium">Category</th>
+                    <th className="pb-3 pr-4 font-medium">Primary</th>
+                    <th className="pb-3 pr-4 font-medium">Secondary</th>
                     <th className="pb-3 pr-4 font-medium">Amount</th>
                     <th className="pb-3 font-medium">Actions</th>
                   </tr>
@@ -685,7 +749,12 @@ export default function TransactionsPageClient({
                           )}
                         </td>
                         <td className="py-3 pr-4">
-                          {category ? category.name : "-"}
+                          {transaction.primaryCategoryName ?? "-"}
+                        </td>
+                        <td className="py-3 pr-4">
+                          {transaction.secondaryCategoryName ??
+                            category?.name ??
+                            "-"}
                         </td>
                         <td className="py-3 pr-4 font-medium text-[var(--text-primary)]">
                           {formatTransactionAmount(
@@ -797,6 +866,7 @@ export default function TransactionsPageClient({
             mode="create"
             accounts={accounts}
             categories={categories}
+            expenseValidationRules={expenseValidationRules}
             initialValues={createEmptyTransactionFormValues()}
             onSuccess={() => setIsCreateModalOpen(false)}
             onCancel={() => setIsCreateModalOpen(false)}
@@ -826,6 +896,7 @@ export default function TransactionsPageClient({
                 editingTransaction={editingTransaction}
                 accounts={accounts}
                 categories={categories}
+                expenseValidationRules={expenseValidationRules}
                 initialValues={transactionToFormValues(editingTransaction)}
                 onSuccess={() => setEditingTransactionId(null)}
                 onCancel={() => setEditingTransactionId(null)}
@@ -852,6 +923,7 @@ export default function TransactionsPageClient({
                 ruleId={occurrenceDraft.ruleId}
                 accounts={accounts}
                 categories={categories}
+                expenseValidationRules={expenseValidationRules}
                 initialValues={occurrenceDraft.initialValues}
                 onSuccess={() => setOccurrenceDraft(null)}
                 onCancel={() => setOccurrenceDraft(null)}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type {
   AccountResponse,
   CategoryResponse,
+  ExpenseValidationRuleResponse,
   TransactionResponse,
 } from "@finhance/shared";
 import {
@@ -13,6 +14,13 @@ import {
 } from "@lib/transaction-form";
 import { formatAccountOptionLabel } from "@lib/accounts";
 import { formatCategoryOptionLabel } from "@lib/categories";
+import {
+  deriveExpensePrimaryId,
+  expensePrimaryCategories,
+  expenseSecondaryCategories,
+  findMatchingExpenseValidationRule,
+  incomeCategories,
+} from "@lib/hierarchical-categories";
 import {
   TRANSACTION_DIRECTION_LABELS,
   TRANSACTION_DIRECTION_OPTIONS,
@@ -28,6 +36,7 @@ interface TransactionFormProps {
   mode: "create" | "edit";
   accounts: AccountResponse[];
   categories: CategoryResponse[];
+  expenseValidationRules: ExpenseValidationRuleResponse[];
   editingTransaction?: TransactionResponse | null;
   onSuccess?: () => void;
   onCancel?: () => void;
@@ -42,24 +51,13 @@ function selectableAccounts(
   );
 }
 
-function selectableCategories(
-  categories: CategoryResponse[],
-  type: CategoryResponse["type"],
-  selectedId: string,
-): CategoryResponse[] {
-  return categories.filter(
-    (category) =>
-      category.type === type &&
-      (category.archivedAt === null || category.id === selectedId),
-  );
-}
-
 export default function TransactionForm({
   transactionId,
   initialValues,
   mode,
   accounts,
   categories,
+  expenseValidationRules,
   editingTransaction,
   onSuccess,
   onCancel,
@@ -67,14 +65,29 @@ export default function TransactionForm({
   const router = useRouter();
   const fieldPrefix = useId();
   const [form, setForm] = useState<TransactionFormValues>(initialValues);
+  const [selectedExpensePrimaryId, setSelectedExpensePrimaryId] = useState(
+    deriveExpensePrimaryId(categories, initialValues.categoryId),
+  );
+  const [
+    hasManualExpenseCategoryOverride,
+    setHasManualExpenseCategoryOverride,
+  ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
+  const isTransfer = form.kind === "TRANSFER";
+  const isAdjustment = form.kind === "ADJUSTMENT";
+  const isExpense = form.kind === "EXPENSE";
+  const isIncome = form.kind === "INCOME";
 
   useEffect(() => {
     setForm(initialValues);
-  }, [initialValues]);
+    setSelectedExpensePrimaryId(
+      deriveExpensePrimaryId(categories, initialValues.categoryId),
+    );
+    setHasManualExpenseCategoryOverride(false);
+  }, [categories, initialValues]);
 
   const standardAccounts = useMemo(
     () => selectableAccounts(accounts, form.accountId),
@@ -88,17 +101,25 @@ export default function TransactionForm({
     () => selectableAccounts(accounts, form.destinationAccountId),
     [accounts, form.destinationAccountId],
   );
-  const visibleCategories = useMemo(() => {
-    if (form.kind === "INCOME") {
-      return selectableCategories(categories, "INCOME", form.categoryId);
-    }
-
-    if (form.kind === "EXPENSE") {
-      return selectableCategories(categories, "EXPENSE", form.categoryId);
-    }
-
-    return [];
-  }, [categories, form.categoryId, form.kind]);
+  const visibleIncomeCategories = useMemo(
+    () => incomeCategories(categories, form.categoryId),
+    [categories, form.categoryId],
+  );
+  const visibleExpensePrimaries = useMemo(
+    () => expensePrimaryCategories(categories, selectedExpensePrimaryId),
+    [categories, selectedExpensePrimaryId],
+  );
+  const visibleExpenseSecondaries = useMemo(
+    () =>
+      selectedExpensePrimaryId
+        ? expenseSecondaryCategories(
+            categories,
+            selectedExpensePrimaryId,
+            form.categoryId,
+          )
+        : [],
+    [categories, form.categoryId, selectedExpensePrimaryId],
+  );
 
   function updateField<Field extends keyof TransactionFormValues>(
     field: Field,
@@ -108,6 +129,43 @@ export default function TransactionForm({
       ...previous,
       [field]: value,
     }));
+  }
+
+  function handleDescriptionChange(value: string) {
+    setForm((previous) => ({
+      ...previous,
+      description: value,
+    }));
+
+    if (form.kind !== "EXPENSE" || hasManualExpenseCategoryOverride) {
+      return;
+    }
+
+    const matchingRule = findMatchingExpenseValidationRule(
+      expenseValidationRules,
+      value,
+    );
+    if (!matchingRule) {
+      return;
+    }
+
+    setSelectedExpensePrimaryId(matchingRule.primaryCategoryId);
+    setForm((previous) => ({
+      ...previous,
+      description: value,
+      categoryId: matchingRule.secondaryCategoryId,
+    }));
+  }
+
+  function handleExpensePrimaryChange(primaryCategoryId: string) {
+    setSelectedExpensePrimaryId(primaryCategoryId);
+    setHasManualExpenseCategoryOverride(primaryCategoryId !== "");
+    updateField("categoryId", "");
+  }
+
+  function handleExpenseSecondaryChange(categoryId: string) {
+    updateField("categoryId", categoryId);
+    setHasManualExpenseCategoryOverride(categoryId !== "");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -153,11 +211,18 @@ export default function TransactionForm({
     });
   }
 
-  const isTransfer = form.kind === "TRANSFER";
-  const isAdjustment = form.kind === "ADJUSTMENT";
-
   return (
     <form onSubmit={handleSubmit} className="app-form">
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-description`}>Description</label>
+        <input
+          id={`${fieldPrefix}-description`}
+          value={form.description}
+          onChange={(event) => handleDescriptionChange(event.target.value)}
+          required
+        />
+      </div>
+
       <div className="app-form-grid is-relaxed">
         <div className="app-form-field">
           <label htmlFor={`${fieldPrefix}-posted-at`}>Posted at</label>
@@ -176,12 +241,19 @@ export default function TransactionForm({
             id={`${fieldPrefix}-kind`}
             value={form.kind}
             disabled={!isCreateMode}
-            onChange={(event) =>
-              updateField(
-                "kind",
-                event.target.value as TransactionFormValues["kind"],
-              )
-            }
+            onChange={(event) => {
+              const nextKind = event.target
+                .value as TransactionFormValues["kind"];
+              updateField("kind", nextKind);
+              if (nextKind === "EXPENSE") {
+                setSelectedExpensePrimaryId(
+                  deriveExpensePrimaryId(categories, form.categoryId),
+                );
+              } else {
+                setSelectedExpensePrimaryId("");
+                setHasManualExpenseCategoryOverride(false);
+              }
+            }}
           >
             {TRANSACTION_KIND_OPTIONS.map((kind) => (
               <option key={kind} value={kind}>
@@ -299,7 +371,65 @@ export default function TransactionForm({
 
       {!isTransfer ? (
         <div className="app-form-grid is-relaxed">
-          {!isAdjustment ? (
+          {!isAdjustment && isExpense ? (
+            <>
+              <div className="app-form-field">
+                <label
+                  htmlFor={`${fieldPrefix}-primary-category`}
+                  className="is-optional"
+                >
+                  <span>Primary</span>
+                  <span>Optional</span>
+                </label>
+                <select
+                  id={`${fieldPrefix}-primary-category`}
+                  value={selectedExpensePrimaryId}
+                  onChange={(event) =>
+                    handleExpensePrimaryChange(event.target.value)
+                  }
+                >
+                  <option value="">No primary</option>
+                  {visibleExpensePrimaries.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="app-form-field">
+                <label
+                  htmlFor={`${fieldPrefix}-secondary-category`}
+                  className="is-optional"
+                >
+                  <span>Secondary</span>
+                  <span>Optional</span>
+                </label>
+                <select
+                  id={`${fieldPrefix}-secondary-category`}
+                  value={form.categoryId}
+                  onChange={(event) =>
+                    handleExpenseSecondaryChange(event.target.value)
+                  }
+                >
+                  <option value="">No secondary</option>
+                  {visibleExpenseSecondaries.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {formatCategoryOptionLabel(category)}
+                    </option>
+                  ))}
+                </select>
+                {selectedExpensePrimaryId &&
+                !visibleExpenseSecondaries.length ? (
+                  <p className="text-xs text-[var(--text-tertiary)]">
+                    No secondary categories under this primary.
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+
+          {!isAdjustment && isIncome ? (
             <div className="app-form-field">
               <label
                 htmlFor={`${fieldPrefix}-category`}
@@ -316,13 +446,13 @@ export default function TransactionForm({
                 }
               >
                 <option value="">No category</option>
-                {visibleCategories.map((category) => (
+                {visibleIncomeCategories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {formatCategoryOptionLabel(category)}
                   </option>
                 ))}
               </select>
-              {!visibleCategories.length ? (
+              {!visibleIncomeCategories.length ? (
                 <p className="text-xs text-[var(--text-tertiary)]">
                   No matching categories available.
                 </p>
@@ -348,16 +478,6 @@ export default function TransactionForm({
           </div>
         </div>
       ) : null}
-
-      <div className="app-form-field">
-        <label htmlFor={`${fieldPrefix}-description`}>Description</label>
-        <input
-          id={`${fieldPrefix}-description`}
-          value={form.description}
-          onChange={(event) => updateField("description", event.target.value)}
-          required
-        />
-      </div>
 
       <div className="app-form-field">
         <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">

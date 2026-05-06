@@ -60,9 +60,9 @@ test("buildBudgetTransactionsLink narrows to expense rows for the month and cate
   assert.equal(
     buildBudgetTransactionsLink({
       month: "2026-04",
-      categoryId: "category-1",
+      secondaryCategoryId: "category-1",
     }),
-    "/transactions?from=2026-04-01&to=2026-04-30&categoryId=category-1&kind=EXPENSE",
+    "/transactions?from=2026-04-01&to=2026-04-30&secondaryCategoryId=category-1&kind=EXPENSE",
   );
 });
 

@@ -32,6 +32,9 @@ export class CashflowController {
       from: query.from,
       to: query.to,
       accountIds: query.accountId,
+      categoryId: query.categoryId,
+      primaryCategoryId: query.primaryCategoryId,
+      secondaryCategoryId: query.secondaryCategoryId,
       includeArchivedAccounts: query.includeArchivedAccounts,
     });
   }
@@ -48,6 +51,8 @@ export class CashflowController {
         to: query.to,
         accountId: query.accountId,
         categoryId: query.categoryId,
+        primaryCategoryId: query.primaryCategoryId,
+        secondaryCategoryId: query.secondaryCategoryId,
         includeArchivedAccounts: query.includeArchivedAccounts,
       },
     );

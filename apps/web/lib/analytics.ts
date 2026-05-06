@@ -3,6 +3,8 @@ export interface AnalyticsFilters {
   to: string;
   accountId: string;
   categoryId: string;
+  primaryCategoryId: string;
+  secondaryCategoryId: string;
   includeArchivedAccounts: boolean;
 }
 
@@ -49,6 +51,8 @@ export function getDefaultAnalyticsFilters(
     to,
     accountId: "",
     categoryId: "",
+    primaryCategoryId: "",
+    secondaryCategoryId: "",
     includeArchivedAccounts: false,
   };
 }
@@ -78,6 +82,10 @@ export function getAnalyticsFilters(
     to: isValidMonth(to) ? to : defaults.to,
     accountId: getSingleValue(searchParams.accountId),
     categoryId: getSingleValue(searchParams.categoryId),
+    primaryCategoryId: getSingleValue(searchParams.primaryCategoryId),
+    secondaryCategoryId:
+      getSingleValue(searchParams.secondaryCategoryId) ||
+      getSingleValue(searchParams.categoryId),
     includeArchivedAccounts: parseBoolean(searchParams.includeArchivedAccounts),
   };
 }
@@ -91,7 +99,13 @@ export function buildAnalyticsQueryString(filters: AnalyticsFilters): string {
     params.set("accountId", filters.accountId);
   }
 
-  if (filters.categoryId) {
+  if (filters.primaryCategoryId) {
+    params.set("primaryCategoryId", filters.primaryCategoryId);
+  }
+
+  if (filters.secondaryCategoryId) {
+    params.set("secondaryCategoryId", filters.secondaryCategoryId);
+  } else if (filters.categoryId) {
     params.set("categoryId", filters.categoryId);
   }
 
@@ -124,6 +138,8 @@ export function buildTransactionsLink(input: {
   month?: string;
   accountId?: string;
   categoryId?: string | null;
+  primaryCategoryId?: string | null;
+  secondaryCategoryId?: string | null;
   kind?: string;
   includeArchivedAccounts?: boolean;
 }): string {
@@ -144,7 +160,13 @@ export function buildTransactionsLink(input: {
     params.set("accountId", input.accountId);
   }
 
-  if (input.categoryId) {
+  if (input.primaryCategoryId) {
+    params.set("primaryCategoryId", input.primaryCategoryId);
+  }
+
+  if (input.secondaryCategoryId) {
+    params.set("secondaryCategoryId", input.secondaryCategoryId);
+  } else if (input.categoryId) {
     params.set("categoryId", input.categoryId);
   }
 

@@ -17,6 +17,8 @@ test("getDefaultAnalyticsFilters opens to the last 6 months", () => {
       to: "2026-04",
       accountId: "",
       categoryId: "",
+      primaryCategoryId: "",
+      secondaryCategoryId: "",
       includeArchivedAccounts: false,
     },
   );
@@ -88,6 +90,8 @@ test("getAnalyticsFilters falls back to default months while preserving valid fi
       to: "2026-04",
       accountId: "account-1",
       categoryId: "category-1",
+      primaryCategoryId: "",
+      secondaryCategoryId: "category-1",
       includeArchivedAccounts: true,
     },
   );

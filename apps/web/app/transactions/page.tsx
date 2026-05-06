@@ -2,6 +2,7 @@ import type {
   AccountResponse,
   CashflowSummaryResponse,
   CategoryResponse,
+  ExpenseValidationRuleResponse,
   TransactionResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
@@ -22,6 +23,8 @@ function buildFilterQueryString(
     to: string;
     accountId: string;
     categoryId: string;
+    primaryCategoryId: string;
+    secondaryCategoryId: string;
     kind: string;
     includeArchivedAccounts: boolean;
   },
@@ -43,6 +46,14 @@ function buildFilterQueryString(
 
   if (filters.categoryId) {
     params.set("categoryId", filters.categoryId);
+  }
+
+  if (filters.primaryCategoryId) {
+    params.set("primaryCategoryId", filters.primaryCategoryId);
+  }
+
+  if (filters.secondaryCategoryId) {
+    params.set("secondaryCategoryId", filters.secondaryCategoryId);
   }
 
   if ((options?.includeKind ?? true) && filters.kind) {
@@ -68,6 +79,10 @@ export default async function TransactionsPage({
     to: getSingleValue(resolvedSearchParams.to),
     accountId: getSingleValue(resolvedSearchParams.accountId),
     categoryId: getSingleValue(resolvedSearchParams.categoryId),
+    primaryCategoryId: getSingleValue(resolvedSearchParams.primaryCategoryId),
+    secondaryCategoryId:
+      getSingleValue(resolvedSearchParams.secondaryCategoryId) ||
+      getSingleValue(resolvedSearchParams.categoryId),
     kind: getSingleValue(resolvedSearchParams.kind),
     includeArchivedAccounts:
       getSingleValue(resolvedSearchParams.includeArchivedAccounts) === "true",
@@ -83,15 +98,18 @@ export default async function TransactionsPage({
   let cashflow: CashflowSummaryResponse | null = null;
   let accounts: AccountResponse[] | null = null;
   let categories: CategoryResponse[] | null = null;
+  let expenseValidationRules: ExpenseValidationRuleResponse[] | null = null;
   let errorMessage: string | null = null;
 
   try {
-    [transactions, cashflow, accounts, categories] = await Promise.all([
-      api<TransactionResponse[]>(`/transactions${transactionsQueryString}`),
-      api<CashflowSummaryResponse>(`/cashflow/summary${cashflowQueryString}`),
-      api<AccountResponse[]>("/accounts?includeArchived=true"),
-      api<CategoryResponse[]>("/categories?includeArchived=true"),
-    ]);
+    [transactions, cashflow, accounts, categories, expenseValidationRules] =
+      await Promise.all([
+        api<TransactionResponse[]>(`/transactions${transactionsQueryString}`),
+        api<CashflowSummaryResponse>(`/cashflow/summary${cashflowQueryString}`),
+        api<AccountResponse[]>("/accounts?includeArchived=true"),
+        api<CategoryResponse[]>("/categories?includeArchived=true"),
+        api<ExpenseValidationRuleResponse[]>("/expense-validation"),
+      ]);
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -102,7 +120,11 @@ export default async function TransactionsPage({
   return (
     <>
       <Container>
-        {!transactions || !cashflow || !accounts || !categories ? (
+        {!transactions ||
+        !cashflow ||
+        !accounts ||
+        !categories ||
+        !expenseValidationRules ? (
           <section className="page-shell">
             <div className="page-hero">
               <p className="page-kicker">Cashflow</p>
@@ -123,6 +145,7 @@ export default async function TransactionsPage({
             cashflow={cashflow}
             accounts={accounts}
             categories={categories}
+            expenseValidationRules={expenseValidationRules}
             initialFilters={filters}
           />
         )}

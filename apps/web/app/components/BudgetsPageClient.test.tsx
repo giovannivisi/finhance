@@ -37,10 +37,27 @@ vi.mock("@lib/api", () => ({
 
 const categories: CategoryResponse[] = [
   {
+    id: "category-food",
+    name: "Food",
+    type: "EXPENSE",
+    parentCategoryId: null,
+    isPrimary: true,
+    isSecondary: false,
+    order: 0,
+    archivedAt: null,
+    canDeletePermanently: false,
+    deleteBlockReason: null,
+    createdAt: "2026-04-01T00:00:00.000Z",
+    updatedAt: "2026-04-01T00:00:00.000Z",
+  },
+  {
     id: "category-groceries",
     name: "Groceries",
     type: "EXPENSE",
-    order: 0,
+    parentCategoryId: "category-food",
+    isPrimary: false,
+    isSecondary: true,
+    order: 1,
     archivedAt: null,
     canDeletePermanently: false,
     deleteBlockReason: null,

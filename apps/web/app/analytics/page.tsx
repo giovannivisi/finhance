@@ -19,7 +19,15 @@ import {
   getAnalyticsFilters,
   getMonthDateRange,
 } from "@lib/analytics";
+import { formatCategoryName } from "@lib/categories";
 import { formatCurrency } from "@lib/format";
+import {
+  expensePrimaryCategories,
+  expenseSecondaryCategories,
+  formatHierarchyName,
+  groupRowsByPrimary,
+  incomeCategories,
+} from "@lib/hierarchical-categories";
 import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
@@ -88,6 +96,28 @@ export default async function AnalyticsPage({
     }
   }
 
+  const visibleExpensePrimaries = categories
+    ? expensePrimaryCategories(categories, filters.primaryCategoryId)
+    : [];
+  const visibleSecondaryCategories = categories
+    ? filters.primaryCategoryId
+      ? expenseSecondaryCategories(
+          categories,
+          filters.primaryCategoryId,
+          filters.secondaryCategoryId,
+        )
+      : [
+          ...incomeCategories(categories, filters.secondaryCategoryId),
+          ...categories.filter(
+            (category) =>
+              category.type === "EXPENSE" &&
+              category.isSecondary &&
+              (category.archivedAt === null ||
+                category.id === filters.secondaryCategoryId),
+          ),
+        ]
+    : [];
+
   return (
     <>
       <Container>
@@ -124,7 +154,7 @@ export default async function AnalyticsPage({
                   </div>
                 </div>
 
-                <form className="filter-grid is-relaxed lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+                <form className="filter-grid is-relaxed lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]">
                   <div className="app-form-field">
                     <label>From</label>
                     <input
@@ -149,12 +179,29 @@ export default async function AnalyticsPage({
                     </select>
                   </div>
                   <div className="app-form-field">
-                    <label>Category</label>
-                    <select name="categoryId" defaultValue={filters.categoryId}>
-                      <option value="">All categories</option>
-                      {categories.map((category) => (
+                    <label>Primary</label>
+                    <select
+                      name="primaryCategoryId"
+                      defaultValue={filters.primaryCategoryId}
+                    >
+                      <option value="">All primaries</option>
+                      {visibleExpensePrimaries.map((category) => (
                         <option key={category.id} value={category.id}>
                           {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="app-form-field">
+                    <label>Secondary</label>
+                    <select
+                      name="secondaryCategoryId"
+                      defaultValue={filters.secondaryCategoryId}
+                    >
+                      <option value="">All secondaries</option>
+                      {visibleSecondaryCategories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {formatCategoryName(category)}
                         </option>
                       ))}
                     </select>
@@ -206,7 +253,8 @@ export default async function AnalyticsPage({
                     : filters.from !== defaultFilters.from ||
                         filters.to !== defaultFilters.to ||
                         filters.accountId ||
-                        filters.categoryId ||
+                        filters.primaryCategoryId ||
+                        filters.secondaryCategoryId ||
                         filters.includeArchivedAccounts
                       ? "The selected month range, account, category, or archived toggle may be filtering everything out. Widen the range or clear the filters."
                       : "There is no matching income or expense activity in this range yet. Import existing data or record your first month first."}
@@ -297,7 +345,10 @@ export default async function AnalyticsPage({
                             href={buildTransactionsLink({
                               month: month.month,
                               accountId: filters.accountId || undefined,
-                              categoryId: filters.categoryId || undefined,
+                              primaryCategoryId:
+                                filters.primaryCategoryId || undefined,
+                              secondaryCategoryId:
+                                filters.secondaryCategoryId || undefined,
                               includeArchivedAccounts:
                                 filters.includeArchivedAccounts,
                             })}
@@ -412,33 +463,56 @@ export default async function AnalyticsPage({
                               No expense categories in the focus month.
                             </p>
                           ) : (
-                            <div className="mt-2 subcard-stack is-loose">
-                              {currency.focusMonthExpenseBreakdown.map(
-                                (item) => (
-                                  <Link
-                                    key={`expense:${item.categoryId ?? item.name}`}
-                                    href={buildTransactionsLink({
-                                      month: analytics.focusMonth,
-                                      accountId: filters.accountId || undefined,
-                                      categoryId: item.categoryId ?? undefined,
-                                      kind: "EXPENSE",
-                                      includeArchivedAccounts:
-                                        filters.includeArchivedAccounts,
-                                    })}
-                                    className="detail-panel is-roomy flex items-center justify-between gap-4 text-sm transition hover:bg-[var(--bg-card-hover)]"
-                                  >
-                                    <span className="font-medium text-gray-900">
-                                      {item.name}
-                                    </span>
-                                    <span className="text-gray-700">
-                                      {formatCurrency(
-                                        item.total,
-                                        currency.currency,
-                                      )}
-                                    </span>
-                                  </Link>
-                                ),
-                              )}
+                            <div className="mt-2 section-stack-tight">
+                              {groupRowsByPrimary(
+                                currency.focusMonthExpenseBreakdown,
+                                (item) => item.name,
+                              ).map((group) => (
+                                <div
+                                  key={group.key}
+                                  className="section-stack-tight"
+                                >
+                                  <h5 className="px-1 text-xs font-semibold uppercase tracking-[0.22em] text-gray-500">
+                                    {group.label}
+                                  </h5>
+                                  <div className="subcard-stack is-loose">
+                                    {group.items.map((item) => (
+                                      <Link
+                                        key={`expense:${item.categoryId ?? item.name}`}
+                                        href={buildTransactionsLink({
+                                          month: analytics.focusMonth,
+                                          accountId:
+                                            filters.accountId || undefined,
+                                          primaryCategoryId:
+                                            item.primaryCategoryId ?? undefined,
+                                          secondaryCategoryId:
+                                            item.secondaryCategoryId ??
+                                            item.categoryId ??
+                                            undefined,
+                                          kind: "EXPENSE",
+                                          includeArchivedAccounts:
+                                            filters.includeArchivedAccounts,
+                                        })}
+                                        className="detail-panel is-roomy flex items-center justify-between gap-4 text-sm transition hover:bg-[var(--bg-card-hover)]"
+                                      >
+                                        <span className="font-medium text-gray-900">
+                                          {item.secondaryCategoryName ??
+                                            formatHierarchyName(
+                                              item,
+                                              item.name,
+                                            )}
+                                        </span>
+                                        <span className="text-gray-700">
+                                          {formatCurrency(
+                                            item.total,
+                                            currency.currency,
+                                          )}
+                                        </span>
+                                      </Link>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -468,7 +542,7 @@ export default async function AnalyticsPage({
                                     className="detail-panel is-roomy flex items-center justify-between gap-4 text-sm transition hover:bg-[var(--bg-card-hover)]"
                                   >
                                     <span className="font-medium text-gray-900">
-                                      {item.name}
+                                      {formatHierarchyName(item, item.name)}
                                     </span>
                                     <span className="text-gray-700">
                                       {formatCurrency(
@@ -520,55 +594,78 @@ export default async function AnalyticsPage({
                               comparison.
                             </p>
                           ) : (
-                            <div className="mt-2 subcard-stack is-loose">
-                              {currency.expenseMonthOverMonthChanges.map(
-                                (item) => (
-                                  <Link
-                                    key={`expense-change:${item.categoryId ?? item.name}`}
-                                    href={buildTransactionsLink({
-                                      from: selectedRange.from,
-                                      to: selectedRange.to,
-                                      accountId: filters.accountId || undefined,
-                                      categoryId: item.categoryId ?? undefined,
-                                      kind: "EXPENSE",
-                                      includeArchivedAccounts:
-                                        filters.includeArchivedAccounts,
-                                    })}
-                                    className="detail-panel is-roomy block text-sm transition hover:bg-[var(--bg-card-hover)]"
-                                  >
-                                    <div className="flex items-center justify-between gap-3">
-                                      <span className="font-medium text-gray-900">
-                                        {item.name}
-                                      </span>
-                                      <span
-                                        className={
-                                          item.delta >= 0
-                                            ? "font-medium text-rose-700"
-                                            : "font-medium text-emerald-700"
-                                        }
+                            <div className="mt-2 section-stack-tight">
+                              {groupRowsByPrimary(
+                                currency.expenseMonthOverMonthChanges,
+                                (item) => item.name,
+                              ).map((group) => (
+                                <div
+                                  key={group.key}
+                                  className="section-stack-tight"
+                                >
+                                  <h5 className="px-1 text-xs font-semibold uppercase tracking-[0.22em] text-gray-500">
+                                    {group.label}
+                                  </h5>
+                                  <div className="subcard-stack is-loose">
+                                    {group.items.map((item) => (
+                                      <Link
+                                        key={`expense-change:${item.categoryId ?? item.name}`}
+                                        href={buildTransactionsLink({
+                                          from: selectedRange.from,
+                                          to: selectedRange.to,
+                                          accountId:
+                                            filters.accountId || undefined,
+                                          primaryCategoryId:
+                                            item.primaryCategoryId ?? undefined,
+                                          secondaryCategoryId:
+                                            item.secondaryCategoryId ??
+                                            item.categoryId ??
+                                            undefined,
+                                          kind: "EXPENSE",
+                                          includeArchivedAccounts:
+                                            filters.includeArchivedAccounts,
+                                        })}
+                                        className="detail-panel is-roomy block text-sm transition hover:bg-[var(--bg-card-hover)]"
                                       >
-                                        {item.delta >= 0 ? "+" : ""}
-                                        {formatCurrency(
-                                          item.delta,
-                                          currency.currency,
-                                        )}
-                                      </span>
-                                    </div>
-                                    <p className="mt-1 text-gray-500">
-                                      Prev{" "}
-                                      {formatCurrency(
-                                        item.previousTotal,
-                                        currency.currency,
-                                      )}{" "}
-                                      · Now{" "}
-                                      {formatCurrency(
-                                        item.currentTotal,
-                                        currency.currency,
-                                      )}
-                                    </p>
-                                  </Link>
-                                ),
-                              )}
+                                        <div className="flex items-center justify-between gap-3">
+                                          <span className="font-medium text-gray-900">
+                                            {item.secondaryCategoryName ??
+                                              formatHierarchyName(
+                                                item,
+                                                item.name,
+                                              )}
+                                          </span>
+                                          <span
+                                            className={
+                                              item.delta >= 0
+                                                ? "font-medium text-rose-700"
+                                                : "font-medium text-emerald-700"
+                                            }
+                                          >
+                                            {item.delta >= 0 ? "+" : ""}
+                                            {formatCurrency(
+                                              item.delta,
+                                              currency.currency,
+                                            )}
+                                          </span>
+                                        </div>
+                                        <p className="mt-1 text-gray-500">
+                                          Prev{" "}
+                                          {formatCurrency(
+                                            item.previousTotal,
+                                            currency.currency,
+                                          )}{" "}
+                                          · Now{" "}
+                                          {formatCurrency(
+                                            item.currentTotal,
+                                            currency.currency,
+                                          )}
+                                        </p>
+                                      </Link>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -600,7 +697,7 @@ export default async function AnalyticsPage({
                                   >
                                     <div className="flex items-center justify-between gap-3">
                                       <span className="font-medium text-gray-900">
-                                        {item.name}
+                                        {formatHierarchyName(item, item.name)}
                                       </span>
                                       <span
                                         className={
@@ -666,6 +763,97 @@ export default async function AnalyticsPage({
                               <p className="mt-2 text-sm text-gray-500">
                                 No category trends in this range.
                               </p>
+                            ) : section.kind === "EXPENSE" ? (
+                              <div className="mt-2 section-stack-tight">
+                                {groupRowsByPrimary(
+                                  section.items,
+                                  (item) => item.name,
+                                ).map((group) => (
+                                  <div
+                                    key={group.key}
+                                    className="section-stack-tight"
+                                  >
+                                    <h5 className="px-1 text-xs font-semibold uppercase tracking-[0.22em] text-gray-500">
+                                      {group.label}
+                                    </h5>
+                                    <div className="subcard-stack is-loose">
+                                      {group.items.map((item) => {
+                                        const trendMax = maxTrendValue(item);
+
+                                        return (
+                                          <Link
+                                            key={`${section.kind}:${item.categoryId ?? item.name}`}
+                                            href={buildTransactionsLink({
+                                              from: selectedRange.from,
+                                              to: selectedRange.to,
+                                              accountId:
+                                                filters.accountId || undefined,
+                                              primaryCategoryId:
+                                                item.primaryCategoryId ??
+                                                undefined,
+                                              secondaryCategoryId:
+                                                item.secondaryCategoryId ??
+                                                item.categoryId ??
+                                                undefined,
+                                              kind: section.kind,
+                                              includeArchivedAccounts:
+                                                filters.includeArchivedAccounts,
+                                            })}
+                                            className="detail-panel is-roomy block text-sm transition hover:bg-[var(--bg-card-hover)]"
+                                          >
+                                            <div className="flex items-center justify-between gap-3">
+                                              <span className="font-medium text-gray-900">
+                                                {item.secondaryCategoryName ??
+                                                  formatHierarchyName(
+                                                    item,
+                                                    item.name,
+                                                  )}
+                                              </span>
+                                              <span className="text-gray-700">
+                                                {formatCurrency(
+                                                  item.total,
+                                                  currency.currency,
+                                                )}
+                                              </span>
+                                            </div>
+                                            <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-3">
+                                              {item.series.map((point) => (
+                                                <div
+                                                  key={`${item.name}:${point.month}`}
+                                                  className="detail-panel is-roomy"
+                                                >
+                                                  <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+                                                    <span>{point.month}</span>
+                                                    <span>
+                                                      {formatCurrency(
+                                                        point.total,
+                                                        currency.currency,
+                                                      )}
+                                                    </span>
+                                                  </div>
+                                                  <div className="mt-2 h-2 rounded-full bg-gray-100">
+                                                    <div
+                                                      className="h-2 rounded-full bg-rose-500"
+                                                      style={{
+                                                        width: `${Math.min(
+                                                          100,
+                                                          (point.total /
+                                                            trendMax) *
+                                                            100,
+                                                        )}%`,
+                                                      }}
+                                                    />
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </Link>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             ) : (
                               <div className="mt-2 subcard-stack is-loose">
                                 {section.items.map((item) => {
@@ -679,8 +867,21 @@ export default async function AnalyticsPage({
                                         to: selectedRange.to,
                                         accountId:
                                           filters.accountId || undefined,
+                                        primaryCategoryId:
+                                          section.kind === "EXPENSE"
+                                            ? (item.primaryCategoryId ??
+                                              undefined)
+                                            : undefined,
+                                        secondaryCategoryId:
+                                          section.kind === "EXPENSE"
+                                            ? (item.secondaryCategoryId ??
+                                              item.categoryId ??
+                                              undefined)
+                                            : undefined,
                                         categoryId:
-                                          item.categoryId ?? undefined,
+                                          section.kind === "INCOME"
+                                            ? (item.categoryId ?? undefined)
+                                            : undefined,
                                         kind: section.kind,
                                         includeArchivedAccounts:
                                           filters.includeArchivedAccounts,
@@ -689,7 +890,7 @@ export default async function AnalyticsPage({
                                     >
                                       <div className="flex items-center justify-between gap-3">
                                         <span className="font-medium text-gray-900">
-                                          {item.name}
+                                          {formatHierarchyName(item, item.name)}
                                         </span>
                                         <span className="text-gray-700">
                                           {formatCurrency(

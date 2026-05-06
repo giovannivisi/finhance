@@ -19,7 +19,11 @@ type TransactionCreateCall = {
   };
   include: {
     account: true;
-    category: true;
+    category: {
+      include: {
+        parentCategory: true;
+      };
+    };
   };
 };
 
@@ -84,6 +88,25 @@ function createTransactionRow(
     account: createAccount(),
     category: createCategory(),
     ...overrides,
+  };
+}
+
+function withEmptyHierarchy<
+  T extends { categoryId: string | null; name: string },
+>(
+  input: T,
+): T & {
+  primaryCategoryId: null;
+  primaryCategoryName: null;
+  secondaryCategoryId: null;
+  secondaryCategoryName: null;
+} {
+  return {
+    ...input,
+    primaryCategoryId: null,
+    primaryCategoryName: null,
+    secondaryCategoryId: null,
+    secondaryCategoryName: null,
   };
 }
 
@@ -178,7 +201,14 @@ describe('TransactionsService', () => {
       description: 'Salary',
       counterparty: 'Employer',
     });
-    expect(createCall.include).toEqual({ account: true, category: true });
+    expect(createCall.include).toEqual({
+      account: true,
+      category: {
+        include: {
+          parentCategory: true,
+        },
+      },
+    });
   });
 
   it('creates transfer pairs and returns one logical entry', async () => {
@@ -601,16 +631,16 @@ describe('TransactionsService', () => {
         currency: 'EUR',
         averageMonthlyExpense: 27.5,
         rangeExpenseCategories: [
-          {
+          withEmptyHierarchy({
             categoryId: 'category-expense',
             name: 'Rent',
             total: 40,
-          },
-          {
+          }),
+          withEmptyHierarchy({
             categoryId: null,
             name: 'Uncategorized',
             total: 15,
-          },
+          }),
         ],
         months: [
           {
@@ -625,23 +655,23 @@ describe('TransactionsService', () => {
             uncategorizedIncomeTotal: 0,
             savingsRate: 0.45,
             expenseCategories: [
-              {
+              withEmptyHierarchy({
                 categoryId: 'category-expense',
                 name: 'Rent',
                 total: 40,
-              },
-              {
+              }),
+              withEmptyHierarchy({
                 categoryId: null,
                 name: 'Uncategorized',
                 total: 15,
-              },
+              }),
             ],
             incomeCategories: [
-              {
+              withEmptyHierarchy({
                 categoryId: 'category-income',
                 name: 'Salary',
                 total: 100,
-              },
+              }),
             ],
           },
           {
@@ -692,11 +722,11 @@ describe('TransactionsService', () => {
             savingsRate: 1,
             expenseCategories: [],
             incomeCategories: [
-              {
+              withEmptyHierarchy({
                 categoryId: null,
                 name: 'Uncategorized',
                 total: 50,
-              },
+              }),
             ],
           },
         ],
@@ -796,11 +826,11 @@ describe('TransactionsService', () => {
         currency: 'EUR',
         averageMonthlyExpense: 40,
         rangeExpenseCategories: [
-          {
+          withEmptyHierarchy({
             categoryId: 'category-expense',
             name: 'Rent',
             total: 40,
-          },
+          }),
         ],
         months: [
           {
@@ -815,11 +845,11 @@ describe('TransactionsService', () => {
             uncategorizedIncomeTotal: 0,
             savingsRate: null,
             expenseCategories: [
-              {
+              withEmptyHierarchy({
                 categoryId: 'category-expense',
                 name: 'Rent',
                 total: 40,
-              },
+              }),
             ],
             incomeCategories: [],
           },
@@ -962,47 +992,53 @@ describe('TransactionsService', () => {
             },
           ],
           focusMonthExpenseBreakdown: [
-            {
+            withEmptyHierarchy({
               categoryId: 'category-rent',
               name: 'Rent',
               total: 50,
-            },
-            {
+            }),
+            withEmptyHierarchy({
               categoryId: null,
               name: 'Uncategorized',
               total: 15,
-            },
+            }),
           ],
           focusMonthIncomeBreakdown: [
-            {
+            withEmptyHierarchy({
               categoryId: 'category-income',
               name: 'Salary',
               total: 120,
-            },
+            }),
           ],
           expenseCategoryTrends: [
             {
-              categoryId: 'category-rent',
-              name: 'Rent',
-              total: 90,
+              ...withEmptyHierarchy({
+                categoryId: 'category-rent',
+                name: 'Rent',
+                total: 90,
+              }),
               series: [
                 { month: '2026-04', total: 40 },
                 { month: '2026-05', total: 50 },
               ],
             },
             {
-              categoryId: null,
-              name: 'Uncategorized',
-              total: 15,
+              ...withEmptyHierarchy({
+                categoryId: null,
+                name: 'Uncategorized',
+                total: 15,
+              }),
               series: [
                 { month: '2026-04', total: 0 },
                 { month: '2026-05', total: 15 },
               ],
             },
             {
-              categoryId: 'category-groceries',
-              name: 'Groceries',
-              total: 10,
+              ...withEmptyHierarchy({
+                categoryId: 'category-groceries',
+                name: 'Groceries',
+                total: 10,
+              }),
               series: [
                 { month: '2026-04', total: 10 },
                 { month: '2026-05', total: 0 },
@@ -1011,9 +1047,11 @@ describe('TransactionsService', () => {
           ],
           incomeCategoryTrends: [
             {
-              categoryId: 'category-income',
-              name: 'Salary',
-              total: 220,
+              ...withEmptyHierarchy({
+                categoryId: 'category-income',
+                name: 'Salary',
+                total: 220,
+              }),
               series: [
                 { month: '2026-04', total: 100 },
                 { month: '2026-05', total: 120 },
@@ -1021,36 +1059,36 @@ describe('TransactionsService', () => {
             },
           ],
           expenseMonthOverMonthChanges: [
-            {
+            withEmptyHierarchy({
               categoryId: null,
               name: 'Uncategorized',
               previousTotal: 0,
               currentTotal: 15,
               delta: 15,
-            },
-            {
+            }),
+            withEmptyHierarchy({
               categoryId: 'category-groceries',
               name: 'Groceries',
               previousTotal: 10,
               currentTotal: 0,
               delta: -10,
-            },
-            {
+            }),
+            withEmptyHierarchy({
               categoryId: 'category-rent',
               name: 'Rent',
               previousTotal: 40,
               currentTotal: 50,
               delta: 10,
-            },
+            }),
           ],
           incomeMonthOverMonthChanges: [
-            {
+            withEmptyHierarchy({
               categoryId: 'category-income',
               name: 'Salary',
               previousTotal: 100,
               currentTotal: 120,
               delta: 20,
-            },
+            }),
           ],
         },
       ],

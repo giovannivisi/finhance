@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type {
   AccountResponse,
   CategoryResponse,
+  ExpenseValidationRuleResponse,
   MaterializeRecurringRulesResponse,
   RecurringOccurrenceResponse,
   RecurringTransactionRuleResponse,
@@ -35,10 +36,12 @@ export default function RecurringPageClient({
   rules,
   accounts,
   categories,
+  expenseValidationRules,
 }: {
   rules: RecurringTransactionRuleResponse[];
   accounts: AccountResponse[];
   categories: CategoryResponse[];
+  expenseValidationRules: ExpenseValidationRuleResponse[];
 }) {
   const router = useRouter();
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
@@ -435,6 +438,7 @@ export default function RecurringPageClient({
             mode="create"
             accounts={accounts}
             categories={categories}
+            expenseValidationRules={expenseValidationRules}
             initialValues={createEmptyRecurringRuleFormValues()}
             onSuccess={() => setIsCreateModalOpen(false)}
             onCancel={() => setIsCreateModalOpen(false)}
@@ -459,6 +463,7 @@ export default function RecurringPageClient({
                 ruleId={editingRule.id}
                 accounts={accounts}
                 categories={categories}
+                expenseValidationRules={expenseValidationRules}
                 initialValues={recurringRuleToFormValues(editingRule)}
                 onSuccess={() => setEditingRuleId(null)}
                 onCancel={() => setEditingRuleId(null)}
@@ -552,6 +557,7 @@ export default function RecurringPageClient({
                   ruleId={occurrenceRule.id}
                   accounts={accounts}
                   categories={categories}
+                  expenseValidationRules={expenseValidationRules}
                   initialValues={createRecurringOccurrenceFormValuesFromRule(
                     occurrenceRule,
                     occurrenceMonth,

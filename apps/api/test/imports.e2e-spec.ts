@@ -411,12 +411,16 @@ describe('Import routes (e2e)', () => {
           'recurringExceptions.csv',
           'budgets.csv',
           'budgetOverrides.csv',
+          'expenseValidationRules.csv',
         ]);
         expect(entries.get('accounts.csv')).toContain(
           'importKey,name,type,currency,institution,notes,order,openingBalance,openingBalanceDate,archived',
         );
         expect(entries.get('categories.csv')).toBe(
-          'importKey,name,type,order,archived\n',
+          'importKey,type,level,primary,secondary,primaryOrder,secondaryOrder,archived\n',
+        );
+        expect(entries.get('expenseValidationRules.csv')).toBe(
+          'entry,primary,secondary\n',
         );
       });
   });
