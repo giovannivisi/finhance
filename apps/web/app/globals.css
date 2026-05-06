@@ -325,6 +325,11 @@ button {
   overflow: visible;
 }
 
+.import-disclosure-section {
+  position: relative;
+  z-index: 4;
+}
+
 .page-section.is-spacious {
   padding: 28px;
 }
@@ -553,6 +558,9 @@ button {
 .import-disclosure-shell {
   position: relative;
   min-height: 42px;
+  overflow: visible;
+  z-index: 5;
+  isolation: isolate;
 }
 
 .import-disclosure-rail {
@@ -598,7 +606,7 @@ button {
 
 .import-disclosure-panel {
   position: absolute;
-  z-index: 20;
+  z-index: 40;
   max-width: min(420px, calc(100vw - 32px));
   padding: 18px 20px 20px;
   border-radius: 22px;
@@ -608,6 +616,7 @@ button {
     0 24px 48px rgba(0, 0, 0, 0.26),
     0 0 0 1px rgba(255, 255, 255, 0.02);
   isolation: isolate;
+  overflow: visible;
 }
 
 .import-disclosure-panel::before,
@@ -620,25 +629,18 @@ button {
 }
 
 .import-disclosure-panel::before {
-  top: -8px;
-  width: 16px;
-  height: 16px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
   border-top: 1px solid var(--border-glass-strong);
   border-left: 1px solid var(--border-glass-strong);
   background: var(--bg-popover-solid);
+  border-top-left-radius: 6px;
+  z-index: 2;
 }
 
 .import-disclosure-panel::after {
-  top: -10px;
-  width: 28px;
-  height: 16px;
-  background: linear-gradient(
-    180deg,
-    transparent 0,
-    transparent 55%,
-    var(--bg-popover-solid) 55%,
-    var(--bg-popover-solid) 100%
-  );
+  display: none;
 }
 
 .import-disclosure-panel-title {
