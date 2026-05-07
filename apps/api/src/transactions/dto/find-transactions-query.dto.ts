@@ -77,6 +77,16 @@ export class FindTransactionsQueryDto {
   categoryId?: string;
 
   @IsOptional()
+  @IsString()
+  @Transform(trimOptionalStringValue)
+  primaryCategoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Transform(trimOptionalStringValue)
+  secondaryCategoryId?: string;
+
+  @IsOptional()
   @IsEnum(PrismaTransactionKind)
   kind?: TransactionKind;
 

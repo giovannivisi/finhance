@@ -469,7 +469,7 @@ export default function ImportsPageClient({
         </p>
       </section>
 
-      <section className="page-section page-section--allow-overflow section-stack-tight">
+      <section className="page-section page-section--allow-overflow import-disclosure-section section-stack-tight">
         <div className="compact-toolbar">
           <div>
             <h2 className="section-title">Templates and round-trip export</h2>

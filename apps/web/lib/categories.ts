@@ -7,6 +7,24 @@ export const CATEGORY_TYPE_LABELS: Record<CategoryType, string> = {
   INCOME: "Income",
 };
 
+export function formatCategoryName(category: CategoryResponse): string {
+  if (category.parentCategoryName) {
+    return `${category.parentCategoryName} / ${category.name}`;
+  }
+
+  return category.name;
+}
+
 export function formatCategoryOptionLabel(category: CategoryResponse): string {
-  return `${category.name} (${CATEGORY_TYPE_LABELS[category.type]}${category.archivedAt ? ", Archived" : ""})`;
+  const hierarchyLabel = formatCategoryName(category);
+  const roleLabel =
+    category.type === "EXPENSE"
+      ? category.isPrimary
+        ? ", Primary"
+        : category.isSecondary
+          ? ", Secondary"
+          : ""
+      : "";
+
+  return `${hierarchyLabel} (${CATEGORY_TYPE_LABELS[category.type]}${roleLabel}${category.archivedAt ? ", Archived" : ""})`;
 }

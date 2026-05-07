@@ -1,9 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  useAnimation,
+  useReducedMotion,
+} from "framer-motion";
 import { FileText, MoreHorizontal, Moon, Sun } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -25,25 +37,116 @@ export default function TabBar() {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
-  const [isPending, startTransition] = useTransition();
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [showMore, setShowMore] = useState(false);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [hoverLeftPct, setHoverLeftPct] = useState<number | null>(null);
+  const [dragLeftPct, setDragLeftPct] = useState<number | null>(null);
+  const [isPointerTracking, setIsPointerTracking] = useState(false);
   const prefersReducedMotion = useReducedMotion();
+
   const menuRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const isDraggingRef = useRef(false);
+  const wasDraggingRef = useRef(false);
+  const activePointerIdRef = useRef<number | null>(null);
+  const dragStartXRef = useRef(0);
+  const dragStartYRef = useRef(0);
+  const pillControls = useAnimation();
+  const prevPillMetricsRef = useRef<{ left: number; width: number } | null>(
+    null,
+  );
+  const animationRunIdRef = useRef(0);
 
   const currentPath = pathname ?? "/";
-  const activePendingPath = isPending ? pendingPath : null;
+  const activePendingPath =
+    pendingPath && !isActivePath(currentPath, pendingPath) ? pendingPath : null;
   const activePrimaryIndex = PRIMARY_NAV_ITEMS.findIndex((item) =>
     isActivePath(currentPath, item.href),
   );
   const moreIsActive =
     activePrimaryIndex === -1 ||
-    SECONDARY_NAV_ITEMS.some((item) => isActivePath(currentPath, item.href));
+    SECONDARY_NAV_ITEMS.some((item) => isActivePath(currentPath, item.href)) ||
+    isActivePath(currentPath, "/privacy");
+  const activeSlotIndex =
+    activePrimaryIndex === -1 ? PRIMARY_NAV_ITEMS.length : activePrimaryIndex;
+  const pendingPrimaryIndex = activePendingPath
+    ? PRIMARY_NAV_ITEMS.findIndex((item) =>
+        isActivePath(activePendingPath, item.href),
+      )
+    : -1;
+  const pendingSlotIndex =
+    activePendingPath === null
+      ? null
+      : pendingPrimaryIndex === -1
+        ? PRIMARY_NAV_ITEMS.length
+        : pendingPrimaryIndex;
   const visualActiveIndex = showMore
     ? PRIMARY_NAV_ITEMS.length
-    : activePrimaryIndex === -1
-      ? PRIMARY_NAV_ITEMS.length
-      : activePrimaryIndex;
+    : (pendingSlotIndex ?? activeSlotIndex);
+  const pillIndex = hoveredIndex ?? visualActiveIndex;
+
+  const getTabIndexAt = useCallback((clientX: number) => {
+    const bar = barRef.current;
+    if (!bar) {
+      return 0;
+    }
+
+    const rect = bar.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const index = Math.floor((x / rect.width) * TAB_COUNT);
+    return Math.max(0, Math.min(index, TAB_COUNT - 1));
+  }, []);
+
+  const getDragLeftPctAt = useCallback((clientX: number) => {
+    const bar = barRef.current;
+    if (!bar) {
+      return 0;
+    }
+
+    const rect = bar.getBoundingClientRect();
+    const slotWidthPct = 100 / TAB_COUNT;
+    const x = clientX - rect.left;
+    const unclamped = (x / rect.width) * 100 - slotWidthPct / 2;
+    return Math.max(0, Math.min(unclamped, 100 - slotWidthPct));
+  }, []);
+
+  const getHoverLeftPctAt = useCallback((clientX: number) => {
+    const bar = barRef.current;
+    if (!bar) {
+      return 0;
+    }
+
+    const rect = bar.getBoundingClientRect();
+    const slotWidthPct = 100 / TAB_COUNT;
+    const x = clientX - rect.left;
+    const unclamped = (x / rect.width) * 100 - slotWidthPct / 2;
+    return Math.max(0, Math.min(unclamped, 100 - slotWidthPct));
+  }, []);
+
+  const handleNavigate = useCallback(
+    (nextPath: string) => {
+      if (
+        isRedundantTabNavigation({
+          currentPath,
+          targetPath: nextPath,
+          pendingPath: activePendingPath,
+        })
+      ) {
+        setShowMore(false);
+        return;
+      }
+
+      setPendingPath(nextPath);
+      setShowMore(false);
+      setHoveredIndex(null);
+      setHoverLeftPct(null);
+      setDragLeftPct(null);
+      router.push(nextPath);
+    },
+    [activePendingPath, currentPath, router],
+  );
 
   useEffect(() => {
     if (!showMore) {
@@ -59,6 +162,7 @@ export default function TabBar() {
     function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setShowMore(false);
+        moreButtonRef.current?.focus();
       }
     }
 
@@ -71,23 +175,202 @@ export default function TabBar() {
     };
   }, [showMore]);
 
-  function handleNavigate(nextPath: string) {
-    if (
-      isRedundantTabNavigation({
-        currentPath,
-        targetPath: nextPath,
-        pendingPath: activePendingPath,
-      })
-    ) {
-      setShowMore(false);
+  useEffect(() => {
+    if (!isPointerTracking) {
       return;
     }
 
-    setPendingPath(nextPath);
-    setShowMore(false);
-    startTransition(() => {
-      router.push(nextPath);
+    function handleGlobalPointerMove(event: PointerEvent) {
+      if (activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      const deltaX = event.clientX - dragStartXRef.current;
+      const deltaY = event.clientY - dragStartYRef.current;
+
+      if (!isDraggingRef.current) {
+        if (Math.abs(deltaX) < 10) {
+          return;
+        }
+
+        if (Math.abs(deltaX) <= Math.abs(deltaY)) {
+          return;
+        }
+
+        isDraggingRef.current = true;
+        setShowMore(false);
+        setHoverLeftPct(null);
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      setHoveredIndex(getTabIndexAt(event.clientX));
+      setDragLeftPct(getDragLeftPctAt(event.clientX));
+    }
+
+    function finishPointerTracking(event: PointerEvent) {
+      if (activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      const wasDragging = isDraggingRef.current;
+      activePointerIdRef.current = null;
+      isDraggingRef.current = false;
+      setDragLeftPct(null);
+      setHoverLeftPct(null);
+      setIsPointerTracking(false);
+
+      if (!wasDragging) {
+        return;
+      }
+
+      wasDraggingRef.current = true;
+      const index = getTabIndexAt(event.clientX);
+      setHoveredIndex(null);
+
+      if (index < PRIMARY_NAV_ITEMS.length) {
+        handleNavigate(PRIMARY_NAV_ITEMS[index].href);
+        return;
+      }
+
+      setShowMore(true);
+    }
+
+    window.addEventListener("pointermove", handleGlobalPointerMove, {
+      passive: false,
     });
+    window.addEventListener("pointerup", finishPointerTracking);
+    window.addEventListener("pointercancel", finishPointerTracking);
+
+    return () => {
+      window.removeEventListener("pointermove", handleGlobalPointerMove);
+      window.removeEventListener("pointerup", finishPointerTracking);
+      window.removeEventListener("pointercancel", finishPointerTracking);
+    };
+  }, [getDragLeftPctAt, getTabIndexAt, handleNavigate, isPointerTracking]);
+
+  useEffect(() => {
+    const slotWidthPct = 100 / TAB_COUNT;
+    const hoverWidthPct = slotWidthPct * 1.01;
+    const targetWidthPct =
+      dragLeftPct !== null || hoverLeftPct !== null
+        ? hoverWidthPct
+        : slotWidthPct;
+    const targetLeftPct =
+      dragLeftPct !== null
+        ? dragLeftPct
+        : hoverLeftPct !== null
+          ? hoverLeftPct
+          : pillIndex * slotWidthPct;
+    const previous = prevPillMetricsRef.current;
+    const runId = animationRunIdRef.current + 1;
+    animationRunIdRef.current = runId;
+
+    pillControls.stop();
+
+    if (previous === null) {
+      prevPillMetricsRef.current = {
+        left: targetLeftPct,
+        width: targetWidthPct,
+      };
+      void pillControls.set({
+        left: `${targetLeftPct}%`,
+        width: `${targetWidthPct}%`,
+      });
+      return;
+    }
+
+    if (previous.left === targetLeftPct && previous.width === targetWidthPct) {
+      return;
+    }
+
+    prevPillMetricsRef.current = {
+      left: targetLeftPct,
+      width: targetWidthPct,
+    };
+
+    if (prefersReducedMotion) {
+      void pillControls.start({
+        left: `${targetLeftPct}%`,
+        width: `${targetWidthPct}%`,
+        transition: { duration: 0 },
+      });
+      return;
+    }
+
+    if (dragLeftPct !== null) {
+      void pillControls.set({
+        left: `${targetLeftPct}%`,
+        width: `${targetWidthPct}%`,
+      });
+      return;
+    }
+
+    const isRight = targetLeftPct > previous.left;
+    const distanceInSlots =
+      Math.abs(targetLeftPct - previous.left) / slotWidthPct;
+    const extraWidthPct = Math.min(distanceInSlots, 2) * slotWidthPct * 0.7;
+    const stretchLeftPct = isRight ? previous.left : targetLeftPct;
+    const stretchWidthPct = Math.max(
+      targetWidthPct,
+      slotWidthPct + extraWidthPct,
+    );
+
+    void (async () => {
+      await pillControls.start({
+        left: `${stretchLeftPct}%`,
+        width: `${stretchWidthPct}%`,
+        transition: {
+          type: "tween",
+          duration: 0.15,
+          ease: [0.22, 1, 0.36, 1],
+        },
+      });
+      if (animationRunIdRef.current !== runId) {
+        return;
+      }
+      await pillControls.start({
+        left: `${targetLeftPct}%`,
+        width: `${targetWidthPct}%`,
+        transition: {
+          type: "spring",
+          stiffness: 360,
+          damping: 28,
+          mass: 0.72,
+        },
+      });
+    })();
+  }, [
+    dragLeftPct,
+    hoverLeftPct,
+    pillControls,
+    pillIndex,
+    prefersReducedMotion,
+  ]);
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    activePointerIdRef.current = event.pointerId;
+    isDraggingRef.current = false;
+    wasDraggingRef.current = false;
+    dragStartXRef.current = event.clientX;
+    dragStartYRef.current = event.clientY;
+    setIsPointerTracking(true);
+  }
+
+  function handleClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!wasDraggingRef.current) {
+      return;
+    }
+
+    wasDraggingRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   return (
@@ -195,22 +478,31 @@ export default function TabBar() {
           ) : null}
         </AnimatePresence>
 
-        <div className="tab-bar-pill">
-          <motion.div
-            aria-hidden="true"
-            className="tab-active-pill"
-            animate={{
-              left: `${(visualActiveIndex / TAB_COUNT) * 100}%`,
-              width: `${100 / TAB_COUNT}%`,
-            }}
-            transition={
-              prefersReducedMotion
-                ? { duration: 0 }
-                : { type: "spring", stiffness: 360, damping: 30, mass: 0.75 }
+        <div
+          ref={barRef}
+          className="tab-bar-pill is-draggable"
+          onMouseMove={(event) => {
+            if (isDraggingRef.current || event.buttons & 1) {
+              return;
             }
-          >
-            <div className="pill-sheen" />
-          </motion.div>
+
+            setHoveredIndex(getTabIndexAt(event.clientX));
+            setHoverLeftPct(getHoverLeftPctAt(event.clientX));
+          }}
+          onMouseLeave={() => {
+            if (!isDraggingRef.current) {
+              setHoveredIndex(null);
+              setHoverLeftPct(null);
+            }
+          }}
+          onPointerDown={handlePointerDown}
+          onClickCapture={handleClickCapture}
+        >
+          <div aria-hidden="true" className="tab-active-pill-track">
+            <motion.div className="tab-active-pill" animate={pillControls}>
+              <div className="pill-sheen" />
+            </motion.div>
+          </div>
 
           {PRIMARY_NAV_ITEMS.map((item, index) => {
             const isActive = isActivePath(currentPath, item.href);
@@ -225,12 +517,17 @@ export default function TabBar() {
                 key={item.href}
                 href={item.href}
                 prefetch={false}
+                draggable={false}
                 aria-label={item.label}
                 aria-current={isActive ? "page" : undefined}
                 aria-disabled={isBlocked}
                 onClick={(event) => {
                   event.preventDefault();
                   handleNavigate(item.href);
+                }}
+                onMouseEnter={(event) => {
+                  setHoveredIndex(index);
+                  setHoverLeftPct(getHoverLeftPctAt(event.clientX));
                 }}
                 className={cn(
                   "tab-bar-link",
@@ -247,15 +544,25 @@ export default function TabBar() {
           })}
 
           <button
+            ref={moreButtonRef}
             type="button"
+            draggable={false}
             aria-label="More navigation"
             aria-expanded={showMore}
             aria-haspopup="true"
             aria-controls="revolut-more-panel"
-            onClick={() => setShowMore((current) => !current)}
+            onClick={() => {
+              setShowMore((current) => !current);
+              setHoverLeftPct(null);
+            }}
+            onMouseEnter={(event) => {
+              setHoveredIndex(PRIMARY_NAV_ITEMS.length);
+              setHoverLeftPct(getHoverLeftPctAt(event.clientX));
+            }}
             className={cn(
               "tab-bar-link tab-more-btn",
               showMore || moreIsActive ? "is-active" : "is-inactive",
+              showMore && "is-open",
             )}
           >
             <MoreHorizontal

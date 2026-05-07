@@ -3,6 +3,7 @@ export type CategoryType = "EXPENSE" | "INCOME";
 export interface UpsertCategoryRequest {
   name: string;
   type: CategoryType;
+  parentCategoryId?: string | null;
   order?: number | null;
 }
 
@@ -10,6 +11,10 @@ export interface CategoryResponse {
   id: string;
   name: string;
   type: CategoryType;
+  parentCategoryId: string | null;
+  parentCategoryName: string | null;
+  isPrimary: boolean;
+  isSecondary: boolean;
   order: number;
   archivedAt: string | null;
   canDeletePermanently: boolean;
@@ -59,6 +64,10 @@ export interface TransactionResponse {
   accountId: string | null;
   direction: TransactionDirection | null;
   categoryId: string | null;
+  primaryCategoryId: string | null;
+  primaryCategoryName: string | null;
+  secondaryCategoryId: string | null;
+  secondaryCategoryName: string | null;
   description: string;
   notes: string | null;
   counterparty: string | null;
@@ -75,6 +84,10 @@ export interface CashflowCategoryTotalResponse {
   categoryId: string | null;
   name: string;
   type: CategoryType;
+  primaryCategoryId: string | null;
+  primaryCategoryName: string | null;
+  secondaryCategoryId: string | null;
+  secondaryCategoryName: string | null;
   total: number;
 }
 
@@ -102,6 +115,10 @@ export type CashflowSummaryResponse = CashflowCurrencySummaryResponse[];
 export interface MonthlyCashflowCategoryTotalResponse {
   categoryId: string | null;
   name: string;
+  primaryCategoryId: string | null;
+  primaryCategoryName: string | null;
+  secondaryCategoryId: string | null;
+  secondaryCategoryName: string | null;
   total: number;
 }
 
@@ -119,6 +136,10 @@ export interface CashflowAnalyticsMonthPointResponse {
 export interface CashflowAnalyticsBreakdownItemResponse {
   categoryId: string | null;
   name: string;
+  primaryCategoryId: string | null;
+  primaryCategoryName: string | null;
+  secondaryCategoryId: string | null;
+  secondaryCategoryName: string | null;
   total: number;
 }
 
@@ -130,6 +151,10 @@ export interface CashflowAnalyticsCategoryTrendPointResponse {
 export interface CashflowAnalyticsCategoryTrendResponse {
   categoryId: string | null;
   name: string;
+  primaryCategoryId: string | null;
+  primaryCategoryName: string | null;
+  secondaryCategoryId: string | null;
+  secondaryCategoryName: string | null;
   total: number;
   series: CashflowAnalyticsCategoryTrendPointResponse[];
 }
@@ -137,6 +162,10 @@ export interface CashflowAnalyticsCategoryTrendResponse {
 export interface CashflowAnalyticsMonthOverMonthChangeResponse {
   categoryId: string | null;
   name: string;
+  primaryCategoryId: string | null;
+  primaryCategoryName: string | null;
+  secondaryCategoryId: string | null;
+  secondaryCategoryName: string | null;
   previousTotal: number;
   currentTotal: number;
   delta: number;

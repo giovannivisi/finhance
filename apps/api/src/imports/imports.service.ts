@@ -14,6 +14,7 @@ import type {
   ImportPreviewResponse,
   ImportRowIssueResponse,
 } from '@finhance/shared';
+import { parseCsvRows } from '@/common/csv';
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import {
@@ -26,6 +27,7 @@ import {
   CategoryBudgetOverride,
   Category,
   CategoryType,
+  ExpenseValidationRule,
   ImportBatch,
   ImportBatchStatus,
   ImportSource,
@@ -40,6 +42,7 @@ import {
 } from '@finhance/db';
 import { RecurringService } from '@recurring/recurring.service';
 import { IMPORT_TEMPLATE_HEADERS } from '@imports/imports.types';
+import { normalizeExpenseValidationEntry } from '@transactions/category-hierarchy';
 import type {
   AccountImportRow,
   AssetImportRow,
@@ -77,6 +80,16 @@ type ExportBudgetRecord = Prisma.CategoryBudgetGetPayload<{
     category: true;
   };
 }>;
+type ExportExpenseValidationRuleRecord =
+  Prisma.ExpenseValidationRuleGetPayload<{
+    include: {
+      secondaryCategory: {
+        include: {
+          parentCategory: true;
+        };
+      };
+    };
+  }>;
 
 interface ExportState {
   accounts: Account[];
@@ -85,6 +98,7 @@ interface ExportState {
   transactions: ExportTransactionRecord[];
   recurringRules: ExportRecurringRuleRecord[];
   budgets: ExportBudgetRecord[];
+  expenseValidationRules: ExportExpenseValidationRuleRecord[];
 }
 
 interface ExportArchiveResult {
@@ -112,8 +126,10 @@ interface AccountImportRef {
 
 interface CategoryImportRef {
   id: string;
+  name: string;
   type: CategoryType;
   archived: boolean;
+  parentCategoryId: string | null;
 }
 
 interface RecurringRuleImportRef {
@@ -517,7 +533,7 @@ export class ImportsService {
     rawText: string,
   ): Array<{ rowNumber: number; values: CsvRecord }> {
     const text = rawText.replace(/^\uFEFF/, '');
-    const rows = this.parseCsvRows(text);
+    const rows = parseCsvRows(text);
 
     if (rows.length === 0 || rows[0].every((cell) => cell.trim() === '')) {
       throw new BadRequestException(`${file}.csv is empty.`);
@@ -589,59 +605,6 @@ export class ImportsService {
     return records;
   }
 
-  private parseCsvRows(text: string): string[][] {
-    const rows: string[][] = [];
-    let currentRow: string[] = [];
-    let currentField = '';
-    let inQuotes = false;
-
-    for (let index = 0; index < text.length; index += 1) {
-      const character = text[index];
-      const nextCharacter = text[index + 1];
-
-      if (character === '"') {
-        if (inQuotes && nextCharacter === '"') {
-          currentField += '"';
-          index += 1;
-          continue;
-        }
-
-        inQuotes = !inQuotes;
-        continue;
-      }
-
-      if (!inQuotes && character === ',') {
-        currentRow.push(currentField);
-        currentField = '';
-        continue;
-      }
-
-      if (!inQuotes && (character === '\n' || character === '\r')) {
-        if (character === '\r' && nextCharacter === '\n') {
-          index += 1;
-        }
-
-        currentRow.push(currentField);
-        rows.push(currentRow);
-        currentRow = [];
-        currentField = '';
-        continue;
-      }
-
-      currentField += character;
-    }
-
-    if (inQuotes) {
-      throw new BadRequestException(
-        'CSV parsing failed because a quoted field was not closed.',
-      );
-    }
-
-    currentRow.push(currentField);
-    rows.push(currentRow);
-    return rows;
-  }
-
   private parseAccountRow(
     rowNumber: number,
     values: CsvRecord,
@@ -686,6 +649,28 @@ export class ImportsService {
     rowNumber: number,
     values: CsvRecord,
   ): CategoryImportRow {
+    const type = this.parseEnumValue<CategoryType>(
+      values.type,
+      Object.values(CategoryType),
+      'categories',
+      rowNumber,
+      'type',
+    );
+    const level = this.parseEnumValue<'PRIMARY' | 'SECONDARY'>(
+      values.level,
+      ['PRIMARY', 'SECONDARY'],
+      'categories',
+      rowNumber,
+      'level',
+    );
+    const primary = this.requiredText(
+      values.primary,
+      'categories',
+      rowNumber,
+      'primary',
+    );
+    const secondary = this.optionalText(values.secondary);
+
     return {
       rowNumber,
       importKey: this.requiredText(
@@ -694,15 +679,12 @@ export class ImportsService {
         rowNumber,
         'importKey',
       ),
-      name: this.requiredText(values.name, 'categories', rowNumber, 'name'),
-      type: this.parseEnumValue<CategoryType>(
-        values.type,
-        Object.values(CategoryType),
-        'categories',
-        rowNumber,
-        'type',
-      ),
-      order: this.optionalInteger(values.order),
+      type,
+      level,
+      primary,
+      secondary,
+      primaryOrder: this.optionalInteger(values.primaryOrder),
+      secondaryOrder: this.optionalInteger(values.secondaryOrder),
       archived: this.optionalBoolean(values.archived),
     };
   }
@@ -1358,6 +1340,7 @@ export class ImportsService {
       importedRecurringRules,
       importedBudgets,
       activeCategories,
+      expenseValidationRules,
       marketAssets,
     ] = await Promise.all([
       db.account.findMany({
@@ -1408,6 +1391,13 @@ export class ImportsService {
           archivedAt: null,
         },
       }),
+      'expenseValidationRule' in db && db.expenseValidationRule
+        ? db.expenseValidationRule.findMany({
+            where: {
+              userId: ownerId,
+            },
+          })
+        : Promise.resolve([]),
       marketKeyInputs.length === 0
         ? Promise.resolve([])
         : db.asset.findMany({
@@ -1442,6 +1432,10 @@ export class ImportsService {
     >();
     const accountImportKeyById = new Map<string, string>();
     const categoryImportKeyById = new Map<string, string>();
+    const expenseValidationRulesByNormalizedEntry = new Map<
+      string,
+      (typeof expenseValidationRules)[number]
+    >();
     const marketAssetsByKey = new Map<string, Asset[]>();
 
     for (const account of importedAccounts) {
@@ -1456,6 +1450,10 @@ export class ImportsService {
         importedCategoriesByKey.set(category.importKey, category);
         categoryImportKeyById.set(category.id, category.importKey);
       }
+    }
+
+    for (const rule of expenseValidationRules) {
+      expenseValidationRulesByNormalizedEntry.set(rule.normalizedEntry, rule);
     }
 
     for (const asset of importedAssets) {
@@ -1527,6 +1525,7 @@ export class ImportsService {
       accountImportKeyById,
       categoryImportKeyById,
       activeCategories,
+      expenseValidationRulesByNormalizedEntry,
       marketAssetsByKey,
     };
   }
@@ -1580,8 +1579,10 @@ export class ImportsService {
     for (const [key, category] of state.importedCategoriesByKey.entries()) {
       refs.set(key, {
         id: category.id,
+        name: category.name,
         type: category.type,
         archived: category.archivedAt !== null,
+        parentCategoryId: category.parentCategoryId,
       });
     }
 
@@ -1596,8 +1597,10 @@ export class ImportsService {
 
       refs.set(row.importKey, {
         id: existing?.id ?? row.importKey,
+        name: row.level === 'SECONDARY' ? (row.secondary ?? '') : row.primary,
         type: row.type,
         archived: row.archived,
+        parentCategoryId: row.level === 'SECONDARY' ? '__pending__' : null,
       });
     }
 
@@ -1761,6 +1764,36 @@ export class ImportsService {
     summary: ImportBatchSummaryResponse,
   ): void {
     const activeKeys = new Map<string, number>();
+    const activeCategoriesById = new Map(
+      state.activeCategories.map((category) => [category.id, category]),
+    );
+    const batchExpensePrimaries = new Map(
+      payload.categories
+        .filter(
+          (row) => row.type === CategoryType.EXPENSE && row.level === 'PRIMARY',
+        )
+        .map((row) => [row.primary.trim().toLocaleLowerCase('en-US'), row]),
+    );
+    const existingExpensePrimaries = state.activeCategories.filter(
+      (category) =>
+        category.type === CategoryType.EXPENSE &&
+        category.parentCategoryId === null,
+    );
+
+    const buildActiveKey = (row: CategoryImportRow): string => {
+      const primary = row.primary.trim().toLocaleLowerCase('en-US');
+      if (row.type === CategoryType.INCOME) {
+        return `INCOME:${primary}`;
+      }
+
+      if (row.level === 'PRIMARY') {
+        return `EXPENSE_PRIMARY:${primary}`;
+      }
+
+      return `EXPENSE_SECONDARY:${primary}:${(row.secondary ?? '')
+        .trim()
+        .toLocaleLowerCase('en-US')}`;
+    };
 
     for (const row of payload.categories) {
       if (
@@ -1770,19 +1803,97 @@ export class ImportsService {
       }
 
       const existing = state.importedCategoriesByKey.get(row.importKey);
-      const targetOrder = row.order ?? existing?.order ?? 0;
+      const targetOrder =
+        row.level === 'SECONDARY'
+          ? (row.secondaryOrder ?? existing?.order ?? 0)
+          : (row.primaryOrder ?? existing?.order ?? 0);
       const targetArchived = row.archived;
-      const activeKey = `${row.type}:${row.name.toLowerCase()}`;
+
+      if (row.type === CategoryType.INCOME) {
+        if (row.level !== 'PRIMARY') {
+          issues.push(
+            this.issue(
+              'categories',
+              row.rowNumber,
+              'level',
+              'INCOME categories must use the PRIMARY level.',
+            ),
+          );
+        }
+
+        if (row.secondary) {
+          issues.push(
+            this.issue(
+              'categories',
+              row.rowNumber,
+              'secondary',
+              'INCOME categories must leave secondary empty.',
+            ),
+          );
+        }
+      }
+
+      if (row.type === CategoryType.EXPENSE) {
+        if (row.level === 'PRIMARY' && row.secondary) {
+          issues.push(
+            this.issue(
+              'categories',
+              row.rowNumber,
+              'secondary',
+              'Expense primary rows must leave secondary empty.',
+            ),
+          );
+        }
+
+        if (row.level === 'SECONDARY' && !row.secondary) {
+          issues.push(
+            this.issue(
+              'categories',
+              row.rowNumber,
+              'secondary',
+              'Expense secondary rows require a secondary name.',
+            ),
+          );
+        }
+
+        if (row.level === 'SECONDARY') {
+          const normalizedPrimary = row.primary
+            .trim()
+            .toLocaleLowerCase('en-US');
+          const batchPrimary = batchExpensePrimaries.get(normalizedPrimary);
+          const existingPrimary = existingExpensePrimaries.find(
+            (category) =>
+              category.name.trim().toLocaleLowerCase('en-US') ===
+              normalizedPrimary,
+          );
+
+          if (!batchPrimary && !existingPrimary) {
+            issues.push(
+              this.issue(
+                'categories',
+                row.rowNumber,
+                'primary',
+                `No expense primary named "${row.primary}" exists in this batch or current data.`,
+              ),
+            );
+          }
+        }
+      }
 
       if (!targetArchived) {
+        const activeKey = buildActiveKey(row);
         const duplicateRow = activeKeys.get(activeKey);
         if (duplicateRow) {
           issues.push(
             this.issue(
               'categories',
               row.rowNumber,
-              'name',
-              `Another imported category row already uses the active name "${row.name}" for ${row.type}.`,
+              row.level === 'SECONDARY' ? 'secondary' : 'primary',
+              row.type === CategoryType.INCOME
+                ? `Another imported income category row already uses the active name "${row.primary}".`
+                : row.level === 'PRIMARY'
+                  ? `Another imported expense primary row already uses the active name "${row.primary}".`
+                  : `Another imported expense secondary row already uses "${row.secondary}" inside "${row.primary}".`,
             ),
           );
         } else {
@@ -1790,15 +1901,39 @@ export class ImportsService {
         }
 
         const conflictingExisting = state.activeCategories.find((category) => {
-          if (category.type !== row.type) {
+          if (existing && category.id === existing.id) {
             return false;
           }
 
-          if (category.name.toLowerCase() !== row.name.toLowerCase()) {
-            return false;
+          if (row.type === CategoryType.INCOME) {
+            return (
+              category.type === CategoryType.INCOME &&
+              category.parentCategoryId === null &&
+              category.name.trim().toLocaleLowerCase('en-US') ===
+                row.primary.trim().toLocaleLowerCase('en-US')
+            );
           }
 
-          return !existing || category.id !== existing.id;
+          if (row.level === 'PRIMARY') {
+            return (
+              category.type === CategoryType.EXPENSE &&
+              category.parentCategoryId === null &&
+              category.name.trim().toLocaleLowerCase('en-US') ===
+                row.primary.trim().toLocaleLowerCase('en-US')
+            );
+          }
+
+          const parent = category.parentCategoryId
+            ? activeCategoriesById.get(category.parentCategoryId)
+            : null;
+          return (
+            category.type === CategoryType.EXPENSE &&
+            category.parentCategoryId !== null &&
+            category.name.trim().toLocaleLowerCase('en-US') ===
+              (row.secondary ?? '').trim().toLocaleLowerCase('en-US') &&
+            parent?.name.trim().toLocaleLowerCase('en-US') ===
+              row.primary.trim().toLocaleLowerCase('en-US')
+          );
         });
 
         if (conflictingExisting) {
@@ -1806,8 +1941,12 @@ export class ImportsService {
             this.issue(
               'categories',
               row.rowNumber,
-              'name',
-              `An existing active category already uses the name "${row.name}" for ${row.type}.`,
+              row.level === 'SECONDARY' ? 'secondary' : 'primary',
+              row.type === CategoryType.INCOME
+                ? `An existing active income category already uses the name "${row.primary}".`
+                : row.level === 'PRIMARY'
+                  ? `An existing active expense primary already uses the name "${row.primary}".`
+                  : `An existing active expense secondary already uses "${row.secondary}" inside "${row.primary}".`,
             ),
           );
           continue;
@@ -2113,6 +2252,18 @@ export class ImportsService {
               `Category ${row.categoryImportKey} does not match the ${row.kind} transaction type.`,
             ),
           );
+        } else if (
+          row.kind === TransactionKind.EXPENSE &&
+          category.parentCategoryId === null
+        ) {
+          issues.push(
+            this.issue(
+              'transactions',
+              row.rowNumber,
+              'categoryImportKey',
+              'Expense transactions must target a secondary category, not a primary.',
+            ),
+          );
         }
       }
 
@@ -2161,6 +2312,7 @@ export class ImportsService {
                 row,
                 state.accountImportKeyById,
                 state.categoryImportKeyById,
+                state.expenseValidationRulesByNormalizedEntry,
               )
             ? 'unchangedCount'
             : 'updateCount';
@@ -2220,6 +2372,15 @@ export class ImportsService {
             row.rowNumber,
             'categoryImportKey',
             'Budgets can only target EXPENSE categories.',
+          ),
+        );
+      } else if (category.parentCategoryId === null) {
+        issues.push(
+          this.issue(
+            'budgets',
+            row.rowNumber,
+            'categoryImportKey',
+            'Budgets must target expense secondary categories, not primaries.',
           ),
         );
       }
@@ -2577,6 +2738,18 @@ export class ImportsService {
                 `Category ${row.categoryImportKey} does not match the ${row.kind} recurring rule type.`,
               ),
             );
+          } else if (
+            row.kind === TransactionKind.EXPENSE &&
+            category.parentCategoryId === null
+          ) {
+            issues.push(
+              this.issue(
+                'recurringRules',
+                row.rowNumber,
+                'categoryImportKey',
+                'Expense recurring rules must target a secondary category, not a primary.',
+              ),
+            );
           }
         }
       }
@@ -2627,6 +2800,7 @@ export class ImportsService {
               row,
               state.accountImportKeyById,
               state.categoryImportKeyById,
+              state.expenseValidationRulesByNormalizedEntry,
             )
           ? 'unchangedCount'
           : 'updateCount';
@@ -2950,6 +3124,18 @@ export class ImportsService {
                   `Category ${row.categoryImportKey} does not match the recurring rule type.`,
                 ),
               );
+            } else if (
+              rule?.kind === TransactionKind.EXPENSE &&
+              category.parentCategoryId === null
+            ) {
+              issues.push(
+                this.issue(
+                  'recurringExceptions',
+                  row.rowNumber,
+                  'categoryImportKey',
+                  'Expense recurring overrides must target a secondary category, not a primary.',
+                ),
+              );
             }
           }
 
@@ -2994,6 +3180,8 @@ export class ImportsService {
               row,
               state.accountImportKeyById,
               state.categoryImportKeyById,
+              state.expenseValidationRulesByNormalizedEntry,
+              rule?.kind ?? TransactionKind.EXPENSE,
             )
           ? 'unchangedCount'
           : 'updateCount';
@@ -3025,8 +3213,10 @@ export class ImportsService {
     for (const [key, category] of state.importedCategoriesByKey.entries()) {
       categoryRefs.set(key, {
         id: category.id,
+        name: category.name,
         type: category.type,
         archived: category.archivedAt !== null,
+        parentCategoryId: category.parentCategoryId,
       });
     }
 
@@ -3040,6 +3230,45 @@ export class ImportsService {
         kind: rule.kind,
       });
     }
+
+    const resolveImportedCategoryId = (row: {
+      context: string;
+      kind: TransactionKind;
+      categoryImportKey: string | null;
+      description: string;
+    }): string | null => {
+      if (row.categoryImportKey) {
+        const category = categoryRefs.get(row.categoryImportKey) ?? null;
+        if (!category) {
+          return null;
+        }
+
+        if (
+          row.kind === TransactionKind.EXPENSE &&
+          category.parentCategoryId === null
+        ) {
+          throw new ConflictException(
+            `${row.context} cannot target an expense primary category.`,
+          );
+        }
+
+        return category.id;
+      }
+
+      if (row.kind !== TransactionKind.EXPENSE) {
+        return null;
+      }
+
+      const normalizedEntry = normalizeExpenseValidationEntry(row.description);
+      if (!normalizedEntry) {
+        return null;
+      }
+
+      return (
+        state.expenseValidationRulesByNormalizedEntry.get(normalizedEntry)
+          ?.secondaryCategoryId ?? null
+      );
+    };
 
     for (const row of payload.accounts) {
       const existing = state.importedAccountsByKey.get(row.importKey);
@@ -3096,16 +3325,64 @@ export class ImportsService {
       });
     }
 
-    for (const row of payload.categories) {
+    const resolveExpensePrimaryIdByName = (
+      primaryName: string,
+    ): string | null => {
+      const normalizedPrimary = primaryName.trim().toLocaleLowerCase('en-US');
+      for (const category of categoryRefs.values()) {
+        if (
+          category.type === CategoryType.EXPENSE &&
+          category.parentCategoryId === null &&
+          category.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
+        ) {
+          return category.id;
+        }
+      }
+
+      const existingPrimary = state.activeCategories.find(
+        (category) =>
+          category.type === CategoryType.EXPENSE &&
+          category.parentCategoryId === null &&
+          category.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+      );
+      return existingPrimary?.id ?? null;
+    };
+
+    const categoryRows = [
+      ...payload.categories.filter((row) => row.level !== 'SECONDARY'),
+      ...payload.categories.filter((row) => row.level === 'SECONDARY'),
+    ];
+
+    for (const row of categoryRows) {
       const existing = state.importedCategoriesByKey.get(row.importKey);
-      const targetOrder = row.order ?? existing?.order ?? 0;
+      const targetOrder =
+        row.level === 'SECONDARY'
+          ? (row.secondaryOrder ?? existing?.order ?? 0)
+          : (row.primaryOrder ?? existing?.order ?? 0);
+      const name =
+        row.level === 'SECONDARY' ? (row.secondary ?? '') : row.primary;
+      const parentCategoryId =
+        row.type === CategoryType.EXPENSE && row.level === 'SECONDARY'
+          ? resolveExpensePrimaryIdByName(row.primary)
+          : null;
+
+      if (
+        row.type === CategoryType.EXPENSE &&
+        row.level === 'SECONDARY' &&
+        !parentCategoryId
+      ) {
+        throw new ConflictException(
+          `Category import ${row.importKey} could not resolve its expense primary "${row.primary}".`,
+        );
+      }
 
       const saved = existing
         ? await db.category.update({
             where: { id: existing.id },
             data: {
-              name: row.name,
+              name,
               type: row.type,
+              parentCategoryId,
               order: targetOrder,
               archivedAt: row.archived ? new Date() : null,
               importSource: CSV_IMPORT_SOURCE,
@@ -3115,8 +3392,9 @@ export class ImportsService {
         : await db.category.create({
             data: {
               userId: ownerId,
-              name: row.name,
+              name,
               type: row.type,
+              parentCategoryId,
               order: targetOrder,
               archivedAt: row.archived ? new Date() : null,
               importSource: CSV_IMPORT_SOURCE,
@@ -3126,18 +3404,27 @@ export class ImportsService {
 
       categoryRefs.set(row.importKey, {
         id: saved.id,
+        name: saved.name,
         type: saved.type,
         archived: saved.archivedAt !== null,
+        parentCategoryId: saved.parentCategoryId,
       });
     }
 
     for (const row of payload.budgets) {
       const existing = state.importedBudgetsByKey.get(row.importKey);
-      const categoryId = categoryRefs.get(row.categoryImportKey)?.id;
+      const category = categoryRefs.get(row.categoryImportKey) ?? null;
+      const categoryId = category?.id ?? null;
 
-      if (!categoryId) {
+      if (!categoryId || !category) {
         throw new ConflictException(
           `Budget import ${row.importKey} could not resolve its category.`,
+        );
+      }
+
+      if (category.parentCategoryId === null) {
+        throw new ConflictException(
+          `Budget import ${row.importKey} must target an expense secondary category.`,
         );
       }
 
@@ -3201,9 +3488,12 @@ export class ImportsService {
       const accountId = row.accountImportKey
         ? (accountRefs.get(row.accountImportKey)?.id ?? null)
         : null;
-      const categoryId = row.categoryImportKey
-        ? (categoryRefs.get(row.categoryImportKey)?.id ?? null)
-        : null;
+      const categoryId = resolveImportedCategoryId({
+        context: `Recurring rule import ${row.importKey}`,
+        kind: row.kind,
+        categoryImportKey: row.categoryImportKey,
+        description: row.description,
+      });
       const sourceAccountId = row.sourceAccountImportKey
         ? (accountRefs.get(row.sourceAccountImportKey)?.id ?? null)
         : null;
@@ -3262,9 +3552,6 @@ export class ImportsService {
       const accountId = row.accountImportKey
         ? (accountRefs.get(row.accountImportKey)?.id ?? null)
         : null;
-      const categoryId = row.categoryImportKey
-        ? (categoryRefs.get(row.categoryImportKey)?.id ?? null)
-        : null;
       const sourceAccountId = row.sourceAccountImportKey
         ? (accountRefs.get(row.sourceAccountImportKey)?.id ?? null)
         : null;
@@ -3272,6 +3559,15 @@ export class ImportsService {
         ? (accountRefs.get(row.destinationAccountImportKey)?.id ?? null)
         : null;
       const normalizedOverride = this.normalizeRecurringExceptionOverride(row);
+      const categoryId = resolveImportedCategoryId({
+        context: `Recurring exception import ${row.recurringRuleImportKey}:${row.month}`,
+        kind: recurringRule.kind,
+        categoryImportKey: normalizedOverride.categoryImportKey,
+        description:
+          normalizedOverride.description ??
+          normalizedOverride.counterparty ??
+          '',
+      });
 
       await db.recurringTransactionOccurrence.upsert({
         where: {
@@ -3528,9 +3824,12 @@ export class ImportsService {
 
       const existing = existingRows[0] ?? null;
       const accountId = accountRefs.get(row.accountImportKey!)?.id;
-      const categoryId = row.categoryImportKey
-        ? (categoryRefs.get(row.categoryImportKey)?.id ?? null)
-        : null;
+      const categoryId = resolveImportedCategoryId({
+        context: `Transaction import ${row.importKey}`,
+        kind: row.kind,
+        categoryImportKey: row.categoryImportKey,
+        description: row.description,
+      });
       const currency = accountRefs.get(row.accountImportKey!)?.currency;
       if (!accountId || !currency) {
         throw new ConflictException(
@@ -3793,6 +4092,7 @@ export class ImportsService {
       transactions,
       recurringRules,
       budgets,
+      expenseValidationRules,
     ] = await Promise.all([
       db.account.findMany({
         where: { userId: ownerId },
@@ -3836,6 +4136,19 @@ export class ImportsService {
         },
         orderBy: [{ startMonth: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       }),
+      'expenseValidationRule' in db && db.expenseValidationRule
+        ? db.expenseValidationRule.findMany({
+            where: { userId: ownerId },
+            include: {
+              secondaryCategory: {
+                include: {
+                  parentCategory: true,
+                },
+              },
+            },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          })
+        : Promise.resolve([]),
     ]);
 
     return {
@@ -3845,12 +4158,16 @@ export class ImportsService {
       transactions,
       recurringRules,
       budgets,
+      expenseValidationRules,
     };
   }
 
   private buildExportFiles(state: ExportState): ZipFileEntry[] {
     const accountImportKeys = new Map<string, string>();
     const categoryImportKeys = new Map<string, string>();
+    const categoriesById = new Map(
+      state.categories.map((category) => [category.id, category]),
+    );
     const recurringRuleImportKeys = new Map<string, string>();
     const budgetImportKeys = new Map<string, string>();
 
@@ -3904,7 +4221,9 @@ export class ImportsService {
     );
     const categoryCsv = this.serializeCsv(
       [...IMPORT_TEMPLATE_HEADERS.categories],
-      state.categories.map((category) => this.toExportCategoryRow(category)),
+      state.categories.map((category) =>
+        this.toExportCategoryRow(category, categoriesById),
+      ),
     );
     const assetCsv = this.serializeCsv(
       [...IMPORT_TEMPLATE_HEADERS.assets],
@@ -3949,6 +4268,12 @@ export class ImportsService {
       [...IMPORT_TEMPLATE_HEADERS.budgetOverrides],
       this.toExportBudgetOverrideRows(state.budgets, budgetImportKeys),
     );
+    const expenseValidationRulesCsv = this.serializeCsv(
+      ['entry', 'primary', 'secondary'],
+      state.expenseValidationRules.map((rule) =>
+        this.toExportExpenseValidationRuleRow(rule),
+      ),
+    );
 
     return [
       {
@@ -3982,6 +4307,10 @@ export class ImportsService {
       {
         name: EXPORT_FILE_NAMES.budgetOverrides,
         data: Buffer.from(budgetOverrideCsv, 'utf8'),
+      },
+      {
+        name: 'expenseValidationRules.csv',
+        data: Buffer.from(expenseValidationRulesCsv, 'utf8'),
       },
     ];
   }
@@ -4069,19 +4398,43 @@ export class ImportsService {
     };
   }
 
-  private toExportCategoryRow(category: Category): CsvRecord {
+  private toExportCategoryRow(
+    category: Category,
+    categoriesById: Map<string, Category>,
+  ): CsvRecord {
     if (!category.importKey) {
       throw new ConflictException(
         `Category ${category.id} could not be exported without an import key.`,
       );
     }
 
+    const parentCategory = category.parentCategoryId
+      ? (categoriesById.get(category.parentCategoryId) ?? null)
+      : null;
+    const isSecondary =
+      category.type === CategoryType.EXPENSE && parentCategory !== null;
+
     return {
       importKey: category.importKey,
-      name: category.name,
       type: category.type,
-      order: this.serializeInteger(category.order),
+      level: isSecondary ? 'SECONDARY' : 'PRIMARY',
+      primary: isSecondary ? parentCategory.name : category.name,
+      secondary: isSecondary ? category.name : '',
+      primaryOrder: this.serializeInteger(
+        isSecondary ? parentCategory.order : category.order,
+      ),
+      secondaryOrder: isSecondary ? this.serializeInteger(category.order) : '',
       archived: this.serializeBoolean(category.archivedAt !== null),
+    };
+  }
+
+  private toExportExpenseValidationRuleRow(
+    rule: ExportExpenseValidationRuleRecord,
+  ): CsvRecord {
+    return {
+      entry: rule.entry,
+      primary: rule.secondaryCategory.parentCategory?.name ?? '',
+      secondary: rule.secondaryCategory.name,
     };
   }
 
@@ -5114,9 +5467,18 @@ export class ImportsService {
     row: CategoryImportRow,
     targetOrder: number,
   ): boolean {
+    const expectedName =
+      row.level === 'SECONDARY' ? (row.secondary ?? '') : row.primary;
+    const expectedParentCategoryId =
+      row.type === CategoryType.EXPENSE && row.level === 'SECONDARY'
+        ? '__secondary__'
+        : null;
+
     return (
-      existing.name === row.name &&
+      existing.name === expectedName &&
       existing.type === row.type &&
+      (existing.parentCategoryId ? '__secondary__' : null) ===
+        expectedParentCategoryId &&
       existing.order === targetOrder &&
       (existing.archivedAt !== null) === row.archived
     );
@@ -5149,24 +5511,66 @@ export class ImportsService {
     );
   }
 
+  private resolveRuleBackfilledCategoryImportKey(
+    input: {
+      kind: TransactionKind;
+      explicitCategoryImportKey: string | null;
+      description: string | null;
+    },
+    expenseValidationRulesByNormalizedEntry: Map<string, ExpenseValidationRule>,
+    categoryImportKeyById: Map<string, string>,
+  ): string | null {
+    if (input.explicitCategoryImportKey) {
+      return input.explicitCategoryImportKey;
+    }
+
+    if (input.kind !== TransactionKind.EXPENSE || !input.description) {
+      return null;
+    }
+
+    const normalizedEntry = normalizeExpenseValidationEntry(input.description);
+    if (!normalizedEntry) {
+      return null;
+    }
+
+    const secondaryCategoryId =
+      expenseValidationRulesByNormalizedEntry.get(normalizedEntry)
+        ?.secondaryCategoryId ?? null;
+    if (!secondaryCategoryId) {
+      return null;
+    }
+
+    return categoryImportKeyById.get(secondaryCategoryId) ?? null;
+  }
+
   private equalStandardTransactionRow(
     existing: Transaction,
     row: TransactionImportRow,
     accountImportKeyById: Map<string, string>,
     categoryImportKeyById: Map<string, string>,
+    expenseValidationRulesByNormalizedEntry: Map<string, ExpenseValidationRule>,
   ): boolean {
     const existingAccountImportKey =
       accountImportKeyById.get(existing.accountId) ?? null;
     const existingCategoryImportKey = existing.categoryId
       ? (categoryImportKeyById.get(existing.categoryId) ?? null)
       : null;
+    const targetCategoryImportKey = this.resolveRuleBackfilledCategoryImportKey(
+      {
+        kind: row.kind,
+        explicitCategoryImportKey: row.categoryImportKey,
+        description: row.description,
+      },
+      expenseValidationRulesByNormalizedEntry,
+      categoryImportKeyById,
+    );
 
     return (
       existing.postedAt.toISOString() === row.postedAt &&
       existing.kind === row.kind &&
       existingAccountImportKey === row.accountImportKey &&
       existing.direction === row.direction &&
-      existingCategoryImportKey === row.categoryImportKey &&
+      existingCategoryImportKey === targetCategoryImportKey &&
       existing.description === row.description &&
       (existing.notes ?? null) === row.notes &&
       (existing.counterparty ?? null) === row.counterparty &&
@@ -5214,6 +5618,7 @@ export class ImportsService {
     row: RecurringRuleImportRow,
     accountImportKeyById: Map<string, string>,
     categoryImportKeyById: Map<string, string>,
+    expenseValidationRulesByNormalizedEntry: Map<string, ExpenseValidationRule>,
   ): boolean {
     const existingAccountImportKey = existing.accountId
       ? (accountImportKeyById.get(existing.accountId) ?? null)
@@ -5227,6 +5632,15 @@ export class ImportsService {
     const existingDestinationAccountImportKey = existing.destinationAccountId
       ? (accountImportKeyById.get(existing.destinationAccountId) ?? null)
       : null;
+    const targetCategoryImportKey = this.resolveRuleBackfilledCategoryImportKey(
+      {
+        kind: row.kind,
+        explicitCategoryImportKey: row.categoryImportKey,
+        description: row.description,
+      },
+      expenseValidationRulesByNormalizedEntry,
+      categoryImportKeyById,
+    );
 
     return (
       existing.name === row.name &&
@@ -5238,7 +5652,7 @@ export class ImportsService {
       (existing.endDate?.toISOString().slice(0, 10) ?? null) === row.endDate &&
       existingAccountImportKey === row.accountImportKey &&
       (existing.direction ?? null) === row.direction &&
-      existingCategoryImportKey === row.categoryImportKey &&
+      existingCategoryImportKey === targetCategoryImportKey &&
       (existing.counterparty ?? null) === row.counterparty &&
       existingSourceAccountImportKey === row.sourceAccountImportKey &&
       existingDestinationAccountImportKey === row.destinationAccountImportKey &&
@@ -5252,6 +5666,8 @@ export class ImportsService {
     row: RecurringExceptionImportRow,
     accountImportKeyById: Map<string, string>,
     categoryImportKeyById: Map<string, string>,
+    expenseValidationRulesByNormalizedEntry: Map<string, ExpenseValidationRule>,
+    recurringRuleKind: TransactionKind,
   ): boolean {
     const normalized = this.normalizeRecurringExceptionOverride(row);
     const existingAccountImportKey = existing.overrideAccountId
@@ -5268,6 +5684,15 @@ export class ImportsService {
         ? (accountImportKeyById.get(existing.overrideDestinationAccountId) ??
           null)
         : null;
+    const targetCategoryImportKey = this.resolveRuleBackfilledCategoryImportKey(
+      {
+        kind: recurringRuleKind,
+        explicitCategoryImportKey: normalized.categoryImportKey,
+        description: normalized.description,
+      },
+      expenseValidationRulesByNormalizedEntry,
+      categoryImportKeyById,
+    );
 
     return (
       existing.occurrenceMonth.toISOString().slice(0, 7) === row.month &&
@@ -5277,7 +5702,7 @@ export class ImportsService {
         normalized.postedAtDate &&
       existingAccountImportKey === normalized.accountImportKey &&
       (existing.overrideDirection ?? null) === normalized.direction &&
-      existingCategoryImportKey === normalized.categoryImportKey &&
+      existingCategoryImportKey === targetCategoryImportKey &&
       (existing.overrideCounterparty ?? null) === normalized.counterparty &&
       existingSourceAccountImportKey === normalized.sourceAccountImportKey &&
       existingDestinationAccountImportKey ===

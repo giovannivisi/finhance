@@ -173,6 +173,7 @@ describe('RecurringService', () => {
   };
   let categories: {
     getAssignableCategory: jest.Mock;
+    findMatchingExpenseSecondaryCategory: jest.Mock;
   };
   let transactions: {
     getCashflowSummary: jest.Mock;
@@ -220,6 +221,14 @@ describe('RecurringService', () => {
 
     categories = {
       getAssignableCategory: jest.fn().mockResolvedValue(createCategory()),
+      findMatchingExpenseSecondaryCategory: jest.fn().mockResolvedValue(
+        createCategory({
+          id: 'category-expense',
+          name: 'Rent',
+          type: CategoryType.EXPENSE,
+          parentCategoryId: 'category-primary',
+        }),
+      ),
     };
 
     transactions = {
@@ -824,11 +833,19 @@ describe('RecurringService', () => {
               {
                 categoryId: 'category-rent',
                 name: 'Rent',
+                primaryCategoryId: 'category-primary',
+                primaryCategoryName: 'Housing',
+                secondaryCategoryId: 'category-rent',
+                secondaryCategoryName: 'Rent',
                 total: 30,
               },
               {
                 categoryId: null,
                 name: 'Uncategorized',
+                primaryCategoryId: null,
+                primaryCategoryName: null,
+                secondaryCategoryId: null,
+                secondaryCategoryName: null,
                 total: 10,
               },
             ],
@@ -877,11 +894,19 @@ describe('RecurringService', () => {
           {
             categoryId: 'category-rent',
             name: 'Rent',
+            primaryCategoryId: 'category-primary',
+            primaryCategoryName: 'Housing',
+            secondaryCategoryId: 'category-rent',
+            secondaryCategoryName: 'Rent',
             total: 30,
           },
           {
             categoryId: null,
             name: 'Uncategorized',
+            primaryCategoryId: null,
+            primaryCategoryName: null,
+            secondaryCategoryId: null,
+            secondaryCategoryName: null,
             total: 10,
           },
         ],

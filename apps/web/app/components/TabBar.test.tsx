@@ -35,6 +35,11 @@ vi.mock("framer-motion", () => ({
       <div {...props}>{children}</div>
     ),
   },
+  useAnimation: () => ({
+    set: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+  }),
   useReducedMotion: () => true,
 }));
 

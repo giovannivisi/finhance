@@ -63,7 +63,7 @@ describe('bootstrap config', () => {
         AUTH_MODE: 'hosted',
         API_HOST: '0.0.0.0',
         API_ALLOWED_ORIGINS: 'https://finhance.example',
-        API_TRUST_PROXY: 'true',
+        API_TRUST_PROXY: '1',
         AUTH_API_JWT_ISSUER: 'https://web.example',
         AUTH_API_JWT_AUDIENCE: 'finhance-api',
         AUTH_API_JWT_KID: 'test-key',
@@ -73,7 +73,7 @@ describe('bootstrap config', () => {
       authMode: 'hosted',
       host: '0.0.0.0',
       allowedOrigins: ['https://finhance.example'],
-      trustProxy: true,
+      trustProxy: 1,
     });
   });
 

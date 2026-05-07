@@ -60,7 +60,7 @@ Key hosted requirements:
 - `AUTH_MODE=hosted`
 - explicit `API_HOST`
 - explicit `API_ALLOWED_ORIGINS`
-- explicit `API_TRUST_PROXY`
+- explicit `API_TRUST_PROXY` hop count
 - ES256 public key configured on the API
 
 ## Health endpoint

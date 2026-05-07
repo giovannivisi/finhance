@@ -82,11 +82,13 @@ export function buildBudgetMonthNavigationLink(input: {
 
 export function buildBudgetTransactionsLink(input: {
   month: string;
-  categoryId?: string;
+  primaryCategoryId?: string | null;
+  secondaryCategoryId?: string | null;
 }): string {
   return buildTransactionsLink({
     month: input.month,
-    categoryId: input.categoryId,
+    primaryCategoryId: input.primaryCategoryId,
+    secondaryCategoryId: input.secondaryCategoryId,
     kind: "EXPENSE",
   });
 }

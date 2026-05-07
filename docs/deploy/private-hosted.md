@@ -111,7 +111,7 @@ The service expects:
 - plan: `free`
 - runtime: `node`
 - public bind host: `0.0.0.0`
-- trust proxy enabled
+- trust proxy set to `1`
 - health check path: `/health`
 
 Required hosted env values:
@@ -120,7 +120,7 @@ Required hosted env values:
 NODE_ENV=production
 AUTH_MODE=hosted
 API_HOST=0.0.0.0
-API_TRUST_PROXY=true
+API_TRUST_PROXY=1
 API_ALLOWED_ORIGINS=https://your-web-app.vercel.app
 DATABASE_URL=postgresql://USER:PASSWORD@HOST/DB?sslmode=require
 
@@ -134,7 +134,8 @@ Notes:
 
 - `API_ALLOWED_ORIGINS` must be explicit in hosted mode.
 - `API_TRUST_PROXY` is required in hosted mode so request IP resolution and
-  throttling behave correctly behind Render's load balancer.
+  throttling behave correctly behind Render's load balancer. Use the exact
+  trusted hop count instead of `true`.
 - The API stays internet-reachable, but anonymous access to domain routes
   should still fail.
 - Store the PEM contents as a single escaped env var value, not as a file path.

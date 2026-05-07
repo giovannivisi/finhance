@@ -4,6 +4,8 @@ import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { CashflowController } from '@transactions/cashflow.controller';
 import { CategoriesController } from '@transactions/categories.controller';
 import { CategoriesService } from '@transactions/categories.service';
+import { ExpenseValidationController } from '@transactions/expense-validation.controller';
+import { ExpenseValidationService } from '@transactions/expense-validation.service';
 import { TransactionsController } from '@transactions/transactions.controller';
 import { TransactionsService } from '@transactions/transactions.service';
 
@@ -12,9 +14,15 @@ import { TransactionsService } from '@transactions/transactions.service';
   controllers: [
     CashflowController,
     CategoriesController,
+    ExpenseValidationController,
     TransactionsController,
   ],
-  providers: [CategoriesService, TransactionsService, RequestOwnerResolver],
-  exports: [CategoriesService, TransactionsService],
+  providers: [
+    CategoriesService,
+    ExpenseValidationService,
+    TransactionsService,
+    RequestOwnerResolver,
+  ],
+  exports: [CategoriesService, ExpenseValidationService, TransactionsService],
 })
 export class TransactionsModule {}

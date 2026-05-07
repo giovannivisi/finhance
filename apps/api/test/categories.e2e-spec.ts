@@ -36,6 +36,7 @@ function createCategory(overrides: Partial<Category> = {}): Category {
     userId: OWNER_ID,
     name: 'Groceries',
     type: CategoryType.EXPENSE,
+    parentCategoryId: null,
     order: 0,
     importSource: null,
     importKey: null,
@@ -54,6 +55,14 @@ function expectCategoryResponseDto(
     id: category.id,
     name: category.name,
     type: category.type,
+    parentCategoryId: category.parentCategoryId,
+    parentCategoryName: null,
+    isPrimary:
+      category.type === CategoryType.EXPENSE &&
+      category.parentCategoryId === null,
+    isSecondary:
+      category.type === CategoryType.EXPENSE &&
+      category.parentCategoryId !== null,
     order: category.order,
     archivedAt: category.archivedAt?.toISOString() ?? null,
     canDeletePermanently: true,

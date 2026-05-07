@@ -15,6 +15,10 @@ import MoneyValue from "@components/MoneyValue";
 import { api } from "@lib/server-api";
 import { formatCurrency } from "@lib/format";
 import { CATEGORY_TYPE_LABELS } from "@lib/categories";
+import {
+  formatHierarchyName,
+  groupRowsByPrimary,
+} from "@lib/hierarchical-categories";
 import { TRANSACTION_KIND_LABELS } from "@lib/transactions";
 import { getReviewWarningLink, shouldOfferSnapshotCapture } from "@lib/review";
 import { getWorkflowCards } from "@lib/workflow";
@@ -573,29 +577,51 @@ export default async function ReviewPage({
                     <h3 className="text-sm font-semibold text-amber-950">
                       Most important over-budget categories
                     </h3>
-                    <div className="mt-4 subcard-stack is-loose">
-                      {review.budgetHighlights.map((item) => (
-                        <div
-                          key={item.budgetId}
-                          className="detail-panel is-roomy flex flex-wrap items-center justify-between gap-3 text-sm"
-                        >
-                          <div>
-                            <p className="font-medium text-gray-900">
-                              {item.categoryName}
-                            </p>
-                            <p className="mt-1 text-xs text-gray-500">
-                              {formatCurrency(item.spentAmount, item.currency)}{" "}
-                              spent against{" "}
-                              {formatCurrency(item.budgetAmount, item.currency)}
-                            </p>
+                    <div className="mt-4 section-stack-tight">
+                      {groupRowsByPrimary(
+                        review.budgetHighlights,
+                        (item) => item.categoryName,
+                      ).map((group) => (
+                        <div key={group.key} className="section-stack-tight">
+                          <h4 className="px-1 text-xs font-semibold uppercase tracking-[0.22em] text-amber-900/70">
+                            {group.label}
+                          </h4>
+                          <div className="subcard-stack is-loose">
+                            {group.items.map((item) => (
+                              <div
+                                key={item.budgetId}
+                                className="detail-panel is-roomy flex flex-wrap items-center justify-between gap-3 text-sm"
+                              >
+                                <div>
+                                  <p className="font-medium text-gray-900">
+                                    {item.secondaryCategoryName ??
+                                      formatHierarchyName(
+                                        item,
+                                        item.categoryName,
+                                      )}
+                                  </p>
+                                  <p className="mt-1 text-xs text-gray-500">
+                                    {formatCurrency(
+                                      item.spentAmount,
+                                      item.currency,
+                                    )}{" "}
+                                    spent against{" "}
+                                    {formatCurrency(
+                                      item.budgetAmount,
+                                      item.currency,
+                                    )}
+                                  </p>
+                                </div>
+                                <span className="font-medium text-amber-900">
+                                  {formatCurrency(
+                                    item.spentAmount - item.budgetAmount,
+                                    item.currency,
+                                  )}{" "}
+                                  over
+                                </span>
+                              </div>
+                            ))}
                           </div>
-                          <span className="font-medium text-amber-900">
-                            {formatCurrency(
-                              item.spentAmount - item.budgetAmount,
-                              item.currency,
-                            )}{" "}
-                            over
-                          </span>
                         </div>
                       ))}
                     </div>
@@ -887,37 +913,56 @@ export default async function ReviewPage({
                               No expense drivers.
                             </p>
                           ) : (
-                            <div className="mt-3 subcard-stack is-loose">
-                              {insight.topExpenseCategories.map((item) => (
+                            <div className="mt-3 section-stack-tight">
+                              {groupRowsByPrimary(
+                                insight.topExpenseCategories,
+                                (item) => item.name,
+                              ).map((group) => (
                                 <div
-                                  key={item.categoryId ?? item.name}
-                                  className="detail-panel is-roomy flex items-center justify-between text-sm"
+                                  key={group.key}
+                                  className="section-stack-tight"
                                 >
-                                  <div className="min-w-0 flex-1">
-                                    <p className="font-medium text-gray-900">
-                                      {item.name}
-                                    </p>
-                                    <p className="text-gray-500">
-                                      {CATEGORY_TYPE_LABELS.EXPENSE}
-                                    </p>
-                                    <div className="mt-2 h-2 rounded-full bg-gray-100">
+                                  <h5 className="px-1 text-xs font-semibold uppercase tracking-[0.22em] text-gray-500">
+                                    {group.label}
+                                  </h5>
+                                  <div className="subcard-stack is-loose">
+                                    {group.items.map((item) => (
                                       <div
-                                        className="h-2 rounded-full bg-rose-500"
-                                        style={{
-                                          width: getDriverBarWidth(
+                                        key={item.categoryId ?? item.name}
+                                        className="detail-panel is-roomy flex items-center justify-between text-sm"
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <p className="font-medium text-gray-900">
+                                            {item.secondaryCategoryName ??
+                                              formatHierarchyName(
+                                                item,
+                                                item.name,
+                                              )}
+                                          </p>
+                                          <p className="text-gray-500">
+                                            {CATEGORY_TYPE_LABELS.EXPENSE}
+                                          </p>
+                                          <div className="mt-2 h-2 rounded-full bg-gray-100">
+                                            <div
+                                              className="h-2 rounded-full bg-rose-500"
+                                              style={{
+                                                width: getDriverBarWidth(
+                                                  item.total,
+                                                  expenseDriverMax,
+                                                ),
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <span className="font-medium text-gray-900">
+                                          {formatCurrency(
                                             item.total,
-                                            expenseDriverMax,
-                                          ),
-                                        }}
-                                      />
-                                    </div>
+                                            insight.currency,
+                                          )}
+                                        </span>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <span className="font-medium text-gray-900">
-                                    {formatCurrency(
-                                      item.total,
-                                      insight.currency,
-                                    )}
-                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -941,7 +986,7 @@ export default async function ReviewPage({
                                 >
                                   <div className="min-w-0 flex-1">
                                     <p className="font-medium text-gray-900">
-                                      {item.name}
+                                      {formatHierarchyName(item, item.name)}
                                     </p>
                                     <p className="text-gray-500">
                                       {CATEGORY_TYPE_LABELS.INCOME}

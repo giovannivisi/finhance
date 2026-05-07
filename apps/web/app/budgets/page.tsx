@@ -115,7 +115,7 @@ export default async function BudgetsPage({
                   </Link>
                 </div>
 
-                <form className="filter-grid is-relaxed budget-filter-grid lg:grid-cols-[minmax(0,220px)_minmax(280px,1fr)_auto]">
+                <form className="filter-grid is-relaxed budget-filter-grid">
                   <div className="app-form-field">
                     <label htmlFor="budget-month">Month</label>
                     <input
@@ -126,23 +126,28 @@ export default async function BudgetsPage({
                     />
                   </div>
 
-                  <label className="page-pill budget-toggle-pill">
-                    <input
-                      type="checkbox"
-                      name="includeArchivedCategories"
-                      value="true"
-                      defaultChecked={filters.includeArchivedCategories}
-                    />
-                    Include archived categories
-                  </label>
+                  <div className="app-form-field budget-filter-field--offset">
+                    <label className="page-pill budget-toggle-pill">
+                      <input
+                        id="budget-archived"
+                        type="checkbox"
+                        name="includeArchivedCategories"
+                        value="true"
+                        defaultChecked={filters.includeArchivedCategories}
+                      />
+                      Archived categories
+                    </label>
+                  </div>
 
-                  <div className="filter-actions is-equal">
-                    <button type="submit" className="btn-primary">
-                      Apply
-                    </button>
-                    <Link href="/budgets" className="btn-secondary">
-                      Clear
-                    </Link>
+                  <div className="app-form-field budget-filter-field--offset">
+                    <div className="filter-actions is-equal budget-filter-actions">
+                      <button type="submit" className="btn-primary">
+                        Apply
+                      </button>
+                      <Link href="/budgets" className="btn-secondary">
+                        Clear
+                      </Link>
+                    </div>
                   </div>
                 </form>
               </div>

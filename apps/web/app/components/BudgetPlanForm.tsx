@@ -10,6 +10,7 @@ import type {
 } from "@finhance/shared";
 import { apiMutation } from "@lib/api";
 import { formatCategoryOptionLabel } from "@lib/categories";
+import { expenseBudgetCategories } from "@lib/hierarchical-categories";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 interface BudgetPlanFormProps {
@@ -108,12 +109,7 @@ export default function BudgetPlanForm({
   }, [budget, defaultMonth, mode, preferredCategoryId, preferredCurrency]);
 
   const selectableCategories = useMemo(
-    () =>
-      categories.filter(
-        (category) =>
-          category.type === "EXPENSE" &&
-          (category.archivedAt === null || category.id === form.categoryId),
-      ),
+    () => expenseBudgetCategories(categories, form.categoryId),
     [categories, form.categoryId],
   );
 

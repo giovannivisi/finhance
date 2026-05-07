@@ -49,6 +49,10 @@ import {
   romeMonthToUtcStart,
   utcDateToRomeMonth,
 } from '@transactions/transactions.dates';
+import {
+  getCategoryHierarchyMetadata,
+  normalizeExpenseValidationEntry,
+} from '@transactions/category-hierarchy';
 
 const DEFAULT_TRANSACTION_LIMIT = 200;
 const MAX_TRANSACTION_LIMIT = 500;
@@ -94,6 +98,8 @@ interface CashflowAnalyticsFilters {
   to: string;
   accountId?: string;
   categoryId?: string;
+  primaryCategoryId?: string;
+  secondaryCategoryId?: string;
   includeArchivedAccounts?: boolean;
 }
 
@@ -139,7 +145,11 @@ export class TransactionsService {
       where: { id, userId: ownerId },
       include: {
         account: true,
-        category: true,
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
       },
     });
 
@@ -184,7 +194,11 @@ export class TransactionsService {
       },
       include: {
         account: true,
-        category: true,
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
       },
     });
 
@@ -316,7 +330,11 @@ export class TransactionsService {
       },
       include: {
         account: true,
-        category: true,
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
       },
     });
 
@@ -360,7 +378,7 @@ export class TransactionsService {
           not: TransactionKind.TRANSFER,
         },
         ...(filters.accountId ? { accountId: filters.accountId } : {}),
-        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+        ...this.toCategoryWhere(filters),
         ...(!(filters.includeArchivedAccounts ?? false)
           ? {
               account: {
@@ -372,7 +390,11 @@ export class TransactionsService {
       },
       include: {
         account: true,
-        category: true,
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
       },
     });
 
@@ -404,7 +426,7 @@ export class TransactionsService {
             ],
           },
           ...(accountIds ? { accountId: { in: accountIds } } : {}),
-          ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+          ...this.toCategoryWhere(filters),
           ...(!includeArchivedAccounts
             ? {
                 account: {
@@ -416,10 +438,16 @@ export class TransactionsService {
         },
         include: {
           account: true,
-          category: true,
+          category: {
+            include: {
+              parentCategory: true,
+            },
+          },
         },
       }),
-      filters.categoryId
+      filters.categoryId ||
+      filters.primaryCategoryId ||
+      filters.secondaryCategoryId
         ? Promise.resolve([])
         : this.prisma.transaction.findMany({
             where: {
@@ -437,7 +465,11 @@ export class TransactionsService {
             },
             include: {
               account: true,
-              category: true,
+              category: {
+                include: {
+                  parentCategory: true,
+                },
+              },
             },
           }),
     ]);
@@ -590,6 +622,15 @@ export class TransactionsService {
         current?.categoryId,
       );
       categoryId = category.id;
+    } else if (dto.kind === TransactionKind.EXPENSE) {
+      const matchedCategory =
+        await this.categoriesService.findMatchingExpenseSecondaryCategory(
+          ownerId,
+          dto.description
+            ? normalizeExpenseValidationEntry(dto.description)
+            : '',
+        );
+      categoryId = matchedCategory?.id ?? null;
     }
 
     const postedAt = this.parsePostedAt(dto.postedAt);
@@ -687,12 +728,16 @@ export class TransactionsService {
       where: {
         userId: ownerId,
         ...(filters.kind ? { kind: filters.kind } : {}),
-        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+        ...this.toCategoryWhere(filters),
         ...this.toPostedAtWhere(filters.from, filters.to),
       },
       include: {
         account: true,
-        category: true,
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
       },
     });
   }
@@ -709,7 +754,11 @@ export class TransactionsService {
       },
       include: {
         account: true,
-        category: true,
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
       },
     });
 
@@ -827,6 +876,25 @@ export class TransactionsService {
       );
     }
 
+    if (
+      filters.secondaryCategoryId &&
+      (entry.entryType !== 'STANDARD' ||
+        entry.row.categoryId !== filters.secondaryCategoryId)
+    ) {
+      return false;
+    }
+
+    if (filters.primaryCategoryId) {
+      if (entry.entryType !== 'STANDARD') {
+        return false;
+      }
+
+      const categoryHierarchy = getCategoryHierarchyMetadata(
+        entry.row.category,
+      );
+      return categoryHierarchy.primaryCategoryId === filters.primaryCategoryId;
+    }
+
     return true;
   }
 
@@ -905,6 +973,30 @@ export class TransactionsService {
       from: effectiveFrom,
       to: effectiveTo,
     };
+  }
+
+  private toCategoryWhere(filters: {
+    categoryId?: string;
+    primaryCategoryId?: string;
+    secondaryCategoryId?: string;
+  }): Prisma.TransactionWhereInput {
+    if (filters.categoryId) {
+      return { categoryId: filters.categoryId };
+    }
+
+    if (filters.secondaryCategoryId) {
+      return { categoryId: filters.secondaryCategoryId };
+    }
+
+    if (filters.primaryCategoryId) {
+      return {
+        category: {
+          parentCategoryId: filters.primaryCategoryId,
+        },
+      };
+    }
+
+    return {};
   }
 
   private getTodayRomeDateString(): string {
@@ -1091,6 +1183,10 @@ export class TransactionsService {
     type CategoryAccumulator = {
       categoryId: string | null;
       name: string;
+      primaryCategoryId: string | null;
+      primaryCategoryName: string | null;
+      secondaryCategoryId: string | null;
+      secondaryCategoryName: string | null;
       total: Prisma.Decimal;
     };
     type MonthAccumulator = {
@@ -1164,6 +1260,7 @@ export class TransactionsService {
           totals.incomeCategories,
           row.categoryId,
           row.category?.name ?? 'Uncategorized',
+          getCategoryHierarchyMetadata(row.category),
           row.amount,
         );
         continue;
@@ -1182,12 +1279,14 @@ export class TransactionsService {
           totals.expenseCategories,
           row.categoryId,
           row.category?.name ?? 'Uncategorized',
+          getCategoryHierarchyMetadata(row.category),
           row.amount,
         );
         this.addMonthlyCategoryTotal(
           currency.rangeExpenseCategories,
           row.categoryId,
           row.category?.name ?? 'Uncategorized',
+          getCategoryHierarchyMetadata(row.category),
           row.amount,
         );
         continue;
@@ -1335,6 +1434,10 @@ export class TransactionsService {
     return items.slice(0, ANALYTICS_BREAKDOWN_LIMIT).map((item) => ({
       categoryId: item.categoryId,
       name: item.name,
+      primaryCategoryId: item.primaryCategoryId,
+      primaryCategoryName: item.primaryCategoryName,
+      secondaryCategoryId: item.secondaryCategoryId,
+      secondaryCategoryName: item.secondaryCategoryName,
       total: item.total,
     }));
   }
@@ -1348,6 +1451,10 @@ export class TransactionsService {
       {
         categoryId: string | null;
         name: string;
+        primaryCategoryId: string | null;
+        primaryCategoryName: string | null;
+        secondaryCategoryId: string | null;
+        secondaryCategoryName: string | null;
         total: number;
         series: Map<string, number>;
       }
@@ -1359,6 +1466,10 @@ export class TransactionsService {
         const existing = totalsByCategory.get(key) ?? {
           categoryId: item.categoryId,
           name: item.name,
+          primaryCategoryId: item.primaryCategoryId,
+          primaryCategoryName: item.primaryCategoryName,
+          secondaryCategoryId: item.secondaryCategoryId,
+          secondaryCategoryName: item.secondaryCategoryName,
           total: 0,
           series: new Map<string, number>(),
         };
@@ -1380,6 +1491,10 @@ export class TransactionsService {
       .map((item) => ({
         categoryId: item.categoryId,
         name: item.name,
+        primaryCategoryId: item.primaryCategoryId,
+        primaryCategoryName: item.primaryCategoryName,
+        secondaryCategoryId: item.secondaryCategoryId,
+        secondaryCategoryName: item.secondaryCategoryName,
         total: item.total,
         series: months.map((month) => ({
           month: month.month,
@@ -1412,6 +1527,22 @@ export class TransactionsService {
           categoryId:
             currentItem?.categoryId ?? previousItem?.categoryId ?? null,
           name: currentItem?.name ?? previousItem?.name ?? 'Uncategorized',
+          primaryCategoryId:
+            currentItem?.primaryCategoryId ??
+            previousItem?.primaryCategoryId ??
+            null,
+          primaryCategoryName:
+            currentItem?.primaryCategoryName ??
+            previousItem?.primaryCategoryName ??
+            null,
+          secondaryCategoryId:
+            currentItem?.secondaryCategoryId ??
+            previousItem?.secondaryCategoryId ??
+            null,
+          secondaryCategoryName:
+            currentItem?.secondaryCategoryName ??
+            previousItem?.secondaryCategoryName ??
+            null,
           previousTotal: previousItem?.total ?? 0,
           currentTotal: currentItem?.total ?? 0,
           delta: (currentItem?.total ?? 0) - (previousItem?.total ?? 0),
@@ -1435,6 +1566,10 @@ export class TransactionsService {
       categoryId: string | null;
       name: string;
       type: CategoryType;
+      primaryCategoryId: string | null;
+      primaryCategoryName: string | null;
+      secondaryCategoryId: string | null;
+      secondaryCategoryName: string | null;
       total: Prisma.Decimal;
     };
     type AccountCashflowTotal = {
@@ -1508,6 +1643,7 @@ export class TransactionsService {
           categoryId: row.categoryId,
           name: row.category?.name ?? 'Uncategorized',
           type: row.category?.type ?? categoryType,
+          ...getCategoryHierarchyMetadata(row.category),
           total: this.toDecimal(0),
         };
 
@@ -1530,6 +1666,10 @@ export class TransactionsService {
             categoryId: categoryTotal.categoryId,
             name: categoryTotal.name,
             type: categoryTotal.type,
+            primaryCategoryId: categoryTotal.primaryCategoryId,
+            primaryCategoryName: categoryTotal.primaryCategoryName,
+            secondaryCategoryId: categoryTotal.secondaryCategoryId,
+            secondaryCategoryName: categoryTotal.secondaryCategoryName,
             total: categoryTotal.total.toNumber(),
           }))
           .sort((left, right) => {
@@ -1606,17 +1746,26 @@ export class TransactionsService {
       {
         categoryId: string | null;
         name: string;
+        primaryCategoryId: string | null;
+        primaryCategoryName: string | null;
+        secondaryCategoryId: string | null;
+        secondaryCategoryName: string | null;
         total: Prisma.Decimal;
       }
     >,
     categoryId: string | null,
     name: string,
+    hierarchy: ReturnType<typeof getCategoryHierarchyMetadata>,
     amount: Prisma.Decimal,
   ): void {
     const key = categoryId ?? 'uncategorized';
     const existing = totals.get(key) ?? {
       categoryId,
       name,
+      primaryCategoryId: hierarchy.primaryCategoryId,
+      primaryCategoryName: hierarchy.primaryCategoryName,
+      secondaryCategoryId: hierarchy.secondaryCategoryId,
+      secondaryCategoryName: hierarchy.secondaryCategoryName,
       total: this.toDecimal(0),
     };
 
@@ -1630,6 +1779,10 @@ export class TransactionsService {
       {
         categoryId: string | null;
         name: string;
+        primaryCategoryId: string | null;
+        primaryCategoryName: string | null;
+        secondaryCategoryId: string | null;
+        secondaryCategoryName: string | null;
         total: Prisma.Decimal;
       }
     >,
@@ -1638,6 +1791,10 @@ export class TransactionsService {
       .map((total) => ({
         categoryId: total.categoryId,
         name: total.name,
+        primaryCategoryId: total.primaryCategoryId,
+        primaryCategoryName: total.primaryCategoryName,
+        secondaryCategoryId: total.secondaryCategoryId,
+        secondaryCategoryName: total.secondaryCategoryName,
         total: total.total.toNumber(),
       }))
       .sort((left, right) => {
@@ -1664,6 +1821,10 @@ export class TransactionsService {
         {
           categoryId: string | null;
           name: string;
+          primaryCategoryId: string | null;
+          primaryCategoryName: string | null;
+          secondaryCategoryId: string | null;
+          secondaryCategoryName: string | null;
           total: Prisma.Decimal;
         }
       >;
@@ -1672,6 +1833,10 @@ export class TransactionsService {
         {
           categoryId: string | null;
           name: string;
+          primaryCategoryId: string | null;
+          primaryCategoryName: string | null;
+          secondaryCategoryId: string | null;
+          secondaryCategoryName: string | null;
           total: Prisma.Decimal;
         }
       >;

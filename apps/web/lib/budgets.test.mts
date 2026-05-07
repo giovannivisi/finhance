@@ -60,9 +60,9 @@ test("buildBudgetTransactionsLink narrows to expense rows for the month and cate
   assert.equal(
     buildBudgetTransactionsLink({
       month: "2026-04",
-      categoryId: "category-1",
+      secondaryCategoryId: "category-1",
     }),
-    "/transactions?from=2026-04-01&to=2026-04-30&categoryId=category-1&kind=EXPENSE",
+    "/transactions?from=2026-04-01&to=2026-04-30&secondaryCategoryId=category-1&kind=EXPENSE",
   );
 });
 
@@ -90,6 +90,10 @@ test("sortBudgetItemsForDisplay promotes over-budget rows first", () => {
       budgetId: "within",
       categoryId: "1",
       categoryName: "Groceries",
+      primaryCategoryId: "10",
+      primaryCategoryName: "Food",
+      secondaryCategoryId: "1",
+      secondaryCategoryName: "Groceries",
       categoryArchivedAt: null,
       currency: "EUR",
       budgetAmount: 100,
@@ -107,6 +111,10 @@ test("sortBudgetItemsForDisplay promotes over-budget rows first", () => {
       budgetId: "over",
       categoryId: "2",
       categoryName: "Rent",
+      primaryCategoryId: "20",
+      primaryCategoryName: "Housing",
+      secondaryCategoryId: "2",
+      secondaryCategoryName: "Rent",
       categoryArchivedAt: null,
       currency: "EUR",
       budgetAmount: 100,

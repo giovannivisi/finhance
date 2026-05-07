@@ -1,21 +1,14 @@
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { LocalOnlyGuard } from '@/security/local-only.guard';
 import { IS_PUBLIC_ROUTE_KEY } from '@/security/public-route';
+import { createHttpExecutionContext } from '@/testing/http-execution-context.stub';
 
 function createContext(
   request: Record<string, unknown>,
   handler: () => unknown = () => undefined,
-): ExecutionContext {
-  const classRef = class TestController {};
-
-  return {
-    getClass: () => classRef,
-    getHandler: () => handler,
-    switchToHttp: () => ({
-      getRequest: () => request,
-    }),
-  } as ExecutionContext;
+) {
+  return createHttpExecutionContext(request, handler);
 }
 
 describe('LocalOnlyGuard', () => {

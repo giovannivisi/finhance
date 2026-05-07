@@ -681,6 +681,7 @@ describe('ImportsService', () => {
       'recurringExceptions.csv',
       'budgets.csv',
       'budgetOverrides.csv',
+      'expenseValidationRules.csv',
     ]);
     expect(entries.get('accounts.csv')).toContain(
       'importKey,name,type,currency,institution,notes,order,openingBalance,openingBalanceDate,archived',
@@ -689,13 +690,16 @@ describe('ImportsService', () => {
       'manual-account-account-manual,Main checking,BANK,EUR,Local Bank,Primary account,0,0,,true',
     );
     expect(entries.get('categories.csv')).toContain(
-      'manual-category-category-manual,Consulting,INCOME,0,true',
+      'manual-category-category-manual,INCOME,PRIMARY,Consulting,,0,,true',
     );
     expect(entries.get('assets.csv')).toContain(
       'manual-asset-asset-manual,Cash reserve,ASSET,CASH,,EUR,100,manual-account-account-manual,,,,,Emergency fund,0',
     );
     expect(entries.get('transactions.csv')).toContain(
       'manual-transaction-transaction-manual,2026-04-01T08:00:00.000Z,INCOME,5000,Consulting invoice,,manual-account-account-manual,INFLOW,manual-category-category-manual,Employer,,',
+    );
+    expect(entries.get('expenseValidationRules.csv')).toBe(
+      'entry,primary,secondary\n',
     );
     expect(prisma.account.update).toHaveBeenCalledWith({
       where: { id: 'account-manual' },

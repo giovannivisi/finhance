@@ -9,6 +9,10 @@ export interface HostedApiJwtConfig {
   publicKeyPem: string;
 }
 
+function normalizePemValue(value: string): string {
+  return value.replaceAll('\\r\\n', '\n').replaceAll('\\n', '\n');
+}
+
 function readRequiredEnv(key: string, env: NodeJS.ProcessEnv): string {
   const value = env[key]?.trim();
 
@@ -32,7 +36,9 @@ export function resolveHostedApiJwtConfig(
     issuer: readRequiredEnv('AUTH_API_JWT_ISSUER', env),
     audience: readRequiredEnv('AUTH_API_JWT_AUDIENCE', env),
     keyId: readRequiredEnv('AUTH_API_JWT_KID', env),
-    publicKeyPem: readRequiredEnv('AUTH_API_JWT_PUBLIC_KEY', env),
+    publicKeyPem: normalizePemValue(
+      readRequiredEnv('AUTH_API_JWT_PUBLIC_KEY', env),
+    ),
   };
 }
 

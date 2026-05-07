@@ -325,6 +325,11 @@ button {
   overflow: visible;
 }
 
+.import-disclosure-section {
+  position: relative;
+  z-index: 4;
+}
+
 .page-section.is-spacious {
   padding: 28px;
 }
@@ -553,6 +558,9 @@ button {
 .import-disclosure-shell {
   position: relative;
   min-height: 42px;
+  overflow: visible;
+  z-index: 5;
+  isolation: isolate;
 }
 
 .import-disclosure-rail {
@@ -598,7 +606,7 @@ button {
 
 .import-disclosure-panel {
   position: absolute;
-  z-index: 20;
+  z-index: 40;
   max-width: min(420px, calc(100vw - 32px));
   padding: 18px 20px 20px;
   border-radius: 22px;
@@ -608,6 +616,7 @@ button {
     0 24px 48px rgba(0, 0, 0, 0.26),
     0 0 0 1px rgba(255, 255, 255, 0.02);
   isolation: isolate;
+  overflow: visible;
 }
 
 .import-disclosure-panel::before,
@@ -620,25 +629,18 @@ button {
 }
 
 .import-disclosure-panel::before {
-  top: -8px;
-  width: 16px;
-  height: 16px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
   border-top: 1px solid var(--border-glass-strong);
   border-left: 1px solid var(--border-glass-strong);
   background: var(--bg-popover-solid);
+  border-top-left-radius: 6px;
+  z-index: 2;
 }
 
 .import-disclosure-panel::after {
-  top: -10px;
-  width: 28px;
-  height: 16px;
-  background: linear-gradient(
-    180deg,
-    transparent 0,
-    transparent 55%,
-    var(--bg-popover-solid) 55%,
-    var(--bg-popover-solid) 100%
-  );
+  display: none;
 }
 
 .import-disclosure-panel-title {
@@ -1373,9 +1375,70 @@ button {
   align-items: end;
 }
 
+.transaction-filter-grid {
+  align-items: end;
+}
+
+.expense-validation-card-grid {
+  display: grid;
+  gap: 20px;
+}
+
+.expense-validation-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100%;
+  border-radius: 28px;
+  corner-shape: superellipse(0.72);
+  overflow: clip;
+}
+
+.expense-validation-card-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.expense-validation-card-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 12px;
+  margin-top: auto;
+  width: max-content;
+  max-width: 100%;
+}
+
+.expense-validation-card-actions > * {
+  width: 220px;
+  min-width: 0;
+  max-width: 220px;
+}
+
 .budget-toggle-pill {
   min-height: 50px;
-  padding-inline: 20px;
+  width: 100%;
+  padding-inline: 18px;
+  align-self: stretch;
+}
+
+.transaction-toggle-pill {
+  min-height: 50px;
+  width: fit-content;
+  max-width: 100%;
+  padding-inline: 18px;
+  align-self: end;
+}
+
+.budget-filter-actions {
+  align-self: stretch;
+  width: 100%;
+}
+
+.budget-filter-actions > * {
+  flex: 1 1 0;
+}
+
+.transaction-filter-actions {
   align-self: end;
 }
 
@@ -1578,6 +1641,15 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.filter-field-label {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }
 
 .app-form-field label {
@@ -2399,6 +2471,27 @@ html[data-theme="dark"] .text-red-800 {
   align-items: start;
 }
 
+@media (min-width: 1024px) {
+  .budget-filter-grid {
+    grid-template-columns: repeat(3, minmax(220px, 300px));
+    justify-content: start;
+    align-items: end;
+  }
+
+  .expense-validation-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .budget-filter-field--offset {
+    padding-top: 28px;
+  }
+
+  .transaction-filter-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1023px) {
   .page-split {
     grid-template-columns: 1fr;
@@ -2798,7 +2891,32 @@ html[data-theme="dark"] .text-red-800 {
   border: 0.5px solid var(--tab-pill-border);
   border-radius: 9999px;
   box-shadow: var(--tab-pill-shadow);
+  corner-shape: superellipse(0.7);
+  -webkit-tap-highlight-color: transparent;
   overflow: hidden;
+}
+
+.tab-bar-pill.is-draggable {
+  cursor: grab;
+  user-select: none;
+  touch-action: pan-y;
+}
+
+.tab-bar-pill.is-draggable:active {
+  cursor: grabbing;
+}
+
+.tab-bar-pill a {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.tab-active-pill-track {
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 9999px;
 }
 
 .tab-bar-link,
@@ -2811,8 +2929,11 @@ html[data-theme="dark"] .text-red-800 {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
+  background: transparent;
   color: var(--tab-icon-inactive);
-  transition: color 0.15s ease;
+  transition:
+    color 0.18s ease,
+    transform 0.22s ease;
 }
 
 .tab-bar-link.is-active,
@@ -2823,6 +2944,17 @@ html[data-theme="dark"] .text-red-800 {
 .tab-bar-link.is-inactive:hover,
 .tab-more-btn.is-inactive:hover {
   color: var(--tab-icon-hover);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.tab-bar-link:active,
+.tab-more-btn:active {
+  transform: scale(0.92);
+}
+
+.tab-bar-link svg,
+.tab-more-btn svg {
+  pointer-events: none;
 }
 
 .tab-bar-link:focus-visible,
@@ -2836,8 +2968,7 @@ html[data-theme="dark"] .text-red-800 {
 
 .tab-active-pill {
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  height: 100%;
   background:
     linear-gradient(
       180deg,
@@ -2846,9 +2977,11 @@ html[data-theme="dark"] .text-red-800 {
     );
   border: 0.5px solid var(--tab-active-pill-border);
   border-radius: 999px;
+  corner-shape: superellipse(0.72);
   box-shadow: var(--tab-active-pill-shadow);
   backdrop-filter: blur(26px) saturate(185%) brightness(1.12);
   -webkit-backdrop-filter: blur(26px) saturate(185%) brightness(1.12);
+  overflow: hidden;
 }
 
 .tab-active-pill .pill-sheen {
@@ -2879,6 +3012,7 @@ html[data-theme="dark"] .text-red-800 {
   -webkit-backdrop-filter: var(--tab-pill-blur);
   border: 0.5px solid var(--tab-more-panel-border);
   border-radius: 22px;
+  corner-shape: superellipse(0.7);
   box-shadow:
     0 12px 24px rgba(0, 0, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -3082,8 +3216,26 @@ html[data-theme="dark"] .text-red-800 {
     grid-template-columns: 1fr !important;
   }
 
+  .expense-validation-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .budget-filter-field--offset {
+    padding-top: 0;
+  }
+
   .budget-toggle-pill {
     width: 100%;
+  }
+
+  .expense-validation-card-actions {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .expense-validation-card-actions > * {
+    width: 100%;
+    max-width: none;
   }
 
   .summary-grid,

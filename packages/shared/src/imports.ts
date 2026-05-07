@@ -64,9 +64,12 @@ export const ACCOUNT_IMPORT_HEADERS = [
 
 export const CATEGORY_IMPORT_HEADERS = [
   "importKey",
-  "name",
   "type",
-  "order",
+  "level",
+  "primary",
+  "secondary",
+  "primaryOrder",
+  "secondaryOrder",
   "archived",
 ] as const;
 
