@@ -18,6 +18,12 @@ import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";
 
+const BUDGET_MONTH_PILL_FORMATTER = new Intl.DateTimeFormat("en", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
 type RawSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function BudgetsPage({
@@ -33,6 +39,7 @@ export default async function BudgetsPage({
   let categories: CategoryResponse[] | null = null;
   let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
+  let budgetMonthPillLabel: string | null = null;
 
   try {
     [budgetView, categories] = await Promise.all([
@@ -47,6 +54,10 @@ export default async function BudgetsPage({
   }
 
   if (budgetView) {
+    budgetMonthPillLabel = BUDGET_MONTH_PILL_FORMATTER.format(
+      new Date(`${budgetView.month}-01T00:00:00Z`),
+    );
+
     try {
       setup = await api<SetupStatusResponse>(
         "/setup/status?includeWarnings=false",
@@ -101,7 +112,12 @@ export default async function BudgetsPage({
                   >
                     Previous month
                   </Link>
-                  <div className="page-pill">Month {budgetView.month}</div>
+                  <div
+                    className="page-pill"
+                    aria-label={`Current month ${budgetMonthPillLabel ?? budgetView.month}`}
+                  >
+                    {budgetMonthPillLabel ?? budgetView.month}
+                  </div>
                   <Link
                     href={buildBudgetMonthNavigationLink({
                       month: budgetView.month,

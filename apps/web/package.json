@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20.9.0 <21"
+    "node": ">=20.9.0 <23"
   },
   "scripts": {
     "check-types": "tsc --noEmit -p tsconfig.json",
