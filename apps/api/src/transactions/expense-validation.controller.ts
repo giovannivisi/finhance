@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -12,7 +13,9 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
+import { createNamedThrottleOverride } from '@/config/throttle.config';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import type { ExpenseValidationRuleResponse } from '@finhance/shared';
 import { toExpenseValidationRuleResponse } from '@transactions/expense-validation.mapper';
@@ -21,6 +24,7 @@ import { CreateExpenseValidationRuleDto } from '@transactions/dto/create-expense
 import { UpdateExpenseValidationRuleDto } from '@transactions/dto/update-expense-validation-rule.dto';
 
 const MAX_CSV_BYTES = 1024 * 1024;
+type UploadedCsvFile = { buffer: Buffer };
 
 @Controller('expense-validation')
 export class ExpenseValidationController {
@@ -31,6 +35,19 @@ export class ExpenseValidationController {
 
   private resolveOwnerId(): string {
     return this.requestOwnerResolver.resolveOwnerId();
+  }
+
+  private requireUploadedFile(
+    file: UploadedCsvFile | undefined,
+    fileName: string,
+  ): UploadedCsvFile {
+    if (!file?.buffer) {
+      throw new BadRequestException(
+        `${fileName} upload requires a multipart file field named "file".`,
+      );
+    }
+
+    return file;
   }
 
   @Get()
@@ -72,6 +89,7 @@ export class ExpenseValidationController {
   }
 
   @Post('rules/import')
+  @Throttle(createNamedThrottleOverride('imports'))
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
@@ -80,15 +98,16 @@ export class ExpenseValidationController {
     }),
   )
   async importRules(
-    @UploadedFile() file: { buffer: Buffer },
+    @UploadedFile() file?: UploadedCsvFile,
   ): Promise<{ createdCount: number; updatedCount: number }> {
     return this.expenseValidationService.importRulesCsv(
       this.resolveOwnerId(),
-      file,
+      this.requireUploadedFile(file, 'rules.csv'),
     );
   }
 
   @Post('hierarchy/import')
+  @Throttle(createNamedThrottleOverride('imports'))
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
@@ -97,16 +116,17 @@ export class ExpenseValidationController {
     }),
   )
   async importHierarchy(
-    @UploadedFile() file: { buffer: Buffer },
+    @UploadedFile() file?: UploadedCsvFile,
   ): Promise<{ createdCount: number; updatedCount: number }> {
     return this.expenseValidationService.importHierarchyCsv(
       this.resolveOwnerId(),
-      file,
+      this.requireUploadedFile(file, 'hierarchy.csv'),
     );
   }
 
   @Post('rules/export')
   @HttpCode(200)
+  @Throttle(createNamedThrottleOverride('imports'))
   async exportRules(@Res() response: Response): Promise<void> {
     const csv = await this.expenseValidationService.exportRulesCsv(
       this.resolveOwnerId(),
@@ -121,6 +141,7 @@ export class ExpenseValidationController {
 
   @Post('hierarchy/export')
   @HttpCode(200)
+  @Throttle(createNamedThrottleOverride('imports'))
   async exportHierarchy(@Res() response: Response): Promise<void> {
     const csv = await this.expenseValidationService.exportHierarchyCsv(
       this.resolveOwnerId(),

@@ -56,6 +56,8 @@ test("buildAnalyticsQueryString includes required months and omits empty filters
       to: "2026-06",
       accountId: "",
       categoryId: "",
+      primaryCategoryId: "",
+      secondaryCategoryId: "",
       includeArchivedAccounts: false,
     }),
     "from=2026-01&to=2026-06",
@@ -67,9 +69,11 @@ test("buildAnalyticsQueryString includes required months and omits empty filters
       to: "2026-06",
       accountId: "account-1",
       categoryId: "category-1",
+      primaryCategoryId: "",
+      secondaryCategoryId: "category-1",
       includeArchivedAccounts: true,
     }),
-    "from=2026-01&to=2026-06&accountId=account-1&categoryId=category-1&includeArchivedAccounts=true",
+    "from=2026-01&to=2026-06&accountId=account-1&secondaryCategoryId=category-1&includeArchivedAccounts=true",
   );
 });
 

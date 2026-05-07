@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@finhance/db';
+import { parseCsvRows } from '@/common/csv';
 import { PrismaService } from '@prisma/prisma.service';
 import { normalizeExpenseValidationEntry } from '@transactions/category-hierarchy';
 import { CategoriesService } from '@transactions/categories.service';
@@ -499,70 +500,52 @@ export class ExpenseValidationService {
     headers: string[];
     rows: Array<Record<string, string>>;
   } {
-    const lines = content
-      .replace(/^\uFEFF/, '')
-      .split(/\r?\n/)
-      .filter((line) => line.trim().length > 0);
-    if (lines.length === 0) {
+    const rawRows = parseCsvRows(content.replace(/^\uFEFF/, ''));
+    if (
+      rawRows.length === 0 ||
+      rawRows[0].every((cell) => cell.trim() === '')
+    ) {
       throw new BadRequestException('CSV file is empty.');
     }
 
-    const [headerLine, ...rowLines] = lines;
-    const headers = this.parseCsvLine(headerLine);
-    const rows = rowLines.map((line) => {
-      const values = this.parseCsvLine(line);
-      const row: Record<string, string> = {};
-      headers.forEach((header, index) => {
-        row[header] = values[index] ?? '';
+    const headers = rawRows[0].map((value) => value.trim());
+    const rows = rawRows
+      .slice(1)
+      .filter((rawRow) => !rawRow.every((value) => value.trim() === ''))
+      .map((rawRow, index) => {
+        if (rawRow.length > headers.length) {
+          throw new BadRequestException(
+            `CSV row ${index + 2} has more columns than the header row.`,
+          );
+        }
+
+        const values = rawRow.map((value) => value.trim());
+        const row: Record<string, string> = {};
+        headers.forEach((header, headerIndex) => {
+          row[header] = values[headerIndex] ?? '';
+        });
+        return row;
       });
-      return row;
-    });
 
     return { headers, rows };
-  }
-
-  private parseCsvLine(line: string): string[] {
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let index = 0; index < line.length; index += 1) {
-      const character = line[index];
-      if (character === '"') {
-        const next = line[index + 1];
-        if (inQuotes && next === '"') {
-          current += '"';
-          index += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-        continue;
-      }
-
-      if (character === ',' && !inQuotes) {
-        values.push(current);
-        current = '';
-        continue;
-      }
-
-      current += character;
-    }
-
-    values.push(current);
-    return values.map((value) => value.trim());
   }
 
   private toCsv(
     headers: string[],
     rows: Array<Record<string, string>>,
   ): string {
-    const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
+    const escape = (value: string) =>
+      `"${this.neutralizeSpreadsheetFormula(value).replaceAll('"', '""')}"`;
     return [
       headers.join(','),
       ...rows.map((row) =>
         headers.map((header) => escape(row[header] ?? '')).join(','),
       ),
     ].join('\n');
+  }
+
+  private neutralizeSpreadsheetFormula(value: string): string {
+    return /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
   }
 
   private assertHeaders(headers: string[], expected: string[]): string[] {

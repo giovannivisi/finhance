@@ -1,8 +1,9 @@
 import { createPrivateKey, generateKeyPairSync } from 'node:crypto';
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ApiJwtGuard } from '@/security/api-jwt.guard';
 import { IS_PUBLIC_ROUTE_KEY } from '@/security/public-route';
+import { createHttpExecutionContext } from '@/testing/http-execution-context.stub';
 
 const VALID_KEY_PAIR = generateKeyPairSync('ec', {
   namedCurve: 'P-256',
@@ -47,16 +48,8 @@ type RequestLike = {
 function createContext(
   request: RequestLike,
   handler: () => unknown = () => undefined,
-): ExecutionContext {
-  const classRef = class TestController {};
-
-  return {
-    getClass: () => classRef,
-    getHandler: () => handler,
-    switchToHttp: () => ({
-      getRequest: () => request,
-    }),
-  } as ExecutionContext;
+) {
+  return createHttpExecutionContext(request, handler);
 }
 
 describe('ApiJwtGuard', () => {
@@ -111,6 +104,24 @@ describe('ApiJwtGuard', () => {
       userId: 'user-123',
       email: 'person@example.com',
     });
+  });
+
+  it('accepts escaped single-line PEM values from hosted env configuration', async () => {
+    process.env.AUTH_API_JWT_PUBLIC_KEY = VALID_KEY_PAIR.publicKey.replaceAll(
+      '\n',
+      '\\n',
+    );
+
+    const request: RequestLike = {
+      headers: {
+        authorization: `Bearer ${await createToken({
+          subject: 'user-123',
+        })}`,
+      },
+    };
+
+    await expect(guard.canActivate(createContext(request))).resolves.toBe(true);
+    expect(request.authPrincipal?.userId).toBe('user-123');
   });
 
   it('rejects missing bearer tokens in hosted mode', async () => {

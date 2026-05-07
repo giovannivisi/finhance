@@ -14,6 +14,7 @@ import type {
   ImportPreviewResponse,
   ImportRowIssueResponse,
 } from '@finhance/shared';
+import { parseCsvRows } from '@/common/csv';
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import {
@@ -532,7 +533,7 @@ export class ImportsService {
     rawText: string,
   ): Array<{ rowNumber: number; values: CsvRecord }> {
     const text = rawText.replace(/^\uFEFF/, '');
-    const rows = this.parseCsvRows(text);
+    const rows = parseCsvRows(text);
 
     if (rows.length === 0 || rows[0].every((cell) => cell.trim() === '')) {
       throw new BadRequestException(`${file}.csv is empty.`);
@@ -602,59 +603,6 @@ export class ImportsService {
     }
 
     return records;
-  }
-
-  private parseCsvRows(text: string): string[][] {
-    const rows: string[][] = [];
-    let currentRow: string[] = [];
-    let currentField = '';
-    let inQuotes = false;
-
-    for (let index = 0; index < text.length; index += 1) {
-      const character = text[index];
-      const nextCharacter = text[index + 1];
-
-      if (character === '"') {
-        if (inQuotes && nextCharacter === '"') {
-          currentField += '"';
-          index += 1;
-          continue;
-        }
-
-        inQuotes = !inQuotes;
-        continue;
-      }
-
-      if (!inQuotes && character === ',') {
-        currentRow.push(currentField);
-        currentField = '';
-        continue;
-      }
-
-      if (!inQuotes && (character === '\n' || character === '\r')) {
-        if (character === '\r' && nextCharacter === '\n') {
-          index += 1;
-        }
-
-        currentRow.push(currentField);
-        rows.push(currentRow);
-        currentRow = [];
-        currentField = '';
-        continue;
-      }
-
-      currentField += character;
-    }
-
-    if (inQuotes) {
-      throw new BadRequestException(
-        'CSV parsing failed because a quoted field was not closed.',
-      );
-    }
-
-    currentRow.push(currentField);
-    rows.push(currentRow);
-    return rows;
   }
 
   private parseAccountRow(
