@@ -23,6 +23,7 @@ export const EXCHANGE_SUFFIXES = [
   { label: "🇮🇹 Milan (BIT)", value: ".MI" },
   { label: "🇬🇧 London (LSE)", value: ".L" },
   { label: "🇩🇪 Xetra (DE)", value: ".DE" },
+  { label: "🇩🇪 Hamburg (HM)", value: ".HM" },
   { label: "🇫🇷 Paris (EPA)", value: ".PA" },
   { label: "🇪🇸 Madrid (BME)", value: ".MC" },
   { label: "Crypto", value: "_CRYPTO_" },

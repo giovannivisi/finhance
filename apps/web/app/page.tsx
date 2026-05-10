@@ -179,6 +179,7 @@ export default async function Home() {
           baseCurrency={dashboard.baseCurrency}
           lastRefreshAt={dashboard.lastRefreshAt}
           summary={dashboard.summary}
+          assetKindOrder={dashboard.assetKindOrder}
         />
 
         <WorkflowSection

@@ -4380,22 +4380,65 @@ export class ImportsService {
     await this.backfillTransactionExportImportKeys(db, ownerId);
   }
 
+  private isLegacyManualKey(key: string | null): boolean {
+    if (!key) return false;
+    return /^manual-(account|category|asset|recurring-rule|budget|transaction|transfer)-[a-z0-9]{20,}$/.test(
+      key,
+    );
+  }
+
+  private generateReadableImportKey(
+    prefix: string,
+    parts: string[],
+    usedKeys: Set<string>,
+  ): string {
+    const slug = parts
+      .join('-')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const base = `${prefix}-${slug}`;
+    if (!usedKeys.has(base)) {
+      usedKeys.add(base);
+      return base;
+    }
+    let counter = 2;
+    while (usedKeys.has(`${base}-${counter}`)) {
+      counter++;
+    }
+    const key = `${base}-${counter}`;
+    usedKeys.add(key);
+    return key;
+  }
+
   private async backfillAccountExportImportKeys(
     db: ImportDbClient,
     ownerId: string,
   ): Promise<void> {
     const rows = await db.account.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-account-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const importKey = this.generateReadableImportKey(
+        'account',
+        [row.name, row.currency],
+        usedKeys,
+      );
 
       await db.account.update({
         where: { id: row.id },
@@ -4413,16 +4456,32 @@ export class ImportsService {
   ): Promise<void> {
     const rows = await db.category.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
+      include: { parentCategory: true },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-category-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const parts = row.parentCategory
+        ? [row.type, row.parentCategory.name, row.name]
+        : [row.type, row.name];
+      const importKey = this.generateReadableImportKey(
+        'category',
+        parts,
+        usedKeys,
+      );
 
       await db.category.update({
         where: { id: row.id },
@@ -4440,16 +4499,28 @@ export class ImportsService {
   ): Promise<void> {
     const rows = await db.asset.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-asset-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const importKey = this.generateReadableImportKey(
+        'asset',
+        [row.name, row.currency],
+        usedKeys,
+      );
 
       await db.asset.update({
         where: { id: row.id },
@@ -4467,16 +4538,28 @@ export class ImportsService {
   ): Promise<void> {
     const rows = await db.recurringTransactionRule.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-recurring-rule-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const importKey = this.generateReadableImportKey(
+        'recurring',
+        [row.name],
+        usedKeys,
+      );
 
       await db.recurringTransactionRule.update({
         where: { id: row.id },
@@ -4494,16 +4577,29 @@ export class ImportsService {
   ): Promise<void> {
     const rows = await db.categoryBudget.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
+      include: { category: true },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-budget-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const importKey = this.generateReadableImportKey(
+        'budget',
+        [row.category.name, row.currency],
+        usedKeys,
+      );
 
       await db.categoryBudget.update({
         where: { id: row.id },
@@ -4522,18 +4618,31 @@ export class ImportsService {
     const rows = await db.transaction.findMany({
       where: { userId: ownerId },
       orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      include: { account: true },
     });
-    const transferGroups = new Map<string, Transaction[]>();
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+    const transferGroups = new Map<string, (typeof rows)[number][]>();
 
     for (const row of rows) {
       if (row.kind !== TransactionKind.TRANSFER) {
-        const importKey = row.importKey ?? `manual-transaction-${row.id}`;
         if (
           row.importSource === CSV_IMPORT_SOURCE &&
-          row.importKey === importKey
+          row.importKey &&
+          !this.isLegacyManualKey(row.importKey)
         ) {
           continue;
         }
+        const dateStr = row.postedAt.toISOString().slice(0, 10);
+        const descSlug = row.description.slice(0, 30);
+        const importKey = this.generateReadableImportKey(
+          'tx',
+          [dateStr, descSlug, row.account.name],
+          usedKeys,
+        );
 
         await db.transaction.update({
           where: { id: row.id },
@@ -4557,10 +4666,27 @@ export class ImportsService {
     }
 
     for (const [transferGroupId, groupRows] of transferGroups.entries()) {
-      const { importKey } = this.resolveTransferRowsForExport(
-        transferGroupId,
-        groupRows,
+      const allHaveReadableKeys = groupRows.every(
+        (r) =>
+          r.importSource === CSV_IMPORT_SOURCE &&
+          r.importKey &&
+          !this.isLegacyManualKey(r.importKey),
       );
+      if (allHaveReadableKeys) continue;
+
+      const { outflow, importKey: existingKey } =
+        this.resolveTransferRowsForExport(transferGroupId, groupRows);
+
+      let importKey = existingKey;
+      if (importKey.startsWith('manual-transfer-')) {
+        const dateStr = outflow.postedAt.toISOString().slice(0, 10);
+        const descSlug = outflow.description.slice(0, 30);
+        importKey = this.generateReadableImportKey(
+          'transfer',
+          [dateStr, descSlug],
+          usedKeys,
+        );
+      }
 
       for (const row of groupRows) {
         if (

@@ -604,6 +604,8 @@ describe('ImportsService', () => {
       importSource: null,
       importKey: null,
       name: 'Consulting',
+      parentCategory: null,
+      parentCategoryId: null,
       archivedAt: new Date('2026-04-18T10:00:00.000Z'),
     });
     const manualAsset = createImportedAsset({
@@ -615,7 +617,7 @@ describe('ImportsService', () => {
       account: {
         ...manualAccount,
         importSource: ImportSource.CSV_TEMPLATE,
-        importKey: 'manual-account-account-manual',
+        importKey: 'account-main-checking-eur',
       },
       notes: 'Emergency fund',
     });
@@ -628,8 +630,9 @@ describe('ImportsService', () => {
       category: {
         ...manualCategory,
         importSource: ImportSource.CSV_TEMPLATE,
-        importKey: 'manual-category-category-manual',
+        importKey: 'category-income-consulting',
       },
+      account: manualAccount,
       description: 'Consulting invoice',
     });
 
@@ -639,7 +642,7 @@ describe('ImportsService', () => {
         {
           ...manualAccount,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-account-account-manual',
+          importKey: 'account-main-checking-eur',
         },
       ]);
     prisma.category.findMany
@@ -648,7 +651,7 @@ describe('ImportsService', () => {
         {
           ...manualCategory,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-category-category-manual',
+          importKey: 'category-income-consulting',
         },
       ]);
     prisma.asset.findMany
@@ -657,7 +660,7 @@ describe('ImportsService', () => {
         {
           ...manualAsset,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-asset-asset-manual',
+          importKey: 'asset-cash-reserve-eur',
         },
       ]);
     prisma.transaction.findMany
@@ -666,7 +669,7 @@ describe('ImportsService', () => {
         {
           ...manualTransaction,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-transaction-transaction-manual',
+          importKey: 'tx-2026-04-01-consulting-invoice-main-checking',
         },
       ]);
 
@@ -689,16 +692,16 @@ describe('ImportsService', () => {
       'importKey,name,type,currency,institution,notes,order,openingBalance,openingBalanceDate,archived',
     );
     expect(entries.get('accounts.csv')).toContain(
-      'manual-account-account-manual,Main checking,BANK,EUR,Local Bank,Primary account,0,0,,true',
+      'account-main-checking-eur,Main checking,BANK,EUR,Local Bank,Primary account,0,0,,true',
     );
     expect(entries.get('categories.csv')).toContain(
-      'manual-category-category-manual,INCOME,PRIMARY,Consulting,,0,,true',
+      'category-income-consulting,INCOME,PRIMARY,Consulting,,0,,true',
     );
     expect(entries.get('assets.csv')).toContain(
-      'manual-asset-asset-manual,Cash reserve,ASSET,CASH,,EUR,100,manual-account-account-manual,,,,,Emergency fund,0',
+      'asset-cash-reserve-eur,Cash reserve,ASSET,CASH,,EUR,100,account-main-checking-eur,,,,,Emergency fund,0',
     );
     expect(entries.get('transactions.csv')).toContain(
-      'manual-transaction-transaction-manual,2026-04-01T08:00:00.000Z,INCOME,5000,Consulting invoice,,manual-account-account-manual,INFLOW,manual-category-category-manual,Employer,,',
+      'tx-2026-04-01-consulting-invoice-main-checking,2026-04-01T08:00:00.000Z,INCOME,5000,Consulting invoice,,account-main-checking-eur,INFLOW,category-income-consulting,Employer,,',
     );
     expect(entries.get('expenseValidationRules.csv')).toBe(
       'entry,primary,secondary\n',
@@ -707,7 +710,7 @@ describe('ImportsService', () => {
       where: { id: 'account-manual' },
       data: {
         importSource: ImportSource.CSV_TEMPLATE,
-        importKey: 'manual-account-account-manual',
+        importKey: 'account-main-checking-eur',
       },
     });
   });
@@ -806,12 +809,12 @@ describe('ImportsService', () => {
         {
           ...transferOut,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-transfer-transfer_group',
+          importKey: 'transfer-2026-04-01-move-cash',
         },
         {
           ...transferIn,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-transfer-transfer_group',
+          importKey: 'transfer-2026-04-01-move-cash',
         },
       ]);
 
@@ -821,7 +824,7 @@ describe('ImportsService', () => {
 
     expect(lines).toHaveLength(2);
     expect(lines[1]).toBe(
-      'manual-transfer-transfer_group,2026-04-01T08:00:00.000Z,TRANSFER,250,Move cash,,,,,,checking,savings',
+      'transfer-2026-04-01-move-cash,2026-04-01T08:00:00.000Z,TRANSFER,250,Move cash,,,,,,checking,savings',
     );
     expect(prisma.transaction.update).toHaveBeenCalledTimes(2);
   });

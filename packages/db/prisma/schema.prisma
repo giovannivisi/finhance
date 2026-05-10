@@ -16,6 +16,7 @@ model User {
   isActive      Boolean               @default(true) @map("is_active")
   createdAt     DateTime              @default(now()) @map("created_at")
   updatedAt     DateTime              @updatedAt @map("updated_at")
+  assetKindOrder Json?                @map("asset_kind_order")
   accounts      AuthProviderAccount[]
   sessions      AuthSession[]
 
