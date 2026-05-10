@@ -555,6 +555,21 @@ button {
   font-size: 0.9rem;
 }
 
+.page-inline-notice.surface-success {
+  background: var(--surface-success-bg);
+  border-color: var(--surface-success-border);
+}
+
+.page-inline-notice.surface-warning {
+  background: var(--surface-warning-bg);
+  border-color: var(--surface-warning-border);
+}
+
+.page-inline-notice.surface-danger {
+  background: var(--surface-danger-bg);
+  border-color: var(--surface-danger-border);
+}
+
 .import-disclosure-shell {
   position: relative;
   min-height: 42px;
@@ -2198,7 +2213,7 @@ button {
 
 .data-table td {
   padding: 14px 16px 14px 0;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .data-table td strong,
