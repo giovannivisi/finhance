@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import type { MaterializeRecurringRulesResponse } from "@finhance/shared";
 import CooldownNotice from "@components/CooldownNotice";
 import { requestRecurringMaterialization } from "@lib/recurring-materialization";
-import { getRepeatedActionNotice } from "@lib/request-safety";
+import {
+  getRecurringMaterializationNoticeText,
+  getRepeatedActionNotice,
+} from "@lib/request-safety";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function RecurringMaterializeButton({
@@ -38,7 +41,9 @@ export default function RecurringMaterializeButton({
         });
 
         if (repeatedActionNotice) {
-          setNotice(repeatedActionNotice);
+          setNotice(
+            getRecurringMaterializationNoticeText(repeatedActionNotice),
+          );
           setIsSyncing(false);
           return;
         }
@@ -61,9 +66,10 @@ export default function RecurringMaterializeButton({
     : isRefreshing
       ? "Refreshing..."
       : label;
+  const inlineFeedbackClass = "text-sm leading-6 text-[var(--text-secondary)]";
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col items-start gap-4">
       <button
         type="button"
         onClick={() => void handleSync()}
@@ -73,7 +79,7 @@ export default function RecurringMaterializeButton({
         {buttonLabel}
       </button>
       {summary ? (
-        <p className="page-inline-notice surface-success">
+        <p className={inlineFeedbackClass}>
           Synced due transactions: created {summary.createdCount}, processed{" "}
           {summary.processedRuleCount}, failed {summary.failedRuleCount}.
         </p>
@@ -87,7 +93,7 @@ export default function RecurringMaterializeButton({
         <CooldownNotice
           key={notice}
           notice={notice}
-          className="page-inline-notice surface-warning"
+          className={inlineFeedbackClass}
         />
       ) : null}
     </div>

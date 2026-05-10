@@ -1235,6 +1235,117 @@ button {
   gap: 12px;
 }
 
+.account-header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.account-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  row-gap: 10px;
+}
+
+.account-title {
+  margin: 0;
+  line-height: 1.08;
+}
+
+.account-institution-meta {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.account-currency-inline {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  color: var(--text-tertiary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.account-reconciliation-disclosure {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-reconciliation-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--border-glass);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-card-muted) 92%, transparent);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.account-reconciliation-toggle:hover,
+.account-reconciliation-toggle:focus-visible {
+  border-color: color-mix(in srgb, var(--color-primary) 24%, var(--border-glass));
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--bg-card-muted));
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.account-reconciliation-toggle:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 4px;
+  border-radius: 999px;
+}
+
+.account-reconciliation-toggle-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding-bottom: 1px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #22c55e 18%, transparent);
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.account-reconciliation-toggle-indicator.is-open {
+  background: color-mix(in srgb, #f43f5e 18%, transparent);
+}
+
+.account-reconciliation-details {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-glass);
+}
+
+.account-reconciliation-details > * {
+  margin-top: 0 !important;
+}
+
 .detail-metric-label {
   margin: 0;
   font-size: 11px;
@@ -1351,6 +1462,20 @@ button {
   font-size: 0.92rem;
   line-height: 1.6;
   color: var(--text-secondary);
+}
+
+.setup-intro-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.setup-intro-card > * {
+  margin-top: 0 !important;
+}
+
+.setup-intro-card p {
+  margin-bottom: 0;
 }
 
 .page-inline-notice p:last-child,
@@ -1615,6 +1740,32 @@ button {
 .data-table td strong,
 .data-table td .is-emphasis {
   color: var(--text-primary);
+}
+
+.transaction-row-actions-cell {
+  white-space: nowrap;
+}
+
+.transaction-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.transaction-row-action {
+  min-height: 0;
+}
+
+@media (max-width: 640px) {
+  .transaction-row-actions {
+    flex-wrap: wrap;
+  }
+
+  .transaction-row-action {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
 }
 
 .app-form {
