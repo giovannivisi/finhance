@@ -119,6 +119,8 @@ model Category {
   userId                 String
   name                   String
   type                   CategoryType
+  // Active name uniqueness is enforced by a manual partial expression index in
+  // migrations so expense secondaries are unique within their parent primary.
   parentCategoryId       String?                    @map("parent_category_id")
   order                  Int                        @default(0)
   archivedAt             DateTime?

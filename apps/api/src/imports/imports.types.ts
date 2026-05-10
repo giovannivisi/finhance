@@ -142,6 +142,22 @@ export interface BudgetOverrideImportRow {
   note: string | null;
 }
 
+export interface ExpenseCategoryHierarchyImportRow {
+  rowNumber: number;
+  level: 'PRIMARY' | 'SECONDARY';
+  primary: string;
+  secondary: string | null;
+  primaryOrder: number | null;
+  secondaryOrder: number | null;
+}
+
+export interface ExpenseValidationRuleImportRow {
+  rowNumber: number;
+  entry: string;
+  primary: string;
+  secondary: string;
+}
+
 export interface ImportPayload {
   providedFiles: ImportFileType[];
   accounts: AccountImportRow[];
@@ -152,6 +168,8 @@ export interface ImportPayload {
   recurringExceptions: RecurringExceptionImportRow[];
   budgets: BudgetImportRow[];
   budgetOverrides: BudgetOverrideImportRow[];
+  expenseCategoryHierarchy: ExpenseCategoryHierarchyImportRow[];
+  expenseValidationRules: ExpenseValidationRuleImportRow[];
 }
 
 export interface ImportAnalysisState {
@@ -278,6 +296,14 @@ export const IMPORT_TEMPLATE_HEADERS: Record<
     'endMonth',
   ],
   budgetOverrides: ['budgetImportKey', 'month', 'amount', 'note'],
+  expenseCategoryHierarchy: [
+    'level',
+    'primary',
+    'secondary',
+    'primaryOrder',
+    'secondaryOrder',
+  ],
+  expenseValidationRules: ['entry', 'primary', 'secondary'],
 };
 
 type AssetlessAccountType = Account['type'];

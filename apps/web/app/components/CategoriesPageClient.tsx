@@ -188,8 +188,8 @@ export default function CategoriesPageClient({
           <div className="route-stack-desktop-xl">
             <section className="section-stack-tight">
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--accent-green)]/85">
-                  Expense hierarchy
+                <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                  Expense categories
                 </h3>
                 <p className="mt-2 text-sm text-[var(--text-secondary)]">
                   Primaries group their secondaries. Transactions and budgets
@@ -206,11 +206,11 @@ export default function CategoriesPageClient({
                       })}
 
                       {secondaries.length > 0 ? (
-                        <div className="mt-5 subcard-stack is-loose">
+                        <div className="category-hierarchy-secondary-list subcard-stack is-loose">
                           {secondaries.map((secondary) => (
                             <div
                               key={secondary.id}
-                              className="detail-panel is-roomy"
+                              className="detail-panel category-hierarchy-secondary-card"
                             >
                               {renderCategoryCard(secondary, {
                                 compact: true,
@@ -305,38 +305,70 @@ export default function CategoriesPageClient({
     options?: { compact?: boolean; secondaryCount?: number },
   ) {
     return (
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="section-stack-tight">
-          <div className="flex flex-wrap items-center gap-2">
+      <div
+        className={
+          options?.compact
+            ? "flex flex-wrap items-center justify-between gap-3"
+            : "flex flex-wrap items-start justify-between gap-4"
+        }
+      >
+        <div
+          className={
+            options?.compact
+              ? "category-card-copy is-compact"
+              : "category-card-copy"
+          }
+        >
+          <div
+            className={
+              options?.compact
+                ? "category-card-head is-compact"
+                : "category-card-head"
+            }
+          >
             <h3
               className={
                 options?.compact
-                  ? "text-base font-semibold text-[var(--text-primary)]"
-                  : "text-lg font-semibold text-[var(--text-primary)]"
+                  ? "category-card-title is-compact"
+                  : "category-card-title"
               }
             >
               {formatCategoryName(category)}
             </h3>
-            <span className="status-chip is-neutral">
+            <span
+              className={
+                options?.compact
+                  ? "status-chip is-neutral category-card-chip is-compact"
+                  : "status-chip is-neutral"
+              }
+            >
               {CATEGORY_TYPE_LABELS[category.type]}
             </span>
             {category.isPrimary ? (
               <span className="status-chip is-info">Primary</span>
             ) : null}
             {category.isSecondary ? (
-              <span className="status-chip is-neutral">Secondary</span>
+              <span
+                className={
+                  options?.compact
+                    ? "status-chip is-secondary category-card-chip is-compact"
+                    : "status-chip is-secondary"
+                }
+              >
+                Secondary
+              </span>
             ) : null}
             {category.archivedAt ? (
               <span className="status-chip is-warning">Archived</span>
             ) : null}
           </div>
 
-          <p className="text-sm text-[var(--text-secondary)]">
-            Order {category.order}
-            {typeof options?.secondaryCount === "number"
-              ? ` · ${options.secondaryCount} secondary${options.secondaryCount === 1 ? "" : "ies"}`
-              : ""}
-          </p>
+          {typeof options?.secondaryCount === "number" ? (
+            <p className="category-card-secondary-count">
+              {options.secondaryCount} secondary{" "}
+              {options.secondaryCount === 1 ? "category" : "categories"}
+            </p>
+          ) : null}
 
           {category.archivedAt && category.deleteBlockReason ? (
             <p className="text-sm text-[var(--text-secondary)]">
@@ -345,11 +377,21 @@ export default function CategoriesPageClient({
           ) : null}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div
+          className={
+            options?.compact
+              ? "category-card-actions is-compact"
+              : "category-card-actions"
+          }
+        >
           <button
             type="button"
             onClick={() => setEditingCategoryId(category.id)}
-            className="link-button mobile-hit-target"
+            className={
+              options?.compact
+                ? "link-button mobile-hit-target category-card-action is-compact"
+                : "link-button mobile-hit-target category-card-action"
+            }
           >
             Edit
           </button>
@@ -359,7 +401,11 @@ export default function CategoriesPageClient({
               type="button"
               onClick={() => void handleArchive(category.id)}
               disabled={pendingArchiveCategoryId === category.id}
-              className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+              className={
+                options?.compact
+                  ? "link-button is-danger mobile-hit-target category-card-action is-compact disabled:cursor-not-allowed disabled:opacity-60"
+                  : "link-button is-danger mobile-hit-target category-card-action disabled:cursor-not-allowed disabled:opacity-60"
+              }
             >
               {pendingArchiveCategoryId === category.id
                 ? "Archiving..."
@@ -371,7 +417,11 @@ export default function CategoriesPageClient({
                 type="button"
                 onClick={() => void handleUnarchive(category.id)}
                 disabled={pendingUnarchiveCategoryId === category.id}
-                className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                className={
+                  options?.compact
+                    ? "link-button mobile-hit-target category-card-action is-compact disabled:cursor-not-allowed disabled:opacity-60"
+                    : "link-button mobile-hit-target category-card-action disabled:cursor-not-allowed disabled:opacity-60"
+                }
               >
                 {pendingUnarchiveCategoryId === category.id
                   ? "Unarchiving..."
@@ -382,7 +432,11 @@ export default function CategoriesPageClient({
                   type="button"
                   onClick={() => void handleDeletePermanently(category.id)}
                   disabled={pendingDeleteCategoryId === category.id}
-                  className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                  className={
+                    options?.compact
+                      ? "link-button is-danger mobile-hit-target category-card-action is-compact disabled:cursor-not-allowed disabled:opacity-60"
+                      : "link-button is-danger mobile-hit-target category-card-action disabled:cursor-not-allowed disabled:opacity-60"
+                  }
                 >
                   {pendingDeleteCategoryId === category.id
                     ? "Deleting..."

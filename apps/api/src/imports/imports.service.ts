@@ -49,6 +49,8 @@ import type {
   BudgetImportRow,
   BudgetOverrideImportRow,
   CategoryImportRow,
+  ExpenseCategoryHierarchyImportRow,
+  ExpenseValidationRuleImportRow,
   ImportAnalysisResult,
   ImportAnalysisState,
   ImportPayload,
@@ -177,6 +179,8 @@ const EXPORT_FILE_NAMES: Record<ImportFileType, string> = {
   recurringExceptions: 'recurringExceptions.csv',
   budgets: 'budgets.csv',
   budgetOverrides: 'budgetOverrides.csv',
+  expenseCategoryHierarchy: 'expenseCategoryHierarchy.csv',
+  expenseValidationRules: 'expenseValidationRules.csv',
 };
 const CRC32_TABLE = buildCrc32Table();
 
@@ -401,6 +405,8 @@ export class ImportsService {
       recurringExceptions: [],
       budgets: [],
       budgetOverrides: [],
+      expenseCategoryHierarchy: [],
+      expenseValidationRules: [],
     };
     const issues: ImportRowIssueResponse[] = [];
 
@@ -495,6 +501,22 @@ export class ImportsService {
             records,
             issues,
             this.parseBudgetOverrideRow.bind(this),
+          );
+          break;
+        case 'expenseCategoryHierarchy':
+          payload.expenseCategoryHierarchy = this.parseRows(
+            fileType,
+            records,
+            issues,
+            this.parseExpenseCategoryHierarchyRow.bind(this),
+          );
+          break;
+        case 'expenseValidationRules':
+          payload.expenseValidationRules = this.parseRows(
+            fileType,
+            records,
+            issues,
+            this.parseExpenseValidationRuleRow.bind(this),
           );
           break;
       }
@@ -1159,6 +1181,62 @@ export class ImportsService {
     };
   }
 
+  private parseExpenseCategoryHierarchyRow(
+    rowNumber: number,
+    values: CsvRecord,
+  ): ExpenseCategoryHierarchyImportRow {
+    const level = this.parseEnumValue<'PRIMARY' | 'SECONDARY'>(
+      values.level,
+      ['PRIMARY', 'SECONDARY'],
+      'expenseCategoryHierarchy',
+      rowNumber,
+      'level',
+    );
+    const primary = this.requiredText(
+      values.primary,
+      'expenseCategoryHierarchy',
+      rowNumber,
+      'primary',
+    );
+    const secondary = this.optionalText(values.secondary);
+
+    return {
+      rowNumber,
+      level,
+      primary,
+      secondary,
+      primaryOrder: this.optionalInteger(values.primaryOrder),
+      secondaryOrder: this.optionalInteger(values.secondaryOrder),
+    };
+  }
+
+  private parseExpenseValidationRuleRow(
+    rowNumber: number,
+    values: CsvRecord,
+  ): ExpenseValidationRuleImportRow {
+    return {
+      rowNumber,
+      entry: this.requiredText(
+        values.entry,
+        'expenseValidationRules',
+        rowNumber,
+        'entry',
+      ),
+      primary: this.requiredText(
+        values.primary,
+        'expenseValidationRules',
+        rowNumber,
+        'primary',
+      ),
+      secondary: this.requiredText(
+        values.secondary,
+        'expenseValidationRules',
+        rowNumber,
+        'secondary',
+      ),
+    };
+  }
+
   private async analyzePayload(
     db: ImportDbClient,
     ownerId: string,
@@ -1259,6 +1337,20 @@ export class ImportsService {
       state,
       stagedAccounts,
       stagedCategories,
+      issues,
+      duplicateRowKeys,
+      summary,
+    );
+    this.validateExpenseCategoryHierarchy(
+      payload,
+      state,
+      issues,
+      duplicateRowKeys,
+      summary,
+    );
+    this.validateExpenseValidationRules(
+      payload,
+      state,
       issues,
       duplicateRowKeys,
       summary,
@@ -3189,6 +3281,251 @@ export class ImportsService {
     }
   }
 
+  private validateExpenseCategoryHierarchy(
+    payload: ImportPayload,
+    state: ImportAnalysisState,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    summary: ImportBatchSummaryResponse,
+  ): void {
+    const batchPrimaries = new Set<string>();
+    const existingExpensePrimaries = state.activeCategories.filter(
+      (c) => c.type === CategoryType.EXPENSE && c.parentCategoryId === null,
+    );
+    const existingSecondaries = state.activeCategories.filter(
+      (c) => c.type === CategoryType.EXPENSE && c.parentCategoryId !== null,
+    );
+    const activeCategoriesById = new Map(
+      state.activeCategories.map((c) => [c.id, c]),
+    );
+
+    for (const row of payload.expenseCategoryHierarchy.filter(
+      (r) => r.level === 'PRIMARY',
+    )) {
+      batchPrimaries.add(row.primary.trim().toLocaleLowerCase('en-US'));
+    }
+
+    for (const row of payload.expenseCategoryHierarchy) {
+      if (
+        this.rowHasErrors(
+          'expenseCategoryHierarchy',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      if (row.level === 'PRIMARY' && row.secondary) {
+        issues.push(
+          this.issue(
+            'expenseCategoryHierarchy',
+            row.rowNumber,
+            'secondary',
+            'PRIMARY rows must leave secondary empty.',
+          ),
+        );
+      }
+
+      if (row.level === 'SECONDARY' && !row.secondary) {
+        issues.push(
+          this.issue(
+            'expenseCategoryHierarchy',
+            row.rowNumber,
+            'secondary',
+            'SECONDARY rows require a secondary name.',
+          ),
+        );
+      }
+
+      if (row.level === 'SECONDARY') {
+        const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+        const inBatch = batchPrimaries.has(normalizedPrimary);
+        const inExisting = existingExpensePrimaries.some(
+          (c) => c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        );
+        const inCategoriesBatch = payload.categories.some(
+          (c) =>
+            c.type === CategoryType.EXPENSE &&
+            c.level === 'PRIMARY' &&
+            c.primary.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        );
+
+        if (!inBatch && !inExisting && !inCategoriesBatch) {
+          issues.push(
+            this.issue(
+              'expenseCategoryHierarchy',
+              row.rowNumber,
+              'primary',
+              `No expense primary named "${row.primary}" exists in this batch or current data.`,
+            ),
+          );
+        }
+      }
+
+      if (
+        this.rowHasErrors(
+          'expenseCategoryHierarchy',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+      if (row.level === 'PRIMARY') {
+        const existingPrimary = existingExpensePrimaries.find(
+          (c) => c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        );
+        this.bumpSummary(
+          summary,
+          'expenseCategoryHierarchy',
+          existingPrimary ? 'unchangedCount' : 'createCount',
+        );
+      } else {
+        const normalizedSecondary = (row.secondary ?? '')
+          .trim()
+          .toLocaleLowerCase('en-US');
+        const existingSecondary = existingSecondaries.find((c) => {
+          const parent = c.parentCategoryId
+            ? activeCategoriesById.get(c.parentCategoryId)
+            : null;
+          return (
+            c.name.trim().toLocaleLowerCase('en-US') === normalizedSecondary &&
+            parent?.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
+          );
+        });
+        this.bumpSummary(
+          summary,
+          'expenseCategoryHierarchy',
+          existingSecondary ? 'unchangedCount' : 'createCount',
+        );
+      }
+    }
+  }
+
+  private validateExpenseValidationRules(
+    payload: ImportPayload,
+    state: ImportAnalysisState,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    summary: ImportBatchSummaryResponse,
+  ): void {
+    const existingExpensePrimaries = state.activeCategories.filter(
+      (c) => c.type === CategoryType.EXPENSE && c.parentCategoryId === null,
+    );
+    const existingSecondaries = state.activeCategories.filter(
+      (c) => c.type === CategoryType.EXPENSE && c.parentCategoryId !== null,
+    );
+    const activeCategoriesById = new Map(
+      state.activeCategories.map((c) => [c.id, c]),
+    );
+
+    const batchHierarchyPrimaries = new Set(
+      payload.expenseCategoryHierarchy
+        .filter((r) => r.level === 'PRIMARY')
+        .map((r) => r.primary.trim().toLocaleLowerCase('en-US')),
+    );
+    const batchCategoryPrimaries = new Set(
+      payload.categories
+        .filter((r) => r.type === CategoryType.EXPENSE && r.level === 'PRIMARY')
+        .map((r) => r.primary.trim().toLocaleLowerCase('en-US')),
+    );
+    const batchHierarchySecondaries = new Set(
+      payload.expenseCategoryHierarchy
+        .filter((r) => r.level === 'SECONDARY')
+        .map(
+          (r) =>
+            `${r.primary.trim().toLocaleLowerCase('en-US')}:${(r.secondary ?? '').trim().toLocaleLowerCase('en-US')}`,
+        ),
+    );
+    const batchCategorySecondaries = new Set(
+      payload.categories
+        .filter(
+          (r) => r.type === CategoryType.EXPENSE && r.level === 'SECONDARY',
+        )
+        .map(
+          (r) =>
+            `${r.primary.trim().toLocaleLowerCase('en-US')}:${(r.secondary ?? '').trim().toLocaleLowerCase('en-US')}`,
+        ),
+    );
+
+    for (const row of payload.expenseValidationRules) {
+      if (
+        this.rowHasErrors(
+          'expenseValidationRules',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+      const normalizedSecondary = row.secondary
+        .trim()
+        .toLocaleLowerCase('en-US');
+      const secondaryKey = `${normalizedPrimary}:${normalizedSecondary}`;
+
+      const primaryExists =
+        batchHierarchyPrimaries.has(normalizedPrimary) ||
+        batchCategoryPrimaries.has(normalizedPrimary) ||
+        existingExpensePrimaries.some(
+          (c) => c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        );
+
+      if (!primaryExists) {
+        issues.push(
+          this.issue(
+            'expenseValidationRules',
+            row.rowNumber,
+            'primary',
+            `No expense primary named "${row.primary}" exists in this batch or current data.`,
+          ),
+        );
+        continue;
+      }
+
+      const secondaryExists =
+        batchHierarchySecondaries.has(secondaryKey) ||
+        batchCategorySecondaries.has(secondaryKey) ||
+        existingSecondaries.some((c) => {
+          const parent = c.parentCategoryId
+            ? activeCategoriesById.get(c.parentCategoryId)
+            : null;
+          return (
+            c.name.trim().toLocaleLowerCase('en-US') === normalizedSecondary &&
+            parent?.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
+          );
+        });
+
+      if (!secondaryExists) {
+        issues.push(
+          this.issue(
+            'expenseValidationRules',
+            row.rowNumber,
+            'secondary',
+            `No expense secondary named "${row.secondary}" under "${row.primary}" exists in this batch or current data.`,
+          ),
+        );
+        continue;
+      }
+
+      const normalizedEntry = normalizeExpenseValidationEntry(row.entry);
+      const existing =
+        state.expenseValidationRulesByNormalizedEntry.get(normalizedEntry);
+      this.bumpSummary(
+        summary,
+        'expenseValidationRules',
+        existing ? 'updateCount' : 'createCount',
+      );
+    }
+  }
+
   private async applyPayload(
     db: ImportDbClient,
     ownerId: string,
@@ -3409,6 +3746,169 @@ export class ImportsService {
         archived: saved.archivedAt !== null,
         parentCategoryId: saved.parentCategoryId,
       });
+    }
+
+    const hierarchyPrimaries = payload.expenseCategoryHierarchy.filter(
+      (r) => r.level === 'PRIMARY',
+    );
+    const hierarchySecondaries = payload.expenseCategoryHierarchy.filter(
+      (r) => r.level === 'SECONDARY',
+    );
+
+    for (const row of hierarchyPrimaries) {
+      const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+      const existing =
+        state.activeCategories.find(
+          (c) =>
+            c.type === CategoryType.EXPENSE &&
+            c.parentCategoryId === null &&
+            c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        ) ?? null;
+
+      if (existing) {
+        if (row.primaryOrder !== null && row.primaryOrder !== existing.order) {
+          await db.category.update({
+            where: { id: existing.id },
+            data: { order: row.primaryOrder },
+          });
+        }
+        continue;
+      }
+
+      await db.category.create({
+        data: {
+          userId: ownerId,
+          name: row.primary.trim(),
+          type: CategoryType.EXPENSE,
+          parentCategoryId: null,
+          order: row.primaryOrder ?? 0,
+          importSource: CSV_IMPORT_SOURCE,
+          importKey: `hierarchy-primary-${normalizedPrimary}`,
+        },
+      });
+    }
+
+    const refreshedCategories = await db.category.findMany({
+      where: { userId: ownerId, archivedAt: null },
+    });
+    const refreshedCategoriesById = new Map(
+      refreshedCategories.map((c) => [c.id, c]),
+    );
+
+    for (const row of hierarchySecondaries) {
+      const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+      const normalizedSecondary = (row.secondary ?? '')
+        .trim()
+        .toLocaleLowerCase('en-US');
+      const parentPrimary = refreshedCategories.find(
+        (c) =>
+          c.type === CategoryType.EXPENSE &&
+          c.parentCategoryId === null &&
+          c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+      );
+
+      if (!parentPrimary) {
+        throw new ConflictException(
+          `Hierarchy import could not resolve expense primary "${row.primary}".`,
+        );
+      }
+
+      const existing = refreshedCategories.find((c) => {
+        const parent = c.parentCategoryId
+          ? refreshedCategoriesById.get(c.parentCategoryId)
+          : null;
+        return (
+          c.type === CategoryType.EXPENSE &&
+          c.parentCategoryId !== null &&
+          c.name.trim().toLocaleLowerCase('en-US') === normalizedSecondary &&
+          parent?.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
+        );
+      });
+
+      if (existing) {
+        if (
+          row.secondaryOrder !== null &&
+          row.secondaryOrder !== existing.order
+        ) {
+          await db.category.update({
+            where: { id: existing.id },
+            data: { order: row.secondaryOrder },
+          });
+        }
+        continue;
+      }
+
+      await db.category.create({
+        data: {
+          userId: ownerId,
+          name: (row.secondary ?? '').trim(),
+          type: CategoryType.EXPENSE,
+          parentCategoryId: parentPrimary.id,
+          order: row.secondaryOrder ?? 0,
+          importSource: CSV_IMPORT_SOURCE,
+          importKey: `hierarchy-secondary-${normalizedPrimary}-${normalizedSecondary}`,
+        },
+      });
+    }
+
+    if (payload.expenseValidationRules.length > 0) {
+      const allCategories = await db.category.findMany({
+        where: { userId: ownerId, archivedAt: null },
+      });
+      const allCategoriesById = new Map(allCategories.map((c) => [c.id, c]));
+
+      for (const row of payload.expenseValidationRules) {
+        const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+        const normalizedSecondary = row.secondary
+          .trim()
+          .toLocaleLowerCase('en-US');
+
+        const secondaryCategory = allCategories.find((c) => {
+          const parent = c.parentCategoryId
+            ? allCategoriesById.get(c.parentCategoryId)
+            : null;
+          return (
+            c.type === CategoryType.EXPENSE &&
+            c.parentCategoryId !== null &&
+            c.name.trim().toLocaleLowerCase('en-US') === normalizedSecondary &&
+            parent?.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
+          );
+        });
+
+        if (!secondaryCategory) {
+          throw new ConflictException(
+            `Validation rule "${row.entry}" could not resolve secondary category "${row.secondary}" under "${row.primary}".`,
+          );
+        }
+
+        const normalizedEntry = normalizeExpenseValidationEntry(row.entry);
+        const existing =
+          state.expenseValidationRulesByNormalizedEntry.get(normalizedEntry);
+
+        if (existing) {
+          await db.expenseValidationRule.update({
+            where: { id: existing.id },
+            data: {
+              entry: row.entry.trim(),
+              normalizedEntry,
+              secondaryCategoryId: secondaryCategory.id,
+            },
+          });
+        } else {
+          const created = await db.expenseValidationRule.create({
+            data: {
+              userId: ownerId,
+              entry: row.entry.trim(),
+              normalizedEntry,
+              secondaryCategoryId: secondaryCategory.id,
+            },
+          });
+          state.expenseValidationRulesByNormalizedEntry.set(
+            normalizedEntry,
+            created,
+          );
+        }
+      }
     }
 
     for (const row of payload.budgets) {
@@ -5004,6 +5504,19 @@ export class ImportsService {
       'budgetOverrides',
       payload.budgetOverrides,
       (row) => `${row.budgetImportKey}:${row.month}`,
+    );
+    collect(
+      'expenseCategoryHierarchy',
+      payload.expenseCategoryHierarchy,
+      (row) => {
+        if (row.level === 'PRIMARY') {
+          return `PRIMARY:${row.primary.trim().toLocaleLowerCase('en-US')}`;
+        }
+        return `SECONDARY:${row.primary.trim().toLocaleLowerCase('en-US')}:${(row.secondary ?? '').trim().toLocaleLowerCase('en-US')}`;
+      },
+    );
+    collect('expenseValidationRules', payload.expenseValidationRules, (row) =>
+      normalizeExpenseValidationEntry(row.entry),
     );
     return duplicates;
   }

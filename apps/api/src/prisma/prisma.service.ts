@@ -6,12 +6,35 @@ import {
 } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@finhance/db';
 
+function errorMessageIncludes(
+  value: Prisma.PrismaClientKnownRequestError['meta'],
+  pattern: string,
+): boolean {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const metaError =
+    'error' in value && typeof value.error === 'string' ? value.error : null;
+
+  return metaError?.includes(pattern) ?? false;
+}
+
 export function isRetryableConnectionError(
   error: unknown,
 ): error is Prisma.PrismaClientKnownRequestError {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === 'P1001'
+    (error.code === 'P1001' ||
+      error.code === 'P2024' ||
+      (error.code === 'P2028' &&
+        (errorMessageIncludes(
+          error.meta,
+          'Unable to start a transaction in the given time.',
+        ) ||
+          error.message.includes(
+            'Unable to start a transaction in the given time.',
+          ))))
   );
 }
 
@@ -52,33 +75,33 @@ export class PrismaService
     const logger = new Logger(PrismaService.name);
     let reconnectPromise: Promise<void> | null = null;
 
+    const reconnect = async () => {
+      if (reconnectPromise) {
+        await reconnectPromise;
+        return;
+      }
+
+      reconnectPromise = (async () => {
+        try {
+          await extended.$disconnect();
+        } catch {
+          // Ignore disconnect failures while recovering a stale connection.
+        }
+
+        await extended.$connect();
+      })();
+
+      try {
+        await reconnectPromise;
+      } finally {
+        reconnectPromise = null;
+      }
+    };
+
     const extended = this.$extends({
       query: {
         async $allOperations({ model, operation, args, query }) {
           const operationLabel = `${model ?? 'raw'}.${operation}`;
-
-          const reconnect = async () => {
-            if (reconnectPromise) {
-              await reconnectPromise;
-              return;
-            }
-
-            reconnectPromise = (async () => {
-              try {
-                await extended.$disconnect();
-              } catch {
-                // Ignore disconnect failures while recovering a stale connection.
-              }
-
-              await extended.$connect();
-            })();
-
-            try {
-              await reconnectPromise;
-            } finally {
-              reconnectPromise = null;
-            }
-          };
 
           return runWithTransientRetry<unknown>({
             logger,
@@ -101,6 +124,9 @@ export class PrismaService
           await extended.$disconnect();
         },
       },
+      recoverConnection: {
+        value: reconnect,
+      },
     });
 
     return extended;
@@ -112,5 +138,15 @@ export class PrismaService
 
   async onModuleDestroy() {
     await this.$disconnect();
+  }
+
+  async recoverConnection() {
+    try {
+      await this.$disconnect();
+    } catch {
+      // Ignore disconnect failures while recovering a stale connection.
+    }
+
+    await this.$connect();
   }
 }

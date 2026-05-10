@@ -447,6 +447,8 @@ describe('ImportsService', () => {
       recurringExceptions: [],
       budgets: [],
       budgetOverrides: [],
+      expenseCategoryHierarchy: [],
+      expenseValidationRules: [],
     });
   });
 
@@ -1271,6 +1273,8 @@ describe('ImportsService', () => {
       recurringExceptions: [],
       budgets: [],
       budgetOverrides: [],
+      expenseCategoryHierarchy: [],
+      expenseValidationRules: [],
     });
   });
 });
