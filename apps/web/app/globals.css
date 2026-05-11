@@ -1965,6 +1965,12 @@ button {
   margin-bottom: 0;
 }
 
+.recurring-rule-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .filter-grid {
   display: grid;
   gap: 16px;
@@ -2321,6 +2327,17 @@ button {
 
 .app-form-note strong {
   color: var(--text-primary);
+}
+
+.app-form-field.has-error select,
+.app-form-field.has-error input {
+  border-color: var(--color-expense);
+}
+
+.app-form-field-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-expense);
 }
 
 .app-form-error {

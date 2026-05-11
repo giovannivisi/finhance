@@ -411,21 +411,6 @@ export default function AccountsPageClient({
                     </div>
                     {reconciliation ? (
                       <div className="detail-panel is-roomy section-stack-relaxed">
-                        <p className="text-xs text-[var(--text-secondary)]">
-                          {account.openingBalanceDate
-                            ? `Baseline: ${formatCurrency(
-                                account.openingBalance,
-                                account.currency,
-                              )} from ${account.openingBalanceDate}`
-                            : "Baseline: full transaction history"}
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                          Mode:{" "}
-                          {reconciliation.baselineMode === "OPENING_BALANCE"
-                            ? "Opening balance baseline"
-                            : "Full history baseline"}
-                        </p>
-
                         <div className="metric-strip is-relaxed">
                           <div className="detail-panel is-roomy">
                             <p className="detail-metric-label">Tracked</p>
@@ -492,6 +477,24 @@ export default function AccountsPageClient({
                               id={`account-reconciliation-extra-${account.id}`}
                               className="account-reconciliation-details"
                             >
+                              <div className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                                <p>
+                                  {account.openingBalanceDate
+                                    ? `Baseline: ${formatCurrency(
+                                        account.openingBalance,
+                                        account.currency,
+                                      )} from ${account.openingBalanceDate}`
+                                    : "Baseline: full transaction history"}
+                                </p>
+                                <p>
+                                  Mode:{" "}
+                                  {reconciliation.baselineMode ===
+                                  "OPENING_BALANCE"
+                                    ? "Opening balance baseline"
+                                    : "Full history baseline"}
+                                </p>
+                              </div>
+
                               <div className="flex flex-wrap gap-4 text-xs text-[var(--text-secondary)]">
                                 <span>
                                   {reconciliation.assetCount} assets assigned

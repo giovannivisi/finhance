@@ -381,9 +381,14 @@ export class AssetsService {
   }
 
   async reorderAssetKinds(ownerId: string, kindOrder: string[]): Promise<void> {
-    await this.prisma.user.update({
+    await this.prisma.user.upsert({
       where: { id: ownerId },
-      data: { assetKindOrder: kindOrder },
+      update: { assetKindOrder: kindOrder },
+      create: {
+        id: ownerId,
+        email: `${ownerId}@placeholder.local`,
+        assetKindOrder: kindOrder,
+      },
     });
   }
 

@@ -121,6 +121,14 @@ describe('TransactionsService', () => {
       delete: jest.Mock;
       deleteMany: jest.Mock;
     };
+    asset: {
+      findFirst: jest.Mock;
+      update: jest.Mock;
+      create: jest.Mock;
+    };
+    account: {
+      findFirst: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
   let accounts: {
@@ -140,6 +148,21 @@ describe('TransactionsService', () => {
         delete: jest.fn(),
         deleteMany: jest.fn(),
       },
+      asset: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'cash-asset-1',
+          balance: new Prisma.Decimal('10000'),
+          currency: 'EUR',
+        }),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+      account: {
+        findFirst: jest.fn().mockResolvedValue({
+          currency: 'EUR',
+          name: 'Checking',
+        }),
+      },
       $transaction: jest.fn(),
     };
 
@@ -147,10 +170,14 @@ describe('TransactionsService', () => {
       async (
         callback: (tx: {
           transaction: typeof prisma.transaction;
+          asset: typeof prisma.asset;
+          account: typeof prisma.account;
         }) => Promise<unknown>,
       ) =>
         callback({
           transaction: prisma.transaction,
+          asset: prisma.asset,
+          account: prisma.account,
         }),
     );
 

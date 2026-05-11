@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
 import { SnapshotsService } from '@snapshots/snapshots.service';
 import type { DashboardResponse } from '@finhance/shared';
@@ -6,6 +6,8 @@ import type { NetWorthSnapshot } from '@finhance/db';
 
 @Injectable()
 export class DashboardService {
+  private readonly logger = new Logger(DashboardService.name);
+
   constructor(
     private readonly assetsService: AssetsService,
     private readonly snapshotsService: SnapshotsService,
@@ -17,6 +19,18 @@ export class DashboardService {
       this.snapshotsService.findLatest(ownerId, dashboard.baseCurrency),
       this.snapshotsService.hasSnapshotForDate(ownerId, dashboard.baseCurrency),
     ]);
+
+    if (!hasTodaySnapshot) {
+      // Auto-capture today's snapshot in the background so monthly reviews
+      // always have data points without requiring manual action.
+      this.snapshotsService
+        .captureFromDashboard(ownerId, dashboard)
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Auto-capture snapshot failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+    }
 
     return {
       ...dashboard,

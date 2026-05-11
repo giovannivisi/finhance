@@ -7,6 +7,7 @@ import {
   ASSET_KIND_OPTIONS,
   EXCHANGE_SUFFIXES,
   LIABILITY_KIND_OPTIONS,
+  formatKindLabel,
 } from "@lib/asset-ui";
 import { formatAccountOptionLabel } from "@lib/accounts";
 import {
@@ -253,7 +254,7 @@ export default function AssetForm({
           >
             {kindOptions.map((kind) => (
               <option key={kind} value={kind}>
-                {kind}
+                {formatKindLabel(kind)}
               </option>
             ))}
           </select>

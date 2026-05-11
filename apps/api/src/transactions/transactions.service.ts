@@ -21,6 +21,8 @@ import {
 } from '@transactions/transactions.types';
 import {
   Account,
+  AssetKind,
+  AssetType,
   CategoryType,
   Prisma,
   TransactionDirection,
@@ -177,6 +179,18 @@ export class TransactionsService {
     }
 
     const prepared = await this.prepareStandardTransaction(ownerId, dto);
+    const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
+
+    if (!isAdjustment) {
+      await this.validateAccountCashBalance(
+        ownerId,
+        prepared.accountId,
+        prepared.amount,
+        prepared.direction,
+        client,
+      );
+    }
+
     const row = await client.transaction.create({
       data: {
         userId: ownerId,
@@ -201,6 +215,16 @@ export class TransactionsService {
         },
       },
     });
+
+    if (!isAdjustment) {
+      await this.adjustAccountCashBalance(
+        ownerId,
+        prepared.accountId,
+        prepared.amount,
+        prepared.direction,
+        client,
+      );
+    }
 
     return {
       entryType: 'STANDARD',
@@ -262,6 +286,24 @@ export class TransactionsService {
       });
 
       await this.prisma.$transaction(async (tx) => {
+        // Reverse old transfer cash effects (skip validation — reversals)
+        await this.adjustAccountCashBalance(
+          ownerId,
+          existing.outflow.accountId,
+          existing.outflow.amount,
+          TransactionDirection.INFLOW,
+          tx,
+          { skipValidation: true },
+        );
+        await this.adjustAccountCashBalance(
+          ownerId,
+          existing.inflow.accountId,
+          existing.inflow.amount,
+          TransactionDirection.OUTFLOW,
+          tx,
+          { skipValidation: true },
+        );
+
         await tx.transaction.update({
           where: { id: existing.outflow.id },
           data: {
@@ -293,6 +335,25 @@ export class TransactionsService {
             counterparty: null,
           },
         });
+
+        // Apply new transfer cash effects (skip validation — balance was
+        // already adjusted by the reversal above)
+        await this.adjustAccountCashBalance(
+          ownerId,
+          prepared.sourceAccountId,
+          prepared.amount,
+          TransactionDirection.OUTFLOW,
+          tx,
+          { skipValidation: true },
+        );
+        await this.adjustAccountCashBalance(
+          ownerId,
+          prepared.destinationAccountId,
+          prepared.amount,
+          TransactionDirection.INFLOW,
+          tx,
+          { skipValidation: true },
+        );
       });
 
       return this.findTransferEntry(ownerId, existing.transferGroupId);
@@ -314,6 +375,24 @@ export class TransactionsService {
       accountId: existing.row.accountId,
       categoryId: existing.row.categoryId,
     });
+
+    const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
+
+    if (!isAdjustment) {
+      // Reverse the old transaction's cash effect (skip validation — it's a reversal)
+      const reverseDirection =
+        existing.row.direction === TransactionDirection.INFLOW
+          ? TransactionDirection.OUTFLOW
+          : TransactionDirection.INFLOW;
+      await this.adjustAccountCashBalance(
+        ownerId,
+        existing.row.accountId,
+        existing.row.amount,
+        reverseDirection,
+        this.prisma,
+        { skipValidation: true },
+      );
+    }
 
     const row = await this.prisma.transaction.update({
       where: { id: existing.row.id },
@@ -338,6 +417,20 @@ export class TransactionsService {
       },
     });
 
+    if (!isAdjustment) {
+      // Apply the new transaction's cash effect (skip validation — balance was
+      // already adjusted by the reversal above so a simple re-check could give
+      // a false positive)
+      await this.adjustAccountCashBalance(
+        ownerId,
+        prepared.accountId,
+        prepared.amount,
+        prepared.direction,
+        this.prisma,
+        { skipValidation: true },
+      );
+    }
+
     return {
       entryType: 'STANDARD',
       row,
@@ -349,6 +442,23 @@ export class TransactionsService {
     this.assertEntryIsMutable(existing);
 
     if (existing.entryType === 'TRANSFER') {
+      // Reverse cash effects for both legs of the transfer (skip validation)
+      await this.adjustAccountCashBalance(
+        ownerId,
+        existing.outflow.accountId,
+        existing.outflow.amount,
+        TransactionDirection.INFLOW,
+        this.prisma,
+        { skipValidation: true },
+      );
+      await this.adjustAccountCashBalance(
+        ownerId,
+        existing.inflow.accountId,
+        existing.inflow.amount,
+        TransactionDirection.OUTFLOW,
+        this.prisma,
+        { skipValidation: true },
+      );
       await this.prisma.transaction.deleteMany({
         where: {
           userId: ownerId,
@@ -356,6 +466,24 @@ export class TransactionsService {
         },
       });
       return;
+    }
+
+    const isAdjustment = existing.row.kind === TransactionKind.ADJUSTMENT;
+
+    if (!isAdjustment) {
+      // Reverse the deleted transaction's cash effect (skip validation)
+      const reverseDirection =
+        existing.row.direction === TransactionDirection.INFLOW
+          ? TransactionDirection.OUTFLOW
+          : TransactionDirection.INFLOW;
+      await this.adjustAccountCashBalance(
+        ownerId,
+        existing.row.accountId,
+        existing.row.amount,
+        reverseDirection,
+        this.prisma,
+        { skipValidation: true },
+      );
     }
 
     await this.prisma.transaction.delete({
@@ -506,6 +634,16 @@ export class TransactionsService {
     client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
     const prepared = await this.prepareTransferTransaction(ownerId, dto);
+
+    // Validate the source account has enough cash before proceeding
+    await this.validateAccountCashBalance(
+      ownerId,
+      prepared.sourceAccountId,
+      prepared.amount,
+      TransactionDirection.OUTFLOW,
+      client,
+    );
+
     const transferGroupId = `transfer_${randomUUID()}`;
 
     const persistTransfer = async (
@@ -544,6 +682,21 @@ export class TransactionsService {
           transferGroupId,
         },
       });
+
+      await this.adjustAccountCashBalance(
+        ownerId,
+        prepared.sourceAccountId,
+        prepared.amount,
+        TransactionDirection.OUTFLOW,
+        tx,
+      );
+      await this.adjustAccountCashBalance(
+        ownerId,
+        prepared.destinationAccountId,
+        prepared.amount,
+        TransactionDirection.INFLOW,
+        tx,
+      );
     };
 
     if (client === this.prisma) {
@@ -1928,5 +2081,125 @@ export class TransactionsService {
 
   private toDecimal(value: number): Prisma.Decimal {
     return new Prisma.Decimal(value.toString());
+  }
+
+  /**
+   * Pre-flight check: ensures the account can support this transaction.
+   *
+   * For OUTFLOW: the account must have a CASH asset with enough balance.
+   * For INFLOW: no validation needed (auto-creation handled by adjust).
+   */
+  private async validateAccountCashBalance(
+    ownerId: string,
+    accountId: string,
+    amount: Prisma.Decimal,
+    direction: TransactionDirection,
+    client: TransactionWriteClient = this.prisma,
+  ): Promise<void> {
+    if (direction !== TransactionDirection.OUTFLOW) return;
+
+    const cashAsset = await client.asset.findFirst({
+      where: {
+        userId: ownerId,
+        accountId,
+        kind: AssetKind.CASH,
+        type: AssetType.ASSET,
+      },
+      select: { balance: true, currency: true },
+    });
+
+    if (!cashAsset) {
+      throw new BadRequestException(
+        'This account has no cash holding to draw from.',
+      );
+    }
+
+    if (cashAsset.balance.lt(amount)) {
+      throw new BadRequestException(
+        `Insufficient cash balance in this account (available: ${cashAsset.balance.toFixed(2)} ${cashAsset.currency}).`,
+      );
+    }
+  }
+
+  /**
+   * Adjust the CASH asset balance in an account to reflect a transaction.
+   *
+   * INFLOW  → balance goes up   (income, transfer-in, adjustment-in)
+   * OUTFLOW → balance goes down (expense, transfer-out, adjustment-out)
+   *
+   * For inflows: auto-creates a cash asset if one doesn't exist yet.
+   *
+   * Set `skipValidation` to true for reversals (update/delete) where the
+   * balance was already validated on the original transaction.
+   */
+  private async adjustAccountCashBalance(
+    ownerId: string,
+    accountId: string,
+    amount: Prisma.Decimal,
+    direction: TransactionDirection,
+    client: TransactionWriteClient = this.prisma,
+    options?: { skipValidation?: boolean },
+  ): Promise<void> {
+    const cashAsset = await client.asset.findFirst({
+      where: {
+        userId: ownerId,
+        accountId,
+        kind: AssetKind.CASH,
+        type: AssetType.ASSET,
+      },
+      select: { id: true, balance: true, currency: true },
+    });
+
+    if (direction === TransactionDirection.OUTFLOW) {
+      if (!options?.skipValidation) {
+        if (!cashAsset) {
+          throw new BadRequestException(
+            'This account has no cash holding to draw from.',
+          );
+        }
+
+        if (cashAsset.balance.lt(amount)) {
+          throw new BadRequestException(
+            `Insufficient cash balance in this account (available: ${cashAsset.balance.toFixed(2)} ${cashAsset.currency}).`,
+          );
+        }
+      }
+
+      if (!cashAsset) return;
+
+      await client.asset.update({
+        where: { id: cashAsset.id },
+        data: { balance: cashAsset.balance.sub(amount) },
+      });
+      return;
+    }
+
+    // INFLOW: auto-create a cash asset if one doesn't exist yet
+    if (!cashAsset) {
+      const account = await client.account.findFirst({
+        where: { id: accountId, userId: ownerId },
+        select: { currency: true, name: true },
+      });
+
+      if (!account) return;
+
+      await client.asset.create({
+        data: {
+          userId: ownerId,
+          accountId,
+          name: `${account.name} Cash`,
+          type: AssetType.ASSET,
+          kind: AssetKind.CASH,
+          balance: amount,
+          currency: account.currency,
+        },
+      });
+      return;
+    }
+
+    await client.asset.update({
+      where: { id: cashAsset.id },
+      data: { balance: cashAsset.balance.add(amount) },
+    });
   }
 }

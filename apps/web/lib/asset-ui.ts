@@ -93,6 +93,23 @@ export const ASSET_KIND_CONFIG = {
   },
 } as const satisfies Record<AssetKind, KindConfig>;
 
+const KIND_DISPLAY_NAMES: Record<string, string> = {
+  CASH: "Cash",
+  STOCK: "Stock",
+  BOND: "Bond",
+  CRYPTO: "Crypto",
+  REAL_ESTATE: "Real Estate",
+  PENSION: "Pension",
+  COMMODITY: "Commodity",
+  OTHER: "Other",
+  TAX: "Tax",
+  DEBT: "Debt",
+};
+
+export function formatKindLabel(kind: string): string {
+  return KIND_DISPLAY_NAMES[kind] ?? kind.replace(/_/g, " ");
+}
+
 export const LIABILITY_CONFIG = {
   TAX: {
     showBalance: true,

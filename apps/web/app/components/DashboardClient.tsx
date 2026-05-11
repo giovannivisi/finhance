@@ -50,18 +50,10 @@ import { useAppPreferences } from "@components/ThemeProvider";
 import { formatSensitiveCurrency } from "@lib/money";
 import { useSingleFlightActions } from "@lib/single-flight";
 import { fetchApiMutation } from "@lib/api";
+import { COLORS, formatKindLabel } from "@lib/asset-ui";
 
 function getKindDotColor(kind: string): string {
-  switch (kind) {
-    case "STOCK":
-      return "#4f46e5";
-    case "CRYPTO":
-      return "#eab308";
-    case "CASH":
-      return "#16a34a";
-    default:
-      return "var(--border-glass-strong)";
-  }
+  return COLORS[kind as keyof typeof COLORS] ?? "var(--border-glass-strong)";
 }
 
 function getValuationLabel(asset: DashboardAssetResponse): string {
@@ -160,8 +152,9 @@ function SortableAssetRow({
         ? Number(asset.currentValue) / Number(asset.quantity)
         : null;
 
-    const quantityDisplay =
-      asset.quantity != null
+    const quantityDisplay = shouldHideMoney
+      ? (asset.ticker ?? asset.accountName ?? "")
+      : asset.quantity != null
         ? `${asset.quantity} × ${formatCurrency(liveUnitPrice ?? Number(asset.unitPrice), asset.currency ?? baseCurrency)}`
         : (asset.accountName ?? "Stored balance");
 
@@ -524,17 +517,22 @@ export default function DashboardClient({
   async function handleDone() {
     setIsEditing(false);
 
-    void fetchApiMutation("/assets/reorder/kinds", {
-      method: "PUT",
-      body: JSON.stringify({ kindOrder: assetKindOrderState }),
-    });
-
-    for (const [kind, ids] of Object.entries(assetOrderState)) {
-      if (!grouped[kind]) continue;
-      void fetchApiMutation("/assets/reorder/assets", {
+    try {
+      await fetchApiMutation("/assets/reorder/kinds", {
         method: "PUT",
-        body: JSON.stringify({ assetIds: ids }),
+        body: JSON.stringify({ kindOrder: assetKindOrderState }),
       });
+
+      for (const [kind, ids] of Object.entries(assetOrderState)) {
+        if (!grouped[kind]) continue;
+        await fetchApiMutation("/assets/reorder/assets", {
+          method: "PUT",
+          body: JSON.stringify({ assetIds: ids }),
+        });
+      }
+    } catch {
+      // Silently ignore reorder failures — the next page load will use
+      // whatever order was last persisted successfully.
     }
   }
 
@@ -655,7 +653,7 @@ export default function DashboardClient({
                     className="category-dot is-large"
                     style={{ background: getKindDotColor(kind) }}
                   />
-                  <span>{kind}</span>
+                  <span>{formatKindLabel(kind)}</span>
                 </div>
                 <span className="dashboard-overview-value">
                   {formatSensitiveCurrency(
@@ -675,8 +673,9 @@ export default function DashboardClient({
               size={220}
               currency={baseCurrency}
               data={kindTotalsArray.map((kindTotal) => ({
-                label: kindTotal.kind,
+                label: formatKindLabel(kindTotal.kind),
                 total: kindTotal.total,
+                color: getKindDotColor(kindTotal.kind),
               }))}
             />
           </div>
@@ -746,7 +745,7 @@ export default function DashboardClient({
                             style={{ background: getKindDotColor(category) }}
                           />
                           <span className="category-toggle-name">
-                            {category}
+                            {formatKindLabel(category)}
                           </span>
                         </div>
                         <div className="category-toggle-meta">
@@ -843,7 +842,7 @@ export default function DashboardClient({
                             style={{ background: "var(--color-expense)" }}
                           />
                           <span className="category-toggle-name">
-                            {category}
+                            {formatKindLabel(category)}
                           </span>
                         </div>
                         <div className="category-toggle-meta">

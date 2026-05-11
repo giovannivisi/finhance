@@ -231,7 +231,7 @@ export default function CategoriesPageClient({
 
             <section className="section-stack-tight">
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--accent-green)]/85">
+                <h3 className="text-lg font-semibold text-[var(--text-primary)]">
                   Income categories
                 </h3>
                 <p className="mt-2 text-sm text-[var(--text-secondary)]">
