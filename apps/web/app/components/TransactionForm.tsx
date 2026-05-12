@@ -73,6 +73,7 @@ export default function TransactionForm({
     setHasManualExpenseCategoryOverride,
   ] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
@@ -168,10 +169,18 @@ export default function TransactionForm({
     setHasManualExpenseCategoryOverride(categoryId !== "");
   }
 
+  function isAccountCashError(message: string): boolean {
+    return (
+      message.includes("no cash holding") ||
+      message.includes("Insufficient cash balance")
+    );
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await actions.run("submit", async () => {
       setError(null);
+      setAccountError(null);
 
       const result = buildTransactionPayload(form);
       if (!result.payload) {
@@ -198,13 +207,18 @@ export default function TransactionForm({
         onSuccess?.();
         router.refresh();
       } catch (submitError) {
-        setError(
+        const message =
           submitError instanceof Error
             ? submitError.message
             : isCreateMode
               ? "Error creating transaction."
-              : "Error updating transaction.",
-        );
+              : "Error updating transaction.";
+
+        if (isAccountCashError(message)) {
+          setAccountError(message);
+        } else {
+          setError(message);
+        }
       } finally {
         setIsSubmitting(false);
       }
@@ -278,12 +292,15 @@ export default function TransactionForm({
         </div>
 
         {!isTransfer ? (
-          <div className="app-form-field">
+          <div className={`app-form-field${accountError ? " has-error" : ""}`}>
             <label htmlFor={`${fieldPrefix}-account`}>Account</label>
             <select
               id={`${fieldPrefix}-account`}
               value={form.accountId}
-              onChange={(event) => updateField("accountId", event.target.value)}
+              onChange={(event) => {
+                updateField("accountId", event.target.value);
+                setAccountError(null);
+              }}
               required
             >
               <option value="">Select an account</option>
@@ -293,6 +310,9 @@ export default function TransactionForm({
                 </option>
               ))}
             </select>
+            {accountError ? (
+              <p className="app-form-field-error">{accountError}</p>
+            ) : null}
           </div>
         ) : (
           <div className="app-form-note">
@@ -303,16 +323,17 @@ export default function TransactionForm({
 
       {isTransfer ? (
         <div className="app-form-grid is-relaxed">
-          <div className="app-form-field">
+          <div className={`app-form-field${accountError ? " has-error" : ""}`}>
             <label htmlFor={`${fieldPrefix}-source-account`}>
               Source account
             </label>
             <select
               id={`${fieldPrefix}-source-account`}
               value={form.sourceAccountId}
-              onChange={(event) =>
-                updateField("sourceAccountId", event.target.value)
-              }
+              onChange={(event) => {
+                updateField("sourceAccountId", event.target.value);
+                setAccountError(null);
+              }}
               required
             >
               <option value="">Select a source account</option>
@@ -322,6 +343,9 @@ export default function TransactionForm({
                 </option>
               ))}
             </select>
+            {accountError ? (
+              <p className="app-form-field-error">{accountError}</p>
+            ) : null}
           </div>
 
           <div className="app-form-field">

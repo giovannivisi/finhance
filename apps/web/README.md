@@ -22,6 +22,9 @@ pnpm dev
 
 Then open [http://localhost:3001](http://localhost:3001).
 
+`AUTH_MODE=local` is intentionally loopback-only. Do not expose the web app to
+non-loopback traffic unless you switch to the hosted auth flow.
+
 If you prefer to start services separately:
 
 ```bash

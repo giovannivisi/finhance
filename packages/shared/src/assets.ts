@@ -57,6 +57,7 @@ export interface AssetResponse {
 }
 
 export interface DashboardAssetResponse extends AssetResponse {
+  accountName: string | null;
   currentValue: number | null;
   referenceValue: number | null;
   valuationSource: ValuationSource;
@@ -74,10 +75,19 @@ export interface DashboardResponse {
   baseCurrency: string;
   assets: DashboardAssetResponse[];
   summary: DashboardSummary;
+  assetKindOrder: string[];
   lastRefreshAt: string | null;
   latestSnapshotDate: string | null;
   latestSnapshotCapturedAt: string | null;
   latestSnapshotIsPartial: boolean | null;
+}
+
+export interface ReorderAssetsRequest {
+  assetIds: string[];
+}
+
+export interface ReorderAssetKindsRequest {
+  kindOrder: string[];
 }
 
 export interface RefreshAssetsResponse {

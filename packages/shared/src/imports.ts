@@ -10,7 +10,9 @@ export type ImportFileType =
   | "recurringRules"
   | "recurringExceptions"
   | "budgets"
-  | "budgetOverrides";
+  | "budgetOverrides"
+  | "expenseCategoryHierarchy"
+  | "expenseValidationRules";
 
 export type ImportIssueSeverity = "ERROR" | "WARNING";
 
@@ -156,6 +158,20 @@ export const BUDGET_OVERRIDE_IMPORT_HEADERS = [
   "note",
 ] as const;
 
+export const EXPENSE_CATEGORY_HIERARCHY_IMPORT_HEADERS = [
+  "level",
+  "primary",
+  "secondary",
+  "primaryOrder",
+  "secondaryOrder",
+] as const;
+
+export const EXPENSE_VALIDATION_RULE_IMPORT_HEADERS = [
+  "entry",
+  "primary",
+  "secondary",
+] as const;
+
 export const IMPORT_TEMPLATE_HEADERS: Record<
   ImportFileType,
   readonly string[]
@@ -168,4 +184,6 @@ export const IMPORT_TEMPLATE_HEADERS: Record<
   recurringExceptions: RECURRING_EXCEPTION_IMPORT_HEADERS,
   budgets: BUDGET_IMPORT_HEADERS,
   budgetOverrides: BUDGET_OVERRIDE_IMPORT_HEADERS,
+  expenseCategoryHierarchy: EXPENSE_CATEGORY_HIERARCHY_IMPORT_HEADERS,
+  expenseValidationRules: EXPENSE_VALIDATION_RULE_IMPORT_HEADERS,
 };

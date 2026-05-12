@@ -20,9 +20,49 @@ function retryableConnectionError() {
   });
 }
 
+function retryablePoolTimeoutError() {
+  return new Prisma.PrismaClientKnownRequestError(
+    'Timed out fetching a new connection from the connection pool.',
+    {
+      code: 'P2024',
+      clientVersion: 'test',
+    },
+  );
+}
+
+function retryableTransactionStartTimeoutError() {
+  return new Prisma.PrismaClientKnownRequestError(
+    'Transaction API error: Unable to start a transaction in the given time.',
+    {
+      code: 'P2028',
+      clientVersion: 'test',
+      meta: {
+        error: 'Unable to start a transaction in the given time.',
+      },
+    },
+  );
+}
+
+function nonRetryableTransactionApiError() {
+  return new Prisma.PrismaClientKnownRequestError(
+    'Transaction API error: Transaction already closed.',
+    {
+      code: 'P2028',
+      clientVersion: 'test',
+      meta: {
+        error: 'Transaction already closed.',
+      },
+    },
+  );
+}
+
 describe('PrismaService helpers', () => {
   it('recognizes retryable connection errors', () => {
     expect(isRetryableConnectionError(retryableConnectionError())).toBe(true);
+    expect(isRetryableConnectionError(retryablePoolTimeoutError())).toBe(true);
+    expect(
+      isRetryableConnectionError(retryableTransactionStartTimeoutError()),
+    ).toBe(true);
     expect(
       isRetryableConnectionError(
         new Prisma.PrismaClientKnownRequestError('conflict', {
@@ -31,6 +71,9 @@ describe('PrismaService helpers', () => {
         }),
       ),
     ).toBe(false);
+    expect(isRetryableConnectionError(nonRetryableTransactionApiError())).toBe(
+      false,
+    );
   });
 
   it('reconnects and retries once after a transient connection error', async () => {
@@ -46,6 +89,52 @@ describe('PrismaService helpers', () => {
       runWithTransientRetry({
         logger,
         operationLabel: 'asset.findMany',
+        operation,
+        reconnect,
+      }),
+    ).resolves.toBe('ok');
+
+    expect(reconnect).toHaveBeenCalledTimes(1);
+    expect(operation).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconnects and retries once after a connection-pool timeout', async () => {
+    const reconnect = createAsyncMock<void>().mockResolvedValue(undefined);
+    const operation = createAsyncMock<string>()
+      .mockRejectedValueOnce(retryablePoolTimeoutError())
+      .mockResolvedValueOnce('ok');
+    const logger = {
+      warn: createWarnMock(),
+    };
+
+    await expect(
+      runWithTransientRetry({
+        logger,
+        operationLabel: 'idempotencyRequest.deleteMany',
+        operation,
+        reconnect,
+      }),
+    ).resolves.toBe('ok');
+
+    expect(reconnect).toHaveBeenCalledTimes(1);
+    expect(operation).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconnects and retries once after a transaction start timeout', async () => {
+    const reconnect = createAsyncMock<void>().mockResolvedValue(undefined);
+    const operation = createAsyncMock<string>()
+      .mockRejectedValueOnce(retryableTransactionStartTimeoutError())
+      .mockResolvedValueOnce('ok');
+    const logger = {
+      warn: createWarnMock(),
+    };
+
+    await expect(
+      runWithTransientRetry({
+        logger,
+        operationLabel: 'transaction.start',
         operation,
         reconnect,
       }),

@@ -25,6 +25,7 @@ import {
   VALUATION_STALE_MS,
 } from '@assets/assets.types';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
+import { ensureOwnerUserRecord } from '@/security/owner-user';
 import type {
   DashboardAssetResponse,
   DashboardResponse,
@@ -88,10 +89,17 @@ export class AssetsService {
   }
 
   async getDashboard(ownerId: string): Promise<DashboardResponse> {
-    const assets = await this.prisma.asset.findMany({
-      where: { userId: ownerId },
-      orderBy: [{ type: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
-    });
+    const [assets, user] = await Promise.all([
+      this.prisma.asset.findMany({
+        where: { userId: ownerId },
+        orderBy: [{ type: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
+        include: { account: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: ownerId },
+        select: { assetKindOrder: true },
+      }),
+    ]);
     const now = new Date();
     const views = assets.map((asset) => this.toDashboardAsset(asset, now));
     const summary = this.buildSummary(views);
@@ -100,6 +108,9 @@ export class AssetsService {
       baseCurrency: BASE_CURRENCY,
       assets: views,
       summary,
+      assetKindOrder: Array.isArray(user?.assetKindOrder)
+        ? (user.assetKindOrder as string[])
+        : [],
       lastRefreshAt:
         this.maxDate(
           assets.flatMap((asset) => [asset.lastPriceAt, asset.lastFxRateAt]),
@@ -357,6 +368,27 @@ export class AssetsService {
   async remove(ownerId: string, id: string): Promise<void> {
     await this.findOne(ownerId, id);
     await this.prisma.asset.delete({ where: { id } });
+  }
+
+  async reorderAssets(ownerId: string, assetIds: string[]): Promise<void> {
+    await this.prisma.$transaction(
+      assetIds.map((id, index) =>
+        this.prisma.asset.updateMany({
+          where: { id, userId: ownerId },
+          data: { order: index },
+        }),
+      ),
+    );
+  }
+
+  async reorderAssetKinds(ownerId: string, kindOrder: string[]): Promise<void> {
+    await ensureOwnerUserRecord(this.prisma, {
+      userId: ownerId,
+    });
+    await this.prisma.user.update({
+      where: { id: ownerId },
+      data: { assetKindOrder: kindOrder },
+    });
   }
 
   private async mergeOrCreateMarketAsset(
@@ -647,11 +679,15 @@ export class AssetsService {
     };
   }
 
-  private toDashboardAsset(asset: Asset, now: Date): DashboardAssetResponse {
+  private toDashboardAsset(
+    asset: Asset & { account?: { name: string } | null },
+    now: Date,
+  ): DashboardAssetResponse {
     const valuation = this.buildValuation(asset, now);
 
     return {
       ...toAssetResponse(asset),
+      accountName: asset.account?.name ?? null,
       currentValue: this.decimalToNumber(valuation.currentValue),
       referenceValue: this.decimalToNumber(valuation.referenceValue),
       valuationSource: valuation.valuationSource,

@@ -6,7 +6,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import { OperationType, Prisma } from '@finhance/db';
-import { PrismaService } from '@prisma/prisma.service';
+import {
+  isRetryableConnectionError,
+  PrismaService,
+} from '@prisma/prisma.service';
 
 interface RunExclusiveOptions {
   userId: string;
@@ -166,8 +169,18 @@ export class OperationLockService {
     try {
       return await operation();
     } catch (error) {
-      if (attempt < 2 && this.isRetryablePrismaError(error)) {
-        return this.withRetry(operation, attempt + 1);
+      if (attempt < 2) {
+        if (this.isRetryablePrismaError(error)) {
+          return this.withRetry(operation, attempt + 1);
+        }
+
+        if (isRetryableConnectionError(error)) {
+          this.logger.warn(
+            `Retrying operation lock after transient database connectivity failure: ${this.describeError(error)}`,
+          );
+          await this.prisma.recoverConnection();
+          return this.withRetry(operation, attempt + 1);
+        }
       }
 
       throw error;

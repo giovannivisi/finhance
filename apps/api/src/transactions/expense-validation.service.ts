@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@finhance/db';
-import { parseCsvRows } from '@/common/csv';
+import { parseCsvTable, serializeCsv } from '@/common/csv';
 import { PrismaService } from '@prisma/prisma.service';
 import { normalizeExpenseValidationEntry } from '@transactions/category-hierarchy';
 import { CategoriesService } from '@transactions/categories.service';
@@ -102,14 +102,15 @@ export class ExpenseValidationService {
 
   async exportRulesCsv(ownerId: string): Promise<string> {
     const rules = await this.list(ownerId);
-    return this.toCsv(
-      ['entry', 'primary', 'secondary'],
-      rules.map((rule) => ({
+    return serializeCsv({
+      headers: ['entry', 'primary', 'secondary'],
+      rows: rules.map((rule) => ({
         entry: rule.entry,
         primary: rule.secondaryCategory.parentCategory!.name,
         secondary: rule.secondaryCategory.name,
       })),
-    );
+      quote: 'all',
+    });
   }
 
   async exportHierarchyCsv(ownerId: string): Promise<string> {
@@ -161,10 +162,17 @@ export class ExpenseValidationService {
       }
     }
 
-    return this.toCsv(
-      ['level', 'primary', 'secondary', 'primaryOrder', 'secondaryOrder'],
+    return serializeCsv({
+      headers: [
+        'level',
+        'primary',
+        'secondary',
+        'primaryOrder',
+        'secondaryOrder',
+      ],
       rows,
-    );
+      quote: 'all',
+    });
   }
 
   async importRulesCsv(
@@ -396,8 +404,8 @@ export class ExpenseValidationService {
   }
 
   private parseHierarchyCsv(content: string): ParsedHierarchyRow[] {
-    const records = this.parseCsv(content);
-    this.assertHeaders(records.headers, [
+    const { headers, rows } = parseCsvTable(content);
+    this.assertHeaders(headers, [
       'level',
       'primary',
       'secondary',
@@ -407,8 +415,7 @@ export class ExpenseValidationService {
     const seenPrimaryKeys = new Set<string>();
     const seenSecondaryKeys = new Set<string>();
 
-    return records.rows.map((row, index) => {
-      const rowNumber = index + 2;
+    return rows.map(({ rowNumber, values: row }) => {
       const level = this.requiredCell(
         row.level,
         'level',
@@ -471,12 +478,11 @@ export class ExpenseValidationService {
   }
 
   private parseRulesCsv(content: string): ParsedRuleRow[] {
-    const records = this.parseCsv(content);
-    this.assertHeaders(records.headers, ['entry', 'primary', 'secondary']);
+    const { headers, rows } = parseCsvTable(content);
+    this.assertHeaders(headers, ['entry', 'primary', 'secondary']);
     const seenEntries = new Set<string>();
 
-    return records.rows.map((row, index) => {
-      const rowNumber = index + 2;
+    return rows.map(({ rowNumber, values: row }) => {
       const entry = this.requiredCell(row.entry, 'entry', rowNumber);
       const normalizedEntry = normalizeExpenseValidationEntry(entry);
       if (seenEntries.has(normalizedEntry)) {
@@ -494,58 +500,6 @@ export class ExpenseValidationService {
         secondary: this.requiredCell(row.secondary, 'secondary', rowNumber),
       };
     });
-  }
-
-  private parseCsv(content: string): {
-    headers: string[];
-    rows: Array<Record<string, string>>;
-  } {
-    const rawRows = parseCsvRows(content.replace(/^\uFEFF/, ''));
-    if (
-      rawRows.length === 0 ||
-      rawRows[0].every((cell) => cell.trim() === '')
-    ) {
-      throw new BadRequestException('CSV file is empty.');
-    }
-
-    const headers = rawRows[0].map((value) => value.trim());
-    const rows = rawRows
-      .slice(1)
-      .filter((rawRow) => !rawRow.every((value) => value.trim() === ''))
-      .map((rawRow, index) => {
-        if (rawRow.length > headers.length) {
-          throw new BadRequestException(
-            `CSV row ${index + 2} has more columns than the header row.`,
-          );
-        }
-
-        const values = rawRow.map((value) => value.trim());
-        const row: Record<string, string> = {};
-        headers.forEach((header, headerIndex) => {
-          row[header] = values[headerIndex] ?? '';
-        });
-        return row;
-      });
-
-    return { headers, rows };
-  }
-
-  private toCsv(
-    headers: string[],
-    rows: Array<Record<string, string>>,
-  ): string {
-    const escape = (value: string) =>
-      `"${this.neutralizeSpreadsheetFormula(value).replaceAll('"', '""')}"`;
-    return [
-      headers.join(','),
-      ...rows.map((row) =>
-        headers.map((header) => escape(row[header] ?? '')).join(','),
-      ),
-    ].join('\n');
-  }
-
-  private neutralizeSpreadsheetFormula(value: string): string {
-    return /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
   }
 
   private assertHeaders(headers: string[], expected: string[]): string[] {

@@ -15,6 +15,7 @@ import type {
   ImportBatchResponse,
   ImportFileType,
   ImportPreviewResponse,
+  ImportRowIssueResponse,
 } from "@finhance/shared";
 import { apiMutation, fetchApiMutation, readApiError } from "@lib/api";
 import {
@@ -40,7 +41,28 @@ const TEMPLATE_LINKS: Array<{ file: ImportFileType; href: string }> = [
     file: "budgetOverrides",
     href: "/import-templates/budgetOverrides.csv",
   },
+  {
+    file: "expenseCategoryHierarchy",
+    href: "/import-templates/expenseCategoryHierarchy.csv",
+  },
+  {
+    file: "expenseValidationRules",
+    href: "/import-templates/expenseValidationRules.csv",
+  },
 ];
+
+const IMPORT_FILE_LABELS: Record<ImportFileType, string> = {
+  accounts: "Accounts",
+  categories: "Categories",
+  assets: "Assets",
+  transactions: "Transactions",
+  recurringRules: "Recurring rules",
+  recurringExceptions: "Recurring exceptions",
+  budgets: "Budgets",
+  budgetOverrides: "Budget overrides",
+  expenseCategoryHierarchy: "Expense category hierarchy",
+  expenseValidationRules: "Expense validation rules",
+};
 
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "medium",
@@ -52,6 +74,15 @@ type ImportDisclosurePointerIntent = ImportDisclosureId | null;
 type ImportDisclosureStyle = CSSProperties & {
   "--import-disclosure-arrow-left"?: string;
 };
+type ImportIssueSectionId = "errors" | "warnings";
+type GroupedImportIssue = {
+  file: ImportFileType;
+  field: string | null;
+  message: string;
+  rowNumbers: number[];
+};
+
+const IMPORT_ISSUE_PREVIEW_LIMIT = 4;
 
 function upsertBatch(
   batches: ImportBatchResponse[],
@@ -70,6 +101,61 @@ function getDownloadFilename(contentDisposition: string | null): string | null {
 
   const match = /filename="([^"]+)"/i.exec(contentDisposition);
   return match?.[1] ?? null;
+}
+
+function getImportFileLabel(file: string): string {
+  return IMPORT_FILE_LABELS[file as ImportFileType] ?? file;
+}
+
+function groupImportIssues(
+  issues: ImportRowIssueResponse[],
+): GroupedImportIssue[] {
+  const grouped = new Map<string, GroupedImportIssue>();
+
+  for (const issue of issues) {
+    const key = `${issue.file}::${issue.field ?? ""}::${issue.message}`;
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.rowNumbers.push(issue.rowNumber);
+      continue;
+    }
+
+    grouped.set(key, {
+      file: issue.file,
+      field: issue.field,
+      message: issue.message,
+      rowNumbers: [issue.rowNumber],
+    });
+  }
+
+  return Array.from(grouped.values())
+    .map((issue) => ({
+      ...issue,
+      rowNumbers: [...issue.rowNumbers].sort((a, b) => a - b),
+    }))
+    .sort((left, right) => {
+      if (right.rowNumbers.length !== left.rowNumbers.length) {
+        return right.rowNumbers.length - left.rowNumbers.length;
+      }
+
+      if (left.file !== right.file) {
+        return left.file.localeCompare(right.file);
+      }
+
+      return (left.rowNumbers[0] ?? 0) - (right.rowNumbers[0] ?? 0);
+    });
+}
+
+function formatIssueRowPreview(rowNumbers: number[]): string {
+  const preview = rowNumbers.slice(0, 6);
+  const joined = preview.join(", ");
+
+  if (rowNumbers.length > preview.length) {
+    return `${joined} +${rowNumbers.length - preview.length} more`;
+  }
+
+  return joined;
 }
 
 export default function ImportsPageClient({
@@ -92,6 +178,19 @@ export default function ImportsPageClient({
   const [isExporting, setIsExporting] = useState(false);
   const [activeDisclosure, setActiveDisclosure] =
     useState<ImportDisclosureId | null>(null);
+  const [isRecentBatchesOpen, setIsRecentBatchesOpen] = useState(false);
+  const [openIssueSections, setOpenIssueSections] = useState<
+    Record<ImportIssueSectionId, boolean>
+  >({
+    errors: false,
+    warnings: false,
+  });
+  const [showAllIssueSections, setShowAllIssueSections] = useState<
+    Record<ImportIssueSectionId, boolean>
+  >({
+    errors: false,
+    warnings: false,
+  });
   const [popoverStyle, setPopoverStyle] = useState<ImportDisclosureStyle>({});
   const actions = useSingleFlightActions<"preview" | "apply" | "export">();
   const disclosureRef = useRef<HTMLDivElement | null>(null);
@@ -214,6 +313,17 @@ export default function ImportsPageClient({
       clearDisclosureCloseTimer();
     };
   }, []);
+
+  useEffect(() => {
+    setOpenIssueSections({
+      errors: false,
+      warnings: false,
+    });
+    setShowAllIssueSections({
+      errors: false,
+      warnings: false,
+    });
+  }, [preview?.id]);
 
   function clearDisclosureCloseTimer() {
     if (disclosureCloseTimerRef.current !== null) {
@@ -338,9 +448,18 @@ export default function ImportsPageClient({
     file: ImportFileType,
     event: ChangeEvent<HTMLInputElement>,
   ) {
+    const nextFile = event.target.files?.[0] ?? null;
     setSelectedFiles((previous) => ({
       ...previous,
-      [file]: event.target.files?.[0] ?? null,
+      [file]: nextFile,
+    }));
+    event.target.value = "";
+  }
+
+  function clearFileSelection(file: ImportFileType) {
+    setSelectedFiles((previous) => ({
+      ...previous,
+      [file]: null,
     }));
   }
 
@@ -361,7 +480,7 @@ export default function ImportsPageClient({
       for (const file of TEMPLATE_LINKS.map((entry) => entry.file)) {
         const selected = selectedFiles[file];
         if (selected) {
-          formData.append(file, selected, selected.name);
+          formData.append(file, selected, `${file}.csv`);
         }
       }
 
@@ -585,19 +704,62 @@ export default function ImportsPageClient({
         </div>
 
         <form onSubmit={handlePreview} className="grid gap-6 lg:grid-cols-2">
-          {TEMPLATE_LINKS.map((template) => (
-            <label key={template.file} className="app-form-field">
-              <span className="text-sm font-medium text-[var(--text-primary)]">
-                {template.file}.csv
-              </span>
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(event) => updateFileSelection(template.file, event)}
-                className="text-sm"
-              />
-            </label>
-          ))}
+          {TEMPLATE_LINKS.map((template) => {
+            const selected = selectedFiles[template.file];
+            const inputId = `import-file-${template.file}`;
+            const fileLabel = IMPORT_FILE_LABELS[template.file];
+
+            return (
+              <label
+                key={template.file}
+                htmlFor={inputId}
+                className="app-form-field import-file-field"
+              >
+                <span className="text-sm font-medium text-[var(--text-primary)]">
+                  {fileLabel}
+                </span>
+                <input
+                  id={inputId}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) =>
+                    updateFileSelection(template.file, event)
+                  }
+                  className="sr-only"
+                />
+                <div
+                  className={`import-file-picker${
+                    selected ? " is-selected" : ""
+                  }`}
+                >
+                  <div className="import-file-picker-action">
+                    {selected ? "Replace CSV" : "Choose CSV"}
+                  </div>
+                  <div
+                    className={`import-file-picker-status${
+                      selected ? " is-selected" : ""
+                    }`}
+                  >
+                    {selected ? `${fileLabel} selected` : "No file selected"}
+                  </div>
+                  {selected ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        clearFileSelection(template.file);
+                      }}
+                      className="import-file-picker-clear"
+                      aria-label={`Clear ${fileLabel} file`}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </div>
+              </label>
+            );
+          })}
 
           <div className="compact-toolbar lg:col-span-2">
             <button
@@ -617,7 +779,10 @@ export default function ImportsPageClient({
         </form>
 
         {previewError ? (
-          <p role="alert" className="page-inline-notice surface-danger">
+          <p
+            role="alert"
+            className="page-inline-notice surface-danger import-surface-superellipse"
+          >
             {previewError}
           </p>
         ) : null}
@@ -646,7 +811,10 @@ export default function ImportsPageClient({
           </div>
 
           {applyError ? (
-            <p role="alert" className="page-inline-notice surface-danger">
+            <p
+              role="alert"
+              className="page-inline-notice surface-danger import-surface-superellipse"
+            >
               {applyError}
             </p>
           ) : null}
@@ -658,54 +826,62 @@ export default function ImportsPageClient({
                   ? "surface-danger"
                   : previewReadiness.tone === "warning"
                     ? "surface-warning"
-                    : "surface-success"
-              }`}
+                    : previewReadiness.tone === "success"
+                      ? "surface-success"
+                      : "surface-success"
+              } import-surface-superellipse`}
             >
-              <p className="font-medium">{previewReadiness.title}</p>
+              <p
+                className={`font-medium import-readiness-title${
+                  previewReadiness.tone === "blocked" ? " is-blocked" : ""
+                }`}
+              >
+                {previewReadiness.title}
+              </p>
               <p className="mt-1 text-sm">{previewReadiness.detail}</p>
             </div>
           ) : null}
 
-          <div className="mt-6 grid gap-6 xl:grid-cols-3">
+          <div className="import-preview-group-grid">
             {previewGroups.map((group) => (
-              <section key={group.id} className="list-card is-muted">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-700">
-                  {group.title}
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">{group.detail}</p>
+              <section
+                key={group.id}
+                className="list-card is-muted import-preview-group-card"
+              >
+                <div className="import-preview-group-copy">
+                  <h3 className="import-preview-group-title">{group.title}</h3>
+                  <p className="import-preview-group-detail">{group.detail}</p>
+                </div>
 
-                <div className="mt-4 space-y-3">
+                <div className="import-preview-file-list">
                   {group.files.map((fileSummary) => (
-                    <article key={fileSummary.file} className="list-card">
-                      <div className="flex items-center justify-between gap-3">
-                        <h4 className="text-sm font-medium text-gray-900">
-                          {fileSummary.file}
+                    <article
+                      key={fileSummary.file}
+                      className="list-card import-preview-file-card"
+                    >
+                      <div className="import-preview-file-header">
+                        <h4 className="import-preview-file-title">
+                          {getImportFileLabel(fileSummary.file)}
                         </h4>
-                        <span className="text-xs uppercase tracking-wide text-gray-500">
+                        <span className="import-preview-file-rows">
                           {fileSummary.createCount +
                             fileSummary.updateCount +
                             fileSummary.unchangedCount}{" "}
                           rows
                         </span>
                       </div>
-                      <dl className="mt-3 grid gap-2 text-sm text-gray-600 sm:grid-cols-3">
-                        <div className="rounded-xl bg-gray-50 px-3 py-2">
+                      <dl className="import-preview-stat-grid">
+                        <div className="import-preview-stat-card">
                           <dt>Create</dt>
-                          <dd className="mt-1 font-medium text-gray-900">
-                            {fileSummary.createCount}
-                          </dd>
+                          <dd>{fileSummary.createCount}</dd>
                         </div>
-                        <div className="rounded-xl bg-gray-50 px-3 py-2">
+                        <div className="import-preview-stat-card">
                           <dt>Update</dt>
-                          <dd className="mt-1 font-medium text-gray-900">
-                            {fileSummary.updateCount}
-                          </dd>
+                          <dd>{fileSummary.updateCount}</dd>
                         </div>
-                        <div className="rounded-xl bg-gray-50 px-3 py-2">
+                        <div className="import-preview-stat-card">
                           <dt>Unchanged</dt>
-                          <dd className="mt-1 font-medium text-gray-900">
-                            {fileSummary.unchangedCount}
-                          </dd>
+                          <dd>{fileSummary.unchangedCount}</dd>
                         </div>
                       </dl>
                     </article>
@@ -730,79 +906,182 @@ export default function ImportsPageClient({
           </div>
 
           {previewIssues && preview.issues.length > 0 ? (
-            <div className="mt-6 space-y-6">
+            <div className="import-issue-stack">
               {[
                 {
+                  id: "errors" as const,
                   title: "Blocking issues",
                   empty: "No blocking issues in this preview.",
                   tone: "red",
                   issues: previewIssues.errors,
                 },
                 {
+                  id: "warnings" as const,
                   title: "Warnings to review",
                   empty: "No warnings in this preview.",
                   tone: "amber",
                   issues: previewIssues.warnings,
                 },
               ].map((section) => (
-                <section key={section.title}>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {section.title}
-                  </h3>
-                  {section.issues.length === 0 ? (
-                    <p
-                      className={`mt-2 text-sm ${
-                        section.tone === "red"
-                          ? "text-emerald-700"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      {section.empty}
-                    </p>
-                  ) : (
-                    <div className="table-shell">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            <th className="pb-2 pr-4">File</th>
-                            <th className="pb-2 pr-4">Row</th>
-                            <th className="pb-2 pr-4">Field</th>
-                            <th className="pb-2 pr-4">Message</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {section.issues.map((issue, index) => (
-                            <tr
-                              key={`${section.title}-${issue.file}-${issue.rowNumber}-${index}`}
-                              className={
+                <section
+                  key={section.title}
+                  className={`import-issue-section ${
+                    section.tone === "red" ? "is-error" : "is-warning"
+                  }`}
+                >
+                  {(() => {
+                    const groupedIssues = groupImportIssues(section.issues);
+                    const visibleGroupedIssues = showAllIssueSections[
+                      section.id
+                    ]
+                      ? groupedIssues
+                      : groupedIssues.slice(0, IMPORT_ISSUE_PREVIEW_LIMIT);
+
+                    return (
+                      <>
+                        <div className="import-issue-section-header">
+                          <div className="import-issue-section-copy">
+                            <h3
+                              className={`text-lg font-semibold import-issue-title ${
                                 section.tone === "red"
-                                  ? "bg-red-50/50"
-                                  : "bg-amber-50/40"
-                              }
+                                  ? "is-error"
+                                  : "is-warning"
+                              }`}
                             >
-                              <td className="py-2 pr-4 align-top font-medium">
-                                {issue.file}
-                              </td>
-                              <td className="py-2 pr-4 align-top">
-                                {issue.rowNumber}
-                              </td>
-                              <td className="py-2 pr-4 align-top">
-                                {issue.field ?? "—"}
-                              </td>
-                              <td className="py-2 pr-4 align-top">
-                                {issue.message}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                              {section.title}
+                            </h3>
+                            <p
+                              className={`import-issue-section-summary ${
+                                section.tone === "red"
+                                  ? "is-error"
+                                  : "is-warning"
+                              }`}
+                            >
+                              {section.issues.length}{" "}
+                              {section.tone === "red"
+                                ? `blocking issue${
+                                    section.issues.length === 1 ? "" : "s"
+                                  }`
+                                : `warning${
+                                    section.issues.length === 1 ? "" : "s"
+                                  }`}
+                            </p>
+                          </div>
+                          {section.issues.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenIssueSections((current) => ({
+                                  ...current,
+                                  [section.id]: !current[section.id],
+                                }))
+                              }
+                              className="btn-secondary import-issue-toggle"
+                            >
+                              {openIssueSections[section.id]
+                                ? "Hide issues"
+                                : `Show ${section.issues.length} ${
+                                    section.tone === "red"
+                                      ? "issues"
+                                      : "warnings"
+                                  }`}
+                            </button>
+                          ) : null}
+                        </div>
+                        {section.issues.length === 0 ? (
+                          <p
+                            className={`mt-2 text-sm ${
+                              section.tone === "red"
+                                ? "text-emerald-700"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {section.empty}
+                          </p>
+                        ) : !openIssueSections[section.id] ? (
+                          <p
+                            className={`page-inline-notice surface-dashed import-surface-superellipse import-issue-hidden-note ${
+                              section.tone === "red" ? "is-error" : "is-warning"
+                            }`}
+                          >
+                            {section.issues.length}{" "}
+                            {section.tone === "red" ? "issue" : "warning"}
+                            {section.issues.length === 1 ? "" : "s"} hidden.
+                            Open this section only when you want to inspect the
+                            affected rows.
+                          </p>
+                        ) : (
+                          <div className="import-issue-card-list">
+                            {visibleGroupedIssues.map((issue, index) => (
+                              <article
+                                key={`${section.title}-${issue.file}-${issue.field ?? "fieldless"}-${issue.message}-${index}`}
+                                className={`import-issue-card ${
+                                  section.tone === "red"
+                                    ? "is-error"
+                                    : "is-warning"
+                                }`}
+                              >
+                                <div className="import-issue-card-meta">
+                                  <span
+                                    className={`status-chip ${
+                                      section.tone === "red"
+                                        ? "is-danger"
+                                        : "is-warning"
+                                    }`}
+                                  >
+                                    {getImportFileLabel(issue.file)}
+                                  </span>
+                                  <span className="status-chip is-neutral">
+                                    {issue.rowNumbers.length === 1
+                                      ? `Row ${issue.rowNumbers[0]}`
+                                      : `${issue.rowNumbers.length} rows`}
+                                  </span>
+                                  {issue.field ? (
+                                    <span className="status-chip is-neutral">
+                                      {issue.field}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="import-issue-card-message">
+                                  {issue.message}
+                                </p>
+                                {issue.rowNumbers.length > 1 ? (
+                                  <p className="import-issue-card-rows">
+                                    Rows{" "}
+                                    {formatIssueRowPreview(issue.rowNumbers)}
+                                  </p>
+                                ) : null}
+                              </article>
+                            ))}
+                            {groupedIssues.length >
+                              IMPORT_ISSUE_PREVIEW_LIMIT &&
+                            !showAllIssueSections[section.id] ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShowAllIssueSections((current) => ({
+                                    ...current,
+                                    [section.id]: true,
+                                  }))
+                                }
+                                className="btn-secondary import-issue-toggle"
+                              >
+                                Show{" "}
+                                {groupedIssues.length -
+                                  IMPORT_ISSUE_PREVIEW_LIMIT}{" "}
+                                more groups
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </section>
               ))}
             </div>
           ) : (
-            <p className="page-inline-notice surface-success">
+            <p className="page-inline-notice surface-success import-surface-superellipse">
               No validation issues found in this preview.
             </p>
           )}
@@ -810,21 +1089,42 @@ export default function ImportsPageClient({
       ) : null}
 
       <section className="page-section section-stack-tight">
-        <div>
-          <h2 className="section-title">Recent batches</h2>
-          <p className="section-subtitle">
-            Preview and apply history stays visible here for auditability.
-          </p>
+        <div className="compact-toolbar">
+          <div>
+            <h2 className="section-title">Recent batches</h2>
+            <p className="section-subtitle">
+              Preview and apply history stays visible here for auditability.
+            </p>
+          </div>
+          {batches.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setIsRecentBatchesOpen((current) => !current)}
+              className="btn-secondary"
+            >
+              {isRecentBatchesOpen
+                ? "Hide recent batches"
+                : "Show recent batches"}
+            </button>
+          ) : null}
         </div>
 
         {batches.length === 0 ? (
-          <div className="mt-6 page-inline-notice surface-dashed">
+          <div className="mt-6 page-inline-notice surface-dashed import-surface-superellipse">
             No import batches yet.
           </div>
+        ) : !isRecentBatchesOpen ? (
+          <div className="mt-6 page-inline-notice surface-dashed import-surface-superellipse">
+            Recent batch history is hidden. Open it when you want to review past
+            previews and applies.
+          </div>
         ) : (
-          <div className="mt-6 space-y-3">
+          <div className="mt-6 import-batch-list">
             {batches.map((batch) => (
-              <article key={batch.id} className="list-card is-muted">
+              <article
+                key={batch.id}
+                className="list-card is-muted import-batch-card"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900">

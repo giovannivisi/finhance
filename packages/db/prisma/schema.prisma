@@ -8,27 +8,42 @@ datasource db {
 }
 
 model User {
-  id            String                @id @default(cuid())
-  email         String                @unique
-  emailVerified DateTime?             @map("email_verified")
-  name          String?
-  image         String?
-  isActive      Boolean               @default(true) @map("is_active")
-  createdAt     DateTime              @default(now()) @map("created_at")
-  updatedAt     DateTime              @updatedAt @map("updated_at")
-  accounts      AuthProviderAccount[]
-  sessions      AuthSession[]
+  id                              String                           @id @default(cuid())
+  email                           String                           @unique
+  emailVerified                   DateTime?                        @map("email_verified")
+  name                            String?
+  image                           String?
+  isActive                        Boolean                          @default(true) @map("is_active")
+  createdAt                       DateTime                         @default(now()) @map("created_at")
+  updatedAt                       DateTime                         @updatedAt @map("updated_at")
+  assetKindOrder                  Json?                            @map("asset_kind_order")
+  providerAccounts                AuthProviderAccount[]
+  sessions                        AuthSession[]
+  assets                          Asset[]
+  accounts                        Account[]
+  categories                      Category[]
+  expenseValidationRules          ExpenseValidationRule[]
+  categoryBudgets                 CategoryBudget[]
+  categoryBudgetOverrides         CategoryBudgetOverride[]
+  portfolioState                  PortfolioState?
+  idempotencyRequests             IdempotencyRequest[]
+  operationStates                 OperationState[]
+  netWorthSnapshots               NetWorthSnapshot[]
+  transactions                    Transaction[]
+  recurringTransactionRules       RecurringTransactionRule[]
+  recurringTransactionOccurrences RecurringTransactionOccurrence[]
+  importBatches                   ImportBatch[]
 
   @@map("users")
 }
 
 model AuthProviderAccount {
-  id                String  @id @default(cuid())
-  userId            String  @map("user_id")
+  id                String @id @default(cuid())
+  userId            String @map("user_id")
   type              String
   provider          String
-  providerAccountId String  @map("provider_account_id")
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerAccountId String @map("provider_account_id")
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -79,6 +94,7 @@ model Asset {
   accountId     String?
   importSource  ImportSource?
   importKey     String?
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   account       Account?       @relation(fields: [accountId, userId], references: [id, userId])
 
   @@unique([userId, type, kind, ticker, exchange])
@@ -103,6 +119,7 @@ model Account {
   importKey                     String?
   openingBalance                Decimal                    @default(0) @db.Decimal(20, 10)
   openingBalanceDate            DateTime?                  @db.Date
+  user                          User                       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   assets                        Asset[]
   recurringRules                RecurringTransactionRule[] @relation("StandardRecurringRuleAccount")
   recurringTransferDestinations RecurringTransactionRule[] @relation("TransferRecurringRuleDestination")
@@ -119,6 +136,8 @@ model Category {
   userId                 String
   name                   String
   type                   CategoryType
+  // Active name uniqueness is enforced by a manual partial expression index in
+  // migrations so expense secondaries are unique within their parent primary.
   parentCategoryId       String?                    @map("parent_category_id")
   order                  Int                        @default(0)
   archivedAt             DateTime?
@@ -126,6 +145,7 @@ model Category {
   updatedAt              DateTime                   @updatedAt
   importSource           ImportSource?
   importKey              String?
+  user                   User                       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   parentCategory         Category?                  @relation("CategoryHierarchy", fields: [parentCategoryId, userId], references: [id, userId], onDelete: SetNull, onUpdate: Cascade)
   childCategories        Category[]                 @relation("CategoryHierarchy")
   budgets                CategoryBudget[]
@@ -139,14 +159,15 @@ model Category {
 }
 
 model ExpenseValidationRule {
-  id                String   @id @default(cuid())
-  userId            String
-  entry             String
-  normalizedEntry   String   @map("normalized_entry")
-  secondaryCategoryId String @map("secondary_category_id")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  secondaryCategory Category @relation("ExpenseValidationRuleSecondaryCategory", fields: [secondaryCategoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
+  id                  String   @id @default(cuid())
+  userId              String
+  entry               String
+  normalizedEntry     String   @map("normalized_entry")
+  secondaryCategoryId String   @map("secondary_category_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  secondaryCategory   Category @relation("ExpenseValidationRuleSecondaryCategory", fields: [secondaryCategoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([userId, normalizedEntry])
   @@index([userId, secondaryCategoryId])
@@ -164,6 +185,7 @@ model CategoryBudget {
   endMonth     DateTime?                @db.Date
   createdAt    DateTime                 @default(now())
   updatedAt    DateTime                 @updatedAt
+  user         User                     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   category     Category                 @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
   overrides    CategoryBudgetOverride[]
 
@@ -183,6 +205,7 @@ model CategoryBudgetOverride {
   note             String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+  user             User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   categoryBudget   CategoryBudget @relation(fields: [categoryBudgetId, userId], references: [id, userId], onDelete: Cascade)
 
   @@unique([categoryBudgetId, month])
@@ -196,6 +219,7 @@ model PortfolioState {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
   refreshStartedAt       DateTime?
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
 
 model IdempotencyRequest {
@@ -210,6 +234,7 @@ model IdempotencyRequest {
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
   completedAt        DateTime?
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@id([userId, method, routePath, idempotencyKey])
   @@index([userId, createdAt(sort: Desc)])
@@ -222,6 +247,7 @@ model OperationState {
   lastSucceededAt DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  user            User          @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@id([userId, type])
   @@index([userId, updatedAt(sort: Desc)])
@@ -240,6 +266,7 @@ model NetWorthSnapshot {
   isPartial        Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([userId, snapshotDate, baseCurrency])
   @@index([userId, snapshotDate])
@@ -265,6 +292,7 @@ model Transaction {
   updatedAt                DateTime                  @updatedAt
   recurringRuleId          String?
   recurringOccurrenceMonth DateTime?                 @db.Date
+  user                     User                      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   account                  Account                   @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
   category                 Category?                 @relation(fields: [categoryId, userId], references: [id, userId], onUpdate: Cascade)
   recurringRule            RecurringTransactionRule? @relation(fields: [recurringRuleId], references: [id])
@@ -303,6 +331,7 @@ model RecurringTransactionRule {
   lastMaterializationErrorAt DateTime?
   createdAt                  DateTime                         @default(now())
   updatedAt                  DateTime                         @default(now()) @updatedAt
+  user                       User                             @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   account                    Account?                         @relation("StandardRecurringRuleAccount", fields: [accountId, userId], references: [id, userId], onDelete: SetNull)
   category                   Category?                        @relation(fields: [categoryId, userId], references: [id, userId], onDelete: SetNull)
   destinationAccount         Account?                         @relation("TransferRecurringRuleDestination", fields: [destinationAccountId, userId], references: [id, userId], onDelete: SetNull)
@@ -335,6 +364,7 @@ model RecurringTransactionOccurrence {
   overrideNotes                String?
   createdAt                    DateTime                  @default(now())
   updatedAt                    DateTime                  @default(now()) @updatedAt
+  user                         User                      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   recurringRule                RecurringTransactionRule  @relation(fields: [recurringRuleId], references: [id], onDelete: Cascade)
 
   @@unique([recurringRuleId, occurrenceMonth])
@@ -352,6 +382,7 @@ model ImportBatch {
   payloadJson Json?
   createdAt   DateTime          @default(now())
   appliedAt   DateTime?
+  user        User              @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
 }

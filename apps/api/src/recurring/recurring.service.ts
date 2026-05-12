@@ -299,11 +299,29 @@ export class RecurringService {
   }
 
   async remove(ownerId: string, id: string): Promise<void> {
-    await this.findOne(ownerId, id);
-    await this.prisma.recurringTransactionRule.update({
-      where: { id },
-      data: { isActive: false },
-    });
+    const rule = await this.findOne(ownerId, id);
+
+    if (rule.isActive) {
+      // Soft-delete: deactivate the rule
+      await this.prisma.recurringTransactionRule.update({
+        where: { id },
+        data: { isActive: false },
+      });
+    } else {
+      // Already inactive: detach transactions (keep them) and delete rule + occurrences
+      await this.prisma.$transaction([
+        this.prisma.transaction.updateMany({
+          where: { recurringRuleId: id, userId: ownerId },
+          data: { recurringRuleId: null, recurringOccurrenceMonth: null },
+        }),
+        this.prisma.recurringTransactionOccurrence.deleteMany({
+          where: { recurringRuleId: id, userId: ownerId },
+        }),
+        this.prisma.recurringTransactionRule.delete({
+          where: { id },
+        }),
+      ]);
+    }
   }
 
   async findOccurrences(
@@ -855,13 +873,19 @@ export class RecurringService {
       rawRecurringExceptions,
       null,
     );
+
+    // For future months snapshots are meaningless — force "Unavailable"
+    const isFutureMonth = month > this.formatMonthKey(new Date());
+    const effectiveOpeningSnapshot = isFutureMonth ? null : openingSnapshot;
+    const effectiveClosingSnapshot = isFutureMonth ? null : closingSnapshot;
+
     const reconciliationHighlights = reconciliations.filter(
       (reconciliation) => reconciliation.status !== 'CLEAN',
     );
     const netWorthExplanation = this.buildMonthlyReviewNetWorthExplanation(
       cashflow,
-      openingSnapshot,
-      closingSnapshot,
+      effectiveOpeningSnapshot,
+      effectiveClosingSnapshot,
     );
     const recurringComparison = this.buildRecurringComparison(
       month,
@@ -891,9 +915,10 @@ export class RecurringService {
       budgetView.currencies,
     );
     const warnings = this.buildMonthlyReviewWarnings({
+      month,
       cashflow,
-      openingSnapshot,
-      closingSnapshot,
+      openingSnapshot: effectiveOpeningSnapshot,
+      closingSnapshot: effectiveClosingSnapshot,
       netWorthExplanation,
       reconciliationHighlights,
       recurringExceptions,
@@ -904,8 +929,8 @@ export class RecurringService {
     return toMonthlyReviewResponse({
       month,
       cashflow,
-      openingSnapshot,
-      closingSnapshot,
+      openingSnapshot: effectiveOpeningSnapshot,
+      closingSnapshot: effectiveClosingSnapshot,
       warnings,
       netWorthExplanation,
       recurringComparison,
@@ -1248,6 +1273,7 @@ export class RecurringService {
   }
 
   private buildMonthlyReviewWarnings(input: {
+    month: string;
     cashflow: CashflowSummaryResponse;
     openingSnapshot: NetWorthSnapshot | null;
     closingSnapshot: NetWorthSnapshot | null;
@@ -1258,51 +1284,58 @@ export class RecurringService {
     budgetSummary: MonthlyBudgetCurrencySummaryResponse[];
   }): MonthlyReviewWarningResponse[] {
     const warnings: MonthlyReviewWarningResponse[] = [];
+    const isCurrentMonth = this.isCurrentMonth(input.month);
+    const isFutureMonth = input.month > this.formatMonthKey(new Date());
 
-    if (!input.openingSnapshot) {
-      warnings.push(
-        this.createMonthlyReviewWarning({
-          code: 'MISSING_OPENING_SNAPSHOT',
-          severity: 'WARNING',
-          title: 'Opening snapshot missing',
-          detail:
-            'Add a snapshot before this month to anchor the opening net worth boundary.',
-        }),
-      );
-    } else if (input.openingSnapshot.isPartial) {
-      warnings.push(
-        this.createMonthlyReviewWarning({
-          code: 'PARTIAL_OPENING_SNAPSHOT',
-          severity: 'WARNING',
-          title: 'Opening snapshot is partial',
-          detail:
-            'The opening boundary excludes unavailable valuations, so month-over-month comparisons are incomplete.',
-          count: input.openingSnapshot.unavailableCount,
-        }),
-      );
-    }
+    // Skip snapshot warnings for future months — they are expected to be unavailable
+    if (!isFutureMonth) {
+      if (!input.openingSnapshot) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'MISSING_OPENING_SNAPSHOT',
+            severity: isCurrentMonth ? 'WARNING' : 'INFO',
+            title: 'Opening snapshot missing',
+            detail: isCurrentMonth
+              ? 'Add a snapshot before this month to anchor the opening net worth boundary.'
+              : 'No snapshot was captured before this month. Snapshots are now captured automatically on each dashboard visit.',
+          }),
+        );
+      } else if (input.openingSnapshot.isPartial) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'PARTIAL_OPENING_SNAPSHOT',
+            severity: 'WARNING',
+            title: 'Opening snapshot is partial',
+            detail:
+              'The opening boundary excludes unavailable valuations, so month-over-month comparisons are incomplete.',
+            count: input.openingSnapshot.unavailableCount,
+          }),
+        );
+      }
 
-    if (!input.closingSnapshot) {
-      warnings.push(
-        this.createMonthlyReviewWarning({
-          code: 'MISSING_CLOSING_SNAPSHOT',
-          severity: 'WARNING',
-          title: 'Closing snapshot missing',
-          detail:
-            'Capture a snapshot in this month to anchor the closing net worth boundary.',
-        }),
-      );
-    } else if (input.closingSnapshot.isPartial) {
-      warnings.push(
-        this.createMonthlyReviewWarning({
-          code: 'PARTIAL_CLOSING_SNAPSHOT',
-          severity: 'WARNING',
-          title: 'Closing snapshot is partial',
-          detail:
-            'The closing boundary excludes unavailable valuations, so the ending net worth is incomplete.',
-          count: input.closingSnapshot.unavailableCount,
-        }),
-      );
+      if (!input.closingSnapshot) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'MISSING_CLOSING_SNAPSHOT',
+            severity: isCurrentMonth ? 'WARNING' : 'INFO',
+            title: 'Closing snapshot missing',
+            detail: isCurrentMonth
+              ? 'Capture a snapshot in this month to anchor the closing net worth boundary.'
+              : 'No snapshot was captured during this month. Snapshots are now captured automatically on each dashboard visit.',
+          }),
+        );
+      } else if (input.closingSnapshot.isPartial) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'PARTIAL_CLOSING_SNAPSHOT',
+            severity: 'WARNING',
+            title: 'Closing snapshot is partial',
+            detail:
+              'The closing boundary excludes unavailable valuations, so the ending net worth is incomplete.',
+            count: input.closingSnapshot.unavailableCount,
+          }),
+        );
+      }
     }
 
     if (!input.netWorthExplanation.isComparableInEur) {
@@ -2244,6 +2277,10 @@ export class RecurringService {
 
   private formatMonthKey(value: Date): string {
     return MONTH_KEY_FORMATTER.format(value);
+  }
+
+  private isCurrentMonth(month: string): boolean {
+    return this.formatMonthKey(new Date()) === month;
   }
 
   private monthValueToKey(value: Date): string {

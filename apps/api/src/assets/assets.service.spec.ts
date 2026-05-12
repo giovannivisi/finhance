@@ -67,6 +67,10 @@ describe('AssetsService', () => {
       create: jest.Mock;
       delete: jest.Mock;
     };
+    user: {
+      findUniqueOrThrow: jest.Mock;
+      findUnique: jest.Mock;
+    };
     portfolioState: {
       findUnique: jest.Mock;
       create: jest.Mock;
@@ -97,6 +101,12 @@ describe('AssetsService', () => {
         update: jest.fn(),
         create: jest.fn(),
         delete: jest.fn(),
+      },
+      user: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ assetKindOrder: null }),
+        findUnique: jest.fn().mockResolvedValue({ assetKindOrder: null }),
       },
       portfolioState: {
         findUnique: jest.fn(),

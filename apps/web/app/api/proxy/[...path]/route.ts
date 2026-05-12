@@ -1,10 +1,16 @@
 import { auth } from "@lib/auth";
 import {
+  buildUpstreamRequest,
+  stripForwardedHeaders,
+  toUpstreamResponse,
+} from "@lib/api-proxy";
+import {
   getDirectApiUrl,
   InvalidApiPathError,
   mintApiAccessToken,
 } from "@lib/api-auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { resolveLocalRequestRejection } from "@lib/local-request";
 import { resolveProxyAuthorization } from "@lib/proxy-auth";
 
 type RouteContext = {
@@ -21,33 +27,6 @@ const INVALID_PROXY_PATH_RESPONSE = Response.json(
   { message: "Invalid API path." },
   { status: 400 },
 );
-
-function stripForwardedHeaders(headers: Headers): Headers {
-  const forwardedHeaders = new Headers(headers);
-
-  forwardedHeaders.delete("authorization");
-  forwardedHeaders.delete("connection");
-  forwardedHeaders.delete("content-length");
-  forwardedHeaders.delete("cookie");
-  forwardedHeaders.delete("host");
-  forwardedHeaders.delete("x-forwarded-for");
-  forwardedHeaders.delete("x-forwarded-host");
-  forwardedHeaders.delete("x-forwarded-port");
-  forwardedHeaders.delete("x-forwarded-proto");
-
-  return forwardedHeaders;
-}
-
-function toUpstreamResponse(response: Response): Response {
-  const headers = new Headers(response.headers);
-  headers.delete("set-cookie");
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
 
 function buildProxiedPath(
   pathSegments: string[] | undefined,
@@ -69,12 +48,22 @@ async function forwardRequest(
   context: RouteContext,
 ): Promise<Response> {
   try {
+    const localRequestRejection = resolveLocalRequestRejection(request);
+
+    if (localRequestRejection) {
+      return Response.json(
+        { message: localRequestRejection.message },
+        { status: localRequestRejection.status },
+      );
+    }
+
     const params = await context.params;
     const path = buildProxiedPath(params.path, request);
     const headers = stripForwardedHeaders(request.headers);
-    const session = isHostedAuthMode() ? await auth() : null;
+    const hostedAuthMode = isHostedAuthMode();
+    const session = hostedAuthMode ? await auth() : null;
     const authorization = await resolveProxyAuthorization({
-      hostedAuthMode: isHostedAuthMode(),
+      hostedAuthMode,
       sessionUser: session?.user,
       mintToken: mintApiAccessToken,
     });
@@ -86,20 +75,19 @@ async function forwardRequest(
     if (authorization.authorizationHeader) {
       headers.set("Authorization", authorization.authorizationHeader);
     }
+    headers.set("Accept-Encoding", "identity");
 
+    const upstreamRequest = await buildUpstreamRequest(request);
     const upstreamResponse = await fetch(getDirectApiUrl(path), {
       method: request.method,
       headers,
-      body:
-        request.method === "GET" || request.method === "HEAD"
-          ? undefined
-          : request.body,
+      body: upstreamRequest.body,
       cache: "no-store",
-      duplex: "half",
+      duplex: upstreamRequest.duplex,
       redirect: "manual",
     } as RequestInit & { duplex: "half" });
 
-    return toUpstreamResponse(upstreamResponse);
+    return await toUpstreamResponse(upstreamResponse);
   } catch (error) {
     if (error instanceof InvalidApiPathError) {
       return INVALID_PROXY_PATH_RESPONSE;

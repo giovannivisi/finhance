@@ -5,7 +5,7 @@
   "author": "giovisi",
   "private": true,
   "engines": {
-    "node": ">=20.9.0 <21"
+    "node": ">=20.9.0 <23"
   },
   "license": "MIT",
   "scripts": {

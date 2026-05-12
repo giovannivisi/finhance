@@ -7,6 +7,7 @@ import {
   ASSET_KIND_OPTIONS,
   EXCHANGE_SUFFIXES,
   LIABILITY_KIND_OPTIONS,
+  formatKindLabel,
 } from "@lib/asset-ui";
 import { formatAccountOptionLabel } from "@lib/accounts";
 import {
@@ -253,7 +254,7 @@ export default function AssetForm({
           >
             {kindOptions.map((kind) => (
               <option key={kind} value={kind}>
-                {kind}
+                {formatKindLabel(kind)}
               </option>
             ))}
           </select>
@@ -487,19 +488,6 @@ export default function AssetForm({
           onBlur={(e) =>
             (e.target.style.borderColor = "var(--border-glass-strong)")
           }
-        />
-      </div>
-
-      <div style={{ display: "none" }}>
-        <label htmlFor={`${fieldPrefix}-order`} style={getLabelStyle(false)}>
-          Order
-        </label>
-        <input
-          id={`${fieldPrefix}-order`}
-          style={inputStyle}
-          type="number"
-          value={form.order}
-          onChange={(event) => updateField("order", event.target.value)}
         />
       </div>
 

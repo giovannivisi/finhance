@@ -15,6 +15,7 @@ function createDashboard(
         name: 'Cash',
         type: 'ASSET',
         accountId: null,
+        accountName: null,
         kind: 'CASH',
         liabilityKind: null,
         ticker: null,
@@ -41,6 +42,7 @@ function createDashboard(
       liabilities: 25,
       netWorth: 75,
     },
+    assetKindOrder: [],
     lastRefreshAt: '2026-04-17T10:00:00.000Z',
     latestSnapshotDate: null,
     latestSnapshotCapturedAt: null,
@@ -77,6 +79,7 @@ describe('DashboardService', () => {
   let snapshots: {
     findLatest: jest.Mock;
     hasSnapshotForDate: jest.Mock;
+    captureFromDashboard: jest.Mock;
   };
 
   beforeEach(() => {
@@ -87,12 +90,13 @@ describe('DashboardService', () => {
     snapshots = {
       findLatest: jest.fn(),
       hasSnapshotForDate: jest.fn(),
+      captureFromDashboard: jest.fn().mockResolvedValue(createSnapshot()),
     };
 
     service = new DashboardService(assets as never, snapshots as never);
   });
 
-  it('returns latest snapshot metadata without triggering a write when today is missing', async () => {
+  it('auto-captures a snapshot in the background when today is missing', async () => {
     const dashboard = createDashboard();
     const latestSnapshot = createSnapshot({
       snapshotDate: new Date('2026-04-16T00:00:00.000Z'),
@@ -108,6 +112,10 @@ describe('DashboardService', () => {
     expect(result.latestSnapshotDate).toBe('2026-04-16');
     expect(result.latestSnapshotCapturedAt).toBe('2026-04-16T21:15:00.000Z');
     expect(result.latestSnapshotIsPartial).toBe(true);
+    expect(snapshots.captureFromDashboard).toHaveBeenCalledWith(
+      OWNER_ID,
+      dashboard,
+    );
   });
 
   it('does not trigger background capture when a same-day snapshot already exists', async () => {
@@ -122,6 +130,7 @@ describe('DashboardService', () => {
     expect(result.latestSnapshotDate).toBe('2026-04-17');
     expect(result.latestSnapshotCapturedAt).toBe('2026-04-17T10:00:00.000Z');
     expect(result.latestSnapshotIsPartial).toBe(false);
+    expect(snapshots.captureFromDashboard).not.toHaveBeenCalled();
   });
 
   it('returns null snapshot metadata when no snapshot exists yet', async () => {

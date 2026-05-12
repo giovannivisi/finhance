@@ -14,7 +14,18 @@ import type {
   ImportPreviewResponse,
   ImportRowIssueResponse,
 } from '@finhance/shared';
-import { parseCsvRows } from '@/common/csv';
+import {
+  parseCsvTable,
+  restoreSpreadsheetFormulaPrefix,
+  serializeCsv,
+} from '@/common/csv';
+import { buildStoredZipArchive, type ZipArchiveEntry } from '@/common/zip';
+import {
+  parseStoredImportIssues,
+  parseStoredImportPayload,
+  parseStoredImportSummary,
+  serializeImportBatchValue,
+} from '@imports/import-batch-json';
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import {
@@ -49,6 +60,8 @@ import type {
   BudgetImportRow,
   BudgetOverrideImportRow,
   CategoryImportRow,
+  ExpenseCategoryHierarchyImportRow,
+  ExpenseValidationRuleImportRow,
   ImportAnalysisResult,
   ImportAnalysisState,
   ImportPayload,
@@ -106,11 +119,6 @@ interface ExportArchiveResult {
   buffer: Buffer;
 }
 
-interface ZipFileEntry {
-  name: string;
-  data: Buffer;
-}
-
 interface StoredPreviewPayload {
   ownerId: string;
   payload: ImportPayload;
@@ -160,8 +168,6 @@ const MARKET_ASSET_KINDS = new Set<AssetKind>([
 const CSV_TRUE_VALUES = new Set(['true', '1', 'yes']);
 const CSV_FALSE_VALUES = new Set(['false', '0', 'no', '']);
 const ZERO = new Prisma.Decimal(0);
-const ZIP_STORE_METHOD = 0;
-const ZIP_VERSION = 20;
 const EXPORT_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Rome',
   year: 'numeric',
@@ -177,8 +183,9 @@ const EXPORT_FILE_NAMES: Record<ImportFileType, string> = {
   recurringExceptions: 'recurringExceptions.csv',
   budgets: 'budgets.csv',
   budgetOverrides: 'budgetOverrides.csv',
+  expenseCategoryHierarchy: 'expenseCategoryHierarchy.csv',
+  expenseValidationRules: 'expenseValidationRules.csv',
 };
-const CRC32_TABLE = buildCrc32Table();
 
 type CsvRecord = Record<string, string>;
 
@@ -244,10 +251,10 @@ export class ImportsService {
         userId: ownerId,
         source: CSV_IMPORT_SOURCE,
         status,
-        summaryJson: this.toJsonValue(analysis.summary),
-        errorJson: this.toJsonValue(analysis.issues),
+        summaryJson: serializeImportBatchValue(analysis.summary),
+        errorJson: serializeImportBatchValue(analysis.issues),
         payloadJson: analysis.canApply
-          ? this.toJsonValue(parsed.payload)
+          ? serializeImportBatchValue(parsed.payload)
           : Prisma.DbNull,
       },
     });
@@ -293,7 +300,7 @@ export class ImportsService {
     }
 
     const preview = this.previewPayloads.get(batchId);
-    const persistedPayload = this.fromStoredImportPayload(batch.payloadJson);
+    const persistedPayload = parseStoredImportPayload(batch.payloadJson);
     const previewPayload =
       preview && preview.ownerId === ownerId
         ? preview.payload
@@ -326,8 +333,8 @@ export class ImportsService {
           where: { id: batchId },
           data: {
             status: ImportBatchStatus.APPLIED,
-            summaryJson: this.toJsonValue(analysis.summary),
-            errorJson: this.toJsonValue(analysis.issues),
+            summaryJson: serializeImportBatchValue(analysis.summary),
+            errorJson: serializeImportBatchValue(analysis.issues),
             payloadJson: Prisma.DbNull,
             appliedAt: new Date(),
           },
@@ -360,8 +367,8 @@ export class ImportsService {
           where: { id: batchId },
           data: {
             status: ImportBatchStatus.FAILED,
-            summaryJson: this.toJsonValue(analysis.summary),
-            errorJson: this.toJsonValue(analysis.issues),
+            summaryJson: serializeImportBatchValue(analysis.summary),
+            errorJson: serializeImportBatchValue(analysis.issues),
             payloadJson: Prisma.DbNull,
             appliedAt: null,
           },
@@ -384,7 +391,7 @@ export class ImportsService {
     const files = this.buildExportFiles(state);
     return {
       filename: `finhance-export-${this.formatExportDate(new Date())}.zip`,
-      buffer: this.buildZipArchive(files),
+      buffer: buildStoredZipArchive(files),
     };
   }
 
@@ -401,6 +408,8 @@ export class ImportsService {
       recurringExceptions: [],
       budgets: [],
       budgetOverrides: [],
+      expenseCategoryHierarchy: [],
+      expenseValidationRules: [],
     };
     const issues: ImportRowIssueResponse[] = [];
 
@@ -497,6 +506,22 @@ export class ImportsService {
             this.parseBudgetOverrideRow.bind(this),
           );
           break;
+        case 'expenseCategoryHierarchy':
+          payload.expenseCategoryHierarchy = this.parseRows(
+            fileType,
+            records,
+            issues,
+            this.parseExpenseCategoryHierarchyRow.bind(this),
+          );
+          break;
+        case 'expenseValidationRules':
+          payload.expenseValidationRules = this.parseRows(
+            fileType,
+            records,
+            issues,
+            this.parseExpenseValidationRuleRow.bind(this),
+          );
+          break;
       }
     }
 
@@ -532,14 +557,9 @@ export class ImportsService {
     file: ImportFileType,
     rawText: string,
   ): Array<{ rowNumber: number; values: CsvRecord }> {
-    const text = rawText.replace(/^\uFEFF/, '');
-    const rows = parseCsvRows(text);
-
-    if (rows.length === 0 || rows[0].every((cell) => cell.trim() === '')) {
-      throw new BadRequestException(`${file}.csv is empty.`);
-    }
-
-    const headers = rows[0].map((value) => value.trim());
+    const { headers, rows } = parseCsvTable(rawText, {
+      emptyMessage: `${file}.csv is empty.`,
+    });
     const expectedHeaders = [...IMPORT_TEMPLATE_HEADERS[file]];
     const optionalHeaders =
       file === 'accounts' ? ['openingBalance', 'openingBalanceDate'] : [];
@@ -567,42 +587,7 @@ export class ImportsService {
       );
     }
 
-    const records: Array<{ rowNumber: number; values: CsvRecord }> = [];
-
-    for (let index = 1; index < rows.length; index += 1) {
-      const rawRow = rows[index];
-      const values = rawRow.map((value) => value.trim());
-
-      if (values.every((value) => value === '')) {
-        continue;
-      }
-
-      if (rawRow.length > headers.length) {
-        throw new BadRequestException(
-          `${file}.csv row ${index + 1} has more columns than the header row.`,
-        );
-      }
-
-      const record: CsvRecord = {};
-      for (const header of headers) {
-        record[header] = '';
-      }
-
-      for (
-        let columnIndex = 0;
-        columnIndex < headers.length;
-        columnIndex += 1
-      ) {
-        record[headers[columnIndex]] = rawRow[columnIndex]?.trim() ?? '';
-      }
-
-      records.push({
-        rowNumber: index + 1,
-        values: record,
-      });
-    }
-
-    return records;
+    return rows;
   }
 
   private parseAccountRow(
@@ -1159,6 +1144,62 @@ export class ImportsService {
     };
   }
 
+  private parseExpenseCategoryHierarchyRow(
+    rowNumber: number,
+    values: CsvRecord,
+  ): ExpenseCategoryHierarchyImportRow {
+    const level = this.parseEnumValue<'PRIMARY' | 'SECONDARY'>(
+      values.level,
+      ['PRIMARY', 'SECONDARY'],
+      'expenseCategoryHierarchy',
+      rowNumber,
+      'level',
+    );
+    const primary = this.requiredText(
+      values.primary,
+      'expenseCategoryHierarchy',
+      rowNumber,
+      'primary',
+    );
+    const secondary = this.optionalText(values.secondary);
+
+    return {
+      rowNumber,
+      level,
+      primary,
+      secondary,
+      primaryOrder: this.optionalInteger(values.primaryOrder),
+      secondaryOrder: this.optionalInteger(values.secondaryOrder),
+    };
+  }
+
+  private parseExpenseValidationRuleRow(
+    rowNumber: number,
+    values: CsvRecord,
+  ): ExpenseValidationRuleImportRow {
+    return {
+      rowNumber,
+      entry: this.requiredText(
+        values.entry,
+        'expenseValidationRules',
+        rowNumber,
+        'entry',
+      ),
+      primary: this.requiredText(
+        values.primary,
+        'expenseValidationRules',
+        rowNumber,
+        'primary',
+      ),
+      secondary: this.requiredText(
+        values.secondary,
+        'expenseValidationRules',
+        rowNumber,
+        'secondary',
+      ),
+    };
+  }
+
   private async analyzePayload(
     db: ImportDbClient,
     ownerId: string,
@@ -1259,6 +1300,20 @@ export class ImportsService {
       state,
       stagedAccounts,
       stagedCategories,
+      issues,
+      duplicateRowKeys,
+      summary,
+    );
+    this.validateExpenseCategoryHierarchy(
+      payload,
+      state,
+      issues,
+      duplicateRowKeys,
+      summary,
+    );
+    this.validateExpenseValidationRules(
+      payload,
+      state,
       issues,
       duplicateRowKeys,
       summary,
@@ -3189,6 +3244,251 @@ export class ImportsService {
     }
   }
 
+  private validateExpenseCategoryHierarchy(
+    payload: ImportPayload,
+    state: ImportAnalysisState,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    summary: ImportBatchSummaryResponse,
+  ): void {
+    const batchPrimaries = new Set<string>();
+    const existingExpensePrimaries = state.activeCategories.filter(
+      (c) => c.type === CategoryType.EXPENSE && c.parentCategoryId === null,
+    );
+    const existingSecondaries = state.activeCategories.filter(
+      (c) => c.type === CategoryType.EXPENSE && c.parentCategoryId !== null,
+    );
+    const activeCategoriesById = new Map(
+      state.activeCategories.map((c) => [c.id, c]),
+    );
+
+    for (const row of payload.expenseCategoryHierarchy.filter(
+      (r) => r.level === 'PRIMARY',
+    )) {
+      batchPrimaries.add(row.primary.trim().toLocaleLowerCase('en-US'));
+    }
+
+    for (const row of payload.expenseCategoryHierarchy) {
+      if (
+        this.rowHasErrors(
+          'expenseCategoryHierarchy',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      if (row.level === 'PRIMARY' && row.secondary) {
+        issues.push(
+          this.issue(
+            'expenseCategoryHierarchy',
+            row.rowNumber,
+            'secondary',
+            'PRIMARY rows must leave secondary empty.',
+          ),
+        );
+      }
+
+      if (row.level === 'SECONDARY' && !row.secondary) {
+        issues.push(
+          this.issue(
+            'expenseCategoryHierarchy',
+            row.rowNumber,
+            'secondary',
+            'SECONDARY rows require a secondary name.',
+          ),
+        );
+      }
+
+      if (row.level === 'SECONDARY') {
+        const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+        const inBatch = batchPrimaries.has(normalizedPrimary);
+        const inExisting = existingExpensePrimaries.some(
+          (c) => c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        );
+        const inCategoriesBatch = payload.categories.some(
+          (c) =>
+            c.type === CategoryType.EXPENSE &&
+            c.level === 'PRIMARY' &&
+            c.primary.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        );
+
+        if (!inBatch && !inExisting && !inCategoriesBatch) {
+          issues.push(
+            this.issue(
+              'expenseCategoryHierarchy',
+              row.rowNumber,
+              'primary',
+              `No expense primary named "${row.primary}" exists in this batch or current data.`,
+            ),
+          );
+        }
+      }
+
+      if (
+        this.rowHasErrors(
+          'expenseCategoryHierarchy',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+      if (row.level === 'PRIMARY') {
+        const existingPrimary = existingExpensePrimaries.find(
+          (c) => c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        );
+        this.bumpSummary(
+          summary,
+          'expenseCategoryHierarchy',
+          existingPrimary ? 'unchangedCount' : 'createCount',
+        );
+      } else {
+        const normalizedSecondary = (row.secondary ?? '')
+          .trim()
+          .toLocaleLowerCase('en-US');
+        const existingSecondary = existingSecondaries.find((c) => {
+          const parent = c.parentCategoryId
+            ? activeCategoriesById.get(c.parentCategoryId)
+            : null;
+          return (
+            c.name.trim().toLocaleLowerCase('en-US') === normalizedSecondary &&
+            parent?.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
+          );
+        });
+        this.bumpSummary(
+          summary,
+          'expenseCategoryHierarchy',
+          existingSecondary ? 'unchangedCount' : 'createCount',
+        );
+      }
+    }
+  }
+
+  private validateExpenseValidationRules(
+    payload: ImportPayload,
+    state: ImportAnalysisState,
+    issues: ImportRowIssueResponse[],
+    duplicateRowKeys: Map<ImportFileType, Set<string>>,
+    summary: ImportBatchSummaryResponse,
+  ): void {
+    const existingExpensePrimaries = state.activeCategories.filter(
+      (c) => c.type === CategoryType.EXPENSE && c.parentCategoryId === null,
+    );
+    const existingSecondaries = state.activeCategories.filter(
+      (c) => c.type === CategoryType.EXPENSE && c.parentCategoryId !== null,
+    );
+    const activeCategoriesById = new Map(
+      state.activeCategories.map((c) => [c.id, c]),
+    );
+
+    const batchHierarchyPrimaries = new Set(
+      payload.expenseCategoryHierarchy
+        .filter((r) => r.level === 'PRIMARY')
+        .map((r) => r.primary.trim().toLocaleLowerCase('en-US')),
+    );
+    const batchCategoryPrimaries = new Set(
+      payload.categories
+        .filter((r) => r.type === CategoryType.EXPENSE && r.level === 'PRIMARY')
+        .map((r) => r.primary.trim().toLocaleLowerCase('en-US')),
+    );
+    const batchHierarchySecondaries = new Set(
+      payload.expenseCategoryHierarchy
+        .filter((r) => r.level === 'SECONDARY')
+        .map(
+          (r) =>
+            `${r.primary.trim().toLocaleLowerCase('en-US')}:${(r.secondary ?? '').trim().toLocaleLowerCase('en-US')}`,
+        ),
+    );
+    const batchCategorySecondaries = new Set(
+      payload.categories
+        .filter(
+          (r) => r.type === CategoryType.EXPENSE && r.level === 'SECONDARY',
+        )
+        .map(
+          (r) =>
+            `${r.primary.trim().toLocaleLowerCase('en-US')}:${(r.secondary ?? '').trim().toLocaleLowerCase('en-US')}`,
+        ),
+    );
+
+    for (const row of payload.expenseValidationRules) {
+      if (
+        this.rowHasErrors(
+          'expenseValidationRules',
+          row.rowNumber,
+          issues,
+          duplicateRowKeys,
+        )
+      ) {
+        continue;
+      }
+
+      const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+      const normalizedSecondary = row.secondary
+        .trim()
+        .toLocaleLowerCase('en-US');
+      const secondaryKey = `${normalizedPrimary}:${normalizedSecondary}`;
+
+      const primaryExists =
+        batchHierarchyPrimaries.has(normalizedPrimary) ||
+        batchCategoryPrimaries.has(normalizedPrimary) ||
+        existingExpensePrimaries.some(
+          (c) => c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        );
+
+      if (!primaryExists) {
+        issues.push(
+          this.issue(
+            'expenseValidationRules',
+            row.rowNumber,
+            'primary',
+            `No expense primary named "${row.primary}" exists in this batch or current data.`,
+          ),
+        );
+        continue;
+      }
+
+      const secondaryExists =
+        batchHierarchySecondaries.has(secondaryKey) ||
+        batchCategorySecondaries.has(secondaryKey) ||
+        existingSecondaries.some((c) => {
+          const parent = c.parentCategoryId
+            ? activeCategoriesById.get(c.parentCategoryId)
+            : null;
+          return (
+            c.name.trim().toLocaleLowerCase('en-US') === normalizedSecondary &&
+            parent?.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
+          );
+        });
+
+      if (!secondaryExists) {
+        issues.push(
+          this.issue(
+            'expenseValidationRules',
+            row.rowNumber,
+            'secondary',
+            `No expense secondary named "${row.secondary}" under "${row.primary}" exists in this batch or current data.`,
+          ),
+        );
+        continue;
+      }
+
+      const normalizedEntry = normalizeExpenseValidationEntry(row.entry);
+      const existing =
+        state.expenseValidationRulesByNormalizedEntry.get(normalizedEntry);
+      this.bumpSummary(
+        summary,
+        'expenseValidationRules',
+        existing ? 'updateCount' : 'createCount',
+      );
+    }
+  }
+
   private async applyPayload(
     db: ImportDbClient,
     ownerId: string,
@@ -3409,6 +3709,169 @@ export class ImportsService {
         archived: saved.archivedAt !== null,
         parentCategoryId: saved.parentCategoryId,
       });
+    }
+
+    const hierarchyPrimaries = payload.expenseCategoryHierarchy.filter(
+      (r) => r.level === 'PRIMARY',
+    );
+    const hierarchySecondaries = payload.expenseCategoryHierarchy.filter(
+      (r) => r.level === 'SECONDARY',
+    );
+
+    for (const row of hierarchyPrimaries) {
+      const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+      const existing =
+        state.activeCategories.find(
+          (c) =>
+            c.type === CategoryType.EXPENSE &&
+            c.parentCategoryId === null &&
+            c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+        ) ?? null;
+
+      if (existing) {
+        if (row.primaryOrder !== null && row.primaryOrder !== existing.order) {
+          await db.category.update({
+            where: { id: existing.id },
+            data: { order: row.primaryOrder },
+          });
+        }
+        continue;
+      }
+
+      await db.category.create({
+        data: {
+          userId: ownerId,
+          name: row.primary.trim(),
+          type: CategoryType.EXPENSE,
+          parentCategoryId: null,
+          order: row.primaryOrder ?? 0,
+          importSource: CSV_IMPORT_SOURCE,
+          importKey: `hierarchy-primary-${normalizedPrimary}`,
+        },
+      });
+    }
+
+    const refreshedCategories = await db.category.findMany({
+      where: { userId: ownerId, archivedAt: null },
+    });
+    const refreshedCategoriesById = new Map(
+      refreshedCategories.map((c) => [c.id, c]),
+    );
+
+    for (const row of hierarchySecondaries) {
+      const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+      const normalizedSecondary = (row.secondary ?? '')
+        .trim()
+        .toLocaleLowerCase('en-US');
+      const parentPrimary = refreshedCategories.find(
+        (c) =>
+          c.type === CategoryType.EXPENSE &&
+          c.parentCategoryId === null &&
+          c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+      );
+
+      if (!parentPrimary) {
+        throw new ConflictException(
+          `Hierarchy import could not resolve expense primary "${row.primary}".`,
+        );
+      }
+
+      const existing = refreshedCategories.find((c) => {
+        const parent = c.parentCategoryId
+          ? refreshedCategoriesById.get(c.parentCategoryId)
+          : null;
+        return (
+          c.type === CategoryType.EXPENSE &&
+          c.parentCategoryId !== null &&
+          c.name.trim().toLocaleLowerCase('en-US') === normalizedSecondary &&
+          parent?.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
+        );
+      });
+
+      if (existing) {
+        if (
+          row.secondaryOrder !== null &&
+          row.secondaryOrder !== existing.order
+        ) {
+          await db.category.update({
+            where: { id: existing.id },
+            data: { order: row.secondaryOrder },
+          });
+        }
+        continue;
+      }
+
+      await db.category.create({
+        data: {
+          userId: ownerId,
+          name: (row.secondary ?? '').trim(),
+          type: CategoryType.EXPENSE,
+          parentCategoryId: parentPrimary.id,
+          order: row.secondaryOrder ?? 0,
+          importSource: CSV_IMPORT_SOURCE,
+          importKey: `hierarchy-secondary-${normalizedPrimary}-${normalizedSecondary}`,
+        },
+      });
+    }
+
+    if (payload.expenseValidationRules.length > 0) {
+      const allCategories = await db.category.findMany({
+        where: { userId: ownerId, archivedAt: null },
+      });
+      const allCategoriesById = new Map(allCategories.map((c) => [c.id, c]));
+
+      for (const row of payload.expenseValidationRules) {
+        const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
+        const normalizedSecondary = row.secondary
+          .trim()
+          .toLocaleLowerCase('en-US');
+
+        const secondaryCategory = allCategories.find((c) => {
+          const parent = c.parentCategoryId
+            ? allCategoriesById.get(c.parentCategoryId)
+            : null;
+          return (
+            c.type === CategoryType.EXPENSE &&
+            c.parentCategoryId !== null &&
+            c.name.trim().toLocaleLowerCase('en-US') === normalizedSecondary &&
+            parent?.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
+          );
+        });
+
+        if (!secondaryCategory) {
+          throw new ConflictException(
+            `Validation rule "${row.entry}" could not resolve secondary category "${row.secondary}" under "${row.primary}".`,
+          );
+        }
+
+        const normalizedEntry = normalizeExpenseValidationEntry(row.entry);
+        const existing =
+          state.expenseValidationRulesByNormalizedEntry.get(normalizedEntry);
+
+        if (existing) {
+          await db.expenseValidationRule.update({
+            where: { id: existing.id },
+            data: {
+              entry: row.entry.trim(),
+              normalizedEntry,
+              secondaryCategoryId: secondaryCategory.id,
+            },
+          });
+        } else {
+          const created = await db.expenseValidationRule.create({
+            data: {
+              userId: ownerId,
+              entry: row.entry.trim(),
+              normalizedEntry,
+              secondaryCategoryId: secondaryCategory.id,
+            },
+          });
+          state.expenseValidationRulesByNormalizedEntry.set(
+            normalizedEntry,
+            created,
+          );
+        }
+      }
     }
 
     for (const row of payload.budgets) {
@@ -3880,22 +4343,65 @@ export class ImportsService {
     await this.backfillTransactionExportImportKeys(db, ownerId);
   }
 
+  private isLegacyManualKey(key: string | null): boolean {
+    if (!key) return false;
+    return /^manual-(account|category|asset|recurring-rule|budget|transaction|transfer)-[a-z0-9]{20,}$/.test(
+      key,
+    );
+  }
+
+  private generateReadableImportKey(
+    prefix: string,
+    parts: string[],
+    usedKeys: Set<string>,
+  ): string {
+    const slug = parts
+      .join('-')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const base = `${prefix}-${slug}`;
+    if (!usedKeys.has(base)) {
+      usedKeys.add(base);
+      return base;
+    }
+    let counter = 2;
+    while (usedKeys.has(`${base}-${counter}`)) {
+      counter++;
+    }
+    const key = `${base}-${counter}`;
+    usedKeys.add(key);
+    return key;
+  }
+
   private async backfillAccountExportImportKeys(
     db: ImportDbClient,
     ownerId: string,
   ): Promise<void> {
     const rows = await db.account.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-account-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const importKey = this.generateReadableImportKey(
+        'account',
+        [row.name, row.currency],
+        usedKeys,
+      );
 
       await db.account.update({
         where: { id: row.id },
@@ -3913,16 +4419,32 @@ export class ImportsService {
   ): Promise<void> {
     const rows = await db.category.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
+      include: { parentCategory: true },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-category-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const parts = row.parentCategory
+        ? [row.type, row.parentCategory.name, row.name]
+        : [row.type, row.name];
+      const importKey = this.generateReadableImportKey(
+        'category',
+        parts,
+        usedKeys,
+      );
 
       await db.category.update({
         where: { id: row.id },
@@ -3940,16 +4462,28 @@ export class ImportsService {
   ): Promise<void> {
     const rows = await db.asset.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-asset-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const importKey = this.generateReadableImportKey(
+        'asset',
+        [row.name, row.currency],
+        usedKeys,
+      );
 
       await db.asset.update({
         where: { id: row.id },
@@ -3967,16 +4501,28 @@ export class ImportsService {
   ): Promise<void> {
     const rows = await db.recurringTransactionRule.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-recurring-rule-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const importKey = this.generateReadableImportKey(
+        'recurring',
+        [row.name],
+        usedKeys,
+      );
 
       await db.recurringTransactionRule.update({
         where: { id: row.id },
@@ -3994,16 +4540,29 @@ export class ImportsService {
   ): Promise<void> {
     const rows = await db.categoryBudget.findMany({
       where: { userId: ownerId },
+      orderBy: { createdAt: 'asc' },
+      include: { category: true },
     });
 
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+
     for (const row of rows) {
-      const importKey = row.importKey ?? `manual-budget-${row.id}`;
       if (
         row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey === importKey
+        row.importKey &&
+        !this.isLegacyManualKey(row.importKey)
       ) {
         continue;
       }
+      const importKey = this.generateReadableImportKey(
+        'budget',
+        [row.category.name, row.currency],
+        usedKeys,
+      );
 
       await db.categoryBudget.update({
         where: { id: row.id },
@@ -4022,18 +4581,31 @@ export class ImportsService {
     const rows = await db.transaction.findMany({
       where: { userId: ownerId },
       orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      include: { account: true },
     });
-    const transferGroups = new Map<string, Transaction[]>();
+    const usedKeys = new Set<string>(
+      rows
+        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
+        .map((r) => r.importKey!),
+    );
+    const transferGroups = new Map<string, (typeof rows)[number][]>();
 
     for (const row of rows) {
       if (row.kind !== TransactionKind.TRANSFER) {
-        const importKey = row.importKey ?? `manual-transaction-${row.id}`;
         if (
           row.importSource === CSV_IMPORT_SOURCE &&
-          row.importKey === importKey
+          row.importKey &&
+          !this.isLegacyManualKey(row.importKey)
         ) {
           continue;
         }
+        const dateStr = row.postedAt.toISOString().slice(0, 10);
+        const descSlug = row.description.slice(0, 30);
+        const importKey = this.generateReadableImportKey(
+          'tx',
+          [dateStr, descSlug, row.account.name],
+          usedKeys,
+        );
 
         await db.transaction.update({
           where: { id: row.id },
@@ -4057,10 +4629,27 @@ export class ImportsService {
     }
 
     for (const [transferGroupId, groupRows] of transferGroups.entries()) {
-      const { importKey } = this.resolveTransferRowsForExport(
-        transferGroupId,
-        groupRows,
+      const allHaveReadableKeys = groupRows.every(
+        (r) =>
+          r.importSource === CSV_IMPORT_SOURCE &&
+          r.importKey &&
+          !this.isLegacyManualKey(r.importKey),
       );
+      if (allHaveReadableKeys) continue;
+
+      const { outflow, importKey: existingKey } =
+        this.resolveTransferRowsForExport(transferGroupId, groupRows);
+
+      let importKey = existingKey;
+      if (importKey.startsWith('manual-transfer-')) {
+        const dateStr = outflow.postedAt.toISOString().slice(0, 10);
+        const descSlug = outflow.description.slice(0, 30);
+        importKey = this.generateReadableImportKey(
+          'transfer',
+          [dateStr, descSlug],
+          usedKeys,
+        );
+      }
 
       for (const row of groupRows) {
         if (
@@ -4162,7 +4751,7 @@ export class ImportsService {
     };
   }
 
-  private buildExportFiles(state: ExportState): ZipFileEntry[] {
+  private buildExportFiles(state: ExportState): ZipArchiveEntry[] {
     const accountImportKeys = new Map<string, string>();
     const categoryImportKeys = new Map<string, string>();
     const categoriesById = new Map(
@@ -4215,65 +4804,74 @@ export class ImportsService {
       budgetImportKeys.set(budget.id, importKey);
     }
 
-    const accountCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.accounts],
-      state.accounts.map((account) => this.toExportAccountRow(account)),
-    );
-    const categoryCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.categories],
-      state.categories.map((category) =>
+    const accountCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.accounts],
+      rows: state.accounts.map((account) => this.toExportAccountRow(account)),
+      trailingNewline: true,
+    });
+    const categoryCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.categories],
+      rows: state.categories.map((category) =>
         this.toExportCategoryRow(category, categoriesById),
       ),
-    );
-    const assetCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.assets],
-      state.assets.map((asset) =>
+      trailingNewline: true,
+    });
+    const assetCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.assets],
+      rows: state.assets.map((asset) =>
         this.toExportAssetRow(asset, accountImportKeys),
       ),
-    );
-    const transactionCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.transactions],
-      this.toExportTransactionRows(
+      trailingNewline: true,
+    });
+    const transactionCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.transactions],
+      rows: this.toExportTransactionRows(
         state.transactions.filter((row) => row.recurringRuleId === null),
         accountImportKeys,
         categoryImportKeys,
       ),
-    );
-    const recurringRuleCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.recurringRules],
-      state.recurringRules.map((rule) =>
+      trailingNewline: true,
+    });
+    const recurringRuleCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.recurringRules],
+      rows: state.recurringRules.map((rule) =>
         this.toExportRecurringRuleRow(
           rule,
           accountImportKeys,
           categoryImportKeys,
         ),
       ),
-    );
-    const recurringExceptionCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.recurringExceptions],
-      this.toExportRecurringExceptionRows(
+      trailingNewline: true,
+    });
+    const recurringExceptionCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.recurringExceptions],
+      rows: this.toExportRecurringExceptionRows(
         state.recurringRules,
         recurringRuleImportKeys,
         accountImportKeys,
         categoryImportKeys,
       ),
-    );
-    const budgetCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.budgets],
-      state.budgets.map((budget) =>
+      trailingNewline: true,
+    });
+    const budgetCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.budgets],
+      rows: state.budgets.map((budget) =>
         this.toExportBudgetRow(budget, categoryImportKeys),
       ),
-    );
-    const budgetOverrideCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.budgetOverrides],
-      this.toExportBudgetOverrideRows(state.budgets, budgetImportKeys),
-    );
-    const expenseValidationRulesCsv = this.serializeCsv(
-      ['entry', 'primary', 'secondary'],
-      state.expenseValidationRules.map((rule) =>
+      trailingNewline: true,
+    });
+    const budgetOverrideCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.budgetOverrides],
+      rows: this.toExportBudgetOverrideRows(state.budgets, budgetImportKeys),
+      trailingNewline: true,
+    });
+    const expenseValidationRulesCsv = serializeCsv({
+      headers: ['entry', 'primary', 'secondary'],
+      rows: state.expenseValidationRules.map((rule) =>
         this.toExportExpenseValidationRuleRow(rule),
       ),
-    );
+      trailingNewline: true,
+    });
 
     return [
       {
@@ -4792,121 +5390,6 @@ export class ImportsService {
     };
   }
 
-  private serializeCsv(headers: readonly string[], rows: CsvRecord[]): string {
-    const lines = [
-      headers.join(','),
-      ...rows.map((row) =>
-        headers
-          .map((header) => this.escapeCsvField(row[header] ?? ''))
-          .join(','),
-      ),
-    ];
-
-    return `${lines.join('\n')}\n`;
-  }
-
-  private escapeCsvField(value: string): string {
-    const sanitized = this.neutralizeSpreadsheetFormula(value);
-
-    if (!/[",\n\r]/.test(sanitized)) {
-      return sanitized;
-    }
-
-    return `"${sanitized.replace(/"/g, '""')}"`;
-  }
-
-  private neutralizeSpreadsheetFormula(value: string): string {
-    return /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
-  }
-
-  private buildZipArchive(entries: ZipFileEntry[]): Buffer {
-    const localParts: Buffer[] = [];
-    const centralParts: Buffer[] = [];
-    let offset = 0;
-    const { dosTime, dosDate } = this.toDosDateTime(new Date());
-
-    for (const entry of entries) {
-      const fileName = Buffer.from(entry.name, 'utf8');
-      const crc32 = this.crc32(entry.data);
-
-      const localHeader = Buffer.alloc(30);
-      localHeader.writeUInt32LE(0x04034b50, 0);
-      localHeader.writeUInt16LE(ZIP_VERSION, 4);
-      localHeader.writeUInt16LE(0, 6);
-      localHeader.writeUInt16LE(ZIP_STORE_METHOD, 8);
-      localHeader.writeUInt16LE(dosTime, 10);
-      localHeader.writeUInt16LE(dosDate, 12);
-      localHeader.writeUInt32LE(crc32, 14);
-      localHeader.writeUInt32LE(entry.data.length, 18);
-      localHeader.writeUInt32LE(entry.data.length, 22);
-      localHeader.writeUInt16LE(fileName.length, 26);
-      localHeader.writeUInt16LE(0, 28);
-
-      localParts.push(localHeader, fileName, entry.data);
-
-      const centralHeader = Buffer.alloc(46);
-      centralHeader.writeUInt32LE(0x02014b50, 0);
-      centralHeader.writeUInt16LE(ZIP_VERSION, 4);
-      centralHeader.writeUInt16LE(ZIP_VERSION, 6);
-      centralHeader.writeUInt16LE(0, 8);
-      centralHeader.writeUInt16LE(ZIP_STORE_METHOD, 10);
-      centralHeader.writeUInt16LE(dosTime, 12);
-      centralHeader.writeUInt16LE(dosDate, 14);
-      centralHeader.writeUInt32LE(crc32, 16);
-      centralHeader.writeUInt32LE(entry.data.length, 20);
-      centralHeader.writeUInt32LE(entry.data.length, 24);
-      centralHeader.writeUInt16LE(fileName.length, 28);
-      centralHeader.writeUInt16LE(0, 30);
-      centralHeader.writeUInt16LE(0, 32);
-      centralHeader.writeUInt16LE(0, 34);
-      centralHeader.writeUInt16LE(0, 36);
-      centralHeader.writeUInt32LE(0, 38);
-      centralHeader.writeUInt32LE(offset, 42);
-
-      centralParts.push(centralHeader, fileName);
-      offset += localHeader.length + fileName.length + entry.data.length;
-    }
-
-    const localBuffer = Buffer.concat(localParts);
-    const centralBuffer = Buffer.concat(centralParts);
-    const endOfCentralDirectory = Buffer.alloc(22);
-
-    endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
-    endOfCentralDirectory.writeUInt16LE(0, 4);
-    endOfCentralDirectory.writeUInt16LE(0, 6);
-    endOfCentralDirectory.writeUInt16LE(entries.length, 8);
-    endOfCentralDirectory.writeUInt16LE(entries.length, 10);
-    endOfCentralDirectory.writeUInt32LE(centralBuffer.length, 12);
-    endOfCentralDirectory.writeUInt32LE(localBuffer.length, 16);
-    endOfCentralDirectory.writeUInt16LE(0, 20);
-
-    return Buffer.concat([localBuffer, centralBuffer, endOfCentralDirectory]);
-  }
-
-  private crc32(buffer: Buffer): number {
-    let crc = 0xffffffff;
-
-    for (const byte of buffer) {
-      crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-    }
-
-    return (crc ^ 0xffffffff) >>> 0;
-  }
-
-  private toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
-    const year = Math.min(Math.max(date.getUTCFullYear(), 1980), 2107);
-    const dosTime =
-      (date.getUTCHours() << 11) |
-      (date.getUTCMinutes() << 5) |
-      Math.floor(date.getUTCSeconds() / 2);
-    const dosDate =
-      ((year - 1980) << 9) |
-      ((date.getUTCMonth() + 1) << 5) |
-      date.getUTCDate();
-
-    return { dosTime, dosDate };
-  }
-
   private formatExportDate(date: Date): string {
     return EXPORT_DATE_FORMATTER.format(date);
   }
@@ -5005,6 +5488,19 @@ export class ImportsService {
       payload.budgetOverrides,
       (row) => `${row.budgetImportKey}:${row.month}`,
     );
+    collect(
+      'expenseCategoryHierarchy',
+      payload.expenseCategoryHierarchy,
+      (row) => {
+        if (row.level === 'PRIMARY') {
+          return `PRIMARY:${row.primary.trim().toLocaleLowerCase('en-US')}`;
+        }
+        return `SECONDARY:${row.primary.trim().toLocaleLowerCase('en-US')}:${(row.secondary ?? '').trim().toLocaleLowerCase('en-US')}`;
+      },
+    );
+    collect('expenseValidationRules', payload.expenseValidationRules, (row) =>
+      normalizeExpenseValidationEntry(row.entry),
+    );
     return duplicates;
   }
 
@@ -5048,7 +5544,7 @@ export class ImportsService {
     field: string,
     maxLength: number = MAX_NAME_LENGTH,
   ): string {
-    const normalized = this.restoreSpreadsheetFormulaPrefix(value).trim();
+    const normalized = restoreSpreadsheetFormulaPrefix(value).trim();
 
     if (!normalized) {
       throw new BadRequestException(`${field} is required.`);
@@ -5069,26 +5565,13 @@ export class ImportsService {
     value: string | undefined,
     maxLength: number = MAX_NOTES_LENGTH,
   ): string | null {
-    const normalized = this.restoreSpreadsheetFormulaPrefix(value).trim();
+    const normalized = restoreSpreadsheetFormulaPrefix(value).trim();
     if (!normalized) {
       return null;
     }
 
     if (normalized.length > maxLength) {
       throw new BadRequestException('Text value exceeds the maximum length.');
-    }
-
-    return normalized;
-  }
-
-  private restoreSpreadsheetFormulaPrefix(value: string | undefined): string {
-    const normalized = value ?? '';
-
-    if (
-      normalized.startsWith("'") &&
-      /^[\s]*[=+\-@]/.test(normalized.slice(1))
-    ) {
-      return normalized.slice(1);
     }
 
     return normalized;
@@ -5840,8 +6323,8 @@ export class ImportsService {
       id: batch.id,
       source: batch.source,
       status: batch.status,
-      summary: batch.summaryJson as unknown as ImportBatchSummaryResponse,
-      issues: batch.errorJson as unknown as ImportRowIssueResponse[],
+      summary: parseStoredImportSummary(batch.summaryJson),
+      issues: parseStoredImportIssues(batch.errorJson),
       createdAt: batch.createdAt.toISOString(),
       appliedAt: batch.appliedAt?.toISOString() ?? null,
     };
@@ -5855,20 +6338,6 @@ export class ImportsService {
       ...this.toImportBatchResponse(batch),
       canApply,
     };
-  }
-
-  private fromStoredImportPayload(
-    value: Prisma.JsonValue | null,
-  ): ImportPayload | null {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return null;
-    }
-
-    return value as unknown as ImportPayload;
-  }
-
-  private toJsonValue(value: unknown): Prisma.InputJsonValue {
-    return value as Prisma.InputJsonValue;
   }
 
   private describeError(error: unknown): string {
@@ -5904,20 +6373,4 @@ export class ImportsService {
 
     return 'Import validation failed.';
   }
-}
-
-function buildCrc32Table(): Uint32Array {
-  const table = new Uint32Array(256);
-
-  for (let index = 0; index < table.length; index += 1) {
-    let value = index;
-
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = (value & 1) === 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    }
-
-    table[index] = value >>> 0;
-  }
-
-  return table;
 }

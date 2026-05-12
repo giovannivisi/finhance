@@ -767,8 +767,8 @@ export default function TransactionsPageClient({
                               ),
                           )}
                         </td>
-                        <td className="py-3">
-                          <div className="flex items-center gap-3">
+                        <td className="py-3 transaction-row-actions-cell">
+                          <div className="transaction-row-actions">
                             {transaction.isRecurringGenerated ? (
                               <>
                                 <span className="text-xs text-[var(--text-secondary)]">
@@ -789,7 +789,7 @@ export default function TransactionsPageClient({
                                             ),
                                         })
                                       }
-                                      className="link-button mobile-hit-target"
+                                      className="link-button mobile-hit-target transaction-row-action"
                                     >
                                       Override month
                                     </button>
@@ -802,7 +802,7 @@ export default function TransactionsPageClient({
                                         busyRecurringTransactionId ===
                                         transaction.id
                                       }
-                                      className="link-button is-warning mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                                      className="link-button is-warning mobile-hit-target transaction-row-action disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                       {busyRecurringTransactionId ===
                                       transaction.id
@@ -820,7 +820,7 @@ export default function TransactionsPageClient({
                                     setOccurrenceDraft(null);
                                     setEditingTransactionId(transaction.id);
                                   }}
-                                  className="link-button mobile-hit-target"
+                                  className="link-button mobile-hit-target transaction-row-action"
                                 >
                                   Edit
                                 </button>
@@ -832,7 +832,7 @@ export default function TransactionsPageClient({
                                   disabled={
                                     deletingTransactionId === transaction.id
                                   }
-                                  className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="link-button is-danger mobile-hit-target transaction-row-action disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {deletingTransactionId === transaction.id
                                     ? "Deleting..."

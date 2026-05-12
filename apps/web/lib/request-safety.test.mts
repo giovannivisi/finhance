@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getRepeatedActionNotice } from "./request-safety.ts";
+import {
+  getRecurringMaterializationNoticeText,
+  getRepeatedActionNotice,
+} from "./request-safety.ts";
 
 test("getRepeatedActionNotice returns a calm notice for known lock and cooldown messages", () => {
   assert.equal(
@@ -68,5 +71,20 @@ test("getRepeatedActionNotice leaves real throttle and unexpected failures alone
       error: "Network down",
     }),
     null,
+  );
+});
+
+test("getRecurringMaterializationNoticeText trims the redundant cooldown lead-in", () => {
+  assert.equal(
+    getRecurringMaterializationNoticeText(
+      "Recurring materialization is cooling down. Try again in 15s.",
+    ),
+    "Cooling down... Try again in 15s",
+  );
+  assert.equal(
+    getRecurringMaterializationNoticeText(
+      "Recurring materialization already in progress.",
+    ),
+    "Recurring materialization already in progress.",
   );
 });

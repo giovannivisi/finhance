@@ -77,7 +77,7 @@ export default async function SetupPage() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <article className="list-card is-roomy section-stack-tight">
+              <article className="list-card is-roomy setup-intro-card">
                 <div>
                   <h2 className="section-title">Import existing data</h2>
                   <p className="section-subtitle">
@@ -85,10 +85,6 @@ export default async function SetupPage() {
                     transactions, recurring rules, or budgets elsewhere.
                   </p>
                 </div>
-                <p className="text-sm">
-                  Use the CSV round-trip flow if you already track balances,
-                  transactions, recurring rules, or budgets elsewhere.
-                </p>
                 <p className="text-sm">
                   {setup.hasAppliedImportBatch
                     ? "An import batch has already been applied in this workspace."
@@ -107,7 +103,7 @@ export default async function SetupPage() {
                 </Link>
               </article>
 
-              <article className="list-card is-roomy section-stack-tight">
+              <article className="list-card is-roomy setup-intro-card">
                 <div>
                   <h2 className="section-title">Set up manually</h2>
                   <p className="section-subtitle">
@@ -115,10 +111,6 @@ export default async function SetupPage() {
                     directly in finhance using the existing product pages.
                   </p>
                 </div>
-                <p className="text-sm">
-                  Create accounts, categories, recurring rules, and budgets
-                  directly in finhance using the existing product pages.
-                </p>
                 <p className="text-sm">
                   Start with accounts and categories first. Everything else
                   builds more cleanly on that trust baseline.
@@ -164,10 +156,8 @@ export default async function SetupPage() {
                       {step.status === "COMPLETE" ? "Complete" : "Pending"}
                     </span>
                   </div>
-                  <Link
-                    href={step.href}
-                    className="btn-secondary mt-4 self-start"
-                  >
+                  <div aria-hidden="true" className="h-5" />
+                  <Link href={step.href} className="btn-secondary self-start">
                     {step.actionLabel}
                   </Link>
                 </article>
@@ -193,7 +183,7 @@ export default async function SetupPage() {
                     key={warning.code}
                     className={`page-inline-notice ${WARNING_STYLES[warning.severity]}`}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="page-hero-copy">
                         <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                           {warning.title}

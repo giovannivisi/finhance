@@ -130,11 +130,16 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
     },
     async deleteUser(userId) {
       try {
-        return mapUser(
-          await prisma.user.delete({
-            where: { id: userId },
-          }),
-        );
+        const user = await prisma.user.update({
+          where: { id: userId },
+          data: {
+            isActive: false,
+          },
+        });
+        await prisma.authSession.deleteMany({
+          where: { userId },
+        });
+        return mapUser(user);
       } catch (error) {
         if (isNotFoundError(error)) {
           return null;
