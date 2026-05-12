@@ -136,6 +136,7 @@ describe('TransactionsService', () => {
   };
   let categories: {
     getAssignableCategory: jest.Mock;
+    findMatchingExpenseSecondaryCategory: jest.Mock;
   };
 
   beforeEach(() => {
@@ -187,6 +188,7 @@ describe('TransactionsService', () => {
 
     categories = {
       getAssignableCategory: jest.fn().mockResolvedValue(createCategory()),
+      findMatchingExpenseSecondaryCategory: jest.fn().mockResolvedValue(null),
     };
 
     service = new TransactionsService(
@@ -236,6 +238,7 @@ describe('TransactionsService', () => {
         },
       },
     });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('creates transfer pairs and returns one logical entry', async () => {
@@ -278,6 +281,7 @@ describe('TransactionsService', () => {
 
     expect(result.entryType).toBe('TRANSFER');
     expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('enforces same-currency transfers', async () => {
@@ -368,6 +372,46 @@ describe('TransactionsService', () => {
       'Generated recurring transactions',
     );
   });
+
+  it('rejects edited expenses that exceed the post-reversal cash balance', async () => {
+    prisma.transaction.findFirst.mockResolvedValue(
+      createTransactionRow({
+        id: 'expense-1',
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        amount: new Prisma.Decimal('40'),
+        categoryId: null,
+        category: null,
+      }),
+    );
+    prisma.asset.findFirst
+      .mockResolvedValueOnce({
+        id: 'cash-asset-1',
+        balance: new Prisma.Decimal('10'),
+        currency: 'EUR',
+      })
+      .mockResolvedValueOnce({
+        id: 'cash-asset-1',
+        balance: new Prisma.Decimal('50'),
+        currency: 'EUR',
+      });
+
+    await expect(
+      service.update(OWNER_ID, 'expense-1', {
+        postedAt: '2026-04-17T09:00:00.000Z',
+        kind: TransactionKind.EXPENSE,
+        amount: 60,
+        description: 'Rent',
+        accountId: 'account-1',
+        direction: TransactionDirection.OUTFLOW,
+        categoryId: null,
+        counterparty: null,
+      }),
+    ).rejects.toThrow('Insufficient cash balance');
+
+    expect(prisma.transaction.update).not.toHaveBeenCalled();
+  });
+
   it('collapses transfer rows and filters archived accounts from the list', async () => {
     prisma.transaction.findMany.mockResolvedValue([
       createTransactionRow({

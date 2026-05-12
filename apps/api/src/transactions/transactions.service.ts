@@ -181,50 +181,59 @@ export class TransactionsService {
     const prepared = await this.prepareStandardTransaction(ownerId, dto);
     const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
 
-    if (!isAdjustment) {
-      await this.validateAccountCashBalance(
-        ownerId,
-        prepared.accountId,
-        prepared.amount,
-        prepared.direction,
-        client,
-      );
-    }
+    const persist = async (tx: TransactionWriteClient) => {
+      if (!isAdjustment) {
+        await this.validateAccountCashBalance(
+          ownerId,
+          prepared.accountId,
+          prepared.amount,
+          prepared.direction,
+          tx,
+        );
+      }
 
-    const row = await client.transaction.create({
-      data: {
-        userId: ownerId,
-        postedAt: prepared.postedAt,
-        accountId: prepared.accountId,
-        categoryId: prepared.categoryId,
-        amount: prepared.amount,
-        currency: prepared.currency,
-        direction: prepared.direction,
-        kind: prepared.kind,
-        description: prepared.description,
-        notes: prepared.notes,
-        counterparty: prepared.counterparty,
-        transferGroupId: null,
-      },
-      include: {
-        account: true,
-        category: {
-          include: {
-            parentCategory: true,
+      const row = await tx.transaction.create({
+        data: {
+          userId: ownerId,
+          postedAt: prepared.postedAt,
+          accountId: prepared.accountId,
+          categoryId: prepared.categoryId,
+          amount: prepared.amount,
+          currency: prepared.currency,
+          direction: prepared.direction,
+          kind: prepared.kind,
+          description: prepared.description,
+          notes: prepared.notes,
+          counterparty: prepared.counterparty,
+          transferGroupId: null,
+        },
+        include: {
+          account: true,
+          category: {
+            include: {
+              parentCategory: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!isAdjustment) {
-      await this.adjustAccountCashBalance(
-        ownerId,
-        prepared.accountId,
-        prepared.amount,
-        prepared.direction,
-        client,
-      );
-    }
+      if (!isAdjustment) {
+        await this.adjustAccountCashBalance(
+          ownerId,
+          prepared.accountId,
+          prepared.amount,
+          prepared.direction,
+          tx,
+        );
+      }
+
+      return row;
+    };
+
+    const row =
+      client === this.prisma
+        ? await this.prisma.$transaction((tx) => persist(tx))
+        : await persist(client);
 
     return {
       entryType: 'STANDARD',
@@ -304,6 +313,14 @@ export class TransactionsService {
           { skipValidation: true },
         );
 
+        await this.validateAccountCashBalance(
+          ownerId,
+          prepared.sourceAccountId,
+          prepared.amount,
+          TransactionDirection.OUTFLOW,
+          tx,
+        );
+
         await tx.transaction.update({
           where: { id: existing.outflow.id },
           data: {
@@ -344,7 +361,6 @@ export class TransactionsService {
           prepared.amount,
           TransactionDirection.OUTFLOW,
           tx,
-          { skipValidation: true },
         );
         await this.adjustAccountCashBalance(
           ownerId,
@@ -378,58 +394,67 @@ export class TransactionsService {
 
     const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
 
-    if (!isAdjustment) {
-      // Reverse the old transaction's cash effect (skip validation — it's a reversal)
-      const reverseDirection =
-        existing.row.direction === TransactionDirection.INFLOW
-          ? TransactionDirection.OUTFLOW
-          : TransactionDirection.INFLOW;
-      await this.adjustAccountCashBalance(
-        ownerId,
-        existing.row.accountId,
-        existing.row.amount,
-        reverseDirection,
-        this.prisma,
-        { skipValidation: true },
-      );
-    }
+    const row = await this.prisma.$transaction(async (tx) => {
+      if (!isAdjustment) {
+        // Reverse the old transaction's cash effect before validating the
+        // replacement against the same atomic balance state.
+        const reverseDirection =
+          existing.row.direction === TransactionDirection.INFLOW
+            ? TransactionDirection.OUTFLOW
+            : TransactionDirection.INFLOW;
+        await this.adjustAccountCashBalance(
+          ownerId,
+          existing.row.accountId,
+          existing.row.amount,
+          reverseDirection,
+          tx,
+          { skipValidation: true },
+        );
 
-    const row = await this.prisma.transaction.update({
-      where: { id: existing.row.id },
-      data: {
-        postedAt: prepared.postedAt,
-        accountId: prepared.accountId,
-        categoryId: prepared.categoryId,
-        amount: prepared.amount,
-        currency: prepared.currency,
-        direction: prepared.direction,
-        description: prepared.description,
-        notes: prepared.notes,
-        counterparty: prepared.counterparty,
-      },
-      include: {
-        account: true,
-        category: {
-          include: {
-            parentCategory: true,
+        await this.validateAccountCashBalance(
+          ownerId,
+          prepared.accountId,
+          prepared.amount,
+          prepared.direction,
+          tx,
+        );
+      }
+
+      const updatedRow = await tx.transaction.update({
+        where: { id: existing.row.id },
+        data: {
+          postedAt: prepared.postedAt,
+          accountId: prepared.accountId,
+          categoryId: prepared.categoryId,
+          amount: prepared.amount,
+          currency: prepared.currency,
+          direction: prepared.direction,
+          description: prepared.description,
+          notes: prepared.notes,
+          counterparty: prepared.counterparty,
+        },
+        include: {
+          account: true,
+          category: {
+            include: {
+              parentCategory: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!isAdjustment) {
-      // Apply the new transaction's cash effect (skip validation — balance was
-      // already adjusted by the reversal above so a simple re-check could give
-      // a false positive)
-      await this.adjustAccountCashBalance(
-        ownerId,
-        prepared.accountId,
-        prepared.amount,
-        prepared.direction,
-        this.prisma,
-        { skipValidation: true },
-      );
-    }
+      if (!isAdjustment) {
+        await this.adjustAccountCashBalance(
+          ownerId,
+          prepared.accountId,
+          prepared.amount,
+          prepared.direction,
+          tx,
+        );
+      }
+
+      return updatedRow;
+    });
 
     return {
       entryType: 'STANDARD',
@@ -634,21 +659,19 @@ export class TransactionsService {
     client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
     const prepared = await this.prepareTransferTransaction(ownerId, dto);
-
-    // Validate the source account has enough cash before proceeding
-    await this.validateAccountCashBalance(
-      ownerId,
-      prepared.sourceAccountId,
-      prepared.amount,
-      TransactionDirection.OUTFLOW,
-      client,
-    );
-
     const transferGroupId = `transfer_${randomUUID()}`;
 
     const persistTransfer = async (
       tx: Prisma.TransactionClient,
     ): Promise<void> => {
+      await this.validateAccountCashBalance(
+        ownerId,
+        prepared.sourceAccountId,
+        prepared.amount,
+        TransactionDirection.OUTFLOW,
+        tx,
+      );
+
       await tx.transaction.create({
         data: {
           userId: ownerId,
