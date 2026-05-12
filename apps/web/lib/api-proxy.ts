@@ -2,11 +2,6 @@ function hasRequestBody(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
 }
 
-function isMultipartFormDataRequest(request: Request): boolean {
-  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
-  return contentType.includes("multipart/form-data");
-}
-
 export function stripForwardedHeaders(headers: Headers): Headers {
   const forwardedHeaders = new Headers(headers);
 
@@ -24,28 +19,16 @@ export function stripForwardedHeaders(headers: Headers): Headers {
   return forwardedHeaders;
 }
 
-export async function buildUpstreamRequest(
-  request: Request,
-  headers: Headers,
-): Promise<{
+export async function buildUpstreamRequest(request: Request): Promise<{
   body: BodyInit | undefined;
   duplex?: "half";
 }> {
-  if (!hasRequestBody(request.method)) {
+  if (!hasRequestBody(request.method) || !request.body) {
     return { body: undefined };
   }
 
-  if (isMultipartFormDataRequest(request)) {
-    headers.delete("content-type");
-    headers.delete("content-length");
-
-    return {
-      body: await request.formData(),
-    };
-  }
-
   return {
-    body: request.body ?? undefined,
+    body: request.body,
     duplex: "half",
   };
 }
@@ -61,14 +44,9 @@ export async function toUpstreamResponse(
   headers.delete("etag");
   headers.delete("transfer-encoding");
   headers.delete("set-cookie");
-  headers.set("x-finhance-proxy", "buffered-identity-v2");
+  headers.set("x-finhance-proxy", "streamed-identity-v3");
 
-  const body =
-    response.status === 204 || response.status === 304
-      ? null
-      : await response.arrayBuffer();
-
-  return new Response(body, {
+  return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers,

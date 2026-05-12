@@ -1,9 +1,22 @@
 import { NextResponse } from "next/server";
 import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { resolveLocalRequestRejection } from "@lib/local-request";
 import { buildSignInRedirectUrl } from "@lib/proxy-auth";
 
 const authenticatedProxy = auth((request) => {
+  const localRequestRejection = resolveLocalRequestRejection(request);
+
+  if (localRequestRejection) {
+    return new NextResponse(localRequestRejection.message, {
+      status: localRequestRejection.status,
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "text/plain; charset=utf-8",
+      },
+    });
+  }
+
   if (!isHostedAuthMode()) {
     return NextResponse.next();
   }

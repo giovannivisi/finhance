@@ -10,6 +10,7 @@ import {
   mintApiAccessToken,
 } from "@lib/api-auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { resolveLocalRequestRejection } from "@lib/local-request";
 import { resolveProxyAuthorization } from "@lib/proxy-auth";
 
 type RouteContext = {
@@ -47,12 +48,22 @@ async function forwardRequest(
   context: RouteContext,
 ): Promise<Response> {
   try {
+    const localRequestRejection = resolveLocalRequestRejection(request);
+
+    if (localRequestRejection) {
+      return Response.json(
+        { message: localRequestRejection.message },
+        { status: localRequestRejection.status },
+      );
+    }
+
     const params = await context.params;
     const path = buildProxiedPath(params.path, request);
     const headers = stripForwardedHeaders(request.headers);
-    const session = isHostedAuthMode() ? await auth() : null;
+    const hostedAuthMode = isHostedAuthMode();
+    const session = hostedAuthMode ? await auth() : null;
     const authorization = await resolveProxyAuthorization({
-      hostedAuthMode: isHostedAuthMode(),
+      hostedAuthMode,
       sessionUser: session?.user,
       mintToken: mintApiAccessToken,
     });
@@ -66,7 +77,7 @@ async function forwardRequest(
     }
     headers.set("Accept-Encoding", "identity");
 
-    const upstreamRequest = await buildUpstreamRequest(request, headers);
+    const upstreamRequest = await buildUpstreamRequest(request);
     const upstreamResponse = await fetch(getDirectApiUrl(path), {
       method: request.method,
       headers,
