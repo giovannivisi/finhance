@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { PrismaClient } from '@finhance/db';
 import { loadApiEnv } from '@/config/env-loader';
+import { ensureOwnerUserRecord } from '@/security/owner-user';
+import { DEFAULT_LOCAL_DEV_OWNER_ID } from '@/security/request-owner.resolver';
 
 const API_DIR = resolve(__dirname, '..');
 const DB_PACKAGE_DIR = resolve(API_DIR, '../../packages/db');
@@ -43,6 +45,19 @@ export async function createPrismaTestSchema(prefix: string) {
     },
     stdio: 'pipe',
   });
+
+  const seeded = new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
+  });
+  await seeded.$connect();
+  await ensureOwnerUserRecord(seeded, {
+    userId: DEFAULT_LOCAL_DEV_OWNER_ID,
+  });
+  await seeded.$disconnect();
 
   return {
     schema,

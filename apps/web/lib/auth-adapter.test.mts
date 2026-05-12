@@ -198,6 +198,54 @@ test("deleteSession hashes the session token before deleting", async () => {
   });
 });
 
+test("deleteUser deactivates the user and revokes sessions", async () => {
+  let updateInput: unknown;
+  let deleteManyInput: unknown;
+  const adapter = FinhanceAuthAdapter({
+    user: {
+      update: async (input: unknown) => {
+        updateInput = input;
+        return {
+          id: "user-1",
+          email: "person@example.com",
+          emailVerified: null,
+          name: "Person",
+          image: null,
+        };
+      },
+    },
+    authSession: {
+      deleteMany: async (input: unknown) => {
+        deleteManyInput = input;
+        return { count: 2 };
+      },
+    },
+  } as never);
+
+  const result = await adapter.deleteUser?.("user-1");
+
+  assert.deepEqual(updateInput, {
+    where: {
+      id: "user-1",
+    },
+    data: {
+      isActive: false,
+    },
+  });
+  assert.deepEqual(deleteManyInput, {
+    where: {
+      userId: "user-1",
+    },
+  });
+  assert.deepEqual(result, {
+    id: "user-1",
+    email: "person@example.com",
+    emailVerified: null,
+    name: "Person",
+    image: null,
+  });
+});
+
 test("verification tokens are hashed at rest and returned in raw form", async () => {
   let createInput: unknown;
   let deleteInput: unknown;

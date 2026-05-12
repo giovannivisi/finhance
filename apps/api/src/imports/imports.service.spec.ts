@@ -1207,6 +1207,82 @@ describe('ImportsService', () => {
     });
   });
 
+  it('normalizes malformed stored import issue rows when listing recent batches', async () => {
+    prisma.importBatch.findMany.mockResolvedValue([
+      createImportBatch({
+        errorJson: [
+          {
+            file: 'accounts',
+            rowNumber: '2',
+            field: undefined,
+            severity: 'error',
+            message: 'Account row is invalid.',
+          },
+          {
+            file: 'transactions',
+            rowNumber: null,
+            field: 123,
+            severity: 'WARNING',
+            message: 'Transaction needs attention.',
+          },
+          {
+            file: 'assets',
+            rowNumber: 'not-a-number',
+            field: null,
+            severity: 'ERROR',
+            message: 'Asset row is invalid.',
+          },
+          {
+            file: 'accounts',
+            rowNumber: 3,
+            field: null,
+            severity: 'INVALID',
+            message: 'Unknown severity falls back to error.',
+          },
+          {
+            file: 'accounts',
+            rowNumber: 4,
+            field: null,
+            severity: 'ERROR',
+          },
+        ],
+      }),
+    ]);
+
+    const [batch] = await service.listRecent(OWNER_ID);
+
+    expect(batch?.issues).toEqual([
+      {
+        file: 'accounts',
+        rowNumber: 2,
+        field: null,
+        severity: 'ERROR',
+        message: 'Account row is invalid.',
+      },
+      {
+        file: 'transactions',
+        rowNumber: 1,
+        field: null,
+        severity: 'WARNING',
+        message: 'Transaction needs attention.',
+      },
+      {
+        file: 'assets',
+        rowNumber: 1,
+        field: null,
+        severity: 'ERROR',
+        message: 'Asset row is invalid.',
+      },
+      {
+        file: 'accounts',
+        rowNumber: 3,
+        field: null,
+        severity: 'ERROR',
+        message: 'Unknown severity falls back to error.',
+      },
+    ]);
+  });
+
   it('rejects oversized import keys during preview before persistence', async () => {
     const result = await service.previewCsv(OWNER_ID, {
       accounts: {

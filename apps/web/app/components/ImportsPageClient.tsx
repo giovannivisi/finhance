@@ -64,8 +64,6 @@ const IMPORT_FILE_LABELS: Record<ImportFileType, string> = {
   expenseValidationRules: "Expense validation rules",
 };
 
-let selectedImportFileCache: Partial<Record<ImportFileType, File | null>> = {};
-
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "medium",
   timeStyle: "short",
@@ -169,7 +167,7 @@ export default function ImportsPageClient({
 }) {
   const [selectedFiles, setSelectedFiles] = useState<
     Partial<Record<ImportFileType, File | null>>
-  >(() => ({ ...selectedImportFileCache }));
+  >({});
   const [batches, setBatches] = useState(initialBatches);
   const [preview, setPreview] = useState<ImportPreviewResponse | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -451,26 +449,18 @@ export default function ImportsPageClient({
     event: ChangeEvent<HTMLInputElement>,
   ) {
     const nextFile = event.target.files?.[0] ?? null;
-    setSelectedFiles((previous) => {
-      const next = {
-        ...previous,
-        [file]: nextFile,
-      };
-      selectedImportFileCache = next;
-      return next;
-    });
+    setSelectedFiles((previous) => ({
+      ...previous,
+      [file]: nextFile,
+    }));
     event.target.value = "";
   }
 
   function clearFileSelection(file: ImportFileType) {
-    setSelectedFiles((previous) => {
-      const next = {
-        ...previous,
-        [file]: null,
-      };
-      selectedImportFileCache = next;
-      return next;
-    });
+    setSelectedFiles((previous) => ({
+      ...previous,
+      [file]: null,
+    }));
   }
 
   async function handlePreview(event: FormEvent<HTMLFormElement>) {

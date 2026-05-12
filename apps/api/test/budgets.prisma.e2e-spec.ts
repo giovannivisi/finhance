@@ -96,10 +96,18 @@ describe('Budget routes with Prisma schema (e2e)', () => {
     await prisma.category.createMany({
       data: [
         {
+          id: 'category-household',
+          userId: OWNER_ID,
+          name: 'Household',
+          type: 'EXPENSE',
+          order: 0,
+        },
+        {
           id: 'category-groceries',
           userId: OWNER_ID,
           name: 'Groceries',
           type: 'EXPENSE',
+          parentCategoryId: 'category-household',
           order: 0,
         },
         {
@@ -107,6 +115,7 @@ describe('Budget routes with Prisma schema (e2e)', () => {
           userId: OWNER_ID,
           name: 'Dining',
           type: 'EXPENSE',
+          parentCategoryId: 'category-household',
           order: 1,
         },
       ],

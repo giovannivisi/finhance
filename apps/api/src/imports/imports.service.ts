@@ -14,7 +14,18 @@ import type {
   ImportPreviewResponse,
   ImportRowIssueResponse,
 } from '@finhance/shared';
-import { parseCsvRows } from '@/common/csv';
+import {
+  parseCsvTable,
+  restoreSpreadsheetFormulaPrefix,
+  serializeCsv,
+} from '@/common/csv';
+import { buildStoredZipArchive, type ZipArchiveEntry } from '@/common/zip';
+import {
+  parseStoredImportIssues,
+  parseStoredImportPayload,
+  parseStoredImportSummary,
+  serializeImportBatchValue,
+} from '@imports/import-batch-json';
 import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import {
@@ -108,11 +119,6 @@ interface ExportArchiveResult {
   buffer: Buffer;
 }
 
-interface ZipFileEntry {
-  name: string;
-  data: Buffer;
-}
-
 interface StoredPreviewPayload {
   ownerId: string;
   payload: ImportPayload;
@@ -162,8 +168,6 @@ const MARKET_ASSET_KINDS = new Set<AssetKind>([
 const CSV_TRUE_VALUES = new Set(['true', '1', 'yes']);
 const CSV_FALSE_VALUES = new Set(['false', '0', 'no', '']);
 const ZERO = new Prisma.Decimal(0);
-const ZIP_STORE_METHOD = 0;
-const ZIP_VERSION = 20;
 const EXPORT_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Rome',
   year: 'numeric',
@@ -182,7 +186,6 @@ const EXPORT_FILE_NAMES: Record<ImportFileType, string> = {
   expenseCategoryHierarchy: 'expenseCategoryHierarchy.csv',
   expenseValidationRules: 'expenseValidationRules.csv',
 };
-const CRC32_TABLE = buildCrc32Table();
 
 type CsvRecord = Record<string, string>;
 
@@ -248,10 +251,10 @@ export class ImportsService {
         userId: ownerId,
         source: CSV_IMPORT_SOURCE,
         status,
-        summaryJson: this.toJsonValue(analysis.summary),
-        errorJson: this.toJsonValue(analysis.issues),
+        summaryJson: serializeImportBatchValue(analysis.summary),
+        errorJson: serializeImportBatchValue(analysis.issues),
         payloadJson: analysis.canApply
-          ? this.toJsonValue(parsed.payload)
+          ? serializeImportBatchValue(parsed.payload)
           : Prisma.DbNull,
       },
     });
@@ -297,7 +300,7 @@ export class ImportsService {
     }
 
     const preview = this.previewPayloads.get(batchId);
-    const persistedPayload = this.fromStoredImportPayload(batch.payloadJson);
+    const persistedPayload = parseStoredImportPayload(batch.payloadJson);
     const previewPayload =
       preview && preview.ownerId === ownerId
         ? preview.payload
@@ -330,8 +333,8 @@ export class ImportsService {
           where: { id: batchId },
           data: {
             status: ImportBatchStatus.APPLIED,
-            summaryJson: this.toJsonValue(analysis.summary),
-            errorJson: this.toJsonValue(analysis.issues),
+            summaryJson: serializeImportBatchValue(analysis.summary),
+            errorJson: serializeImportBatchValue(analysis.issues),
             payloadJson: Prisma.DbNull,
             appliedAt: new Date(),
           },
@@ -364,8 +367,8 @@ export class ImportsService {
           where: { id: batchId },
           data: {
             status: ImportBatchStatus.FAILED,
-            summaryJson: this.toJsonValue(analysis.summary),
-            errorJson: this.toJsonValue(analysis.issues),
+            summaryJson: serializeImportBatchValue(analysis.summary),
+            errorJson: serializeImportBatchValue(analysis.issues),
             payloadJson: Prisma.DbNull,
             appliedAt: null,
           },
@@ -388,7 +391,7 @@ export class ImportsService {
     const files = this.buildExportFiles(state);
     return {
       filename: `finhance-export-${this.formatExportDate(new Date())}.zip`,
-      buffer: this.buildZipArchive(files),
+      buffer: buildStoredZipArchive(files),
     };
   }
 
@@ -554,14 +557,9 @@ export class ImportsService {
     file: ImportFileType,
     rawText: string,
   ): Array<{ rowNumber: number; values: CsvRecord }> {
-    const text = rawText.replace(/^\uFEFF/, '');
-    const rows = parseCsvRows(text);
-
-    if (rows.length === 0 || rows[0].every((cell) => cell.trim() === '')) {
-      throw new BadRequestException(`${file}.csv is empty.`);
-    }
-
-    const headers = rows[0].map((value) => value.trim());
+    const { headers, rows } = parseCsvTable(rawText, {
+      emptyMessage: `${file}.csv is empty.`,
+    });
     const expectedHeaders = [...IMPORT_TEMPLATE_HEADERS[file]];
     const optionalHeaders =
       file === 'accounts' ? ['openingBalance', 'openingBalanceDate'] : [];
@@ -589,42 +587,7 @@ export class ImportsService {
       );
     }
 
-    const records: Array<{ rowNumber: number; values: CsvRecord }> = [];
-
-    for (let index = 1; index < rows.length; index += 1) {
-      const rawRow = rows[index];
-      const values = rawRow.map((value) => value.trim());
-
-      if (values.every((value) => value === '')) {
-        continue;
-      }
-
-      if (rawRow.length > headers.length) {
-        throw new BadRequestException(
-          `${file}.csv row ${index + 1} has more columns than the header row.`,
-        );
-      }
-
-      const record: CsvRecord = {};
-      for (const header of headers) {
-        record[header] = '';
-      }
-
-      for (
-        let columnIndex = 0;
-        columnIndex < headers.length;
-        columnIndex += 1
-      ) {
-        record[headers[columnIndex]] = rawRow[columnIndex]?.trim() ?? '';
-      }
-
-      records.push({
-        rowNumber: index + 1,
-        values: record,
-      });
-    }
-
-    return records;
+    return rows;
   }
 
   private parseAccountRow(
@@ -4788,7 +4751,7 @@ export class ImportsService {
     };
   }
 
-  private buildExportFiles(state: ExportState): ZipFileEntry[] {
+  private buildExportFiles(state: ExportState): ZipArchiveEntry[] {
     const accountImportKeys = new Map<string, string>();
     const categoryImportKeys = new Map<string, string>();
     const categoriesById = new Map(
@@ -4841,65 +4804,74 @@ export class ImportsService {
       budgetImportKeys.set(budget.id, importKey);
     }
 
-    const accountCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.accounts],
-      state.accounts.map((account) => this.toExportAccountRow(account)),
-    );
-    const categoryCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.categories],
-      state.categories.map((category) =>
+    const accountCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.accounts],
+      rows: state.accounts.map((account) => this.toExportAccountRow(account)),
+      trailingNewline: true,
+    });
+    const categoryCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.categories],
+      rows: state.categories.map((category) =>
         this.toExportCategoryRow(category, categoriesById),
       ),
-    );
-    const assetCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.assets],
-      state.assets.map((asset) =>
+      trailingNewline: true,
+    });
+    const assetCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.assets],
+      rows: state.assets.map((asset) =>
         this.toExportAssetRow(asset, accountImportKeys),
       ),
-    );
-    const transactionCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.transactions],
-      this.toExportTransactionRows(
+      trailingNewline: true,
+    });
+    const transactionCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.transactions],
+      rows: this.toExportTransactionRows(
         state.transactions.filter((row) => row.recurringRuleId === null),
         accountImportKeys,
         categoryImportKeys,
       ),
-    );
-    const recurringRuleCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.recurringRules],
-      state.recurringRules.map((rule) =>
+      trailingNewline: true,
+    });
+    const recurringRuleCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.recurringRules],
+      rows: state.recurringRules.map((rule) =>
         this.toExportRecurringRuleRow(
           rule,
           accountImportKeys,
           categoryImportKeys,
         ),
       ),
-    );
-    const recurringExceptionCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.recurringExceptions],
-      this.toExportRecurringExceptionRows(
+      trailingNewline: true,
+    });
+    const recurringExceptionCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.recurringExceptions],
+      rows: this.toExportRecurringExceptionRows(
         state.recurringRules,
         recurringRuleImportKeys,
         accountImportKeys,
         categoryImportKeys,
       ),
-    );
-    const budgetCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.budgets],
-      state.budgets.map((budget) =>
+      trailingNewline: true,
+    });
+    const budgetCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.budgets],
+      rows: state.budgets.map((budget) =>
         this.toExportBudgetRow(budget, categoryImportKeys),
       ),
-    );
-    const budgetOverrideCsv = this.serializeCsv(
-      [...IMPORT_TEMPLATE_HEADERS.budgetOverrides],
-      this.toExportBudgetOverrideRows(state.budgets, budgetImportKeys),
-    );
-    const expenseValidationRulesCsv = this.serializeCsv(
-      ['entry', 'primary', 'secondary'],
-      state.expenseValidationRules.map((rule) =>
+      trailingNewline: true,
+    });
+    const budgetOverrideCsv = serializeCsv({
+      headers: [...IMPORT_TEMPLATE_HEADERS.budgetOverrides],
+      rows: this.toExportBudgetOverrideRows(state.budgets, budgetImportKeys),
+      trailingNewline: true,
+    });
+    const expenseValidationRulesCsv = serializeCsv({
+      headers: ['entry', 'primary', 'secondary'],
+      rows: state.expenseValidationRules.map((rule) =>
         this.toExportExpenseValidationRuleRow(rule),
       ),
-    );
+      trailingNewline: true,
+    });
 
     return [
       {
@@ -5418,121 +5390,6 @@ export class ImportsService {
     };
   }
 
-  private serializeCsv(headers: readonly string[], rows: CsvRecord[]): string {
-    const lines = [
-      headers.join(','),
-      ...rows.map((row) =>
-        headers
-          .map((header) => this.escapeCsvField(row[header] ?? ''))
-          .join(','),
-      ),
-    ];
-
-    return `${lines.join('\n')}\n`;
-  }
-
-  private escapeCsvField(value: string): string {
-    const sanitized = this.neutralizeSpreadsheetFormula(value);
-
-    if (!/[",\n\r]/.test(sanitized)) {
-      return sanitized;
-    }
-
-    return `"${sanitized.replace(/"/g, '""')}"`;
-  }
-
-  private neutralizeSpreadsheetFormula(value: string): string {
-    return /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
-  }
-
-  private buildZipArchive(entries: ZipFileEntry[]): Buffer {
-    const localParts: Buffer[] = [];
-    const centralParts: Buffer[] = [];
-    let offset = 0;
-    const { dosTime, dosDate } = this.toDosDateTime(new Date());
-
-    for (const entry of entries) {
-      const fileName = Buffer.from(entry.name, 'utf8');
-      const crc32 = this.crc32(entry.data);
-
-      const localHeader = Buffer.alloc(30);
-      localHeader.writeUInt32LE(0x04034b50, 0);
-      localHeader.writeUInt16LE(ZIP_VERSION, 4);
-      localHeader.writeUInt16LE(0, 6);
-      localHeader.writeUInt16LE(ZIP_STORE_METHOD, 8);
-      localHeader.writeUInt16LE(dosTime, 10);
-      localHeader.writeUInt16LE(dosDate, 12);
-      localHeader.writeUInt32LE(crc32, 14);
-      localHeader.writeUInt32LE(entry.data.length, 18);
-      localHeader.writeUInt32LE(entry.data.length, 22);
-      localHeader.writeUInt16LE(fileName.length, 26);
-      localHeader.writeUInt16LE(0, 28);
-
-      localParts.push(localHeader, fileName, entry.data);
-
-      const centralHeader = Buffer.alloc(46);
-      centralHeader.writeUInt32LE(0x02014b50, 0);
-      centralHeader.writeUInt16LE(ZIP_VERSION, 4);
-      centralHeader.writeUInt16LE(ZIP_VERSION, 6);
-      centralHeader.writeUInt16LE(0, 8);
-      centralHeader.writeUInt16LE(ZIP_STORE_METHOD, 10);
-      centralHeader.writeUInt16LE(dosTime, 12);
-      centralHeader.writeUInt16LE(dosDate, 14);
-      centralHeader.writeUInt32LE(crc32, 16);
-      centralHeader.writeUInt32LE(entry.data.length, 20);
-      centralHeader.writeUInt32LE(entry.data.length, 24);
-      centralHeader.writeUInt16LE(fileName.length, 28);
-      centralHeader.writeUInt16LE(0, 30);
-      centralHeader.writeUInt16LE(0, 32);
-      centralHeader.writeUInt16LE(0, 34);
-      centralHeader.writeUInt16LE(0, 36);
-      centralHeader.writeUInt32LE(0, 38);
-      centralHeader.writeUInt32LE(offset, 42);
-
-      centralParts.push(centralHeader, fileName);
-      offset += localHeader.length + fileName.length + entry.data.length;
-    }
-
-    const localBuffer = Buffer.concat(localParts);
-    const centralBuffer = Buffer.concat(centralParts);
-    const endOfCentralDirectory = Buffer.alloc(22);
-
-    endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
-    endOfCentralDirectory.writeUInt16LE(0, 4);
-    endOfCentralDirectory.writeUInt16LE(0, 6);
-    endOfCentralDirectory.writeUInt16LE(entries.length, 8);
-    endOfCentralDirectory.writeUInt16LE(entries.length, 10);
-    endOfCentralDirectory.writeUInt32LE(centralBuffer.length, 12);
-    endOfCentralDirectory.writeUInt32LE(localBuffer.length, 16);
-    endOfCentralDirectory.writeUInt16LE(0, 20);
-
-    return Buffer.concat([localBuffer, centralBuffer, endOfCentralDirectory]);
-  }
-
-  private crc32(buffer: Buffer): number {
-    let crc = 0xffffffff;
-
-    for (const byte of buffer) {
-      crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-    }
-
-    return (crc ^ 0xffffffff) >>> 0;
-  }
-
-  private toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
-    const year = Math.min(Math.max(date.getUTCFullYear(), 1980), 2107);
-    const dosTime =
-      (date.getUTCHours() << 11) |
-      (date.getUTCMinutes() << 5) |
-      Math.floor(date.getUTCSeconds() / 2);
-    const dosDate =
-      ((year - 1980) << 9) |
-      ((date.getUTCMonth() + 1) << 5) |
-      date.getUTCDate();
-
-    return { dosTime, dosDate };
-  }
-
   private formatExportDate(date: Date): string {
     return EXPORT_DATE_FORMATTER.format(date);
   }
@@ -5687,7 +5544,7 @@ export class ImportsService {
     field: string,
     maxLength: number = MAX_NAME_LENGTH,
   ): string {
-    const normalized = this.restoreSpreadsheetFormulaPrefix(value).trim();
+    const normalized = restoreSpreadsheetFormulaPrefix(value).trim();
 
     if (!normalized) {
       throw new BadRequestException(`${field} is required.`);
@@ -5708,26 +5565,13 @@ export class ImportsService {
     value: string | undefined,
     maxLength: number = MAX_NOTES_LENGTH,
   ): string | null {
-    const normalized = this.restoreSpreadsheetFormulaPrefix(value).trim();
+    const normalized = restoreSpreadsheetFormulaPrefix(value).trim();
     if (!normalized) {
       return null;
     }
 
     if (normalized.length > maxLength) {
       throw new BadRequestException('Text value exceeds the maximum length.');
-    }
-
-    return normalized;
-  }
-
-  private restoreSpreadsheetFormulaPrefix(value: string | undefined): string {
-    const normalized = value ?? '';
-
-    if (
-      normalized.startsWith("'") &&
-      /^[\s]*[=+\-@]/.test(normalized.slice(1))
-    ) {
-      return normalized.slice(1);
     }
 
     return normalized;
@@ -6479,8 +6323,8 @@ export class ImportsService {
       id: batch.id,
       source: batch.source,
       status: batch.status,
-      summary: batch.summaryJson as unknown as ImportBatchSummaryResponse,
-      issues: batch.errorJson as unknown as ImportRowIssueResponse[],
+      summary: parseStoredImportSummary(batch.summaryJson),
+      issues: parseStoredImportIssues(batch.errorJson),
       createdAt: batch.createdAt.toISOString(),
       appliedAt: batch.appliedAt?.toISOString() ?? null,
     };
@@ -6494,20 +6338,6 @@ export class ImportsService {
       ...this.toImportBatchResponse(batch),
       canApply,
     };
-  }
-
-  private fromStoredImportPayload(
-    value: Prisma.JsonValue | null,
-  ): ImportPayload | null {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return null;
-    }
-
-    return value as unknown as ImportPayload;
-  }
-
-  private toJsonValue(value: unknown): Prisma.InputJsonValue {
-    return value as Prisma.InputJsonValue;
   }
 
   private describeError(error: unknown): string {
@@ -6543,20 +6373,4 @@ export class ImportsService {
 
     return 'Import validation failed.';
   }
-}
-
-function buildCrc32Table(): Uint32Array {
-  const table = new Uint32Array(256);
-
-  for (let index = 0; index < table.length; index += 1) {
-    let value = index;
-
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = (value & 1) === 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    }
-
-    table[index] = value >>> 0;
-  }
-
-  return table;
 }

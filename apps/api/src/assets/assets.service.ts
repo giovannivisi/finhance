@@ -25,6 +25,7 @@ import {
   VALUATION_STALE_MS,
 } from '@assets/assets.types';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
+import { ensureOwnerUserRecord } from '@/security/owner-user';
 import type {
   DashboardAssetResponse,
   DashboardResponse,
@@ -381,14 +382,12 @@ export class AssetsService {
   }
 
   async reorderAssetKinds(ownerId: string, kindOrder: string[]): Promise<void> {
-    await this.prisma.user.upsert({
+    await ensureOwnerUserRecord(this.prisma, {
+      userId: ownerId,
+    });
+    await this.prisma.user.update({
       where: { id: ownerId },
-      update: { assetKindOrder: kindOrder },
-      create: {
-        id: ownerId,
-        email: `${ownerId}@placeholder.local`,
-        assetKindOrder: kindOrder,
-      },
+      data: { assetKindOrder: kindOrder },
     });
   }
 
