@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
   Bar,
   BarChart,
@@ -16,34 +17,61 @@ import type {
 } from "@finhance/shared";
 import { formatSensitiveCurrency } from "@lib/money";
 
-type BreakdownChartData = Array<CashflowAnalyticsBreakdownItemResponse>;
+type BreakdownChartDatum = CashflowAnalyticsBreakdownItemResponse & {
+  chartLabel?: string;
+  href?: string;
+};
+type MoversChartDatum = CashflowAnalyticsMonthOverMonthChangeResponse & {
+  absoluteDelta: number;
+  chartLabel?: string;
+  href?: string;
+};
+
+type BreakdownChartData = Array<BreakdownChartDatum>;
 type MoversChartData = Array<
-  CashflowAnalyticsMonthOverMonthChangeResponse & { absoluteDelta: number }
+  MoversChartDatum
 >;
 
 export default function AnalyticsCategoryBarChart({
   currency,
   data,
   mode,
+  tone = "auto",
 }: {
   currency: string;
   data: BreakdownChartData | MoversChartData;
   mode: "breakdown" | "movers";
+  tone?: "auto" | "expense" | "income" | "neutral";
 }) {
+  const router = useRouter();
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
   const chartData =
     mode === "breakdown"
       ? (data as BreakdownChartData).map((item) => ({
-          name: item.name,
+          name: item.chartLabel ?? item.name,
           value: item.total,
+          href: item.href,
         }))
       : (data as MoversChartData).map((item) => ({
-          name: item.name,
+          name: item.chartLabel ?? item.name,
           value: item.delta,
+          href: item.href,
         }));
 
-  const barColor = mode === "breakdown" ? "#e11d48" : "#0284c7";
+  const hasClickableBars = chartData.some((item) => typeof item.href === "string");
+  const resolvedTone =
+    tone === "auto"
+      ? mode === "breakdown"
+        ? "expense"
+        : "neutral"
+      : tone;
+  const barColor =
+    resolvedTone === "income"
+      ? "#10b981"
+      : resolvedTone === "neutral"
+        ? "#0284c7"
+        : "#e11d48";
 
   return (
     <div className="w-full min-w-0">
@@ -83,7 +111,17 @@ export default function AnalyticsCategoryBarChart({
               boxShadow: "var(--shadow-glass)",
             }}
           />
-          <Bar dataKey="value" fill={barColor} radius={[0, 8, 8, 0]} />
+          <Bar
+            dataKey="value"
+            fill={barColor}
+            radius={[0, 8, 8, 0]}
+            cursor={hasClickableBars ? "pointer" : "default"}
+            onClick={(entry: { href?: string } | undefined) => {
+              if (entry?.href) {
+                router.push(entry.href);
+              }
+            }}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>
