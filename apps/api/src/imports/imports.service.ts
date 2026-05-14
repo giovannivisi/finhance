@@ -27,7 +27,10 @@ import {
   serializeImportBatchValue,
 } from '@imports/import-batch-json';
 import { PricesService } from '@prices/prices.service';
-import { PrismaService } from '@prisma/prisma.service';
+import {
+  isRetryableClosedTransactionError,
+  PrismaService,
+} from '@prisma/prisma.service';
 import {
   Account,
   AccountType,
@@ -152,6 +155,8 @@ interface BudgetImportRef {
 const CSV_IMPORT_SOURCE = ImportSource.CSV_TEMPLATE;
 const RECENT_BATCH_LIMIT = 20;
 const IMPORT_PREVIEW_TTL_MS = 15 * 60 * 1000;
+const IMPORT_APPLY_TRANSACTION_MAX_WAIT_MS = 15_000;
+const IMPORT_APPLY_TRANSACTION_TIMEOUT_MS = 120_000;
 const MAX_UPLOAD_FILE_BYTES = 1024 * 1024;
 const MAX_IMPORT_KEY_LENGTH = 128;
 const MAX_NAME_LENGTH = 120;
@@ -318,28 +323,11 @@ export class ImportsService {
     }
 
     try {
-      const appliedBatch = await this.prisma.$transaction(async (tx) => {
-        const analysis = await this.analyzePayload(tx, ownerId, previewPayload);
-
-        if (!analysis.canApply) {
-          throw new ConflictException(
-            'This import batch is no longer valid. Preview it again before applying.',
-          );
-        }
-
-        await this.applyPayload(tx, ownerId, previewPayload, analysis.state);
-
-        return tx.importBatch.update({
-          where: { id: batchId },
-          data: {
-            status: ImportBatchStatus.APPLIED,
-            summaryJson: serializeImportBatchValue(analysis.summary),
-            errorJson: serializeImportBatchValue(analysis.issues),
-            payloadJson: Prisma.DbNull,
-            appliedAt: new Date(),
-          },
-        });
-      });
+      const appliedBatch = await this.applyBatchWithRetry(
+        ownerId,
+        batchId,
+        previewPayload,
+      );
 
       if (
         previewPayload.recurringRules.length > 0 ||
@@ -378,6 +366,63 @@ export class ImportsService {
       }
 
       this.previewPayloads.delete(batchId);
+      throw error;
+    }
+  }
+
+  private async applyBatchWithRetry(
+    ownerId: string,
+    batchId: string,
+    previewPayload: ImportPayload,
+    attempt = 0,
+  ): Promise<ImportBatch> {
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          const analysis = await this.analyzePayload(
+            tx,
+            ownerId,
+            previewPayload,
+          );
+
+          if (!analysis.canApply) {
+            throw new ConflictException(
+              'This import batch is no longer valid. Preview it again before applying.',
+            );
+          }
+
+          await this.applyPayload(tx, ownerId, previewPayload, analysis.state);
+
+          return tx.importBatch.update({
+            where: { id: batchId },
+            data: {
+              status: ImportBatchStatus.APPLIED,
+              summaryJson: serializeImportBatchValue(analysis.summary),
+              errorJson: serializeImportBatchValue(analysis.issues),
+              payloadJson: Prisma.DbNull,
+              appliedAt: new Date(),
+            },
+          });
+        },
+        {
+          maxWait: IMPORT_APPLY_TRANSACTION_MAX_WAIT_MS,
+          timeout: IMPORT_APPLY_TRANSACTION_TIMEOUT_MS,
+        },
+      );
+    } catch (error) {
+      if (attempt < 1 && isRetryableClosedTransactionError(error)) {
+        this.logger.warn(
+          `Retrying import batch ${batchId} after Prisma transaction session loss: ${this.describeError(error)}`,
+        );
+        await this.prisma.recoverConnection();
+        return this.applyBatchWithRetry(
+          ownerId,
+          batchId,
+          previewPayload,
+          attempt + 1,
+        );
+      }
+
       throw error;
     }
   }

@@ -38,6 +38,17 @@ export function isRetryableConnectionError(
   );
 }
 
+export function isRetryableClosedTransactionError(
+  error: unknown,
+): error is Prisma.PrismaClientKnownRequestError {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2028' &&
+    (errorMessageIncludes(error.meta, 'Transaction not found.') ||
+      error.message.includes('Transaction not found.'))
+  );
+}
+
 export async function runWithTransientRetry<T>({
   logger,
   operationLabel,

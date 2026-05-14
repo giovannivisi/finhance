@@ -52,6 +52,21 @@ function nthCallArg<T>(mockFn: jest.Mock, index: number): T {
   return calls[index]?.[0] as T;
 }
 
+function retryableClosedTransactionError() {
+  return new Prisma.PrismaClientKnownRequestError(
+    'Transaction API error: Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma does not have information about anymore, or was obtained before disconnecting.',
+    {
+      code: 'P2028',
+      clientVersion: '6.19.0',
+      meta: {
+        modelName: 'Transaction',
+        error:
+          'Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma does not have information about anymore, or was obtained before disconnecting.',
+      },
+    },
+  );
+}
+
 function createImportBatch(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -284,6 +299,7 @@ describe('ImportsService', () => {
       update: jest.Mock;
       updateMany: jest.Mock;
     };
+    recoverConnection: jest.Mock;
     $transaction: jest.Mock;
   };
   let prices: {
@@ -339,6 +355,7 @@ describe('ImportsService', () => {
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      recoverConnection: jest.fn().mockResolvedValue(undefined),
       $transaction: jest.fn(),
     };
 
@@ -1007,6 +1024,77 @@ describe('ImportsService', () => {
       status: ImportBatchStatus.APPLIED,
       payloadJson: Prisma.DbNull,
     });
+  });
+
+  it('retries applying a preview batch when Prisma loses the transaction session mid-apply', async () => {
+    const preview = await service.previewCsv(OWNER_ID, {
+      accounts: {
+        originalName: 'accounts.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,currency,institution,notes,order,archived\nchecking,Checking,BANK,EUR,,,0,false\n',
+        ),
+      },
+    });
+
+    prisma.importBatch.findFirst.mockResolvedValue(
+      createImportBatch({
+        id: preview.id,
+        payloadJson: nthCallArg<ImportBatchCreateCall>(
+          prisma.importBatch.create,
+          0,
+        ).data.payloadJson,
+      }),
+    );
+    prisma.account.create.mockResolvedValue(createImportedAccount());
+
+    let transactionAttempt = 0;
+    prisma.$transaction.mockImplementation(
+      async (
+        callback: (tx: {
+          account: typeof prisma.account;
+          asset: typeof prisma.asset;
+          category: typeof prisma.category;
+          transaction: typeof prisma.transaction;
+          recurringTransactionRule: typeof prisma.recurringTransactionRule;
+          recurringTransactionOccurrence: typeof prisma.recurringTransactionOccurrence;
+          categoryBudget: typeof prisma.categoryBudget;
+          categoryBudgetOverride: typeof prisma.categoryBudgetOverride;
+          importBatch: typeof prisma.importBatch;
+        }) => Promise<unknown>,
+      ) => {
+        transactionAttempt += 1;
+        if (transactionAttempt === 1) {
+          throw retryableClosedTransactionError();
+        }
+
+        return callback({
+          account: prisma.account,
+          asset: prisma.asset,
+          category: prisma.category,
+          transaction: prisma.transaction,
+          recurringTransactionRule: prisma.recurringTransactionRule,
+          recurringTransactionOccurrence: prisma.recurringTransactionOccurrence,
+          categoryBudget: prisma.categoryBudget,
+          categoryBudgetOverride: prisma.categoryBudgetOverride,
+          importBatch: prisma.importBatch,
+        });
+      },
+    );
+
+    const result = await service.applyBatch(OWNER_ID, preview.id);
+
+    expect(result.status).toBe('APPLIED');
+    expect(prisma.recoverConnection).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      expect.objectContaining({
+        maxWait: 15_000,
+        timeout: 120_000,
+      }),
+    );
+    expect(prisma.account.create).toHaveBeenCalledTimes(1);
   });
 
   it('rejects applying an expired persisted preview batch after a restart', async () => {

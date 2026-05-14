@@ -7,6 +7,7 @@ import type {
 } from "@finhance/shared";
 import Container from "@components/Container";
 import TransactionsPageClient from "@components/TransactionsPageClient";
+import { getDefaultActivityFilters, type ActivityFilters } from "@lib/activity";
 import { api } from "@lib/server-api";
 
 export const dynamic = "force-dynamic";
@@ -18,16 +19,7 @@ function getSingleValue(value: string | string[] | undefined): string {
 }
 
 function buildFilterQueryString(
-  filters: {
-    from: string;
-    to: string;
-    accountId: string;
-    categoryId: string;
-    primaryCategoryId: string;
-    secondaryCategoryId: string;
-    kind: string;
-    includeArchivedAccounts: boolean;
-  },
+  filters: ActivityFilters,
   options?: { includeKind?: boolean },
 ) {
   const params = new URLSearchParams();
@@ -74,19 +66,26 @@ export default async function TransactionsPage({
   searchParams?: RawSearchParams;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const filters = {
-    from: getSingleValue(resolvedSearchParams.from),
-    to: getSingleValue(resolvedSearchParams.to),
-    accountId: getSingleValue(resolvedSearchParams.accountId),
-    categoryId: getSingleValue(resolvedSearchParams.categoryId),
-    primaryCategoryId: getSingleValue(resolvedSearchParams.primaryCategoryId),
-    secondaryCategoryId:
-      getSingleValue(resolvedSearchParams.secondaryCategoryId) ||
-      getSingleValue(resolvedSearchParams.categoryId),
-    kind: getSingleValue(resolvedSearchParams.kind),
-    includeArchivedAccounts:
-      getSingleValue(resolvedSearchParams.includeArchivedAccounts) === "true",
-  };
+  const hasExplicitFilters = Object.keys(resolvedSearchParams).length > 0;
+  const defaultFilters = getDefaultActivityFilters();
+  const filters: ActivityFilters = hasExplicitFilters
+    ? {
+        from: getSingleValue(resolvedSearchParams.from),
+        to: getSingleValue(resolvedSearchParams.to),
+        accountId: getSingleValue(resolvedSearchParams.accountId),
+        categoryId: getSingleValue(resolvedSearchParams.categoryId),
+        primaryCategoryId: getSingleValue(
+          resolvedSearchParams.primaryCategoryId,
+        ),
+        secondaryCategoryId:
+          getSingleValue(resolvedSearchParams.secondaryCategoryId) ||
+          getSingleValue(resolvedSearchParams.categoryId),
+        kind: getSingleValue(resolvedSearchParams.kind),
+        includeArchivedAccounts:
+          getSingleValue(resolvedSearchParams.includeArchivedAccounts) ===
+          "true",
+      }
+    : defaultFilters;
   const transactionsQueryString = buildFilterQueryString(filters, {
     includeKind: true,
   });

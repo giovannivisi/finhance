@@ -2052,6 +2052,106 @@ button {
   align-self: end;
 }
 
+.activity-cashflow-grid {
+  display: grid;
+  gap: 28px;
+  margin-top: 24px;
+}
+
+.activity-category-chart-panel {
+  padding: 10px 12px 4px;
+}
+
+.activity-category-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.activity-category-group-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.activity-category-group-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.activity-category-secondary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.activity-category-secondary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-glass);
+}
+
+.activity-month-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.activity-month-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-month-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.activity-month-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.activity-month-toggle-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-card-muted);
+  color: var(--text-primary);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.activity-month-table-shell {
+  margin-top: 0;
+}
+
 .filter-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2146,6 +2246,11 @@ button {
 }
 
 @media (min-width: 1024px) {
+  .activity-cashflow-grid {
+    gap: 32px;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  }
+
   .route-stack-spacious {
     gap: 36px;
   }
@@ -2242,6 +2347,12 @@ button {
 }
 
 @media (max-width: 640px) {
+  .activity-category-group-header,
+  .activity-category-secondary-row,
+  .activity-month-toggle {
+    flex-wrap: wrap;
+  }
+
   .transaction-row-actions {
     flex-wrap: wrap;
   }
