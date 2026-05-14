@@ -23,11 +23,11 @@ export const PRIMARY_NAV_ITEMS: readonly AppNavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transactions", label: "Activity", icon: ArrowLeftRight },
   { href: "/accounts", label: "Wallets", icon: Wallet },
-  { href: "/history", label: "History", icon: History },
+  { href: "/analytics", label: "Analytics", icon: TrendingUp },
 ] as const;
 
 export const SECONDARY_NAV_ITEMS: readonly AppNavItem[] = [
-  { href: "/analytics", label: "Analytics", icon: TrendingUp },
+  { href: "/history", label: "History", icon: History },
   { href: "/budgets", label: "Budgets", icon: PieChart },
   { href: "/recurring", label: "Recurring", icon: Repeat },
   { href: "/review", label: "Review", icon: ClipboardCheck },

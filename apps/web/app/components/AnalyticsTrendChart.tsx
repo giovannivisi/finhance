@@ -38,13 +38,19 @@ export default function AnalyticsTrendChart({
           data={data}
           margin={{ top: 16, right: 16, left: 8, bottom: 0 }}
           onClick={(state) => {
-            const href = (
-              (
-                state as unknown as {
-                  activePayload?: Array<{ payload?: TrendPoint }>;
-                }
-              ).activePayload?.[0] as { payload?: TrendPoint } | undefined
-            )?.payload?.href;
+            const raw = (
+              state as { activeTooltipIndex?: number | string | null } | undefined
+            )?.activeTooltipIndex;
+            const index =
+              typeof raw === "number"
+                ? raw
+                : typeof raw === "string" && raw !== ""
+                  ? Number(raw)
+                  : NaN;
+            if (!Number.isInteger(index)) {
+              return;
+            }
+            const href = data[index]?.href;
             if (href) {
               router.push(href);
             }

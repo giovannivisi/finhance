@@ -9,6 +9,7 @@ import AnalyticsCategoryBarChart from "@components/AnalyticsCategoryBarChart";
 import AnalyticsTrendChart from "@components/AnalyticsTrendChart";
 import Container from "@components/Container";
 import MoneyValue from "@components/MoneyValue";
+import Sparkline from "@components/Sparkline";
 
 import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/server-api";
@@ -33,11 +34,41 @@ export const dynamic = "force-dynamic";
 
 type RawSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-function maxTrendValue(
-  item: CashflowAnalyticsResponse["currencies"][number]["expenseCategoryTrends"][number],
-): number {
-  return Math.max(1, ...item.series.map((point) => point.total));
+type TrendDelta =
+  | { kind: "pct"; value: number; direction: "up" | "down" | "flat" }
+  | { kind: "from-zero"; direction: "up" | "flat" }
+  | null;
+
+function trendDelta(series: ReadonlyArray<{ total: number }>): TrendDelta {
+  if (series.length < 2) {
+    return null;
+  }
+  const first = series[0].total;
+  const last = series[series.length - 1].total;
+  if (first === 0) {
+    if (last === 0) {
+      return { kind: "pct", value: 0, direction: "flat" };
+    }
+    return { kind: "from-zero", direction: "up" };
+  }
+  const pct = ((last - first) / Math.abs(first)) * 100;
+  const direction = pct > 0.5 ? "up" : pct < -0.5 ? "down" : "flat";
+  return { kind: "pct", value: pct, direction };
 }
+
+function deltaToneClass(
+  kind: "EXPENSE" | "INCOME",
+  direction: "up" | "down" | "flat",
+): string {
+  if (direction === "flat") {
+    return "text-gray-500";
+  }
+  const isFavorable =
+    kind === "EXPENSE" ? direction === "down" : direction === "up";
+  return isFavorable ? "text-emerald-600" : "text-rose-600";
+}
+
+const TREND_ROW_LIMIT = 5;
 
 export default async function AnalyticsPage({
   searchParams,
@@ -103,6 +134,21 @@ export default async function AnalyticsPage({
           ),
         ]
     : [];
+  const hasActiveFilters =
+    filters.from !== defaultFilters.from ||
+    filters.to !== defaultFilters.to ||
+    Boolean(filters.accountId) ||
+    Boolean(filters.primaryCategoryId) ||
+    Boolean(filters.secondaryCategoryId) ||
+    filters.includeArchivedAccounts;
+  const activeFilterCount = [
+    filters.from !== defaultFilters.from,
+    filters.to !== defaultFilters.to,
+    Boolean(filters.accountId),
+    Boolean(filters.primaryCategoryId),
+    Boolean(filters.secondaryCategoryId),
+    filters.includeArchivedAccounts,
+  ].filter(Boolean).length;
 
   return (
     <>
@@ -126,92 +172,116 @@ export default async function AnalyticsPage({
           <div className="page-shell is-relaxed route-stack-desktop-xl">
             <section className="page-hero">
               <div className="section-stack-relaxed">
-                <div className="page-hero-row">
-                  <div className="page-hero-copy">
-                    <p className="page-kicker">Analysis</p>
+                <div className="page-hero-copy analytics-hero-copy">
+                  <p className="page-kicker">Analysis</p>
+                  <div className="page-hero-row analytics-hero-title-row">
                     <h1 className="page-title is-compact">Analytics</h1>
-                    <p className="page-description">
-                      Multi-month cashflow trends, biggest category changes, and
-                      drill-down links into the ledger.
-                    </p>
-                  </div>
-                  <div className="page-pill">
-                    Focus month {analytics.focusMonth}
-                  </div>
-                </div>
-
-                <form className="filter-grid is-relaxed lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]">
-                  <div className="app-form-field">
-                    <label>From</label>
-                    <input
-                      type="month"
-                      name="from"
-                      defaultValue={filters.from}
-                    />
-                  </div>
-                  <div className="app-form-field">
-                    <label>To</label>
-                    <input type="month" name="to" defaultValue={filters.to} />
-                  </div>
-                  <div className="app-form-field">
-                    <label>Account</label>
-                    <select name="accountId" defaultValue={filters.accountId}>
-                      <option value="">All accounts</option>
-                      {accounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="app-form-field">
-                    <label>Primary</label>
-                    <select
-                      name="primaryCategoryId"
-                      defaultValue={filters.primaryCategoryId}
-                    >
-                      <option value="">All primaries</option>
-                      {visibleExpensePrimaries.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="app-form-field">
-                    <label>Secondary</label>
-                    <select
-                      name="secondaryCategoryId"
-                      defaultValue={filters.secondaryCategoryId}
-                    >
-                      <option value="">All secondaries</option>
-                      {visibleSecondaryCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {formatCategoryName(category)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="section-stack-tight justify-end">
-                    <label className="page-pill">
-                      <input
-                        type="checkbox"
-                        name="includeArchivedAccounts"
-                        value="true"
-                        defaultChecked={filters.includeArchivedAccounts}
-                      />
-                      Include archived accounts
-                    </label>
-                    <div className="filter-actions is-equal">
-                      <button type="submit" className="btn-primary">
-                        Apply
-                      </button>
-                      <Link href="/analytics" className="btn-secondary">
-                        Clear
-                      </Link>
+                    <div className="page-pill">
+                      Focus month {analytics.focusMonth}
                     </div>
                   </div>
-                </form>
+                  <p className="page-description">
+                    Multi-month cashflow trends, biggest category changes, and
+                    drill-down links into the ledger.
+                  </p>
+                </div>
+
+                <details className="analytics-filter-shell">
+                  <summary className="analytics-filter-summary">
+                    <span className="analytics-filter-summary-copy">
+                      <span className="analytics-filter-summary-title">
+                        Filter
+                      </span>
+                      <span className="analytics-filter-summary-detail">
+                        Range, account, categories, and archived-wallet scope.
+                      </span>
+                    </span>
+                    <span className="analytics-filter-summary-meta">
+                      <span className="analytics-filter-summary-status">
+                        {hasActiveFilters
+                          ? `${activeFilterCount} active`
+                          : "All data"}
+                      </span>
+                      <span
+                        className="analytics-filter-summary-chevron"
+                        aria-hidden="true"
+                      />
+                    </span>
+                  </summary>
+
+                  <form className="filter-grid is-relaxed lg:grid-cols-[repeat(5,minmax(0,1fr))_auto]">
+                    <div className="app-form-field">
+                      <label>From</label>
+                      <input
+                        type="month"
+                        name="from"
+                        defaultValue={filters.from}
+                      />
+                    </div>
+                    <div className="app-form-field">
+                      <label>To</label>
+                      <input type="month" name="to" defaultValue={filters.to} />
+                    </div>
+                    <div className="app-form-field">
+                      <label>Account</label>
+                      <select name="accountId" defaultValue={filters.accountId}>
+                        <option value="">All</option>
+                        {accounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="app-form-field">
+                      <label>Primary</label>
+                      <select
+                        name="primaryCategoryId"
+                        defaultValue={filters.primaryCategoryId}
+                      >
+                        <option value="">All</option>
+                        {visibleExpensePrimaries.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="app-form-field">
+                      <label>Secondary</label>
+                      <select
+                        name="secondaryCategoryId"
+                        defaultValue={filters.secondaryCategoryId}
+                      >
+                        <option value="">All</option>
+                        {visibleSecondaryCategories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {formatCategoryName(category)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="section-stack-tight justify-end">
+                      <label className="page-pill">
+                        <input
+                          type="checkbox"
+                          name="includeArchivedAccounts"
+                          value="true"
+                          defaultChecked={filters.includeArchivedAccounts}
+                        />
+                        Include archived accounts
+                      </label>
+                      <div className="filter-actions is-equal">
+                        <button type="submit" className="btn-primary">
+                          Apply
+                        </button>
+                        <button type="reset" className="btn-secondary">
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </details>
               </div>
             </section>
 
@@ -514,194 +584,135 @@ export default async function AnalyticsPage({
                           Category trends
                         </h3>
                         <p className="text-sm text-gray-500">
-                          Top categories across the selected range.
+                          Top {TREND_ROW_LIMIT} categories across the selected
+                          range, with direction over the period.
                         </p>
                       </div>
 
                       <div className="analytics-section-grid">
-                        {[
-                          {
-                            title: "Expense trends",
-                            kind: "EXPENSE",
-                            items: currency.expenseCategoryTrends,
-                          },
-                          {
-                            title: "Income trends",
-                            kind: "INCOME",
-                            items: currency.incomeCategoryTrends,
-                          },
-                        ].map((section) => (
-                          <div
-                            key={section.title}
-                            className="analytics-subsection"
-                          >
-                            <h4 className="analytics-subsection-title">
-                              {section.title}
-                            </h4>
-                            {section.items.length === 0 ? (
-                              <p className="analytics-subsection-empty text-sm text-gray-500">
-                                No category trends in this range.
-                              </p>
-                            ) : section.kind === "EXPENSE" ? (
-                              <div className="analytics-subsection-content subcard-stack is-loose">
-                                {section.items.map((item) => {
-                                  const trendMax = maxTrendValue(item);
+                        {(
+                          [
+                            {
+                              title: "Expense trends",
+                              kind: "EXPENSE" as const,
+                              items: currency.expenseCategoryTrends,
+                              tone: "expense" as const,
+                            },
+                            {
+                              title: "Income trends",
+                              kind: "INCOME" as const,
+                              items: currency.incomeCategoryTrends,
+                              tone: "income" as const,
+                            },
+                          ]
+                        ).map((section) => {
+                          const visibleItems = section.items.slice(
+                            0,
+                            TREND_ROW_LIMIT,
+                          );
 
-                                  return (
-                                    <Link
-                                      key={`${section.kind}:${item.categoryId ?? item.name}`}
-                                      href={buildTransactionsLink({
-                                        from: selectedRange.from,
-                                        to: selectedRange.to,
-                                        accountId:
-                                          filters.accountId || undefined,
-                                        primaryCategoryId:
-                                          item.primaryCategoryId ?? undefined,
-                                        secondaryCategoryId:
-                                          item.secondaryCategoryId ??
-                                          item.categoryId ??
-                                          undefined,
-                                        kind: section.kind,
-                                        includeArchivedAccounts:
-                                          filters.includeArchivedAccounts,
-                                      })}
-                                      className="detail-panel is-roomy block text-sm transition hover:bg-[var(--bg-card-hover)]"
-                                    >
-                                      <div className="flex items-center justify-between gap-3">
-                                        <span className="font-medium text-gray-900">
-                                          {item.secondaryCategoryName ??
-                                            formatHierarchyName(
-                                              item,
-                                              item.name,
-                                            )}
+                          return (
+                            <div
+                              key={section.title}
+                              className="analytics-subsection"
+                            >
+                              <h4 className="analytics-subsection-title">
+                                {section.title}
+                              </h4>
+                              {visibleItems.length === 0 ? (
+                                <p className="analytics-subsection-empty text-sm text-gray-500">
+                                  No category trends in this range.
+                                </p>
+                              ) : (
+                                <div className="analytics-subsection-content flex flex-col gap-3">
+                                  {visibleItems.map((item) => {
+                                    const label =
+                                      section.kind === "EXPENSE"
+                                        ? (item.secondaryCategoryName ??
+                                          formatHierarchyName(item, item.name))
+                                        : formatHierarchyName(item, item.name);
+                                    const delta = trendDelta(item.series);
+                                    const href = buildTransactionsLink({
+                                      from: selectedRange.from,
+                                      to: selectedRange.to,
+                                      accountId:
+                                        filters.accountId || undefined,
+                                      primaryCategoryId:
+                                        section.kind === "EXPENSE"
+                                          ? (item.primaryCategoryId ??
+                                            undefined)
+                                          : undefined,
+                                      secondaryCategoryId:
+                                        section.kind === "EXPENSE"
+                                          ? (item.secondaryCategoryId ??
+                                            item.categoryId ??
+                                            undefined)
+                                          : undefined,
+                                      categoryId:
+                                        section.kind === "INCOME"
+                                          ? (item.categoryId ?? undefined)
+                                          : undefined,
+                                      kind: section.kind,
+                                      includeArchivedAccounts:
+                                        filters.includeArchivedAccounts,
+                                    });
+
+                                    return (
+                                      <Link
+                                        key={`${section.kind}:${item.categoryId ?? item.name}`}
+                                        href={href}
+                                        className="flex items-center gap-6 rounded-[22px] [corner-shape:superellipse(0.72)] border border-[var(--border-glass)] bg-[var(--bg-card-muted)] px-4 py-3 text-sm transition hover:bg-[var(--bg-card-hover)]"
+                                      >
+                                        <span
+                                          className="min-w-0 flex-1 truncate font-medium text-gray-900"
+                                          title={label}
+                                        >
+                                          {label}
                                         </span>
-                                        <span className="text-gray-700">
+                                        <Sparkline
+                                          points={item.series.map((point) => ({
+                                            value: point.total,
+                                          }))}
+                                          tone={section.tone}
+                                          width={96}
+                                          height={28}
+                                        />
+                                        <span className="w-24 flex-shrink-0 text-right tabular-nums text-gray-700">
                                           {formatCurrency(
                                             item.total,
                                             currency.currency,
                                           )}
                                         </span>
-                                      </div>
-                                      <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-3">
-                                        {item.series.map((point) => (
-                                          <div
-                                            key={`${item.name}:${point.month}`}
-                                            className="detail-panel is-roomy"
-                                          >
-                                            <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
-                                              <span>{point.month}</span>
-                                              <span>
-                                                {formatCurrency(
-                                                  point.total,
-                                                  currency.currency,
-                                                )}
-                                              </span>
-                                            </div>
-                                            <div className="mt-2 h-2 rounded-full bg-gray-100">
-                                              <div
-                                                className="h-2 rounded-full bg-rose-500"
-                                                style={{
-                                                  width: `${Math.min(
-                                                    100,
-                                                    (point.total / trendMax) *
-                                                      100,
-                                                  )}%`,
-                                                }}
-                                              />
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </Link>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="analytics-subsection-content subcard-stack is-loose">
-                                {section.items.map((item) => {
-                                  const trendMax = maxTrendValue(item);
-
-                                  return (
-                                    <Link
-                                      key={`${section.kind}:${item.categoryId ?? item.name}`}
-                                      href={buildTransactionsLink({
-                                        from: selectedRange.from,
-                                        to: selectedRange.to,
-                                        accountId:
-                                          filters.accountId || undefined,
-                                        primaryCategoryId:
-                                          section.kind === "EXPENSE"
-                                            ? (item.primaryCategoryId ??
-                                              undefined)
-                                            : undefined,
-                                        secondaryCategoryId:
-                                          section.kind === "EXPENSE"
-                                            ? (item.secondaryCategoryId ??
-                                              item.categoryId ??
-                                              undefined)
-                                            : undefined,
-                                        categoryId:
-                                          section.kind === "INCOME"
-                                            ? (item.categoryId ?? undefined)
-                                            : undefined,
-                                        kind: section.kind,
-                                        includeArchivedAccounts:
-                                          filters.includeArchivedAccounts,
-                                      })}
-                                      className="detail-panel is-roomy block text-sm transition hover:bg-[var(--bg-card-hover)]"
-                                    >
-                                      <div className="flex items-center justify-between gap-3">
-                                        <span className="font-medium text-gray-900">
-                                          {formatHierarchyName(item, item.name)}
+                                        <span
+                                          className={`w-16 flex-shrink-0 text-right text-xs font-medium tabular-nums ${
+                                            delta
+                                              ? deltaToneClass(
+                                                  section.kind,
+                                                  delta.kind === "from-zero"
+                                                    ? "up"
+                                                    : delta.direction,
+                                                )
+                                              : "text-gray-400"
+                                          }`}
+                                        >
+                                          {delta === null
+                                            ? "—"
+                                            : delta.kind === "from-zero"
+                                              ? "↑ new"
+                                              : delta.direction === "flat"
+                                                ? "→ 0%"
+                                                : `${delta.direction === "up" ? "↑" : "↓"} ${Math.abs(
+                                                    Math.round(delta.value),
+                                                  )}%`}
                                         </span>
-                                        <span className="text-gray-700">
-                                          {formatCurrency(
-                                            item.total,
-                                            currency.currency,
-                                          )}
-                                        </span>
-                                      </div>
-                                      <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-3">
-                                        {item.series.map((point) => (
-                                          <div
-                                            key={`${item.name}:${point.month}`}
-                                            className="detail-panel is-roomy"
-                                          >
-                                            <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
-                                              <span>{point.month}</span>
-                                              <span>
-                                                {formatCurrency(
-                                                  point.total,
-                                                  currency.currency,
-                                                )}
-                                              </span>
-                                            </div>
-                                            <div className="mt-2 h-2 rounded-full bg-gray-100">
-                                              <div
-                                                className={`h-2 rounded-full ${
-                                                  section.kind === "EXPENSE"
-                                                    ? "bg-rose-500"
-                                                    : "bg-emerald-500"
-                                                }`}
-                                                style={{
-                                                  width: `${Math.min(
-                                                    100,
-                                                    (point.total / trendMax) *
-                                                      100,
-                                                  )}%`,
-                                                }}
-                                              />
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </Link>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                                      </Link>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </section>
                   </div>
