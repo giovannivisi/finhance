@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { ImportsService } from '@imports/imports.service';
+import { IMPORT_TEMPLATE_HEADERS } from '@imports/imports.types';
 import { PrismaService } from '@prisma/prisma.service';
 import { PricesService } from '@prices/prices.service';
 import { RecurringService } from '@recurring/recurring.service';
@@ -730,6 +731,31 @@ describe('ImportsService', () => {
         importKey: 'account-main-checking-eur',
       },
     });
+  });
+
+  it('exports the import templates as a zip generated from the shared schema', async () => {
+    const result = await service.exportTemplateZip();
+    const entries = parseZipEntries(result.buffer);
+
+    expect(result.filename).toMatch(
+      /^finhance-import-templates-\d{4}-\d{2}-\d{2}\.zip$/,
+    );
+    expect([...entries.keys()]).toEqual([
+      'accounts.csv',
+      'categories.csv',
+      'assets.csv',
+      'transactions.csv',
+      'recurringRules.csv',
+      'recurringExceptions.csv',
+      'budgets.csv',
+      'budgetOverrides.csv',
+      'expenseCategoryHierarchy.csv',
+      'expenseValidationRules.csv',
+    ]);
+
+    for (const [file, headers] of Object.entries(IMPORT_TEMPLATE_HEADERS)) {
+      expect(entries.get(`${file}.csv`)).toBe(`${headers.join(',')}\n`);
+    }
   });
 
   it('neutralizes spreadsheet formulas in exported CSV values', async () => {

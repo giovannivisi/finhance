@@ -172,6 +172,12 @@ export const EXPENSE_VALIDATION_RULE_IMPORT_HEADERS = [
   "secondary",
 ] as const;
 
+export const IMPORT_TEMPLATE_OPTIONAL_HEADERS: Partial<
+  Record<ImportFileType, readonly string[]>
+> = {
+  accounts: ["openingBalance", "openingBalanceDate"],
+};
+
 export const IMPORT_TEMPLATE_HEADERS: Record<
   ImportFileType,
   readonly string[]

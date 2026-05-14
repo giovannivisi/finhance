@@ -55,7 +55,10 @@ import {
   TransactionKind,
 } from '@finhance/db';
 import { RecurringService } from '@recurring/recurring.service';
-import { IMPORT_TEMPLATE_HEADERS } from '@imports/imports.types';
+import {
+  IMPORT_TEMPLATE_HEADERS,
+  IMPORT_TEMPLATE_OPTIONAL_HEADERS,
+} from '@imports/imports.types';
 import { normalizeExpenseValidationEntry } from '@transactions/category-hierarchy';
 import type {
   AccountImportRow,
@@ -440,6 +443,15 @@ export class ImportsService {
     };
   }
 
+  exportTemplateZip(): Promise<ExportArchiveResult> {
+    return {
+      filename: `finhance-import-templates-${this.formatExportDate(
+        new Date(),
+      )}.zip`,
+      buffer: buildStoredZipArchive(this.buildTemplateFiles()),
+    };
+  }
+
   private parseUploadedFiles(
     files: Partial<Record<ImportFileType, ImportUploadFile>>,
   ): { payload: ImportPayload; issues: ImportRowIssueResponse[] } {
@@ -606,8 +618,7 @@ export class ImportsService {
       emptyMessage: `${file}.csv is empty.`,
     });
     const expectedHeaders = [...IMPORT_TEMPLATE_HEADERS[file]];
-    const optionalHeaders =
-      file === 'accounts' ? ['openingBalance', 'openingBalanceDate'] : [];
+    const optionalHeaders = IMPORT_TEMPLATE_OPTIONAL_HEADERS[file] ?? [];
     const unknownHeaders = headers.filter(
       (header) => !expectedHeaders.includes(header),
     );
@@ -4911,7 +4922,7 @@ export class ImportsService {
       trailingNewline: true,
     });
     const expenseValidationRulesCsv = serializeCsv({
-      headers: ['entry', 'primary', 'secondary'],
+      headers: [...IMPORT_TEMPLATE_HEADERS.expenseValidationRules],
       rows: state.expenseValidationRules.map((rule) =>
         this.toExportExpenseValidationRuleRow(rule),
       ),
@@ -4956,6 +4967,20 @@ export class ImportsService {
         data: Buffer.from(expenseValidationRulesCsv, 'utf8'),
       },
     ];
+  }
+
+  private buildTemplateFiles(): ZipArchiveEntry[] {
+    return (Object.keys(EXPORT_FILE_NAMES) as ImportFileType[]).map((file) => ({
+      name: EXPORT_FILE_NAMES[file],
+      data: Buffer.from(
+        serializeCsv({
+          headers: [...IMPORT_TEMPLATE_HEADERS[file]],
+          rows: [],
+          trailingNewline: true,
+        }),
+        'utf8',
+      ),
+    }));
   }
 
   private toExportTransactionRows(
