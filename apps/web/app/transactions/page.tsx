@@ -3,6 +3,7 @@ import type {
   CashflowSummaryResponse,
   CategoryResponse,
   ExpenseValidationRuleResponse,
+  RecurringPendingStatusResponse,
   TransactionResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
@@ -98,6 +99,7 @@ export default async function TransactionsPage({
   let accounts: AccountResponse[] | null = null;
   let categories: CategoryResponse[] | null = null;
   let expenseValidationRules: ExpenseValidationRuleResponse[] | null = null;
+  let hasPendingSync = false;
   let errorMessage: string | null = null;
 
   try {
@@ -109,6 +111,15 @@ export default async function TransactionsPage({
         api<CategoryResponse[]>("/categories?includeArchived=true"),
         api<ExpenseValidationRuleResponse[]>("/expense-validation"),
       ]);
+
+    try {
+      const pendingStatus = await api<RecurringPendingStatusResponse>(
+        "/recurring-rules/has-pending",
+      );
+      hasPendingSync = pendingStatus.hasPending;
+    } catch {
+      hasPendingSync = false;
+    }
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -146,6 +157,7 @@ export default async function TransactionsPage({
             categories={categories}
             expenseValidationRules={expenseValidationRules}
             initialFilters={filters}
+            hasPendingSync={hasPendingSync}
           />
         )}
       </Container>

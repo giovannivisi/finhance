@@ -2583,11 +2583,14 @@ button {
   align-self: stretch;
 }
 
-.transaction-toggle-pill {
-  min-height: 50px;
+.page-pill.transaction-toggle-pill {
+  display: flex;
+  min-height: 54px;
   width: fit-content;
   max-width: 100%;
   padding-inline: 18px;
+  margin-bottom: 0;
+  border-radius: var(--radius-md);
   align-self: end;
 }
 
@@ -2602,6 +2605,14 @@ button {
 
 .transaction-filter-actions {
   align-self: end;
+  flex-wrap: nowrap;
+}
+
+.filter-actions.is-equal.transaction-filter-actions > .btn-primary,
+.filter-actions.is-equal.transaction-filter-actions > .btn-secondary {
+  min-width: 0;
+  min-height: 54px;
+  flex: 1 1 0;
 }
 
 .activity-cashflow-grid {

@@ -733,8 +733,8 @@ describe('ImportsService', () => {
     });
   });
 
-  it('exports the import templates as a zip generated from the shared schema', async () => {
-    const result = await service.exportTemplateZip();
+  it('exports the import templates as a zip generated from the shared schema', () => {
+    const result = service.exportTemplateZip();
     const entries = parseZipEntries(result.buffer);
 
     expect(result.filename).toMatch(

@@ -60,6 +60,10 @@ export interface MaterializeRecurringRulesResponse {
   failedRuleCount: number;
 }
 
+export interface RecurringPendingStatusResponse {
+  hasPending: boolean;
+}
+
 export type RecurringOccurrenceStatus = "SKIPPED" | "OVERRIDDEN";
 
 export interface SkipRecurringOccurrenceRequest {

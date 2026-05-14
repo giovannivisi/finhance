@@ -121,8 +121,8 @@ export class ImportsController {
   @Post('csv/templates/export')
   @HttpCode(200)
   @Throttle(createNamedThrottleOverride('imports'))
-  async exportTemplates(@Res() response: Response): Promise<void> {
-    const result = await this.importsService.exportTemplateZip();
+  exportTemplates(@Res() response: Response): void {
+    const result = this.importsService.exportTemplateZip();
     response.setHeader('Content-Type', 'application/zip');
     response.setHeader(
       'Content-Disposition',

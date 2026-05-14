@@ -627,6 +627,71 @@ export class RecurringService {
     );
   }
 
+  async hasPendingMaterializations(ownerId: string): Promise<boolean> {
+    const rules = await this.prisma.recurringTransactionRule.findMany({
+      where: { userId: ownerId, isActive: true },
+    });
+
+    if (rules.length === 0) {
+      return false;
+    }
+
+    const currentMonthKey = this.formatMonthKey(new Date());
+
+    for (const rule of rules) {
+      const dueMonthKeys = this.listApplicableMonthKeys(rule, currentMonthKey);
+
+      if (dueMonthKeys.length === 0) {
+        continue;
+      }
+
+      const dueMonths = dueMonthKeys.map((k) => this.monthKeyToValue(k));
+
+      const [skipped, materialized] = await Promise.all([
+        this.prisma.recurringTransactionOccurrence.findMany({
+          where: {
+            userId: ownerId,
+            recurringRuleId: rule.id,
+            occurrenceMonth: { in: dueMonths },
+            status: 'SKIPPED',
+          },
+          select: { occurrenceMonth: true },
+        }),
+        this.prisma.transaction.findMany({
+          where: {
+            userId: ownerId,
+            recurringRuleId: rule.id,
+            recurringOccurrenceMonth: { in: dueMonths },
+          },
+          select: { recurringOccurrenceMonth: true },
+        }),
+      ]);
+
+      const skippedTimes = new Set(
+        skipped.map((s) => s.occurrenceMonth.getTime()),
+      );
+      const materializedTimes = new Set(
+        materialized
+          .filter((t) => t.recurringOccurrenceMonth !== null)
+          .map((t) => t.recurringOccurrenceMonth!.getTime()),
+      );
+
+      for (const month of dueMonths) {
+        const time = month.getTime();
+
+        if (skippedTimes.has(time)) {
+          continue;
+        }
+
+        if (!materializedTimes.has(time)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   private async materializeRuleMonth(
     client: RecurringMaterializationClient,
     ownerId: string,

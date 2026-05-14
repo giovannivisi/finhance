@@ -3,12 +3,14 @@ import type {
   AccountResponse,
   CashflowAnalyticsResponse,
   CategoryResponse,
+  RecurringPendingStatusResponse,
   SetupStatusResponse,
 } from "@finhance/shared";
 import AnalyticsCategoryBarChart from "@components/AnalyticsCategoryBarChart";
 import AnalyticsTrendChart from "@components/AnalyticsTrendChart";
 import Container from "@components/Container";
 import MoneyValue from "@components/MoneyValue";
+import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import Sparkline from "@components/Sparkline";
 
 import WorkflowSection from "@components/WorkflowSection";
@@ -88,6 +90,7 @@ export default async function AnalyticsPage({
   let accounts: AccountResponse[] | null = null;
   let categories: CategoryResponse[] | null = null;
   let setup: SetupStatusResponse | null = null;
+  let hasPendingSync = false;
   let errorMessage: string | null = null;
 
   try {
@@ -110,6 +113,15 @@ export default async function AnalyticsPage({
       );
     } catch {
       setup = null;
+    }
+
+    try {
+      const pendingStatus = await api<RecurringPendingStatusResponse>(
+        "/recurring-rules/has-pending",
+      );
+      hasPendingSync = pendingStatus.hasPending;
+    } catch {
+      hasPendingSync = false;
     }
   }
 
@@ -282,6 +294,24 @@ export default async function AnalyticsPage({
                     </div>
                   </form>
                 </details>
+
+                {hasPendingSync ? (
+                  <div className="detail-panel is-roomy">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                          Recurring sync
+                        </h2>
+                        <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                          There are recurring transactions due that haven&apos;t
+                          been added to the ledger yet. Sync to include them in
+                          Analytics before trusting the month-level story.
+                        </p>
+                      </div>
+                      <RecurringMaterializeButton />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </section>
 
@@ -386,212 +416,217 @@ export default async function AnalyticsPage({
                         </div>
                       </section>
 
-                    <section className="page-section is-spacious analytics-section">
-                      <div className="analytics-section-intro">
-                        <h3 className="text-xl font-semibold text-gray-900">
-                          Where did my money go this month
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          Focus month {analytics.focusMonth}, with direct links
-                          into the transaction ledger.
-                        </p>
-                      </div>
-
-                      <div className="analytics-section-grid">
-                        <div className="analytics-subsection">
-                          <h4 className="analytics-subsection-title">
-                            Expense breakdown
-                          </h4>
-                          {currency.focusMonthExpenseBreakdown.length > 0 ? (
-                            <div className="detail-panel analytics-subsection-visual">
-                              <AnalyticsCategoryBarChart
-                                currency={currency.currency}
-                                data={currency.focusMonthExpenseBreakdown.map(
-                                  (item) => ({
-                                    ...item,
-                                    chartLabel:
-                                      item.secondaryCategoryName ??
-                                      formatHierarchyName(item, item.name),
-                                    href: buildTransactionsLink({
-                                      month: analytics.focusMonth,
-                                      accountId:
-                                        filters.accountId || undefined,
-                                      primaryCategoryId:
-                                        item.primaryCategoryId ?? undefined,
-                                      secondaryCategoryId:
-                                        item.secondaryCategoryId ??
-                                        item.categoryId ??
-                                        undefined,
-                                      kind: "EXPENSE",
-                                      includeArchivedAccounts:
-                                        filters.includeArchivedAccounts,
-                                    }),
-                                  }),
-                                )}
-                                mode="breakdown"
-                                tone="expense"
-                              />
-                            </div>
-                          ) : null}
-                          {currency.focusMonthExpenseBreakdown.length === 0 ? (
-                            <p className="analytics-subsection-empty text-sm text-gray-500">
-                              No expense categories in the focus month.
-                            </p>
-                          ) : null}
+                      <section className="page-section is-spacious analytics-section">
+                        <div className="analytics-section-intro">
+                          <h3 className="text-xl font-semibold text-gray-900">
+                            Where did my money go this month
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            Focus month {analytics.focusMonth}, with direct
+                            links into the transaction ledger.
+                          </p>
                         </div>
 
-                        <div className="analytics-subsection">
-                          <h4 className="analytics-subsection-title">
-                            Income breakdown
-                          </h4>
-                          {currency.focusMonthIncomeBreakdown.length > 0 ? (
-                            <div className="detail-panel analytics-subsection-visual">
-                              <AnalyticsCategoryBarChart
-                                currency={currency.currency}
-                                data={currency.focusMonthIncomeBreakdown.map(
-                                  (item) => ({
-                                    ...item,
-                                    chartLabel: formatHierarchyName(
-                                      item,
-                                      item.name,
-                                    ),
-                                    href: buildTransactionsLink({
-                                      month: analytics.focusMonth,
-                                      accountId:
-                                        filters.accountId || undefined,
-                                      categoryId: item.categoryId ?? undefined,
-                                      kind: "INCOME",
-                                      includeArchivedAccounts:
-                                        filters.includeArchivedAccounts,
+                        <div className="analytics-section-grid">
+                          <div className="analytics-subsection">
+                            <h4 className="analytics-subsection-title">
+                              Expense breakdown
+                            </h4>
+                            {currency.focusMonthExpenseBreakdown.length > 0 ? (
+                              <div className="detail-panel analytics-subsection-visual">
+                                <AnalyticsCategoryBarChart
+                                  currency={currency.currency}
+                                  data={currency.focusMonthExpenseBreakdown.map(
+                                    (item) => ({
+                                      ...item,
+                                      chartLabel:
+                                        item.secondaryCategoryName ??
+                                        formatHierarchyName(item, item.name),
+                                      href: buildTransactionsLink({
+                                        month: analytics.focusMonth,
+                                        accountId:
+                                          filters.accountId || undefined,
+                                        primaryCategoryId:
+                                          item.primaryCategoryId ?? undefined,
+                                        secondaryCategoryId:
+                                          item.secondaryCategoryId ??
+                                          item.categoryId ??
+                                          undefined,
+                                        kind: "EXPENSE",
+                                        includeArchivedAccounts:
+                                          filters.includeArchivedAccounts,
+                                      }),
                                     }),
-                                  }),
-                                )}
-                                mode="breakdown"
-                                tone="income"
-                              />
-                            </div>
-                          ) : null}
-                          {currency.focusMonthIncomeBreakdown.length === 0 ? (
-                            <p className="analytics-subsection-empty text-sm text-gray-500">
-                              No income categories in the focus month.
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                    </section>
+                                  )}
+                                  mode="breakdown"
+                                  tone="expense"
+                                />
+                              </div>
+                            ) : null}
+                            {currency.focusMonthExpenseBreakdown.length ===
+                            0 ? (
+                              <p className="analytics-subsection-empty text-sm text-gray-500">
+                                No expense categories in the focus month.
+                              </p>
+                            ) : null}
+                          </div>
 
-                    <section className="page-section is-spacious analytics-section">
-                      <div className="analytics-section-intro">
-                        <h3 className="text-xl font-semibold text-gray-900">
-                          Biggest changes
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          Focus month versus the immediately previous month in
-                          the selected range.
-                        </p>
-                      </div>
-
-                      <div className="analytics-section-grid">
-                        <div className="analytics-subsection">
-                          <h4 className="analytics-subsection-title">
-                            Expense movers
-                          </h4>
-                          {currency.expenseMonthOverMonthChanges.length > 0 ? (
-                            <div className="detail-panel analytics-subsection-visual">
-                              <AnalyticsCategoryBarChart
-                                currency={currency.currency}
-                                data={currency.expenseMonthOverMonthChanges.map(
-                                  (item) => ({
-                                    ...item,
-                                    absoluteDelta: Math.abs(item.delta),
-                                    chartLabel:
-                                      item.secondaryCategoryName ??
-                                      formatHierarchyName(item, item.name),
-                                    href: buildTransactionsLink({
-                                      from: selectedRange.from,
-                                      to: selectedRange.to,
-                                      accountId:
-                                        filters.accountId || undefined,
-                                      primaryCategoryId:
-                                        item.primaryCategoryId ?? undefined,
-                                      secondaryCategoryId:
-                                        item.secondaryCategoryId ??
-                                        item.categoryId ??
-                                        undefined,
-                                      kind: "EXPENSE",
-                                      includeArchivedAccounts:
-                                        filters.includeArchivedAccounts,
+                          <div className="analytics-subsection">
+                            <h4 className="analytics-subsection-title">
+                              Income breakdown
+                            </h4>
+                            {currency.focusMonthIncomeBreakdown.length > 0 ? (
+                              <div className="detail-panel analytics-subsection-visual">
+                                <AnalyticsCategoryBarChart
+                                  currency={currency.currency}
+                                  data={currency.focusMonthIncomeBreakdown.map(
+                                    (item) => ({
+                                      ...item,
+                                      chartLabel: formatHierarchyName(
+                                        item,
+                                        item.name,
+                                      ),
+                                      href: buildTransactionsLink({
+                                        month: analytics.focusMonth,
+                                        accountId:
+                                          filters.accountId || undefined,
+                                        categoryId:
+                                          item.categoryId ?? undefined,
+                                        kind: "INCOME",
+                                        includeArchivedAccounts:
+                                          filters.includeArchivedAccounts,
+                                      }),
                                     }),
-                                  }),
-                                )}
-                                mode="movers"
-                              />
-                            </div>
-                          ) : null}
-                          {currency.expenseMonthOverMonthChanges.length ===
-                          0 ? (
-                            <p className="analytics-subsection-empty text-sm text-gray-500">
-                              No previous month available for expense
-                              comparison.
-                            </p>
-                          ) : null}
+                                  )}
+                                  mode="breakdown"
+                                  tone="income"
+                                />
+                              </div>
+                            ) : null}
+                            {currency.focusMonthIncomeBreakdown.length === 0 ? (
+                              <p className="analytics-subsection-empty text-sm text-gray-500">
+                                No income categories in the focus month.
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </section>
+
+                      <section className="page-section is-spacious analytics-section">
+                        <div className="analytics-section-intro">
+                          <h3 className="text-xl font-semibold text-gray-900">
+                            Biggest changes
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            Focus month versus the immediately previous month in
+                            the selected range.
+                          </p>
                         </div>
 
-                        <div className="analytics-subsection">
-                          <h4 className="analytics-subsection-title">
-                            Income movers
-                          </h4>
-                          {currency.incomeMonthOverMonthChanges.length > 0 ? (
-                            <div className="detail-panel analytics-subsection-visual">
-                              <AnalyticsCategoryBarChart
-                                currency={currency.currency}
-                                data={currency.incomeMonthOverMonthChanges.map(
-                                  (item) => ({
-                                    ...item,
-                                    absoluteDelta: Math.abs(item.delta),
-                                    chartLabel: formatHierarchyName(
-                                      item,
-                                      item.name,
-                                    ),
-                                    href: buildTransactionsLink({
-                                      from: selectedRange.from,
-                                      to: selectedRange.to,
-                                      accountId:
-                                        filters.accountId || undefined,
-                                      categoryId: item.categoryId ?? undefined,
-                                      kind: "INCOME",
-                                      includeArchivedAccounts:
-                                        filters.includeArchivedAccounts,
+                        <div className="analytics-section-grid">
+                          <div className="analytics-subsection">
+                            <h4 className="analytics-subsection-title">
+                              Expense movers
+                            </h4>
+                            {currency.expenseMonthOverMonthChanges.length >
+                            0 ? (
+                              <div className="detail-panel analytics-subsection-visual">
+                                <AnalyticsCategoryBarChart
+                                  currency={currency.currency}
+                                  data={currency.expenseMonthOverMonthChanges.map(
+                                    (item) => ({
+                                      ...item,
+                                      absoluteDelta: Math.abs(item.delta),
+                                      chartLabel:
+                                        item.secondaryCategoryName ??
+                                        formatHierarchyName(item, item.name),
+                                      href: buildTransactionsLink({
+                                        from: selectedRange.from,
+                                        to: selectedRange.to,
+                                        accountId:
+                                          filters.accountId || undefined,
+                                        primaryCategoryId:
+                                          item.primaryCategoryId ?? undefined,
+                                        secondaryCategoryId:
+                                          item.secondaryCategoryId ??
+                                          item.categoryId ??
+                                          undefined,
+                                        kind: "EXPENSE",
+                                        includeArchivedAccounts:
+                                          filters.includeArchivedAccounts,
+                                      }),
                                     }),
-                                  }),
-                                )}
-                                mode="movers"
-                              />
-                            </div>
-                          ) : null}
-                          {currency.incomeMonthOverMonthChanges.length === 0 ? (
-                            <p className="analytics-subsection-empty text-sm text-gray-500">
-                              No previous month available for income comparison.
-                            </p>
-                          ) : null}
+                                  )}
+                                  mode="movers"
+                                />
+                              </div>
+                            ) : null}
+                            {currency.expenseMonthOverMonthChanges.length ===
+                            0 ? (
+                              <p className="analytics-subsection-empty text-sm text-gray-500">
+                                No previous month available for expense
+                                comparison.
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="analytics-subsection">
+                            <h4 className="analytics-subsection-title">
+                              Income movers
+                            </h4>
+                            {currency.incomeMonthOverMonthChanges.length > 0 ? (
+                              <div className="detail-panel analytics-subsection-visual">
+                                <AnalyticsCategoryBarChart
+                                  currency={currency.currency}
+                                  data={currency.incomeMonthOverMonthChanges.map(
+                                    (item) => ({
+                                      ...item,
+                                      absoluteDelta: Math.abs(item.delta),
+                                      chartLabel: formatHierarchyName(
+                                        item,
+                                        item.name,
+                                      ),
+                                      href: buildTransactionsLink({
+                                        from: selectedRange.from,
+                                        to: selectedRange.to,
+                                        accountId:
+                                          filters.accountId || undefined,
+                                        categoryId:
+                                          item.categoryId ?? undefined,
+                                        kind: "INCOME",
+                                        includeArchivedAccounts:
+                                          filters.includeArchivedAccounts,
+                                      }),
+                                    }),
+                                  )}
+                                  mode="movers"
+                                />
+                              </div>
+                            ) : null}
+                            {currency.incomeMonthOverMonthChanges.length ===
+                            0 ? (
+                              <p className="analytics-subsection-empty text-sm text-gray-500">
+                                No previous month available for income
+                                comparison.
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                    </section>
+                      </section>
 
-                    <section className="page-section is-spacious analytics-section">
-                      <div className="analytics-section-intro">
-                        <h3 className="text-xl font-semibold text-gray-900">
-                          Category trends
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          Top {TREND_ROW_LIMIT} categories across the selected
-                          range, with direction over the period.
-                        </p>
-                      </div>
+                      <section className="page-section is-spacious analytics-section">
+                        <div className="analytics-section-intro">
+                          <h3 className="text-xl font-semibold text-gray-900">
+                            Category trends
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            Top {TREND_ROW_LIMIT} categories across the selected
+                            range, with direction over the period.
+                          </p>
+                        </div>
 
-                      <div className="analytics-section-grid">
-                        {(
-                          [
+                        <div className="analytics-section-grid">
+                          {[
                             {
                               title: "Expense trends",
                               kind: "EXPENSE" as const,
@@ -604,119 +639,126 @@ export default async function AnalyticsPage({
                               items: currency.incomeCategoryTrends,
                               tone: "income" as const,
                             },
-                          ]
-                        ).map((section) => {
-                          const visibleItems = section.items.slice(
-                            0,
-                            TREND_ROW_LIMIT,
-                          );
+                          ].map((section) => {
+                            const visibleItems = section.items.slice(
+                              0,
+                              TREND_ROW_LIMIT,
+                            );
 
-                          return (
-                            <div
-                              key={section.title}
-                              className="analytics-subsection"
-                            >
-                              <h4 className="analytics-subsection-title">
-                                {section.title}
-                              </h4>
-                              {visibleItems.length === 0 ? (
-                                <p className="analytics-subsection-empty text-sm text-gray-500">
-                                  No category trends in this range.
-                                </p>
-                              ) : (
-                                <div className="analytics-subsection-content flex flex-col gap-3">
-                                  {visibleItems.map((item) => {
-                                    const label =
-                                      section.kind === "EXPENSE"
-                                        ? (item.secondaryCategoryName ??
-                                          formatHierarchyName(item, item.name))
-                                        : formatHierarchyName(item, item.name);
-                                    const delta = trendDelta(item.series);
-                                    const href = buildTransactionsLink({
-                                      from: selectedRange.from,
-                                      to: selectedRange.to,
-                                      accountId:
-                                        filters.accountId || undefined,
-                                      primaryCategoryId:
+                            return (
+                              <div
+                                key={section.title}
+                                className="analytics-subsection"
+                              >
+                                <h4 className="analytics-subsection-title">
+                                  {section.title}
+                                </h4>
+                                {visibleItems.length === 0 ? (
+                                  <p className="analytics-subsection-empty text-sm text-gray-500">
+                                    No category trends in this range.
+                                  </p>
+                                ) : (
+                                  <div className="analytics-subsection-content flex flex-col gap-3">
+                                    {visibleItems.map((item) => {
+                                      const label =
                                         section.kind === "EXPENSE"
-                                          ? (item.primaryCategoryId ??
-                                            undefined)
-                                          : undefined,
-                                      secondaryCategoryId:
-                                        section.kind === "EXPENSE"
-                                          ? (item.secondaryCategoryId ??
-                                            item.categoryId ??
-                                            undefined)
-                                          : undefined,
-                                      categoryId:
-                                        section.kind === "INCOME"
-                                          ? (item.categoryId ?? undefined)
-                                          : undefined,
-                                      kind: section.kind,
-                                      includeArchivedAccounts:
-                                        filters.includeArchivedAccounts,
-                                    });
+                                          ? (item.secondaryCategoryName ??
+                                            formatHierarchyName(
+                                              item,
+                                              item.name,
+                                            ))
+                                          : formatHierarchyName(
+                                              item,
+                                              item.name,
+                                            );
+                                      const delta = trendDelta(item.series);
+                                      const href = buildTransactionsLink({
+                                        from: selectedRange.from,
+                                        to: selectedRange.to,
+                                        accountId:
+                                          filters.accountId || undefined,
+                                        primaryCategoryId:
+                                          section.kind === "EXPENSE"
+                                            ? (item.primaryCategoryId ??
+                                              undefined)
+                                            : undefined,
+                                        secondaryCategoryId:
+                                          section.kind === "EXPENSE"
+                                            ? (item.secondaryCategoryId ??
+                                              item.categoryId ??
+                                              undefined)
+                                            : undefined,
+                                        categoryId:
+                                          section.kind === "INCOME"
+                                            ? (item.categoryId ?? undefined)
+                                            : undefined,
+                                        kind: section.kind,
+                                        includeArchivedAccounts:
+                                          filters.includeArchivedAccounts,
+                                      });
 
-                                    return (
-                                      <Link
-                                        key={`${section.kind}:${item.categoryId ?? item.name}`}
-                                        href={href}
-                                        className="flex items-center gap-6 rounded-[22px] [corner-shape:superellipse(0.72)] border border-[var(--border-glass)] bg-[var(--bg-card-muted)] px-4 py-3 text-sm transition hover:bg-[var(--bg-card-hover)]"
-                                      >
-                                        <span
-                                          className="min-w-0 flex-1 truncate font-medium text-gray-900"
-                                          title={label}
+                                      return (
+                                        <Link
+                                          key={`${section.kind}:${item.categoryId ?? item.name}`}
+                                          href={href}
+                                          className="flex items-center gap-6 rounded-[22px] [corner-shape:superellipse(0.72)] border border-[var(--border-glass)] bg-[var(--bg-card-muted)] px-4 py-3 text-sm transition hover:bg-[var(--bg-card-hover)]"
                                         >
-                                          {label}
-                                        </span>
-                                        <Sparkline
-                                          points={item.series.map((point) => ({
-                                            value: point.total,
-                                          }))}
-                                          tone={section.tone}
-                                          width={96}
-                                          height={28}
-                                        />
-                                        <span className="w-24 flex-shrink-0 text-right tabular-nums text-gray-700">
-                                          {formatCurrency(
-                                            item.total,
-                                            currency.currency,
-                                          )}
-                                        </span>
-                                        <span
-                                          className={`w-16 flex-shrink-0 text-right text-xs font-medium tabular-nums ${
-                                            delta
-                                              ? deltaToneClass(
-                                                  section.kind,
-                                                  delta.kind === "from-zero"
-                                                    ? "up"
-                                                    : delta.direction,
-                                                )
-                                              : "text-gray-400"
-                                          }`}
-                                        >
-                                          {delta === null
-                                            ? "—"
-                                            : delta.kind === "from-zero"
-                                              ? "↑ new"
-                                              : delta.direction === "flat"
-                                                ? "→ 0%"
-                                                : `${delta.direction === "up" ? "↑" : "↓"} ${Math.abs(
-                                                    Math.round(delta.value),
-                                                  )}%`}
-                                        </span>
-                                      </Link>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  </div>
-                );
+                                          <span
+                                            className="min-w-0 flex-1 truncate font-medium text-gray-900"
+                                            title={label}
+                                          >
+                                            {label}
+                                          </span>
+                                          <Sparkline
+                                            points={item.series.map(
+                                              (point) => ({
+                                                value: point.total,
+                                              }),
+                                            )}
+                                            tone={section.tone}
+                                            width={96}
+                                            height={28}
+                                          />
+                                          <span className="w-24 flex-shrink-0 text-right tabular-nums text-gray-700">
+                                            {formatCurrency(
+                                              item.total,
+                                              currency.currency,
+                                            )}
+                                          </span>
+                                          <span
+                                            className={`w-16 flex-shrink-0 text-right text-xs font-medium tabular-nums ${
+                                              delta
+                                                ? deltaToneClass(
+                                                    section.kind,
+                                                    delta.kind === "from-zero"
+                                                      ? "up"
+                                                      : delta.direction,
+                                                  )
+                                                : "text-gray-400"
+                                            }`}
+                                          >
+                                            {delta === null
+                                              ? "—"
+                                              : delta.kind === "from-zero"
+                                                ? "↑ new"
+                                                : delta.direction === "flat"
+                                                  ? "→ 0%"
+                                                  : `${delta.direction === "up" ? "↑" : "↓"} ${Math.abs(
+                                                      Math.round(delta.value),
+                                                    )}%`}
+                                          </span>
+                                        </Link>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    </div>
+                  );
                 })}
 
                 <WorkflowSection

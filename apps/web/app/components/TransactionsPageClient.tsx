@@ -219,6 +219,7 @@ export default function TransactionsPageClient({
   categories,
   expenseValidationRules,
   initialFilters,
+  hasPendingSync,
 }: {
   transactions: TransactionResponse[];
   cashflow: CashflowSummaryResponse;
@@ -226,6 +227,7 @@ export default function TransactionsPageClient({
   categories: CategoryResponse[];
   expenseValidationRules: ExpenseValidationRuleResponse[];
   initialFilters: ActivityFilters;
+  hasPendingSync: boolean;
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState<ActivityFilters>(initialFilters);
@@ -256,6 +258,23 @@ export default function TransactionsPageClient({
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
   const defaultFilters = useMemo(() => getDefaultActivityFilters(), []);
+  const hasActiveFilters =
+    filters.from !== defaultFilters.from ||
+    filters.to !== defaultFilters.to ||
+    Boolean(filters.kind) ||
+    Boolean(filters.accountId) ||
+    Boolean(filters.primaryCategoryId) ||
+    Boolean(filters.secondaryCategoryId || filters.categoryId) ||
+    filters.includeArchivedAccounts;
+  const activeFilterCount = [
+    filters.from !== defaultFilters.from,
+    filters.to !== defaultFilters.to,
+    Boolean(filters.kind),
+    Boolean(filters.accountId),
+    Boolean(filters.primaryCategoryId),
+    Boolean(filters.secondaryCategoryId || filters.categoryId),
+    filters.includeArchivedAccounts,
+  ].filter(Boolean).length;
 
   useEffect(() => {
     setFilters(initialFilters);
@@ -490,150 +509,178 @@ export default function TransactionsPageClient({
             </button>
           </div>
 
-          <form
-            onSubmit={handleFilterSubmit}
-            className="filter-grid is-relaxed transaction-filter-grid"
-          >
-            <div className="app-form-field">
-              <label>From</label>
-              <input
-                type="date"
-                value={filters.from}
-                onChange={(event) => updateFilter("from", event.target.value)}
-              />
-            </div>
+          <details className="analytics-filter-shell">
+            <summary className="analytics-filter-summary">
+              <span className="analytics-filter-summary-copy">
+                <span className="analytics-filter-summary-title">Filter</span>
+                <span className="analytics-filter-summary-detail">
+                  Date range, kind, account, category, and archived-wallet
+                  scope.
+                </span>
+              </span>
+              <span className="analytics-filter-summary-meta">
+                <span className="analytics-filter-summary-status">
+                  {hasActiveFilters
+                    ? `${activeFilterCount} active`
+                    : "All data"}
+                </span>
+                <span
+                  className="analytics-filter-summary-chevron"
+                  aria-hidden="true"
+                />
+              </span>
+            </summary>
 
-            <div className="app-form-field">
-              <label>To</label>
-              <input
-                type="date"
-                value={filters.to}
-                onChange={(event) => updateFilter("to", event.target.value)}
-              />
-            </div>
-
-            <div className="app-form-field">
-              <label>Kind</label>
-              <select
-                value={filters.kind}
-                onChange={(event) => updateFilter("kind", event.target.value)}
-              >
-                <option value="">All kinds</option>
-                {Object.entries(TRANSACTION_KIND_LABELS).map(
-                  ([kind, label]) => (
-                    <option key={kind} value={kind}>
-                      {label}
-                    </option>
-                  ),
-                )}
-              </select>
-            </div>
-
-            <div className="app-form-field">
-              <label>Account</label>
-              <select
-                value={filters.accountId}
-                onChange={(event) =>
-                  updateFilter("accountId", event.target.value)
-                }
-              >
-                <option value="">All accounts</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="app-form-field">
-              <label>Primary</label>
-              <select
-                value={filters.primaryCategoryId}
-                onChange={(event) =>
-                  setFilters((previous) => ({
-                    ...previous,
-                    categoryId: "",
-                    primaryCategoryId: event.target.value,
-                    secondaryCategoryId: "",
-                  }))
-                }
-              >
-                <option value="">All primaries</option>
-                {visibleExpensePrimaries.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="app-form-field">
-              <label>Secondary</label>
-              <select
-                value={filters.secondaryCategoryId}
-                onChange={(event) =>
-                  setFilters((previous) => ({
-                    ...previous,
-                    categoryId: "",
-                    secondaryCategoryId: event.target.value,
-                  }))
-                }
-              >
-                <option value="">All secondaries</option>
-                {visibleSecondaryCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {formatCategoryName(category)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <label className="page-pill transaction-toggle-pill">
-              <input
-                type="checkbox"
-                checked={filters.includeArchivedAccounts}
-                onChange={(event) =>
-                  updateFilter("includeArchivedAccounts", event.target.checked)
-                }
-              />
-              Archived accounts
-            </label>
-
-            <div className="filter-actions is-equal transaction-filter-actions">
-              <button
-                type="submit"
-                disabled={navigation.isRunning}
-                className="btn-primary"
-              >
-                {navigation.isRunning ? "Applying..." : "Apply"}
-              </button>
-              <button
-                type="button"
-                onClick={handleClearFilters}
-                disabled={navigation.isRunning}
-                className="btn-secondary"
-              >
-                Clear
-              </button>
-            </div>
-          </form>
-
-          <div className="detail-panel is-roomy">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                  Recurring sync
-                </h2>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                  This page no longer creates transactions during render. Sync
-                  due transactions when you want the ledger and cashflow below
-                  to include any missing recurring entries.
-                </p>
+            <form
+              onSubmit={handleFilterSubmit}
+              className="filter-grid is-relaxed transaction-filter-grid"
+            >
+              <div className="app-form-field">
+                <label>From</label>
+                <input
+                  type="date"
+                  value={filters.from}
+                  onChange={(event) => updateFilter("from", event.target.value)}
+                />
               </div>
-              <RecurringMaterializeButton />
+
+              <div className="app-form-field">
+                <label>To</label>
+                <input
+                  type="date"
+                  value={filters.to}
+                  onChange={(event) => updateFilter("to", event.target.value)}
+                />
+              </div>
+
+              <div className="app-form-field">
+                <label>Kind</label>
+                <select
+                  value={filters.kind}
+                  onChange={(event) => updateFilter("kind", event.target.value)}
+                >
+                  <option value="">All</option>
+                  {Object.entries(TRANSACTION_KIND_LABELS).map(
+                    ([kind, label]) => (
+                      <option key={kind} value={kind}>
+                        {label}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </div>
+
+              <div className="app-form-field">
+                <label>Account</label>
+                <select
+                  value={filters.accountId}
+                  onChange={(event) =>
+                    updateFilter("accountId", event.target.value)
+                  }
+                >
+                  <option value="">All</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="app-form-field">
+                <label>Primary</label>
+                <select
+                  value={filters.primaryCategoryId}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      categoryId: "",
+                      primaryCategoryId: event.target.value,
+                      secondaryCategoryId: "",
+                    }))
+                  }
+                >
+                  <option value="">All</option>
+                  {visibleExpensePrimaries.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="app-form-field">
+                <label>Secondary</label>
+                <select
+                  value={filters.secondaryCategoryId}
+                  onChange={(event) =>
+                    setFilters((previous) => ({
+                      ...previous,
+                      categoryId: "",
+                      secondaryCategoryId: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">All</option>
+                  {visibleSecondaryCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {formatCategoryName(category)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <label className="page-pill transaction-toggle-pill">
+                <input
+                  type="checkbox"
+                  checked={filters.includeArchivedAccounts}
+                  onChange={(event) =>
+                    updateFilter(
+                      "includeArchivedAccounts",
+                      event.target.checked,
+                    )
+                  }
+                />
+                Archived accounts
+              </label>
+
+              <div className="filter-actions is-equal transaction-filter-actions">
+                <button
+                  type="submit"
+                  disabled={navigation.isRunning}
+                  className="btn-primary"
+                >
+                  {navigation.isRunning ? "Applying..." : "Apply"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearFilters}
+                  disabled={navigation.isRunning}
+                  className="btn-secondary"
+                >
+                  Clear
+                </button>
+              </div>
+            </form>
+          </details>
+
+          {hasPendingSync ? (
+            <div className="detail-panel is-roomy">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                    Recurring sync
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    There are recurring transactions due that haven&apos;t been
+                    added to the ledger yet. Sync to include them in the
+                    cashflow below.
+                  </p>
+                </div>
+                <RecurringMaterializeButton />
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </section>
 
