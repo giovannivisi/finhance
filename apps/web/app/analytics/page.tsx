@@ -435,22 +435,24 @@ export default async function AnalyticsPage({
                       </div>
                     </section>
 
-                    <section className="page-section is-spacious section-stack-spacious">
-                      <h3 className="text-xl font-semibold text-gray-900">
-                        Where did my money go this month
-                      </h3>
-                      <p className="mt-1 text-sm text-gray-500">
-                        Focus month {analytics.focusMonth}, with direct links
-                        into the transaction ledger.
-                      </p>
+                    <section className="page-section is-spacious analytics-section">
+                      <div className="analytics-section-intro">
+                        <h3 className="text-xl font-semibold text-gray-900">
+                          Where did my money go this month
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          Focus month {analytics.focusMonth}, with direct links
+                          into the transaction ledger.
+                        </p>
+                      </div>
 
-                      <div className="mt-5 grid gap-6 lg:grid-cols-2">
-                        <div>
-                          <h4 className="text-sm font-semibold text-gray-900">
+                      <div className="analytics-section-grid">
+                        <div className="analytics-subsection">
+                          <h4 className="analytics-subsection-title">
                             Expense breakdown
                           </h4>
                           {currency.focusMonthExpenseBreakdown.length > 0 ? (
-                            <div className="detail-panel">
+                            <div className="detail-panel analytics-subsection-visual">
                               <AnalyticsCategoryBarChart
                                 currency={currency.currency}
                                 data={currency.focusMonthExpenseBreakdown}
@@ -459,11 +461,11 @@ export default async function AnalyticsPage({
                             </div>
                           ) : null}
                           {currency.focusMonthExpenseBreakdown.length === 0 ? (
-                            <p className="mt-2 text-sm text-gray-500">
+                            <p className="analytics-subsection-empty text-sm text-gray-500">
                               No expense categories in the focus month.
                             </p>
                           ) : (
-                            <div className="mt-2 section-stack-tight">
+                            <div className="analytics-subsection-content section-stack-tight">
                               {groupRowsByPrimary(
                                 currency.focusMonthExpenseBreakdown,
                                 (item) => item.name,
@@ -517,16 +519,16 @@ export default async function AnalyticsPage({
                           )}
                         </div>
 
-                        <div>
-                          <h4 className="text-sm font-semibold text-gray-900">
+                        <div className="analytics-subsection">
+                          <h4 className="analytics-subsection-title">
                             Income breakdown
                           </h4>
                           {currency.focusMonthIncomeBreakdown.length === 0 ? (
-                            <p className="mt-2 text-sm text-gray-500">
+                            <p className="analytics-subsection-empty text-sm text-gray-500">
                               No income categories in the focus month.
                             </p>
                           ) : (
-                            <div className="mt-2 subcard-stack is-loose">
+                            <div className="analytics-subsection-content subcard-stack is-loose">
                               {currency.focusMonthIncomeBreakdown.map(
                                 (item) => (
                                   <Link
@@ -559,22 +561,24 @@ export default async function AnalyticsPage({
                       </div>
                     </section>
 
-                    <section className="page-section is-spacious section-stack-desktop-xl">
-                      <h3 className="text-xl font-semibold text-gray-900">
-                        Biggest changes
-                      </h3>
-                      <p className="mt-1 text-sm text-gray-500">
-                        Focus month versus the immediately previous month in the
-                        selected range.
-                      </p>
+                    <section className="page-section is-spacious analytics-section">
+                      <div className="analytics-section-intro">
+                        <h3 className="text-xl font-semibold text-gray-900">
+                          Biggest changes
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          Focus month versus the immediately previous month in
+                          the selected range.
+                        </p>
+                      </div>
 
-                      <div className="mt-5 grid gap-6 lg:grid-cols-2">
-                        <div>
-                          <h4 className="text-sm font-semibold text-gray-900">
+                      <div className="analytics-section-grid">
+                        <div className="analytics-subsection">
+                          <h4 className="analytics-subsection-title">
                             Expense movers
                           </h4>
                           {currency.expenseMonthOverMonthChanges.length > 0 ? (
-                            <div className="detail-panel">
+                            <div className="detail-panel analytics-subsection-visual">
                               <AnalyticsCategoryBarChart
                                 currency={currency.currency}
                                 data={currency.expenseMonthOverMonthChanges.map(
@@ -589,12 +593,12 @@ export default async function AnalyticsPage({
                           ) : null}
                           {currency.expenseMonthOverMonthChanges.length ===
                           0 ? (
-                            <p className="mt-2 text-sm text-gray-500">
+                            <p className="analytics-subsection-empty text-sm text-gray-500">
                               No previous month available for expense
                               comparison.
                             </p>
                           ) : (
-                            <div className="mt-2 section-stack-tight">
+                            <div className="analytics-subsection-content section-stack-tight">
                               {groupRowsByPrimary(
                                 currency.expenseMonthOverMonthChanges,
                                 (item) => item.name,
@@ -670,16 +674,16 @@ export default async function AnalyticsPage({
                           )}
                         </div>
 
-                        <div>
-                          <h4 className="text-sm font-semibold text-gray-900">
+                        <div className="analytics-subsection">
+                          <h4 className="analytics-subsection-title">
                             Income movers
                           </h4>
                           {currency.incomeMonthOverMonthChanges.length === 0 ? (
-                            <p className="mt-2 text-sm text-gray-500">
+                            <p className="analytics-subsection-empty text-sm text-gray-500">
                               No previous month available for income comparison.
                             </p>
                           ) : (
-                            <div className="mt-2 subcard-stack is-loose">
+                            <div className="analytics-subsection-content subcard-stack is-loose">
                               {currency.incomeMonthOverMonthChanges.map(
                                 (item) => (
                                   <Link
@@ -734,15 +738,17 @@ export default async function AnalyticsPage({
                       </div>
                     </section>
 
-                    <section className="page-section is-spacious section-stack-desktop-xl">
-                      <h3 className="text-xl font-semibold text-gray-900">
-                        Category trends
-                      </h3>
-                      <p className="mt-1 text-sm text-gray-500">
-                        Top categories across the selected range.
-                      </p>
+                    <section className="page-section is-spacious analytics-section">
+                      <div className="analytics-section-intro">
+                        <h3 className="text-xl font-semibold text-gray-900">
+                          Category trends
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          Top categories across the selected range.
+                        </p>
+                      </div>
 
-                      <div className="mt-5 grid gap-6 lg:grid-cols-2">
+                      <div className="analytics-section-grid">
                         {[
                           {
                             title: "Expense trends",
@@ -755,16 +761,19 @@ export default async function AnalyticsPage({
                             items: currency.incomeCategoryTrends,
                           },
                         ].map((section) => (
-                          <div key={section.title}>
-                            <h4 className="text-sm font-semibold text-gray-900">
+                          <div
+                            key={section.title}
+                            className="analytics-subsection"
+                          >
+                            <h4 className="analytics-subsection-title">
                               {section.title}
                             </h4>
                             {section.items.length === 0 ? (
-                              <p className="mt-2 text-sm text-gray-500">
+                              <p className="analytics-subsection-empty text-sm text-gray-500">
                                 No category trends in this range.
                               </p>
                             ) : section.kind === "EXPENSE" ? (
-                              <div className="mt-2 section-stack-tight">
+                              <div className="analytics-subsection-content section-stack-tight">
                                 {groupRowsByPrimary(
                                   section.items,
                                   (item) => item.name,
@@ -855,7 +864,7 @@ export default async function AnalyticsPage({
                                 ))}
                               </div>
                             ) : (
-                              <div className="mt-2 subcard-stack is-loose">
+                              <div className="analytics-subsection-content subcard-stack is-loose">
                                 {section.items.map((item) => {
                                   const trendMax = maxTrendValue(item);
 

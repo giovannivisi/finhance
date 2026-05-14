@@ -443,7 +443,7 @@ export class ImportsService {
     };
   }
 
-  exportTemplateZip(): Promise<ExportArchiveResult> {
+  async exportTemplateZip(): Promise<ExportArchiveResult> {
     return {
       filename: `finhance-import-templates-${this.formatExportDate(
         new Date(),

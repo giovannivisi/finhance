@@ -2242,6 +2242,45 @@ button {
   gap: 20px;
 }
 
+.analytics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.analytics-section-intro {
+  display: grid;
+  gap: 8px;
+}
+
+.analytics-section-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.analytics-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.analytics-subsection-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.analytics-subsection-content,
+.analytics-subsection-visual,
+.analytics-subsection-empty {
+  margin-top: 0;
+}
+
+.analytics-subsection-empty {
+  margin-bottom: 0;
+}
+
 .expense-validation-card {
   display: flex;
   flex-direction: column;
@@ -2270,6 +2309,172 @@ button {
   width: 100%;
   min-width: 0;
   max-width: none;
+}
+
+.expense-validation-tools-shell {
+  position: relative;
+  z-index: 5;
+}
+
+.expense-validation-tools-trigger.is-active {
+  background: var(--bg-card-hover);
+  border-color: var(--border-glass-strong);
+  color: var(--text-primary);
+}
+
+.expense-validation-tools-menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 30;
+  width: min(360px, calc(100vw - 32px));
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid var(--border-glass-strong);
+  background: var(--bg-popover-solid);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.expense-validation-tools-group {
+  display: grid;
+  gap: 10px;
+}
+
+.expense-validation-tools-group + .expense-validation-tools-group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-glass);
+}
+
+.expense-validation-tools-group-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.expense-validation-tools-item {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  font-size: 0.97rem;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.expense-validation-tools-item:hover,
+.expense-validation-tools-item:focus-visible {
+  color: var(--color-primary);
+  outline: none;
+}
+
+.expense-validation-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.expense-validation-section-copy {
+  margin: 8px 0 0;
+  max-width: 66ch;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.expense-validation-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.expense-validation-group {
+  gap: 0;
+}
+
+.expense-validation-group-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.expense-validation-group-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.expense-validation-group-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.expense-validation-group-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  line-height: 0;
+}
+
+.expense-validation-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.expense-validation-rule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.expense-validation-rule-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.expense-validation-rule-entry {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.96rem;
+  font-weight: 600;
+}
+
+.expense-validation-rule-secondary {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.expense-validation-rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .budget-toggle-pill {
@@ -3478,6 +3683,15 @@ html[data-theme="dark"] .text-red-800 {
 }
 
 @media (min-width: 1024px) {
+  .analytics-section {
+    gap: 28px;
+  }
+
+  .analytics-section-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+  }
+
   .budget-filter-grid {
     grid-template-columns: repeat(3, minmax(220px, 300px));
     justify-content: start;
@@ -4284,6 +4498,15 @@ html[data-theme="dark"] .text-red-800 {
   .expense-validation-card-actions > * {
     width: 100%;
     max-width: none;
+  }
+
+  .expense-validation-rule-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .expense-validation-rule-actions {
+    justify-content: flex-start;
   }
 
   .summary-grid,
