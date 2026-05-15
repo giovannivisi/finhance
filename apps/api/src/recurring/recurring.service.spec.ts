@@ -426,6 +426,127 @@ describe('RecurringService', () => {
     });
   });
 
+  it('returns true when any due recurring month is neither skipped nor materialized', async () => {
+    const rule = createRecurringRule();
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([rule]);
+    prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([]);
+    prisma.transaction.findMany.mockResolvedValue([]);
+
+    await expect(service.hasPendingMaterializations(OWNER_ID)).resolves.toBe(
+      true,
+    );
+
+    expect(prisma.recurringTransactionOccurrence.findMany).toHaveBeenCalledWith(
+      {
+        where: {
+          userId: OWNER_ID,
+          recurringRuleId: { in: [rule.id] },
+          occurrenceMonth: {
+            in: [new Date('2026-04-01T00:00:00.000Z')],
+          },
+          status: 'SKIPPED',
+        },
+        select: {
+          recurringRuleId: true,
+          occurrenceMonth: true,
+        },
+      },
+    );
+    expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: OWNER_ID,
+        recurringRuleId: { in: [rule.id] },
+        recurringOccurrenceMonth: {
+          in: [new Date('2026-04-01T00:00:00.000Z')],
+        },
+      },
+      select: {
+        recurringRuleId: true,
+        recurringOccurrenceMonth: true,
+      },
+    });
+  });
+
+  it('returns false when every due recurring month is already skipped or materialized', async () => {
+    const skippedRule = createRecurringRule({
+      id: 'rule-skipped',
+      startDate: new Date('2026-03-01T00:00:00.000Z'),
+    });
+    const materializedRule = createRecurringRule({
+      id: 'rule-materialized',
+    });
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([
+      skippedRule,
+      materializedRule,
+    ]);
+    prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([
+      {
+        recurringRuleId: 'rule-skipped',
+        occurrenceMonth: new Date('2026-03-01T00:00:00.000Z'),
+      },
+      {
+        recurringRuleId: 'rule-skipped',
+        occurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([
+      {
+        recurringRuleId: 'rule-materialized',
+        recurringOccurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+
+    await expect(service.hasPendingMaterializations(OWNER_ID)).resolves.toBe(
+      false,
+    );
+    expect(
+      prisma.recurringTransactionOccurrence.findMany,
+    ).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses an in-flight pending status lookup for the same owner', async () => {
+    const rule = createRecurringRule();
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([rule]);
+    let resolveSkippedOccurrences: (() => void) | null = null;
+    prisma.recurringTransactionOccurrence.findMany.mockImplementation(
+      () =>
+        new Promise<Array<{ recurringRuleId: string; occurrenceMonth: Date }>>(
+          (resolve) => {
+            resolveSkippedOccurrences = () => resolve([]);
+          },
+        ),
+    );
+    prisma.transaction.findMany.mockResolvedValue([]);
+
+    const firstPendingCheck = service.hasPendingMaterializations(OWNER_ID);
+    const secondPendingCheck = service.hasPendingMaterializations(OWNER_ID);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prisma.recurringTransactionRule.findMany).toHaveBeenCalledTimes(1);
+    expect(
+      prisma.recurringTransactionOccurrence.findMany,
+    ).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction.findMany).toHaveBeenCalledTimes(1);
+
+    if (!resolveSkippedOccurrences) {
+      throw new Error('Expected the pending status query to be in flight.');
+    }
+
+    const releasePendingStatusCheck = resolveSkippedOccurrences as () => void;
+    releasePendingStatusCheck();
+
+    const [first, second] = await Promise.all([
+      firstPendingCheck,
+      secondPendingCheck,
+    ]);
+
+    expect(first).toBe(true);
+    expect(second).toBe(true);
+  });
+
   it('rejects recurring rules whose start date exceeds the backfill window', async () => {
     await expect(
       service.create(OWNER_ID, {

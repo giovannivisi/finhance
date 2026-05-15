@@ -15,6 +15,7 @@ import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import {
   MaterializeRecurringRulesResponse,
   RecurringOccurrenceResponse,
+  RecurringPendingStatusResponse,
   RecurringTransactionRuleResponse,
 } from '@finhance/shared';
 import {
@@ -50,6 +51,15 @@ export class RecurringController {
   ): Promise<RecurringTransactionRuleResponse> {
     const rule = await this.recurringService.create(this.resolveOwnerId(), dto);
     return toRecurringTransactionRuleResponse(rule);
+  }
+
+  @Get('has-pending')
+  @Throttle(createNamedThrottleOverride('operations'))
+  async hasPending(): Promise<RecurringPendingStatusResponse> {
+    const hasPending = await this.recurringService.hasPendingMaterializations(
+      this.resolveOwnerId(),
+    );
+    return { hasPending };
   }
 
   @Get(':id')

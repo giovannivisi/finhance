@@ -2,6 +2,7 @@ import Link from "next/link";
 import type {
   MonthlyReviewResponse,
   MonthlyReviewWarningResponse,
+  RecurringPendingStatusResponse,
   SetupStatusResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
@@ -89,14 +90,19 @@ export default async function ReviewPage({
         : "Monthly review data is currently unavailable.";
   }
 
+  let hasPendingSync = false;
+
   if (review) {
-    try {
-      setup = await api<SetupStatusResponse>(
-        "/setup/status?includeWarnings=false",
-      );
-    } catch {
-      setup = null;
-    }
+    const [resolvedSetup, pendingStatus] = await Promise.all([
+      api<SetupStatusResponse>("/setup/status?includeWarnings=false").catch(
+        () => null,
+      ),
+      api<RecurringPendingStatusResponse>("/recurring-rules/has-pending").catch(
+        () => null,
+      ),
+    ]);
+    setup = resolvedSetup;
+    hasPendingSync = pendingStatus?.hasPending ?? false;
   }
 
   if (!review) {
@@ -263,22 +269,23 @@ export default async function ReviewPage({
                 </span>
               </div>
 
-              <div className="mt-4 detail-panel is-roomy">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                      Recurring sync
-                    </h3>
-                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                      This review no longer creates transactions while the page
-                      renders. Sync due transactions only when you want any
-                      missing recurring entries materialized before reviewing
-                      the month.
-                    </p>
+              {hasPendingSync ? (
+                <div className="mt-4 detail-panel is-roomy">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                        Recurring sync
+                      </h3>
+                      <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                        There are recurring transactions due that haven&apos;t
+                        been added to the ledger yet. Sync to include them
+                        before reviewing the month.
+                      </p>
+                    </div>
+                    <RecurringMaterializeButton />
                   </div>
-                  <RecurringMaterializeButton />
                 </div>
-              </div>
+              ) : null}
 
               <div className="summary-grid is-loose md:grid-cols-2">
                 <div className="summary-card">

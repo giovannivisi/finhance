@@ -86,25 +86,25 @@ export function getImportReadiness(
       title: "Blocked by import errors",
       detail: `${preview.summary.errorCount} error${
         preview.summary.errorCount === 1 ? "" : "s"
-      } must be fixed before apply is allowed.`,
+      } must be fixed before you can apply these changes.`,
     };
   }
 
   if (preview.summary.warningCount > 0) {
     return {
       tone: "warning",
-      title: "Ready to apply, but warnings need review",
+      title: "Ready to apply changes, but warnings need review",
       detail: `${preview.summary.warningCount} warning${
         preview.summary.warningCount === 1 ? "" : "s"
-      } will not block apply, but they may weaken trust in the result.`,
+      } will not block the apply step, but they may weaken trust in the result.`,
     };
   }
 
   return {
     tone: "ready",
-    title: "Ready to apply",
+    title: "Ready to apply changes",
     detail:
-      "No validation blockers or warnings were found in this preview. Applying will merge the selected files into the current workspace.",
+      "No validation blockers or warnings were found in this preview. Applying these changes will merge the selected files into the current workspace.",
   };
 }
 

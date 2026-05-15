@@ -3,10 +3,12 @@ import type {
   CashflowSummaryResponse,
   CategoryResponse,
   ExpenseValidationRuleResponse,
+  RecurringPendingStatusResponse,
   TransactionResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
 import TransactionsPageClient from "@components/TransactionsPageClient";
+import { getDefaultActivityFilters, type ActivityFilters } from "@lib/activity";
 import { api } from "@lib/server-api";
 
 export const dynamic = "force-dynamic";
@@ -18,16 +20,7 @@ function getSingleValue(value: string | string[] | undefined): string {
 }
 
 function buildFilterQueryString(
-  filters: {
-    from: string;
-    to: string;
-    accountId: string;
-    categoryId: string;
-    primaryCategoryId: string;
-    secondaryCategoryId: string;
-    kind: string;
-    includeArchivedAccounts: boolean;
-  },
+  filters: ActivityFilters,
   options?: { includeKind?: boolean },
 ) {
   const params = new URLSearchParams();
@@ -74,19 +67,26 @@ export default async function TransactionsPage({
   searchParams?: RawSearchParams;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const filters = {
-    from: getSingleValue(resolvedSearchParams.from),
-    to: getSingleValue(resolvedSearchParams.to),
-    accountId: getSingleValue(resolvedSearchParams.accountId),
-    categoryId: getSingleValue(resolvedSearchParams.categoryId),
-    primaryCategoryId: getSingleValue(resolvedSearchParams.primaryCategoryId),
-    secondaryCategoryId:
-      getSingleValue(resolvedSearchParams.secondaryCategoryId) ||
-      getSingleValue(resolvedSearchParams.categoryId),
-    kind: getSingleValue(resolvedSearchParams.kind),
-    includeArchivedAccounts:
-      getSingleValue(resolvedSearchParams.includeArchivedAccounts) === "true",
-  };
+  const hasExplicitFilters = Object.keys(resolvedSearchParams).length > 0;
+  const defaultFilters = getDefaultActivityFilters();
+  const filters: ActivityFilters = hasExplicitFilters
+    ? {
+        from: getSingleValue(resolvedSearchParams.from),
+        to: getSingleValue(resolvedSearchParams.to),
+        accountId: getSingleValue(resolvedSearchParams.accountId),
+        categoryId: getSingleValue(resolvedSearchParams.categoryId),
+        primaryCategoryId: getSingleValue(
+          resolvedSearchParams.primaryCategoryId,
+        ),
+        secondaryCategoryId:
+          getSingleValue(resolvedSearchParams.secondaryCategoryId) ||
+          getSingleValue(resolvedSearchParams.categoryId),
+        kind: getSingleValue(resolvedSearchParams.kind),
+        includeArchivedAccounts:
+          getSingleValue(resolvedSearchParams.includeArchivedAccounts) ===
+          "true",
+      }
+    : defaultFilters;
   const transactionsQueryString = buildFilterQueryString(filters, {
     includeKind: true,
   });
@@ -99,17 +99,31 @@ export default async function TransactionsPage({
   let accounts: AccountResponse[] | null = null;
   let categories: CategoryResponse[] | null = null;
   let expenseValidationRules: ExpenseValidationRuleResponse[] | null = null;
+  let hasPendingSync = false;
   let errorMessage: string | null = null;
 
   try {
-    [transactions, cashflow, accounts, categories, expenseValidationRules] =
-      await Promise.all([
-        api<TransactionResponse[]>(`/transactions${transactionsQueryString}`),
-        api<CashflowSummaryResponse>(`/cashflow/summary${cashflowQueryString}`),
-        api<AccountResponse[]>("/accounts?includeArchived=true"),
-        api<CategoryResponse[]>("/categories?includeArchived=true"),
-        api<ExpenseValidationRuleResponse[]>("/expense-validation"),
-      ]);
+    const pendingStatusPromise = api<RecurringPendingStatusResponse>(
+      "/recurring-rules/has-pending",
+    ).catch(() => null);
+
+    [
+      transactions,
+      cashflow,
+      accounts,
+      categories,
+      expenseValidationRules,
+      hasPendingSync,
+    ] = await Promise.all([
+      api<TransactionResponse[]>(`/transactions${transactionsQueryString}`),
+      api<CashflowSummaryResponse>(`/cashflow/summary${cashflowQueryString}`),
+      api<AccountResponse[]>("/accounts?includeArchived=true"),
+      api<CategoryResponse[]>("/categories?includeArchived=true"),
+      api<ExpenseValidationRuleResponse[]>("/expense-validation"),
+      pendingStatusPromise.then(
+        (pendingStatus) => pendingStatus?.hasPending ?? false,
+      ),
+    ]);
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -147,6 +161,7 @@ export default async function TransactionsPage({
             categories={categories}
             expenseValidationRules={expenseValidationRules}
             initialFilters={filters}
+            hasPendingSync={hasPendingSync}
           />
         )}
       </Container>

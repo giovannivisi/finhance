@@ -118,6 +118,19 @@ export class ImportsController {
     response.send(result.buffer);
   }
 
+  @Post('csv/templates/export')
+  @HttpCode(200)
+  @Throttle(createNamedThrottleOverride('imports'))
+  exportTemplates(@Res() response: Response): void {
+    const result = this.importsService.exportTemplateZip();
+    response.setHeader('Content-Type', 'application/zip');
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${result.filename}"`,
+    );
+    response.send(result.buffer);
+  }
+
   @Post(':batchId/apply')
   @Throttle(createNamedThrottleOverride('imports'))
   async apply(@Param('batchId') batchId: string): Promise<ImportBatchResponse> {

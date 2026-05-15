@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CategoryResponse } from "@finhance/shared";
 import CategoryForm from "@components/CategoryForm";
+import DisclosureIcon from "@components/DisclosureIcon";
 import Modal from "@components/Modal";
 import {
   categoryToFormValues,
@@ -35,6 +36,9 @@ export default function CategoriesPageClient({
   const [pendingDeleteCategoryId, setPendingDeleteCategoryId] = useState<
     string | null
   >(null);
+  const [openExpensePrimaries, setOpenExpensePrimaries] = useState<
+    Set<string>
+  >(() => new Set());
   const actions = useSingleFlightActions<string>();
 
   const editingCategory =
@@ -51,6 +55,20 @@ export default function CategoriesPageClient({
     () => groupCategories(visibleCategories),
     [visibleCategories],
   );
+
+  function toggleExpensePrimary(categoryId: string) {
+    setOpenExpensePrimaries((previous) => {
+      const next = new Set(previous);
+
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+      } else {
+        next.add(categoryId);
+      }
+
+      return next;
+    });
+  }
 
   async function handleArchive(categoryId: string) {
     await actions.run(`archive:${categoryId}`, async () => {
@@ -199,32 +217,77 @@ export default function CategoriesPageClient({
 
               <div className="list-stack is-loose">
                 {groupedCategories.expensePrimaries.map(
-                  ({ primary, secondaries }) => (
-                    <article key={primary.id} className="list-card is-roomy">
-                      {renderCategoryCard(primary, {
-                        secondaryCount: secondaries.length,
-                      })}
+                  ({ primary, secondaries }) => {
+                    const isOpen = openExpensePrimaries.has(primary.id);
+                    const sectionId = `category-secondary-group-${primary.id}`;
 
-                      {secondaries.length > 0 ? (
-                        <div className="category-hierarchy-secondary-list subcard-stack is-loose">
-                          {secondaries.map((secondary) => (
-                            <div
-                              key={secondary.id}
-                              className="detail-panel category-hierarchy-secondary-card"
+                    return (
+                      <article
+                        key={primary.id}
+                        className="list-card is-roomy category-hierarchy-primary-card"
+                      >
+                        {renderCategoryCard(primary, {
+                          secondaryCount: secondaries.length,
+                        })}
+
+                        {secondaries.length > 0 ? (
+                          <div
+                            className={
+                              isOpen
+                                ? "category-hierarchy-secondary-panel is-open"
+                                : "category-hierarchy-secondary-panel"
+                            }
+                          >
+                            <button
+                              type="button"
+                              className={
+                                isOpen
+                                  ? "category-disclosure-toggle is-open"
+                                  : "category-disclosure-toggle"
+                              }
+                              aria-expanded={isOpen}
+                              aria-controls={sectionId}
+                              onClick={() => toggleExpensePrimary(primary.id)}
                             >
-                              {renderCategoryCard(secondary, {
-                                compact: true,
-                              })}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-5 text-sm text-[var(--text-secondary)]">
-                          No secondary categories yet.
-                        </p>
-                      )}
-                    </article>
-                  ),
+                              <span className="category-disclosure-copy">
+                                <span className="category-disclosure-title">
+                                  Secondary categories
+                                </span>
+                              </span>
+                              <span className="category-disclosure-meta">
+                                <span className="category-disclosure-count">
+                                  {secondaries.length}
+                                </span>
+                                <DisclosureIcon open={isOpen} />
+                              </span>
+                            </button>
+
+                            {isOpen ? (
+                              <div
+                                id={sectionId}
+                                className="category-hierarchy-secondary-list subcard-stack is-loose"
+                              >
+                                {secondaries.map((secondary) => (
+                                  <div
+                                    key={secondary.id}
+                                    className="category-hierarchy-secondary-card"
+                                  >
+                                    {renderCategoryCard(secondary, {
+                                      compact: true,
+                                    })}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="mt-5 text-sm text-[var(--text-secondary)]">
+                            No secondary categories yet.
+                          </p>
+                        )}
+                      </article>
+                    );
+                  },
                 )}
               </div>
             </section>
@@ -241,7 +304,10 @@ export default function CategoriesPageClient({
 
               <div className="list-stack is-loose">
                 {groupedCategories.income.map((category) => (
-                  <article key={category.id} className="list-card is-roomy">
+                  <article
+                    key={category.id}
+                    className="list-card is-roomy category-hierarchy-primary-card"
+                  >
                     {renderCategoryCard(category)}
                   </article>
                 ))}

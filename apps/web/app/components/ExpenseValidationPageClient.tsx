@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
+  useId,
   useRef,
   useState,
   type ChangeEvent,
@@ -13,9 +15,11 @@ import type {
   ExpenseValidationRuleResponse,
   UpsertExpenseValidationRuleRequest,
 } from "@finhance/shared";
+import DisclosureIcon from "@components/DisclosureIcon";
 import Modal from "@components/Modal";
 import { fetchApiMutation, apiMutation } from "@lib/api";
 import { formatCategoryName } from "@lib/categories";
+import { groupExpenseValidationRules } from "@lib/expense-validation";
 import {
   expensePrimaryCategories,
   expenseSecondaryCategories,
@@ -50,20 +54,27 @@ export default function ExpenseValidationPageClient({
   categories,
   rules,
 }: ExpenseValidationPageClientProps) {
+  const toolMenuId = useId();
   const router = useRouter();
   const rulesImportInputRef = useRef<HTMLInputElement | null>(null);
   const hierarchyImportInputRef = useRef<HTMLInputElement | null>(null);
+  const toolsMenuRef = useRef<HTMLDivElement | null>(null);
   const actions = useSingleFlightActions<string>();
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
+  const [openPrimaryGroups, setOpenPrimaryGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [ruleForm, setRuleForm] = useState<RuleFormState>(emptyRuleFormState);
   const [pendingDeleteRuleId, setPendingDeleteRuleId] = useState<string | null>(
     null,
   );
   const editingRule = rules.find((rule) => rule.id === editingRuleId) ?? null;
+  const groupedRules = useMemo(() => groupExpenseValidationRules(rules), [rules]);
 
   const primaryCategories = useMemo(
     () => expensePrimaryCategories(categories, ruleForm.primaryCategoryId),
@@ -80,6 +91,38 @@ export default function ExpenseValidationPageClient({
         : [],
     [categories, ruleForm.primaryCategoryId, ruleForm.secondaryCategoryId],
   );
+
+  useEffect(() => {
+    setOpenPrimaryGroups(
+      new Set(groupedRules.map((group) => group.primaryCategoryName)),
+    );
+  }, [groupedRules]);
+
+  useEffect(() => {
+    if (!isToolsMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!toolsMenuRef.current?.contains(event.target as Node)) {
+        setIsToolsMenuOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsToolsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isToolsMenuOpen]);
 
   function openCreateModal() {
     setEditingRuleId(null);
@@ -105,6 +148,20 @@ export default function ExpenseValidationPageClient({
     setEditingRuleId(null);
     setRuleForm(emptyRuleFormState());
     setActionError(null);
+  }
+
+  function togglePrimaryGroup(primaryCategoryName: string) {
+    setOpenPrimaryGroups((previous) => {
+      const next = new Set(previous);
+
+      if (next.has(primaryCategoryName)) {
+        next.delete(primaryCategoryName);
+      } else {
+        next.add(primaryCategoryName);
+      }
+
+      return next;
+    });
   }
 
   function updateRuleForm<Field extends keyof RuleFormState>(
@@ -215,6 +272,7 @@ export default function ExpenseValidationPageClient({
         setImportSummary(
           `${kind === "rules" ? "Rules" : "Hierarchy"} import: ${response.createdCount} created, ${response.updatedCount} updated.`,
         );
+        setIsToolsMenuOpen(false);
         router.refresh();
       } catch (error) {
         setActionError(
@@ -257,6 +315,7 @@ export default function ExpenseValidationPageClient({
         anchor.click();
         anchor.remove();
         URL.revokeObjectURL(downloadUrl);
+        setIsToolsMenuOpen(false);
       } catch (error) {
         setActionError(
           error instanceof Error
@@ -270,7 +329,7 @@ export default function ExpenseValidationPageClient({
   return (
     <div className="page-shell is-relaxed">
       <section className="route-stack-desktop-xl">
-        <div className="page-hero">
+        <div className="page-hero page-section--allow-overflow">
           <div className="page-hero-row">
             <div className="page-hero-copy">
               <p className="page-kicker">Classification</p>
@@ -281,13 +340,100 @@ export default function ExpenseValidationPageClient({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="btn-primary"
-            >
-              New rule
-            </button>
+            <div className="page-hero-actions">
+              <div
+                ref={toolsMenuRef}
+                className="expense-validation-tools-shell"
+              >
+                <input
+                  ref={rulesImportInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="sr-only"
+                  onChange={(event) => void handleImport(event, "rules")}
+                />
+                <input
+                  ref={hierarchyImportInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="sr-only"
+                  onChange={(event) => void handleImport(event, "hierarchy")}
+                />
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={isToolsMenuOpen}
+                  aria-controls={toolMenuId}
+                  onClick={() => setIsToolsMenuOpen((current) => !current)}
+                  className={`btn-secondary expense-validation-tools-trigger${
+                    isToolsMenuOpen ? " is-active" : ""
+                  }`}
+                >
+                  Rule tools
+                </button>
+
+                {isToolsMenuOpen ? (
+                  <div
+                    id={toolMenuId}
+                    role="menu"
+                    aria-label="Rule tools"
+                    className="expense-validation-tools-menu"
+                  >
+                    <div className="expense-validation-tools-group">
+                      <p className="expense-validation-tools-group-title">
+                        Rules
+                      </p>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => rulesImportInputRef.current?.click()}
+                        className="expense-validation-tools-item"
+                      >
+                        Import rules
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void handleExport("rules")}
+                        className="expense-validation-tools-item"
+                      >
+                        Export rules
+                      </button>
+                    </div>
+
+                    <div className="expense-validation-tools-group">
+                      <p className="expense-validation-tools-group-title">
+                        Hierarchy
+                      </p>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => hierarchyImportInputRef.current?.click()}
+                        className="expense-validation-tools-item"
+                      >
+                        Import hierarchy
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void handleExport("hierarchy")}
+                        className="expense-validation-tools-item"
+                      >
+                        Export hierarchy
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="btn-primary"
+              >
+                New rule
+              </button>
+            </div>
           </div>
         </div>
 
@@ -301,122 +447,105 @@ export default function ExpenseValidationPageClient({
           <p className="page-inline-notice surface-info">{importSummary}</p>
         ) : null}
 
-        <div className="expense-validation-card-grid">
-          <article className="detail-panel is-roomy expense-validation-card">
-            <div className="expense-validation-card-copy">
-              <h2 className="workflow-card-title">Rules</h2>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Non-destructive create/update import for description rules.
-              </p>
-            </div>
-            <input
-              ref={rulesImportInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="sr-only"
-              onChange={(event) => void handleImport(event, "rules")}
-            />
-            <div className="compact-toolbar-actions is-equal expense-validation-card-actions">
-              <button
-                type="button"
-                onClick={() => rulesImportInputRef.current?.click()}
-                className="btn-secondary"
-              >
-                Import rules
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleExport("rules")}
-                className="btn-secondary"
-              >
-                Export rules
-              </button>
-            </div>
-          </article>
-
-          <article className="detail-panel is-roomy expense-validation-card">
-            <div className="expense-validation-card-copy">
-              <h2 className="workflow-card-title">Hierarchy</h2>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Lossless primary/secondary round-trip with non-destructive
-                import semantics.
-              </p>
-            </div>
-            <input
-              ref={hierarchyImportInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="sr-only"
-              onChange={(event) => void handleImport(event, "hierarchy")}
-            />
-            <div className="compact-toolbar-actions is-equal expense-validation-card-actions">
-              <button
-                type="button"
-                onClick={() => hierarchyImportInputRef.current?.click()}
-                className="btn-secondary"
-              >
-                Import hierarchy
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleExport("hierarchy")}
-                className="btn-secondary"
-              >
-                Export hierarchy
-              </button>
-            </div>
-          </article>
-        </div>
-
         {rules.length === 0 ? (
           <div className="page-inline-notice surface-dashed">
             No expense validation rules yet.
           </div>
         ) : (
-          <div className="table-shell">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="pb-3 pr-4 font-medium">Entry</th>
-                  <th className="pb-3 pr-4 font-medium">Primary</th>
-                  <th className="pb-3 pr-4 font-medium">Secondary</th>
-                  <th className="pb-3 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rules.map((rule) => (
-                  <tr key={rule.id} className="text-[var(--text-secondary)]">
-                    <td className="py-3 pr-4 text-[var(--text-primary)]">
-                      {rule.entry}
-                    </td>
-                    <td className="py-3 pr-4">{rule.primaryCategoryName}</td>
-                    <td className="py-3 pr-4">{rule.secondaryCategoryName}</td>
-                    <td className="py-3">
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(rule)}
-                          className="link-button mobile-hit-target"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(rule.id)}
-                          disabled={pendingDeleteRuleId === rule.id}
-                          className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {pendingDeleteRuleId === rule.id
-                            ? "Deleting..."
-                            : "Delete"}
-                        </button>
+          <section className="page-section is-spacious section-stack-tight">
+            <div className="expense-validation-section-header">
+              <div>
+                <h2 className="workflow-card-title">Rules by primary</h2>
+                <p className="expense-validation-section-copy">
+                  Review exact-match rules by primary category, then drill into
+                  each description alphabetically inside that group.
+                </p>
+              </div>
+              <div className="page-pill">{rules.length} total rules</div>
+            </div>
+
+            <div className="expense-validation-group-list">
+              {groupedRules.map((group) => {
+                const isOpen = openPrimaryGroups.has(group.primaryCategoryName);
+                const sectionId = `expense-validation-group-${group.primaryCategoryName
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]+/g, "-")}`;
+
+                return (
+                  <article
+                    key={group.primaryCategoryName}
+                    className="detail-panel is-roomy expense-validation-group"
+                  >
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-controls={sectionId}
+                      onClick={() => togglePrimaryGroup(group.primaryCategoryName)}
+                      className="expense-validation-group-toggle"
+                    >
+                      <div className="expense-validation-group-heading">
+                        <h3 className="expense-validation-group-title">
+                          {group.primaryCategoryName}
+                        </h3>
+                        <span className="status-chip is-neutral">
+                          {group.rules.length} rule
+                          {group.rules.length === 1 ? "" : "s"}
+                        </span>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      <span
+                        aria-hidden="true"
+                        className="expense-validation-group-chevron"
+                      >
+                        <DisclosureIcon open={isOpen} />
+                      </span>
+                    </button>
+
+                    {isOpen ? (
+                      <div
+                        id={sectionId}
+                        className="expense-validation-rule-list"
+                      >
+                        {group.rules.map((rule) => (
+                          <div
+                            key={rule.id}
+                            className="detail-panel expense-validation-rule-row"
+                          >
+                            <div className="expense-validation-rule-copy">
+                              <p className="expense-validation-rule-entry">
+                                {rule.entry}
+                              </p>
+                              <p className="expense-validation-rule-secondary">
+                                {rule.secondaryCategoryName}
+                              </p>
+                            </div>
+                            <div className="expense-validation-rule-actions">
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(rule)}
+                                className="link-button mobile-hit-target"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDelete(rule.id)}
+                                disabled={pendingDeleteRuleId === rule.id}
+                                className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {pendingDeleteRuleId === rule.id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
         )}
       </section>
 
