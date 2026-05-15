@@ -436,20 +436,22 @@ describe('RecurringService', () => {
       true,
     );
 
-    expect(prisma.recurringTransactionOccurrence.findMany).toHaveBeenCalledWith({
-      where: {
-        userId: OWNER_ID,
-        recurringRuleId: { in: [rule.id] },
-        occurrenceMonth: {
-          in: [new Date('2026-04-01T00:00:00.000Z')],
+    expect(prisma.recurringTransactionOccurrence.findMany).toHaveBeenCalledWith(
+      {
+        where: {
+          userId: OWNER_ID,
+          recurringRuleId: { in: [rule.id] },
+          occurrenceMonth: {
+            in: [new Date('2026-04-01T00:00:00.000Z')],
+          },
+          status: 'SKIPPED',
         },
-        status: 'SKIPPED',
+        select: {
+          recurringRuleId: true,
+          occurrenceMonth: true,
+        },
       },
-      select: {
-        recurringRuleId: true,
-        occurrenceMonth: true,
-      },
-    });
+    );
     expect(prisma.transaction.findMany).toHaveBeenCalledWith({
       where: {
         userId: OWNER_ID,
@@ -497,10 +499,52 @@ describe('RecurringService', () => {
     await expect(service.hasPendingMaterializations(OWNER_ID)).resolves.toBe(
       false,
     );
-    expect(prisma.recurringTransactionOccurrence.findMany).toHaveBeenCalledTimes(
-      1,
-    );
+    expect(
+      prisma.recurringTransactionOccurrence.findMany,
+    ).toHaveBeenCalledTimes(1);
     expect(prisma.transaction.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses an in-flight pending status lookup for the same owner', async () => {
+    const rule = createRecurringRule();
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([rule]);
+    let resolveSkippedOccurrences: (() => void) | null = null;
+    prisma.recurringTransactionOccurrence.findMany.mockImplementation(
+      () =>
+        new Promise<Array<{ recurringRuleId: string; occurrenceMonth: Date }>>(
+          (resolve) => {
+            resolveSkippedOccurrences = () => resolve([]);
+          },
+        ),
+    );
+    prisma.transaction.findMany.mockResolvedValue([]);
+
+    const firstPendingCheck = service.hasPendingMaterializations(OWNER_ID);
+    const secondPendingCheck = service.hasPendingMaterializations(OWNER_ID);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prisma.recurringTransactionRule.findMany).toHaveBeenCalledTimes(1);
+    expect(
+      prisma.recurringTransactionOccurrence.findMany,
+    ).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction.findMany).toHaveBeenCalledTimes(1);
+
+    if (!resolveSkippedOccurrences) {
+      throw new Error('Expected the pending status query to be in flight.');
+    }
+
+    const releasePendingStatusCheck = resolveSkippedOccurrences as () => void;
+    releasePendingStatusCheck();
+
+    const [first, second] = await Promise.all([
+      firstPendingCheck,
+      secondPendingCheck,
+    ]);
+
+    expect(first).toBe(true);
+    expect(second).toBe(true);
   });
 
   it('rejects recurring rules whose start date exceeds the backfill window', async () => {

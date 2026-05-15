@@ -76,7 +76,6 @@ export default function RecurringRuleForm({
   const isTransfer = form.kind === "TRANSFER";
   const isAdjustment = form.kind === "ADJUSTMENT";
   const isExpense = form.kind === "EXPENSE";
-  const isIncome = form.kind === "INCOME";
 
   useEffect(() => {
     setForm(initialValues);

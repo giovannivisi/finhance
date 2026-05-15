@@ -15,6 +15,8 @@ type HealthResponse = {
   timestamp: string;
 };
 
+type RequestTarget = Parameters<typeof request>[0];
+
 const TEST_KEY_PAIR = generateKeyPairSync('ec', {
   namedCurve: 'P-256',
   publicKeyEncoding: {
@@ -79,7 +81,9 @@ describe('Health route (e2e)', () => {
   });
 
   it('allows anonymous access to /health in hosted mode', async () => {
-    const response = await request(app.getHttpServer()).get('/health');
+    const response = await request(app.getHttpServer() as RequestTarget).get(
+      '/health',
+    );
     const body = response.body as HealthResponse;
 
     expect(response.status).toBe(200);
@@ -92,7 +96,9 @@ describe('Health route (e2e)', () => {
   });
 
   it('still rejects anonymous access to protected routes', async () => {
-    const response = await request(app.getHttpServer()).get('/');
+    const response = await request(app.getHttpServer() as RequestTarget).get(
+      '/',
+    );
 
     expect(response.status).toBe(401);
   });

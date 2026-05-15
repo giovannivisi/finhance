@@ -103,23 +103,27 @@ export default async function TransactionsPage({
   let errorMessage: string | null = null;
 
   try {
-    [transactions, cashflow, accounts, categories, expenseValidationRules] =
-      await Promise.all([
-        api<TransactionResponse[]>(`/transactions${transactionsQueryString}`),
-        api<CashflowSummaryResponse>(`/cashflow/summary${cashflowQueryString}`),
-        api<AccountResponse[]>("/accounts?includeArchived=true"),
-        api<CategoryResponse[]>("/categories?includeArchived=true"),
-        api<ExpenseValidationRuleResponse[]>("/expense-validation"),
-      ]);
+    const pendingStatusPromise = api<RecurringPendingStatusResponse>(
+      "/recurring-rules/has-pending",
+    ).catch(() => null);
 
-    try {
-      const pendingStatus = await api<RecurringPendingStatusResponse>(
-        "/recurring-rules/has-pending",
-      );
-      hasPendingSync = pendingStatus.hasPending;
-    } catch {
-      hasPendingSync = false;
-    }
+    [
+      transactions,
+      cashflow,
+      accounts,
+      categories,
+      expenseValidationRules,
+      hasPendingSync,
+    ] = await Promise.all([
+      api<TransactionResponse[]>(`/transactions${transactionsQueryString}`),
+      api<CashflowSummaryResponse>(`/cashflow/summary${cashflowQueryString}`),
+      api<AccountResponse[]>("/accounts?includeArchived=true"),
+      api<CategoryResponse[]>("/categories?includeArchived=true"),
+      api<ExpenseValidationRuleResponse[]>("/expense-validation"),
+      pendingStatusPromise.then(
+        (pendingStatus) => pendingStatus?.hasPending ?? false,
+      ),
+    ]);
   } catch (error) {
     errorMessage =
       error instanceof Error

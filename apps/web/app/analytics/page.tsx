@@ -9,6 +9,7 @@ import type {
 import AnalyticsCategoryBarChart from "@components/AnalyticsCategoryBarChart";
 import AnalyticsTrendChart from "@components/AnalyticsTrendChart";
 import Container from "@components/Container";
+import FilterResetButton from "@components/FilterResetButton";
 import MoneyValue from "@components/MoneyValue";
 import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import Sparkline from "@components/Sparkline";
@@ -107,22 +108,16 @@ export default async function AnalyticsPage({
   }
 
   if (analytics) {
-    try {
-      setup = await api<SetupStatusResponse>(
-        "/setup/status?includeWarnings=false",
-      );
-    } catch {
-      setup = null;
-    }
-
-    try {
-      const pendingStatus = await api<RecurringPendingStatusResponse>(
-        "/recurring-rules/has-pending",
-      );
-      hasPendingSync = pendingStatus.hasPending;
-    } catch {
-      hasPendingSync = false;
-    }
+    const [resolvedSetup, pendingStatus] = await Promise.all([
+      api<SetupStatusResponse>("/setup/status?includeWarnings=false").catch(
+        () => null,
+      ),
+      api<RecurringPendingStatusResponse>("/recurring-rules/has-pending").catch(
+        () => null,
+      ),
+    ]);
+    setup = resolvedSetup;
+    hasPendingSync = pendingStatus?.hasPending ?? false;
   }
 
   const visibleExpensePrimaries = categories
@@ -287,9 +282,12 @@ export default async function AnalyticsPage({
                         <button type="submit" className="btn-primary">
                           Apply
                         </button>
-                        <button type="reset" className="btn-secondary">
+                        <FilterResetButton
+                          href="/analytics"
+                          className="btn-secondary"
+                        >
                           Clear
-                        </button>
+                        </FilterResetButton>
                       </div>
                     </div>
                   </form>

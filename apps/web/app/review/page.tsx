@@ -93,22 +93,16 @@ export default async function ReviewPage({
   let hasPendingSync = false;
 
   if (review) {
-    try {
-      setup = await api<SetupStatusResponse>(
-        "/setup/status?includeWarnings=false",
-      );
-    } catch {
-      setup = null;
-    }
-
-    try {
-      const pendingStatus = await api<RecurringPendingStatusResponse>(
-        "/recurring-rules/has-pending",
-      );
-      hasPendingSync = pendingStatus.hasPending;
-    } catch {
-      hasPendingSync = false;
-    }
+    const [resolvedSetup, pendingStatus] = await Promise.all([
+      api<SetupStatusResponse>("/setup/status?includeWarnings=false").catch(
+        () => null,
+      ),
+      api<RecurringPendingStatusResponse>("/recurring-rules/has-pending").catch(
+        () => null,
+      ),
+    ]);
+    setup = resolvedSetup;
+    hasPendingSync = pendingStatus?.hasPending ?? false;
   }
 
   if (!review) {

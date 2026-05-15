@@ -49,6 +49,7 @@ const ROME_TIME_ZONE = 'Europe/Rome';
 const ZERO = new Prisma.Decimal(0);
 const MAX_RECURRING_BACKFILL_MONTHS = 24;
 const RECURRING_MATERIALIZE_COOLDOWN_MS = 1000 * 15;
+const RECURRING_PENDING_STATUS_TTL_MS = 1000 * 10;
 const USER_VISIBLE_MATERIALIZATION_ERROR =
   'Unable to materialize this recurring rule. Review the rule configuration and try again.';
 const MONTH_KEY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
@@ -135,6 +136,11 @@ type RecurringRuleModel = Prisma.RecurringTransactionRuleGetPayload<{
   };
 }>;
 
+type RecurringRuleSchedule = Pick<
+  RecurringTransactionRule,
+  'dayOfMonth' | 'startDate' | 'endDate'
+>;
+
 interface SkippedOccurrenceInput {
   status: 'SKIPPED';
 }
@@ -207,8 +213,20 @@ interface RecurringComparisonBucket {
   transferRulesExcludedCount: number;
 }
 
+interface CachedRecurringPendingStatus {
+  hasPending: boolean;
+  expiresAt: number;
+}
+
 @Injectable()
 export class RecurringService {
+  private readonly pendingStatusCache = new Map<
+    string,
+    CachedRecurringPendingStatus
+  >();
+  private readonly pendingStatusInFlight = new Map<string, Promise<boolean>>();
+  private readonly pendingStatusGeneration = new Map<string, number>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly accountsService: AccountsService,
@@ -261,7 +279,7 @@ export class RecurringService {
   ): Promise<RecurringRuleModel> {
     const prepared = await this.prepareRuleInput(ownerId, dto);
 
-    return this.prisma.recurringTransactionRule.create({
+    const rule = await this.prisma.recurringTransactionRule.create({
       data: prepared,
       include: {
         category: {
@@ -271,6 +289,9 @@ export class RecurringService {
         },
       },
     });
+
+    this.invalidatePendingMaterializationStatus(ownerId);
+    return rule;
   }
 
   async update(
@@ -281,7 +302,7 @@ export class RecurringService {
     await this.findOne(ownerId, id);
     const prepared = await this.prepareRuleInput(ownerId, dto);
 
-    return this.prisma.recurringTransactionRule.update({
+    const rule = await this.prisma.recurringTransactionRule.update({
       where: { id },
       data: {
         ...prepared,
@@ -296,6 +317,9 @@ export class RecurringService {
         },
       },
     });
+
+    this.invalidatePendingMaterializationStatus(ownerId);
+    return rule;
   }
 
   async remove(ownerId: string, id: string): Promise<void> {
@@ -322,6 +346,8 @@ export class RecurringService {
         }),
       ]);
     }
+
+    this.invalidatePendingMaterializationStatus(ownerId);
   }
 
   async findOccurrences(
@@ -417,7 +443,7 @@ export class RecurringService {
             overrideNotes: null,
           };
 
-    return this.prisma.$transaction(async (tx) => {
+    const occurrence = await this.prisma.$transaction(async (tx) => {
       const occurrence = await tx.recurringTransactionOccurrence.upsert({
         where: {
           recurringRuleId_occurrenceMonth: {
@@ -476,6 +502,9 @@ export class RecurringService {
 
       return resolvedOccurrence;
     });
+
+    this.invalidatePendingMaterializationStatus(ownerId);
+    return occurrence;
   }
 
   async clearOccurrence(
@@ -536,100 +565,150 @@ export class RecurringService {
         },
       });
     });
+
+    this.invalidatePendingMaterializationStatus(ownerId);
   }
 
   async materialize(
     ownerId: string,
   ): Promise<MaterializeRecurringRulesResponse> {
-    return this.operationLockService.runExclusive(
-      {
-        userId: ownerId,
-        type: OperationType.RECURRING_MATERIALIZE,
-        inProgressMessage: 'Recurring materialization already in progress.',
-        cooldownMs: RECURRING_MATERIALIZE_COOLDOWN_MS,
-        cooldownMessage: (remainingSeconds) =>
-          `Recurring materialization is cooling down. Try again in ${remainingSeconds}s.`,
-      },
-      async () => {
-        const rules = await this.prisma.recurringTransactionRule.findMany({
-          where: {
-            userId: ownerId,
-            isActive: true,
-          },
-          orderBy: [{ dayOfMonth: 'asc' }, { createdAt: 'asc' }],
-        });
+    try {
+      return await this.operationLockService.runExclusive(
+        {
+          userId: ownerId,
+          type: OperationType.RECURRING_MATERIALIZE,
+          inProgressMessage: 'Recurring materialization already in progress.',
+          cooldownMs: RECURRING_MATERIALIZE_COOLDOWN_MS,
+          cooldownMessage: (remainingSeconds) =>
+            `Recurring materialization is cooling down. Try again in ${remainingSeconds}s.`,
+        },
+        async () => {
+          const rules = await this.prisma.recurringTransactionRule.findMany({
+            where: {
+              userId: ownerId,
+              isActive: true,
+            },
+            orderBy: [{ dayOfMonth: 'asc' }, { createdAt: 'asc' }],
+          });
 
-        if (rules.length === 0) {
-          return {
-            createdCount: 0,
-            processedRuleCount: 0,
-            failedRuleCount: 0,
-          };
-        }
-
-        const currentMonthKey = this.formatMonthKey(new Date());
-        let createdCount = 0;
-        let failedRuleCount = 0;
-
-        for (const rule of rules) {
-          try {
-            const targets = await this.resolveRuleTargets(ownerId, {
-              kind: rule.kind,
-              accountId: rule.accountId,
-              direction: rule.direction,
-              categoryId: rule.categoryId,
-              counterparty: rule.counterparty,
-              sourceAccountId: rule.sourceAccountId,
-              destinationAccountId: rule.destinationAccountId,
-              description: rule.description,
-              notes: rule.notes,
-              dayOfMonth: rule.dayOfMonth,
-              startDate: rule.startDate,
-              endDate: rule.endDate,
-            });
-            const dueMonthKeys = this.listApplicableMonthKeys(
-              rule,
-              currentMonthKey,
-            );
-            let createdForRule = 0;
-
-            for (const monthKey of dueMonthKeys) {
-              createdForRule += await this.prisma.$transaction(
-                async (tx) =>
-                  this.materializeRuleMonth(
-                    tx,
-                    ownerId,
-                    rule,
-                    monthKey,
-                    targets,
-                  ),
-                {
-                  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-                },
-              );
-            }
-
-            createdCount += createdForRule;
-            await this.clearMaterializationError(rule.id);
-          } catch (error) {
-            failedRuleCount += 1;
-            void error;
-            await this.persistMaterializationError(rule.id);
+          if (rules.length === 0) {
+            return {
+              createdCount: 0,
+              processedRuleCount: 0,
+              failedRuleCount: 0,
+            };
           }
-        }
 
-        return {
-          createdCount,
-          processedRuleCount: rules.length,
-          failedRuleCount,
-        };
-      },
-    );
+          const currentMonthKey = this.formatMonthKey(new Date());
+          let createdCount = 0;
+          let failedRuleCount = 0;
+
+          for (const rule of rules) {
+            try {
+              const targets = await this.resolveRuleTargets(ownerId, {
+                kind: rule.kind,
+                accountId: rule.accountId,
+                direction: rule.direction,
+                categoryId: rule.categoryId,
+                counterparty: rule.counterparty,
+                sourceAccountId: rule.sourceAccountId,
+                destinationAccountId: rule.destinationAccountId,
+                description: rule.description,
+                notes: rule.notes,
+                dayOfMonth: rule.dayOfMonth,
+                startDate: rule.startDate,
+                endDate: rule.endDate,
+              });
+              const dueMonthKeys = this.listApplicableMonthKeys(
+                rule,
+                currentMonthKey,
+              );
+              let createdForRule = 0;
+
+              for (const monthKey of dueMonthKeys) {
+                createdForRule += await this.prisma.$transaction(
+                  async (tx) =>
+                    this.materializeRuleMonth(
+                      tx,
+                      ownerId,
+                      rule,
+                      monthKey,
+                      targets,
+                    ),
+                  {
+                    isolationLevel:
+                      Prisma.TransactionIsolationLevel.Serializable,
+                  },
+                );
+              }
+
+              createdCount += createdForRule;
+              await this.clearMaterializationError(rule.id);
+            } catch (error) {
+              failedRuleCount += 1;
+              void error;
+              await this.persistMaterializationError(rule.id);
+            }
+          }
+
+          return {
+            createdCount,
+            processedRuleCount: rules.length,
+            failedRuleCount,
+          };
+        },
+      );
+    } finally {
+      this.invalidatePendingMaterializationStatus(ownerId);
+    }
   }
 
   async hasPendingMaterializations(ownerId: string): Promise<boolean> {
+    const cached = this.pendingStatusCache.get(ownerId);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      return cached.hasPending;
+    }
+
+    const inFlight = this.pendingStatusInFlight.get(ownerId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const generation = this.getPendingStatusGeneration(ownerId);
+    const pendingCheck = this.computePendingMaterializationStatus(ownerId)
+      .then((hasPending) => {
+        if (generation === this.getPendingStatusGeneration(ownerId)) {
+          this.pendingStatusCache.set(ownerId, {
+            hasPending,
+            expiresAt: Date.now() + RECURRING_PENDING_STATUS_TTL_MS,
+          });
+        }
+
+        return hasPending;
+      })
+      .finally(() => {
+        if (this.pendingStatusInFlight.get(ownerId) === pendingCheck) {
+          this.pendingStatusInFlight.delete(ownerId);
+        }
+      });
+
+    this.pendingStatusInFlight.set(ownerId, pendingCheck);
+    return pendingCheck;
+  }
+
+  private async computePendingMaterializationStatus(
+    ownerId: string,
+  ): Promise<boolean> {
     const rules = await this.prisma.recurringTransactionRule.findMany({
       where: { userId: ownerId, isActive: true },
+      select: {
+        id: true,
+        dayOfMonth: true,
+        startDate: true,
+        endDate: true,
+      },
     });
 
     if (rules.length === 0) {
@@ -722,6 +801,19 @@ export class RecurringService {
     }
 
     return false;
+  }
+
+  private getPendingStatusGeneration(ownerId: string): number {
+    return this.pendingStatusGeneration.get(ownerId) ?? 0;
+  }
+
+  private invalidatePendingMaterializationStatus(ownerId: string): void {
+    this.pendingStatusCache.delete(ownerId);
+    this.pendingStatusInFlight.delete(ownerId);
+    this.pendingStatusGeneration.set(
+      ownerId,
+      this.getPendingStatusGeneration(ownerId) + 1,
+    );
   }
 
   private async materializeRuleMonth(
@@ -1967,7 +2059,7 @@ export class RecurringService {
   }
 
   private isOccurrenceMonthApplicable(
-    rule: RecurringTransactionRule,
+    rule: RecurringRuleSchedule,
     monthKey: string,
   ): boolean {
     const startDateKey = this.dateKeyFromValue(rule.startDate);
@@ -2238,7 +2330,7 @@ export class RecurringService {
   }
 
   private listApplicableMonthKeys(
-    rule: RecurringTransactionRule,
+    rule: RecurringRuleSchedule,
     currentMonthKey: string,
   ): string[] {
     const months: string[] = [];

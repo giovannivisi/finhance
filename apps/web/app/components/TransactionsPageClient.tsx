@@ -29,7 +29,7 @@ import {
 } from "@lib/transaction-form";
 import { apiMutation } from "@lib/api";
 import { formatSensitiveCurrency } from "@lib/money";
-import { CATEGORY_TYPE_LABELS, formatCategoryName } from "@lib/categories";
+import { formatCategoryName } from "@lib/categories";
 import {
   expensePrimaryCategories,
   expenseSecondaryCategories,
@@ -165,9 +165,7 @@ function buildExpensePrimarySummaries(
 
 function buildExpensePrimaryChartData(
   groups: ExpensePrimarySummary[],
-): Array<
-  CashflowAnalyticsBreakdownItemResponse & { selectionKey?: string }
-> {
+): Array<CashflowAnalyticsBreakdownItemResponse & { selectionKey?: string }> {
   const topGroups: Array<
     CashflowAnalyticsBreakdownItemResponse & { selectionKey?: string }
   > = groups.slice(0, 8).map((group) => ({
@@ -285,10 +283,14 @@ export default function TransactionsPageClient({
   const [openEntryMonthKey, setOpenEntryMonthKey] = useState<string | null>(
     null,
   );
-  const [selectedCashflowPrimaryByCurrency, setSelectedCashflowPrimaryByCurrency] =
-    useState<Record<string, string | null>>({});
-  const [selectedCashflowAccountByCurrency, setSelectedCashflowAccountByCurrency] =
-    useState<Record<string, string | null>>({});
+  const [
+    selectedCashflowPrimaryByCurrency,
+    setSelectedCashflowPrimaryByCurrency,
+  ] = useState<Record<string, string | null>>({});
+  const [
+    selectedCashflowAccountByCurrency,
+    setSelectedCashflowAccountByCurrency,
+  ] = useState<Record<string, string | null>>({});
   const actions = useSingleFlightActions<string>();
   const navigation = useSingleFlightNavigation();
   const { hideMoney, isHydrated } = useAppPreferences();
@@ -873,8 +875,9 @@ export default function TransactionsPageClient({
                           mode="breakdown"
                           tone="neutral"
                           selectedKey={
-                            selectedCashflowAccountByCurrency[bucket.currency] ??
-                            null
+                            selectedCashflowAccountByCurrency[
+                              bucket.currency
+                            ] ?? null
                           }
                           onBarSelect={(key) =>
                             toggleCashflowAccountSelection(bucket.currency, key)
@@ -989,15 +992,19 @@ export default function TransactionsPageClient({
                           )}
                           mode="breakdown"
                           selectedKey={
-                            selectedCashflowPrimaryByCurrency[bucket.currency] ??
-                            null
+                            selectedCashflowPrimaryByCurrency[
+                              bucket.currency
+                            ] ?? null
                           }
                           onBarSelect={(key) => {
                             if (key === "other") {
                               return;
                             }
 
-                            toggleCashflowPrimarySelection(bucket.currency, key);
+                            toggleCashflowPrimarySelection(
+                              bucket.currency,
+                              key,
+                            );
                           }}
                         />
                       </div>
@@ -1039,23 +1046,25 @@ export default function TransactionsPageClient({
 
                             {selectedPrimary.secondaries.length > 0 ? (
                               <div className="activity-category-secondary-list">
-                                {selectedPrimary.secondaries.map((secondary) => (
-                                  <div
-                                    key={secondary.key}
-                                    className="activity-category-secondary-row"
-                                  >
-                                    <p className="text-sm text-[var(--text-secondary)]">
-                                      {secondary.label}
-                                    </p>
-                                    <span className="text-sm font-medium text-[var(--text-primary)]">
-                                      {formatSensitiveCurrency(
-                                        secondary.total,
-                                        bucket.currency,
-                                        shouldHideMoney,
-                                      )}
-                                    </span>
-                                  </div>
-                                ))}
+                                {selectedPrimary.secondaries.map(
+                                  (secondary) => (
+                                    <div
+                                      key={secondary.key}
+                                      className="activity-category-secondary-row"
+                                    >
+                                      <p className="text-sm text-[var(--text-secondary)]">
+                                        {secondary.label}
+                                      </p>
+                                      <span className="text-sm font-medium text-[var(--text-primary)]">
+                                        {formatSensitiveCurrency(
+                                          secondary.total,
+                                          bucket.currency,
+                                          shouldHideMoney,
+                                        )}
+                                      </span>
+                                    </div>
+                                  ),
+                                )}
                               </div>
                             ) : (
                               <p className="text-sm text-[var(--text-secondary)]">
@@ -1072,8 +1081,7 @@ export default function TransactionsPageClient({
                                     router.push(
                                       buildTransactionsLink({
                                         ...initialFilters,
-                                        primaryCategoryId:
-                                          selectedPrimary.key,
+                                        primaryCategoryId: selectedPrimary.key,
                                         secondaryCategoryId: null,
                                         categoryId: null,
                                       }),
