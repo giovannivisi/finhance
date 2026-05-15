@@ -54,6 +54,7 @@ export class RecurringController {
   }
 
   @Get('has-pending')
+  @Throttle(createNamedThrottleOverride('operations'))
   async hasPending(): Promise<RecurringPendingStatusResponse> {
     const hasPending = await this.recurringService.hasPendingMaterializations(
       this.resolveOwnerId(),

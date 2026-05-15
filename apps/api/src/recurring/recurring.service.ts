@@ -637,6 +637,8 @@ export class RecurringService {
     }
 
     const currentMonthKey = this.formatMonthKey(new Date());
+    const dueMonthsByRule = new Map<string, Set<number>>();
+    const dueMonthLookup = new Map<number, Date>();
 
     for (const rule of rules) {
       const dueMonthKeys = this.listApplicableMonthKeys(rule, currentMonthKey);
@@ -645,45 +647,75 @@ export class RecurringService {
         continue;
       }
 
-      const dueMonths = dueMonthKeys.map((k) => this.monthKeyToValue(k));
+      const dueTimes = new Set<number>();
+      for (const monthKey of dueMonthKeys) {
+        const dueMonth = this.monthKeyToValue(monthKey);
+        const time = dueMonth.getTime();
+        dueTimes.add(time);
+        dueMonthLookup.set(time, dueMonth);
+      }
 
-      const [skipped, materialized] = await Promise.all([
-        this.prisma.recurringTransactionOccurrence.findMany({
-          where: {
-            userId: ownerId,
-            recurringRuleId: rule.id,
-            occurrenceMonth: { in: dueMonths },
-            status: 'SKIPPED',
-          },
-          select: { occurrenceMonth: true },
-        }),
-        this.prisma.transaction.findMany({
-          where: {
-            userId: ownerId,
-            recurringRuleId: rule.id,
-            recurringOccurrenceMonth: { in: dueMonths },
-          },
-          select: { recurringOccurrenceMonth: true },
-        }),
-      ]);
+      dueMonthsByRule.set(rule.id, dueTimes);
+    }
 
-      const skippedTimes = new Set(
-        skipped.map((s) => s.occurrenceMonth.getTime()),
-      );
-      const materializedTimes = new Set(
-        materialized
-          .filter((t) => t.recurringOccurrenceMonth !== null)
-          .map((t) => t.recurringOccurrenceMonth!.getTime()),
-      );
+    if (dueMonthsByRule.size === 0) {
+      return false;
+    }
 
-      for (const month of dueMonths) {
-        const time = month.getTime();
+    const dueRuleIds = Array.from(dueMonthsByRule.keys());
+    const dueMonths = Array.from(dueMonthLookup.values());
+    const [skipped, materialized] = await Promise.all([
+      this.prisma.recurringTransactionOccurrence.findMany({
+        where: {
+          userId: ownerId,
+          recurringRuleId: { in: dueRuleIds },
+          occurrenceMonth: { in: dueMonths },
+          status: 'SKIPPED',
+        },
+        select: { recurringRuleId: true, occurrenceMonth: true },
+      }),
+      this.prisma.transaction.findMany({
+        where: {
+          userId: ownerId,
+          recurringRuleId: { in: dueRuleIds },
+          recurringOccurrenceMonth: { in: dueMonths },
+        },
+        select: { recurringRuleId: true, recurringOccurrenceMonth: true },
+      }),
+    ]);
 
-        if (skippedTimes.has(time)) {
-          continue;
-        }
+    const skippedKeys = new Set(
+      skipped.map(
+        (occurrence) =>
+          `${occurrence.recurringRuleId}:${occurrence.occurrenceMonth.getTime()}`,
+      ),
+    );
+    const materializedKeys = new Set(
+      materialized
+        .filter(
+          (
+            transaction,
+          ): transaction is {
+            recurringRuleId: string;
+            recurringOccurrenceMonth: Date;
+          } =>
+            transaction.recurringRuleId !== null &&
+            transaction.recurringOccurrenceMonth !== null,
+        )
+        .map(
+          (transaction) =>
+            `${transaction.recurringRuleId}:${transaction.recurringOccurrenceMonth.getTime()}`,
+        ),
+    );
 
-        if (!materializedTimes.has(time)) {
+    for (const [ruleId, monthTimes] of dueMonthsByRule.entries()) {
+      for (const monthTime of monthTimes) {
+        const occurrenceKey = `${ruleId}:${monthTime}`;
+
+        if (
+          !skippedKeys.has(occurrenceKey) &&
+          !materializedKeys.has(occurrenceKey)
+        ) {
           return true;
         }
       }
