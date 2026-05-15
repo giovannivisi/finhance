@@ -6,6 +6,7 @@ import {
   buildBudgetTransactionsLink,
   buildBudgetsQueryString,
   getBudgetConfidenceMessage,
+  getBudgetFilterSummaryStatus,
   getBudgetQuickFillSuggestions,
   getBudgetFilters,
   getCurrentRomeMonth,
@@ -81,6 +82,23 @@ test("buildBudgetPageLink and month navigation preserve archived filters", () =>
       includeArchivedCategories: true,
     }),
     "/budgets?month=2026-03&includeArchivedCategories=true",
+  );
+});
+
+test("getBudgetFilterSummaryStatus shows month by default and active count for archived categories", () => {
+  assert.equal(
+    getBudgetFilterSummaryStatus({
+      monthLabel: "April 2026",
+      includeArchivedCategories: false,
+    }),
+    "April 2026",
+  );
+  assert.equal(
+    getBudgetFilterSummaryStatus({
+      monthLabel: "April 2026",
+      includeArchivedCategories: true,
+    }),
+    "1 active",
   );
 });
 

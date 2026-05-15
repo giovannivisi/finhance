@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   experimental: {
     externalDir: true,
   },
+  devIndicators: false,
 };
 
 export default nextConfig;

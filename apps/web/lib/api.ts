@@ -1,4 +1,8 @@
-import { readApiError, withDefaultHeaders } from "./api-core.ts";
+import {
+  readApiError,
+  readApiResponseBody,
+  withDefaultHeaders,
+} from "./api-core.ts";
 
 const API_PROXY_PREFIX = "/api/proxy";
 
@@ -49,11 +53,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(await readApiError(response));
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
+  return readApiResponseBody<T>(response);
 }
 
 export async function apiMutation<T>(
@@ -66,11 +66,7 @@ export async function apiMutation<T>(
     throw new Error(await readApiError(response));
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
+  return readApiResponseBody<T>(response);
 }
 
 export { readApiError } from "./api-core.ts";

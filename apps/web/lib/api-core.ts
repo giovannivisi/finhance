@@ -107,3 +107,16 @@ export async function readApiError(response: Response): Promise<string> {
 
   return sanitizeApiErrorText(text, response.status, contentType);
 }
+
+export async function readApiResponseBody<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  if (!text.trim()) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
+}

@@ -2119,6 +2119,117 @@ textarea,
   color: var(--color-expense);
 }
 
+.budget-empty-note {
+  margin: 24px 2px 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.budget-coverage-shell {
+  margin-top: 24px;
+}
+
+.budget-coverage-details {
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+  border-top: 1px solid var(--border-glass);
+}
+
+.budget-coverage-group-title {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-primary);
+}
+
+.budget-coverage-entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--border-glass);
+}
+
+.budget-coverage-entry {
+  padding: 18px 0;
+}
+
+.budget-coverage-entry + .budget-coverage-entry {
+  border-top: 1px solid var(--border-glass);
+}
+
+.budget-coverage-group:not(:last-child) .budget-coverage-entry-list {
+  border-bottom: 1px solid var(--border-glass);
+  margin-bottom: 22px;
+}
+
+.budget-coverage-entry-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.budget-coverage-entry-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 18px;
+  row-gap: 12px;
+}
+
+.budget-coverage-entry-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.budget-coverage-entry-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.budget-coverage-entry-history strong {
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.budget-coverage-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 767px) {
+  .budget-coverage-details {
+    padding: 18px 16px;
+  }
+
+  .budget-coverage-entry-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .budget-coverage-entry-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
 .detail-panel {
   border-radius: 22px;
   border: 1px solid var(--border-glass);
@@ -2516,6 +2627,39 @@ textarea,
 
 .budget-filter-grid {
   align-items: end;
+}
+
+.budget-hero-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 20px;
+}
+
+.budget-hero-month-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.budget-hero-month-nav > .btn-secondary {
+  min-width: 116px;
+  justify-content: center;
+}
+
+.budget-hero-month-pill {
+  justify-content: center;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.budget-hero-create-btn {
+  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .transaction-filter-grid {
@@ -2989,6 +3133,118 @@ textarea,
   height: 100%;
 }
 
+.budget-item-main {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+.budget-item-actions {
+  flex: 0 1 auto;
+}
+
+.budget-item-action-menu {
+  position: relative;
+  align-self: flex-start;
+}
+
+.budget-item-action-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.budget-item-action-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 30;
+  width: min(240px, calc(100vw - 48px));
+  padding: 6px;
+  background: var(--tab-more-panel-bg);
+  backdrop-filter: var(--tab-pill-blur);
+  -webkit-backdrop-filter: var(--tab-pill-blur);
+  border: 0.5px solid var(--tab-more-panel-border);
+  border-radius: 22px;
+  corner-shape: superellipse(0.7);
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.budget-item-action-panel.is-above {
+  top: auto;
+  bottom: calc(100% + 12px);
+}
+
+.budget-item-action-link {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 10px 12px;
+  border-radius: 15px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+.budget-item-action-link:hover {
+  background: var(--tab-bg-highlight);
+  color: #ffffff;
+}
+
+.budget-item-action-divider {
+  margin: 2px 8px;
+  height: 1px;
+  background: var(--tab-border);
+  opacity: 0.5;
+}
+
+.budget-item-action-link.is-danger {
+  color: var(--color-expense);
+}
+
+.budget-item-action-link.is-danger:hover {
+  color: color-mix(in srgb, var(--color-expense) 88%, white);
+}
+
+[data-theme="light"] .budget-item-action-link {
+  color: rgba(0, 0, 0, 0.72);
+}
+
+[data-theme="light"] .budget-item-action-link:hover {
+  color: rgba(0, 0, 0, 0.92);
+}
+
+.budget-item-metrics {
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 767px) {
+  .budget-item-action-panel.is-above {
+    bottom: calc(100% + 10px);
+  }
+
+  .budget-item-action-panel {
+    left: 0;
+    right: auto;
+  }
+
+  .budget-item-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .section-stack-tight {
   display: flex;
   flex-direction: column;
@@ -3192,6 +3448,7 @@ textarea,
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .filter-field-label {
@@ -3360,8 +3617,10 @@ select,
 input[type="date"],
 input[type="month"],
 input[type="time"] {
+  display: block;
   min-height: 54px;
   min-width: 0;
+  max-width: 100%;
   padding-inline: 18px;
   border-radius: var(--radius-control);
 }
@@ -4099,6 +4358,22 @@ html[data-theme="dark"] .text-red-800 {
 
   .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1120px) {
+  .budget-hero-toolbar {
+    justify-content: center;
+  }
+
+  .budget-hero-month-nav {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .budget-hero-create-btn {
+    margin-left: 0;
+    margin-right: 0;
   }
 }
 
@@ -4855,6 +5130,14 @@ html[data-theme="dark"] .text-red-800 {
 
   .budget-filter-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  .budget-hero-toolbar {
+    gap: 12px 16px;
+  }
+
+  .budget-hero-month-nav {
+    gap: 12px;
   }
 
   .expense-validation-card-grid {

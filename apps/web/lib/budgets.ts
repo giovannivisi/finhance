@@ -80,6 +80,17 @@ export function buildBudgetMonthNavigationLink(input: {
   });
 }
 
+export function getBudgetFilterSummaryStatus(input: {
+  monthLabel: string;
+  includeArchivedCategories: boolean;
+}): string {
+  if (input.includeArchivedCategories) {
+    return "1 active";
+  }
+
+  return input.monthLabel;
+}
+
 export function buildBudgetTransactionsLink(input: {
   month: string;
   primaryCategoryId?: string | null;

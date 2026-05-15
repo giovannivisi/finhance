@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CategoryResponse, MonthlyBudgetResponse } from "@finhance/shared";
 import BudgetsPageClient from "@components/BudgetsPageClient";
+import type { BudgetFilters } from "@lib/budgets";
+import type { WorkflowCard } from "@lib/workflow";
 
 const refreshMock = vi.fn();
 
@@ -103,6 +105,78 @@ const budgetView: MonthlyBudgetResponse = {
   ],
 };
 
+const budgetViewWithWarning: MonthlyBudgetResponse = {
+  month: "2026-04",
+  includeArchivedCategories: false,
+  currencies: [
+    {
+      currency: "EUR",
+      budgetTotal: 120,
+      spentTotal: 180,
+      remainingTotal: -60,
+      overBudgetTotal: 60,
+      overBudgetCount: 1,
+      budgetedCategoryCount: 1,
+      unbudgetedExpenseTotal: 0,
+      uncategorizedExpenseTotal: 25,
+      items: [
+        {
+          budgetId: "budget-groceries",
+          categoryId: "category-groceries",
+          categoryName: "Groceries",
+          primaryCategoryId: "category-food",
+          primaryCategoryName: "Food",
+          secondaryCategoryId: "category-groceries",
+          secondaryCategoryName: "Groceries",
+          categoryArchivedAt: null,
+          currency: "EUR",
+          budgetAmount: 120,
+          spentAmount: 180,
+          remainingAmount: -60,
+          usageRatio: 1.5,
+          status: "OVER_BUDGET",
+          previousMonthExpense: 110,
+          averageExpenseLast3Months: 115,
+          startMonth: "2026-01",
+          endMonth: null,
+          override: null,
+        },
+      ],
+      overBudgetHighlights: [
+        {
+          budgetId: "budget-groceries",
+          categoryId: "category-groceries",
+          categoryName: "Groceries",
+          primaryCategoryId: "category-food",
+          primaryCategoryName: "Food",
+          secondaryCategoryId: "category-groceries",
+          secondaryCategoryName: "Groceries",
+          categoryArchivedAt: null,
+          currency: "EUR",
+          budgetAmount: 120,
+          spentAmount: 180,
+          remainingAmount: -60,
+          usageRatio: 1.5,
+          status: "OVER_BUDGET",
+          previousMonthExpense: 110,
+          averageExpenseLast3Months: 115,
+          startMonth: "2026-01",
+          endMonth: null,
+          override: null,
+        },
+      ],
+      unbudgetedCategories: [],
+    },
+  ],
+};
+
+const filters: BudgetFilters = {
+  month: "2026-04",
+  includeArchivedCategories: false,
+};
+
+const workflowCards: WorkflowCard[] = [];
+
 describe("BudgetsPageClient", () => {
   beforeEach(() => {
     refreshMock.mockReset();
@@ -113,8 +187,16 @@ describe("BudgetsPageClient", () => {
   it("opens a prefilled create-budget flow from an unbudgeted category", async () => {
     const user = userEvent.setup();
     render(
-      <BudgetsPageClient budgetView={budgetView} categories={categories} />,
+      <BudgetsPageClient
+        budgetView={budgetView}
+        categories={categories}
+        filters={filters}
+        budgetMonthPillLabel="April 2026"
+        workflowCards={workflowCards}
+      />,
     );
+
+    await user.click(screen.getByText("Budget coverage is incomplete"));
 
     await user.click(screen.getByRole("button", { name: "Create budget" }));
 
@@ -138,5 +220,95 @@ describe("BudgetsPageClient", () => {
     );
 
     expect(amountInput).toHaveValue(42);
+  });
+
+  it("renders the new hero controls and opens create budget from the header", async () => {
+    const user = userEvent.setup();
+    render(
+      <BudgetsPageClient
+        budgetView={budgetView}
+        categories={categories}
+        filters={filters}
+        budgetMonthPillLabel="April 2026"
+        workflowCards={workflowCards}
+      />,
+    );
+
+    expect(screen.queryByText("Budget workspace")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "New budget" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Current month April 2026"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Filter")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "New budget" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: /create budget/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("treats unbudgeted spend as info instead of warning", () => {
+    render(
+      <BudgetsPageClient
+        budgetView={budgetView}
+        categories={categories}
+        filters={filters}
+        budgetMonthPillLabel="April 2026"
+        workflowCards={workflowCards}
+      />,
+    );
+
+    expect(screen.queryByText("WARNING")).not.toBeInTheDocument();
+    expect(screen.queryByText("Warnings to review")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Budget coverage is incomplete"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Groceries")).not.toBeVisible();
+  });
+
+  it("reveals unbudgeted categories behind a disclosure", async () => {
+    const user = userEvent.setup();
+    render(
+      <BudgetsPageClient
+        budgetView={budgetView}
+        categories={categories}
+        filters={filters}
+        budgetMonthPillLabel="April 2026"
+        workflowCards={workflowCards}
+      />,
+    );
+
+    await user.click(screen.getByText("Budget coverage is incomplete"));
+
+    expect(screen.getByText("Groceries")).toBeInTheDocument();
+    expect(screen.getByText("Prev", { selector: "strong" })).toBeInTheDocument();
+    expect(
+      screen.getByText("3m avg", { selector: "strong" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides budget warnings behind a disclosure and shows a warning pill", async () => {
+    const user = userEvent.setup();
+    render(
+      <BudgetsPageClient
+        budgetView={budgetViewWithWarning}
+        categories={categories}
+        filters={filters}
+        budgetMonthPillLabel="April 2026"
+        workflowCards={workflowCards}
+      />,
+    );
+
+    expect(screen.getByText("WARNING")).toBeInTheDocument();
+    expect(screen.getByText("Warnings to review")).toBeInTheDocument();
+    expect(screen.getByText(/2 warnings hidden/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /show 2 warnings/i }));
+
+    expect(screen.getByText(/over-budget category/i)).toBeInTheDocument();
+    expect(screen.getByText(/uncategorized expenses need review/i)).toBeInTheDocument();
   });
 });
