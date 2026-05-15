@@ -78,7 +78,7 @@ export default function AllocationChart({
               contentStyle={{
                 backgroundColor: "var(--chart-tooltip-bg)",
                 borderColor: "var(--chart-tooltip-border)",
-                borderRadius: "12px",
+                borderRadius: "var(--radius-sm)",
                 color: "var(--text-primary)",
                 fontSize: "12px",
                 padding: "8px 12px",

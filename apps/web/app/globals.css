@@ -27,10 +27,13 @@ html[data-theme="dark"] {
   --bg-sidebar: rgba(15, 15, 15, 0.7);
   --bg-sidebar-hover: rgba(255, 255, 255, 0.1);
   --bg-modal: rgba(15, 15, 15, 0.9);
+  --bg-control: rgba(255, 255, 255, 0.045);
+  --bg-control-hover: rgba(255, 255, 255, 0.07);
 
   /* Borders */
   --border-glass: rgba(255, 255, 255, 0.08);
   --border-glass-strong: rgba(255, 255, 255, 0.15);
+  --border-control: rgba(255, 255, 255, 0.12);
 
   /* Text */
   --text-primary: #ffffff;
@@ -48,6 +51,9 @@ html[data-theme="dark"] {
   --radius-md: 32px;
   --radius-lg: 48px;
   --radius-xl: 36px;
+  --radius-control: 20px;
+  --radius-chip: 16px;
+  --corner-squircle: superellipse(0.72);
 
   /* Shared surface states */
   --surface-info-bg: rgba(14, 165, 233, 0.12);
@@ -119,10 +125,13 @@ html[data-theme="light"] {
   --bg-sidebar: rgba(255, 255, 255, 0.85);
   --bg-sidebar-hover: rgba(0, 0, 0, 0.05);
   --bg-modal: rgba(255, 255, 255, 0.9);
+  --bg-control: rgba(255, 255, 255, 0.82);
+  --bg-control-hover: rgba(255, 255, 255, 0.92);
 
   /* Borders */
   --border-glass: rgba(0, 0, 0, 0.08);
   --border-glass-strong: rgba(0, 0, 0, 0.15);
+  --border-control: rgba(0, 0, 0, 0.1);
 
   /* Text */
   --text-primary: #18181b;
@@ -230,6 +239,82 @@ button {
   border: none;
   background: none;
   cursor: pointer;
+}
+
+button,
+input,
+select,
+textarea,
+.glass-card,
+.page-hero,
+.page-section,
+.page-form-card,
+.page-pill,
+.pill-badge,
+.summary-card,
+.list-card,
+.page-inline-notice,
+.import-disclosure-trigger,
+.import-disclosure-panel,
+.import-dropzone,
+.import-dropzone-file-chip,
+.import-dropzone-file-chip-remove,
+.import-recovery-section,
+.import-file-picker,
+.import-file-picker-action,
+.import-file-picker-clear,
+.import-preview-group-card,
+.import-preview-file-card,
+.import-preview-stat-card,
+.import-issue-toggle,
+.import-issue-card,
+.import-batch-card,
+.category-hierarchy-primary-card,
+.category-hierarchy-secondary-panel,
+.privacy-note-block,
+.privacy-basis-pill,
+.privacy-transfer-row,
+.privacy-footer-note,
+.privacy-side-panel,
+.detail-panel,
+.account-reconciliation-toggle,
+.account-reconciliation-toggle-indicator,
+.status-chip,
+.workflow-card,
+.analytics-filter-shell,
+.expense-validation-card,
+.expense-validation-tools-menu,
+.activity-cashflow-detail-metric,
+.activity-month-toggle-indicator,
+.app-form-note,
+.app-form-error,
+.home-budget-empty,
+.home-budget-metric,
+.home-budget-highlight-row,
+.desktop-nav-card,
+.desktop-nav-link,
+.desktop-nav-theme-btn,
+.asset-row-edit-btn,
+.asset-row-delete-btn,
+.glass-morphism,
+.glass-morphism-v2,
+.glass-morphism-v3,
+.glass-pill,
+.ultra-glass,
+.skip-link,
+.tab-bar-pill,
+.tab-active-pill,
+.tab-more-panel,
+.tab-menu-link,
+.glass-pill-v4,
+.btn-primary,
+.btn-secondary,
+input,
+select,
+textarea,
+[class~="rounded"],
+[class*="rounded-"] {
+  corner-shape: var(--corner-squircle);
 }
 
 /* Base Utility Classes */
@@ -424,7 +509,7 @@ button {
   gap: 8px;
   min-height: 40px;
   padding: 8px 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border-glass);
   background: var(--bg-card-muted);
   color: var(--text-secondary);
@@ -435,6 +520,7 @@ button {
 .pill-badge {
   min-height: auto;
   padding: 6px 12px;
+  border-radius: var(--radius-chip);
 }
 
 .page-meta-grid,
@@ -623,7 +709,7 @@ button {
 .import-disclosure-trigger {
   min-height: 42px;
   padding: 10px 16px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border-glass);
   background: var(--bg-card-muted);
   color: var(--text-primary);
@@ -864,7 +950,7 @@ button {
   gap: 8px;
   max-width: 100%;
   padding: 8px 10px 8px 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border-glass);
   background: color-mix(in srgb, var(--bg-card) 86%, transparent);
   color: var(--text-secondary);
@@ -884,7 +970,7 @@ button {
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 999px;
+  border-radius: 12px;
   border: 1px solid color-mix(in srgb, #f43f5e 22%, var(--border-glass));
   background: color-mix(in srgb, #f43f5e 12%, var(--bg-card));
   color: #fecdd3;
@@ -1050,7 +1136,7 @@ button {
   align-items: center;
   min-height: 36px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-chip);
   border: 1px solid var(--border-glass);
   background: color-mix(in srgb, var(--bg-card) 82%, transparent);
   color: var(--text-primary);
@@ -1087,7 +1173,7 @@ button {
   width: 34px;
   height: 34px;
   margin-left: auto;
-  border-radius: 999px;
+  border-radius: 18px;
   border: 1px solid color-mix(in srgb, #f43f5e 26%, var(--border-glass));
   background: color-mix(in srgb, #f43f5e 14%, var(--bg-card));
   color: #fda4af;
@@ -1289,7 +1375,7 @@ button {
 .import-issue-toggle {
   min-height: 40px;
   padding: 8px 18px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   corner-shape: superellipse(0.72);
 }
 
@@ -2103,7 +2189,7 @@ button {
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid var(--border-glass);
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--bg-card-muted) 92%, transparent);
   color: var(--text-primary);
   cursor: pointer;
@@ -2129,7 +2215,7 @@ button {
 .account-reconciliation-toggle:focus-visible {
   outline: 1px solid var(--focus-ring);
   outline-offset: 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
 }
 
 .account-reconciliation-toggle-indicator {
@@ -2139,7 +2225,7 @@ button {
   width: 20px;
   height: 20px;
   padding-bottom: 1px;
-  border-radius: 999px;
+  border-radius: 12px;
   background: color-mix(in srgb, #22c55e 18%, transparent);
   color: var(--text-primary);
   font-size: 1rem;
@@ -2187,7 +2273,7 @@ button {
   gap: 6px;
   min-height: 28px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-chip);
   border: 1px solid transparent;
   font-size: 0.72rem;
   font-weight: 700;
@@ -2690,7 +2776,7 @@ button {
   max-width: 100%;
   padding-inline: 18px;
   margin-bottom: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   align-self: end;
 }
 
@@ -2851,7 +2937,7 @@ button {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 999px;
+  border-radius: 16px;
   border: 1px solid var(--border-glass);
   background: var(--bg-card-muted);
   color: var(--text-primary);
@@ -3251,17 +3337,37 @@ p {
 input,
 select,
 textarea {
-  background: var(--bg-card);
-  border: 1px solid var(--border-glass);
+  background: var(--bg-control);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-control);
   color: var(--text-primary);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
+  border-radius: var(--radius-control);
+  padding: 10px 18px;
+  box-sizing: border-box;
   font-family: inherit;
   font-size: 0.875rem;
+  line-height: 1.2;
   transition:
+    background 0.2s,
     border-color 0.2s,
     box-shadow 0.2s;
   width: 100%;
+}
+
+input:not([type="checkbox"]),
+select,
+input[type="date"],
+input[type="month"],
+input[type="time"] {
+  min-height: 54px;
+  min-width: 0;
+  padding-inline: 18px;
+  border-radius: var(--radius-control);
+}
+
+textarea {
+  padding-block: 14px;
 }
 
 input[type="number"] {
@@ -3282,16 +3388,6 @@ input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
   opacity: 0;
-}
-
-select,
-input[type="date"],
-input[type="month"],
-input[type="time"] {
-  min-height: 54px;
-  min-width: 0;
-  padding-inline: 18px;
-  border-radius: var(--radius-md);
 }
 
 select {
@@ -3319,6 +3415,7 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--border-glass-strong);
+  background: var(--bg-control-hover);
 }
 
 input:focus-visible,
@@ -3427,7 +3524,7 @@ input[type="checkbox"]:disabled {
   );
   color: #fff;
   padding: 10px 24px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   font-weight: 600;
   font-size: 0.875rem;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -3449,22 +3546,24 @@ input[type="checkbox"]:disabled {
 }
 
 .btn-secondary {
-  background: var(--bg-card);
-  border: 1px solid var(--border-glass);
+  background: var(--bg-control);
+  border: 1px solid var(--border-control);
   color: var(--text-primary);
   padding: 10px 22px;
   min-height: 46px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   font-weight: 600;
   font-size: 0.875rem;
   transition: all 0.2s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .btn-secondary:hover {
-  background: var(--bg-card-hover);
+  background: var(--bg-control-hover);
   border-color: var(--border-glass-strong);
 }
 
@@ -3624,6 +3723,7 @@ html[data-theme="dark"] .text-red-800 {
   backdrop-filter: blur(20px) !important;
   -webkit-backdrop-filter: blur(20px) !important;
   border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: var(--radius-control) !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
 }
 
@@ -3631,6 +3731,7 @@ html[data-theme="dark"] .text-red-800 {
   background: rgba(255, 255, 255, 0.85) !important;
   backdrop-filter: blur(20px) !important;
   border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  border-radius: var(--radius-control) !important;
 }
 
 .ultra-glass {
@@ -3656,7 +3757,7 @@ html[data-theme="dark"] .text-red-800 {
   backdrop-filter: blur(50px) saturate(140%) !important;
   -webkit-backdrop-filter: blur(50px) saturate(140%) !important;
   border: 0.5px solid var(--tab-border) !important;
-  border-radius: 9999px !important;
+  border-radius: var(--radius-control) !important;
   box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.4),
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.05) !important;
@@ -3666,7 +3767,7 @@ html[data-theme="dark"] .text-red-800 {
   background: rgba(255, 255, 255, 0.25) !important;
   backdrop-filter: blur(50px) saturate(140%) !important;
   border: 0.5px solid var(--tab-border) !important;
-  border-radius: 9999px !important;
+  border-radius: var(--radius-control) !important;
   box-shadow:
     0 10px 40px rgba(0, 0, 0, 0.06),
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.4) !important;
@@ -3840,7 +3941,7 @@ html[data-theme="dark"] .text-red-800 {
 .dashboard-hero-privacy-btn,
 .dashboard-hero-refresh-btn {
   min-height: 44px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   gap: 8px;
 }
 
@@ -4027,7 +4128,7 @@ html[data-theme="dark"] .text-red-800 {
   width: 100%;
   text-align: left;
   padding: 12px 16px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   background: transparent;
   transition: background 0.2s;
   cursor: pointer;
@@ -4201,7 +4302,7 @@ html[data-theme="dark"] .text-red-800 {
   border: none;
   min-height: 44px;
   padding: 10px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
 }
 
 .asset-row-edit-btn:hover {
@@ -4211,7 +4312,7 @@ html[data-theme="dark"] .text-red-800 {
 .asset-row-delete-btn {
   min-width: 44px;
   min-height: 44px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4250,7 +4351,9 @@ html[data-theme="dark"] .text-red-800 {
 
 .dashboard-edit-btn {
   font-size: 14px;
+  min-height: 44px;
   padding: 8px 18px;
+  line-height: 1;
 }
 
 .dashboard-done-btn {
@@ -4283,9 +4386,10 @@ html[data-theme="dark"] .text-red-800 {
 
 .header-add-btn {
   min-height: 44px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  font-size: 13px;
+  padding: 8px 18px;
+  border-radius: var(--radius-control);
+  font-size: 14px;
+  line-height: 1;
 }
 
 .top-header {

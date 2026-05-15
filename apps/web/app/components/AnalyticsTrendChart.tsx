@@ -81,7 +81,7 @@ export default function AnalyticsTrendChart({
               name,
             ]}
             contentStyle={{
-              borderRadius: "1rem",
+              borderRadius: "var(--radius-sm)",
               border: "1px solid var(--chart-tooltip-border)",
               background: "var(--chart-tooltip-bg)",
               color: "var(--text-primary)",
