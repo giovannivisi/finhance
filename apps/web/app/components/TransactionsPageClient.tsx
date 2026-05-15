@@ -18,6 +18,7 @@ import { useAppPreferences } from "@components/ThemeProvider";
 import TransactionForm from "@components/TransactionForm";
 import type { ActivityFilters } from "@lib/activity";
 import { getDefaultActivityFilters } from "@lib/activity";
+import { buildTransactionsLink } from "@lib/analytics";
 import {
   recurringTransactionToOccurrenceFormValues,
   type RecurringOccurrenceFormValues,
@@ -71,6 +72,14 @@ interface ExpensePrimarySummary {
   label: string;
   total: number;
   secondaries: ExpenseSecondarySummary[];
+}
+
+interface AccountCashflowSummary {
+  key: string;
+  label: string;
+  inflowTotal: number;
+  outflowTotal: number;
+  netCashflow: number;
 }
 
 interface EntryMonthGroup {
@@ -156,8 +165,12 @@ function buildExpensePrimarySummaries(
 
 function buildExpensePrimaryChartData(
   groups: ExpensePrimarySummary[],
-): CashflowAnalyticsBreakdownItemResponse[] {
-  const topGroups = groups.slice(0, 8).map((group) => ({
+): Array<
+  CashflowAnalyticsBreakdownItemResponse & { selectionKey?: string }
+> {
+  const topGroups: Array<
+    CashflowAnalyticsBreakdownItemResponse & { selectionKey?: string }
+  > = groups.slice(0, 8).map((group) => ({
     categoryId: group.key,
     name: group.label,
     primaryCategoryId: group.key,
@@ -165,6 +178,7 @@ function buildExpensePrimaryChartData(
     secondaryCategoryId: null,
     secondaryCategoryName: null,
     total: group.total,
+    selectionKey: group.key,
   }));
 
   const otherTotal = groups
@@ -184,6 +198,24 @@ function buildExpensePrimaryChartData(
   }
 
   return topGroups;
+}
+
+function buildAccountCashflowSummaries(
+  bucket: CashflowSummaryResponse[number],
+): AccountCashflowSummary[] {
+  return [...bucket.byAccount]
+    .map((item) => ({
+      key: item.accountId,
+      label: item.name,
+      inflowTotal: item.inflowTotal,
+      outflowTotal: item.outflowTotal,
+      netCashflow: item.netCashflow,
+    }))
+    .sort(
+      (left, right) =>
+        Math.abs(right.netCashflow) - Math.abs(left.netCashflow) ||
+        left.label.localeCompare(right.label),
+    );
 }
 
 function groupTransactionsByMonth(
@@ -253,6 +285,10 @@ export default function TransactionsPageClient({
   const [openEntryMonthKey, setOpenEntryMonthKey] = useState<string | null>(
     null,
   );
+  const [selectedCashflowPrimaryByCurrency, setSelectedCashflowPrimaryByCurrency] =
+    useState<Record<string, string | null>>({});
+  const [selectedCashflowAccountByCurrency, setSelectedCashflowAccountByCurrency] =
+    useState<Record<string, string | null>>({});
   const actions = useSingleFlightActions<string>();
   const navigation = useSingleFlightNavigation();
   const { hideMoney, isHydrated } = useAppPreferences();
@@ -332,6 +368,14 @@ export default function TransactionsPageClient({
       })),
     [cashflow],
   );
+  const cashflowAccountGroups = useMemo(
+    () =>
+      cashflow.map((bucket) => ({
+        currency: bucket.currency,
+        accounts: buildAccountCashflowSummaries(bucket),
+      })),
+    [cashflow],
+  );
   const entryMonthGroups = useMemo(
     () => groupTransactionsByMonth(transactions),
     [transactions],
@@ -340,6 +384,25 @@ export default function TransactionsPageClient({
   useEffect(() => {
     setOpenEntryMonthKey(entryMonthGroups[0]?.key ?? null);
   }, [entryMonthGroups]);
+
+  useEffect(() => {
+    const validCurrencies = new Set(cashflow.map((bucket) => bucket.currency));
+
+    setSelectedCashflowPrimaryByCurrency((previous) =>
+      Object.fromEntries(
+        Object.entries(previous).filter(([currency]) =>
+          validCurrencies.has(currency),
+        ),
+      ),
+    );
+    setSelectedCashflowAccountByCurrency((previous) =>
+      Object.fromEntries(
+        Object.entries(previous).filter(([currency]) =>
+          validCurrencies.has(currency),
+        ),
+      ),
+    );
+  }, [cashflow]);
 
   function updateFilter<Field extends keyof ActivityFilters>(
     field: Field,
@@ -414,6 +477,20 @@ export default function TransactionsPageClient({
     navigation.run(() => {
       router.push(defaultFilterTarget);
     });
+  }
+
+  function toggleCashflowPrimarySelection(currency: string, key: string) {
+    setSelectedCashflowPrimaryByCurrency((previous) => ({
+      ...previous,
+      [currency]: previous[currency] === key ? null : key,
+    }));
+  }
+
+  function toggleCashflowAccountSelection(currency: string, key: string) {
+    setSelectedCashflowAccountByCurrency((previous) => ({
+      ...previous,
+      [currency]: previous[currency] === key ? null : key,
+    }));
   }
 
   async function handleDelete(transactionId: string) {
@@ -770,16 +847,140 @@ export default function TransactionsPageClient({
               </div>
 
               <div className="activity-cashflow-grid">
-                <div className="section-stack-tight">
+                <div className="section-stack-tight activity-cashflow-column">
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                    By account
+                  </h3>
+                  <p className="activity-cashflow-chart-copy text-sm text-[var(--text-secondary)]">
+                    Select an account row for totals and ledger drill-down.
+                  </p>
+                  {cashflowAccountGroups[index]?.accounts.length === 0 ? (
+                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                      No account totals in this bucket.
+                    </p>
+                  ) : (
+                    <div className="section-stack-tight activity-cashflow-chart-stack">
+                      <div className="detail-panel activity-category-chart-panel">
+                        <AnalyticsCategoryBarChart
+                          currency={bucket.currency}
+                          data={cashflowAccountGroups[index].accounts.map(
+                            (item) => ({
+                              name: item.label,
+                              total: item.netCashflow,
+                              selectionKey: item.key,
+                            }),
+                          )}
+                          mode="breakdown"
+                          tone="neutral"
+                          selectedKey={
+                            selectedCashflowAccountByCurrency[bucket.currency] ??
+                            null
+                          }
+                          onBarSelect={(key) =>
+                            toggleCashflowAccountSelection(bucket.currency, key)
+                          }
+                        />
+                      </div>
+
+                      {(() => {
+                        const selectedAccountKey =
+                          selectedCashflowAccountByCurrency[bucket.currency] ??
+                          null;
+                        const selectedAccount =
+                          cashflowAccountGroups[index].accounts.find(
+                            (item) => item.key === selectedAccountKey,
+                          ) ?? null;
+
+                        if (!selectedAccount) {
+                          return null;
+                        }
+
+                        return (
+                          <div className="detail-panel is-roomy section-stack-tight activity-cashflow-detail-panel">
+                            <div className="activity-category-group-header">
+                              <div className="activity-category-group-copy">
+                                <p className="font-medium text-[var(--text-primary)]">
+                                  {selectedAccount.label}
+                                </p>
+                                <p className="text-sm text-[var(--text-secondary)]">
+                                  Net cashflow for this account in the selected
+                                  range.
+                                </p>
+                              </div>
+                              <span className="font-medium text-[var(--text-primary)]">
+                                {formatSensitiveCurrency(
+                                  selectedAccount.netCashflow,
+                                  bucket.currency,
+                                  shouldHideMoney,
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="activity-cashflow-detail-metrics">
+                              <div className="activity-cashflow-detail-metric">
+                                <span className="activity-cashflow-detail-label">
+                                  In
+                                </span>
+                                <span className="activity-cashflow-detail-value">
+                                  {formatSensitiveCurrency(
+                                    selectedAccount.inflowTotal,
+                                    bucket.currency,
+                                    shouldHideMoney,
+                                  )}
+                                </span>
+                              </div>
+                              <div className="activity-cashflow-detail-metric">
+                                <span className="activity-cashflow-detail-label">
+                                  Out
+                                </span>
+                                <span className="activity-cashflow-detail-value">
+                                  {formatSensitiveCurrency(
+                                    selectedAccount.outflowTotal,
+                                    bucket.currency,
+                                    shouldHideMoney,
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="activity-cashflow-detail-actions">
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() =>
+                                  navigation.run(() => {
+                                    router.push(
+                                      buildTransactionsLink({
+                                        ...initialFilters,
+                                        accountId: selectedAccount.key,
+                                      }),
+                                    );
+                                  })
+                                }
+                              >
+                                Open in Activity
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                <div className="section-stack-tight activity-cashflow-column">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                     By category
                   </h3>
+                  <p className="activity-cashflow-chart-copy text-sm text-[var(--text-secondary)]">
+                    Select a category row for breakdown and ledger drill-down.
+                  </p>
                   {cashflowExpenseGroups[index]?.groups.length === 0 ? (
                     <p className="mt-2 text-sm text-[var(--text-secondary)]">
                       No expense categories in this bucket.
                     </p>
                   ) : (
-                    <div className="section-stack-tight">
+                    <div className="section-stack-tight activity-cashflow-chart-stack">
                       <div className="detail-panel activity-category-chart-panel">
                         <AnalyticsCategoryBarChart
                           currency={bucket.currency}
@@ -787,38 +988,58 @@ export default function TransactionsPageClient({
                             cashflowExpenseGroups[index].groups,
                           )}
                           mode="breakdown"
+                          selectedKey={
+                            selectedCashflowPrimaryByCurrency[bucket.currency] ??
+                            null
+                          }
+                          onBarSelect={(key) => {
+                            if (key === "other") {
+                              return;
+                            }
+
+                            toggleCashflowPrimarySelection(bucket.currency, key);
+                          }}
                         />
                       </div>
 
-                      <div className="activity-category-group-list">
-                        {cashflowExpenseGroups[index].groups.map((group) => (
-                          <div
-                            key={group.key}
-                            className="detail-panel is-roomy section-stack-tight"
-                          >
+                      {(() => {
+                        const selectedPrimaryKey =
+                          selectedCashflowPrimaryByCurrency[bucket.currency] ??
+                          null;
+                        const selectedPrimary =
+                          cashflowExpenseGroups[index].groups.find(
+                            (group) => group.key === selectedPrimaryKey,
+                          ) ?? null;
+
+                        if (!selectedPrimary) {
+                          return null;
+                        }
+
+                        return (
+                          <div className="detail-panel is-roomy section-stack-tight activity-cashflow-detail-panel">
                             <div className="activity-category-group-header">
                               <div className="activity-category-group-copy">
                                 <p className="font-medium text-[var(--text-primary)]">
-                                  {group.label}
+                                  {selectedPrimary.label}
                                 </p>
                                 <p className="text-sm text-[var(--text-secondary)]">
                                   {formatSecondaryCount(
-                                    group.secondaries.length,
+                                    selectedPrimary.secondaries.length,
                                   )}
                                 </p>
                               </div>
                               <span className="font-medium text-[var(--text-primary)]">
                                 {formatSensitiveCurrency(
-                                  group.total,
+                                  selectedPrimary.total,
                                   bucket.currency,
                                   shouldHideMoney,
                                 )}
                               </span>
                             </div>
 
-                            {group.secondaries.length > 0 ? (
+                            {selectedPrimary.secondaries.length > 0 ? (
                               <div className="activity-category-secondary-list">
-                                {group.secondaries.map((secondary) => (
+                                {selectedPrimary.secondaries.map((secondary) => (
                                   <div
                                     key={secondary.key}
                                     className="activity-category-secondary-row"
@@ -841,58 +1062,31 @@ export default function TransactionsPageClient({
                                 No secondary categories in this range.
                               </p>
                             )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
 
-                <div className="section-stack-tight">
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                    By account
-                  </h3>
-                  {bucket.byAccount.length === 0 ? (
-                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                      No account totals in this bucket.
-                    </p>
-                  ) : (
-                    <div className="mt-2 subcard-stack is-loose">
-                      {bucket.byAccount.map((item) => (
-                        <div
-                          key={item.accountId}
-                          className="detail-panel is-roomy text-sm"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="font-medium text-[var(--text-primary)]">
-                              {item.name}
-                            </p>
-                            <span className="font-medium text-[var(--text-primary)]">
-                              Net{" "}
-                              {formatSensitiveCurrency(
-                                item.netCashflow,
-                                bucket.currency,
-                                shouldHideMoney,
-                              )}
-                            </span>
+                            <div className="activity-cashflow-detail-actions">
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() =>
+                                  navigation.run(() => {
+                                    router.push(
+                                      buildTransactionsLink({
+                                        ...initialFilters,
+                                        primaryCategoryId:
+                                          selectedPrimary.key,
+                                        secondaryCategoryId: null,
+                                        categoryId: null,
+                                      }),
+                                    );
+                                  })
+                                }
+                              >
+                                Open in Activity
+                              </button>
+                            </div>
                           </div>
-                          <p className="mt-1 text-[var(--text-secondary)]">
-                            In{" "}
-                            {formatSensitiveCurrency(
-                              item.inflowTotal,
-                              bucket.currency,
-                              shouldHideMoney,
-                            )}
-                            {" · "}
-                            Out{" "}
-                            {formatSensitiveCurrency(
-                              item.outflowTotal,
-                              bucket.currency,
-                              shouldHideMoney,
-                            )}
-                          </p>
-                        </div>
-                      ))}
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

@@ -1388,12 +1388,50 @@ button {
   gap: 14px;
 }
 
-.category-hierarchy-secondary-card {
-  padding: 8px 14px;
+.category-hierarchy-primary-card {
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(0.72);
+}
+
+.category-hierarchy-secondary-panel {
+  margin-top: 20px;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  corner-shape: superellipse(0.72);
+  background: var(--bg-card);
+  overflow: clip;
+}
+
+.category-hierarchy-secondary-panel.is-open {
+  border-color: var(--border-glass-strong);
+  background: var(--bg-card);
 }
 
 .category-hierarchy-secondary-list {
-  margin-top: 24px;
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 12px;
+  border-top: 1px solid var(--border-glass);
+  background: transparent;
+}
+
+.category-hierarchy-secondary-list.subcard-stack.is-loose {
+  gap: 0;
+}
+
+.category-hierarchy-secondary-card {
+  display: flex;
+  align-items: center;
+  padding: 18px 14px;
+}
+
+.category-hierarchy-secondary-card > * {
+  width: 100%;
+}
+
+.category-hierarchy-secondary-card + .category-hierarchy-secondary-card {
+  border-top: 1px solid var(--border-glass);
 }
 
 .category-card-copy {
@@ -1410,6 +1448,68 @@ button {
   margin: 0;
   font-size: 0.9rem;
   line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.category-disclosure-toggle {
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.category-disclosure-toggle.is-open {
+  background: transparent !important;
+}
+
+.category-disclosure-toggle.is-open:hover {
+  background: transparent !important;
+}
+
+.category-disclosure-toggle:hover {
+  background: var(--bg-card-hover);
+}
+
+.category-disclosure-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.category-disclosure-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.category-disclosure-detail {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.category-disclosure-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.category-disclosure-count {
+  min-width: 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: right;
   color: var(--text-secondary);
 }
 
@@ -2621,6 +2721,18 @@ button {
   margin-top: 24px;
 }
 
+.activity-cashflow-column {
+  gap: 12px;
+}
+
+.activity-cashflow-chart-stack {
+  gap: 12px;
+}
+
+.activity-cashflow-chart-copy {
+  margin-top: 0;
+}
+
 .activity-category-chart-panel {
   padding: 10px 12px 4px;
 }
@@ -2658,6 +2770,44 @@ button {
   gap: 16px;
   padding-top: 10px;
   border-top: 1px solid var(--border-glass);
+}
+
+.activity-cashflow-detail-panel {
+  margin-top: 4px;
+}
+
+.activity-cashflow-detail-metrics {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.activity-cashflow-detail-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card-muted);
+}
+
+.activity-cashflow-detail-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.activity-cashflow-detail-value {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.activity-cashflow-detail-actions {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .activity-month-stack {
@@ -2811,7 +2961,7 @@ button {
 @media (min-width: 1024px) {
   .activity-cashflow-grid {
     gap: 32px;
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .route-stack-spacious {
@@ -2910,10 +3060,15 @@ button {
 }
 
 @media (max-width: 640px) {
+  .category-disclosure-toggle,
   .activity-category-group-header,
   .activity-category-secondary-row,
   .activity-month-toggle {
     flex-wrap: wrap;
+  }
+
+  .activity-cashflow-detail-metrics {
+    grid-template-columns: 1fr;
   }
 
   .transaction-row-actions {
