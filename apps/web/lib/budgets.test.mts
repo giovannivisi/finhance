@@ -164,20 +164,11 @@ test("getBudgetQuickFillSuggestions returns available history suggestions", () =
   );
 });
 
-test("getBudgetConfidenceMessage distinguishes uncategorized and unbudgeted gaps", () => {
-  assert.equal(
-    getBudgetConfidenceMessage({
-      currency: "EUR",
-      unbudgetedExpenseTotal: 0,
-      uncategorizedExpenseTotal: 10,
-    }).tone,
-    "warning",
-  );
+test("getBudgetConfidenceMessage distinguishes unbudgeted and clean states", () => {
   assert.equal(
     getBudgetConfidenceMessage({
       currency: "EUR",
       unbudgetedExpenseTotal: 10,
-      uncategorizedExpenseTotal: 0,
     }).tone,
     "info",
   );
@@ -185,7 +176,6 @@ test("getBudgetConfidenceMessage distinguishes uncategorized and unbudgeted gaps
     getBudgetConfidenceMessage({
       currency: "EUR",
       unbudgetedExpenseTotal: 0,
-      uncategorizedExpenseTotal: 0,
     }).tone,
     "success",
   );

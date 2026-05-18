@@ -118,7 +118,7 @@ const budgetViewWithWarning: MonthlyBudgetResponse = {
       overBudgetCount: 1,
       budgetedCategoryCount: 1,
       unbudgetedExpenseTotal: 0,
-      uncategorizedExpenseTotal: 25,
+      uncategorizedExpenseTotal: 0,
       items: [
         {
           budgetId: "budget-groceries",
@@ -284,7 +284,9 @@ describe("BudgetsPageClient", () => {
     await user.click(screen.getByText("Budget coverage is incomplete"));
 
     expect(screen.getByText("Groceries")).toBeInTheDocument();
-    expect(screen.getByText("Prev", { selector: "strong" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Prev", { selector: "strong" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("3m avg", { selector: "strong" }),
     ).toBeInTheDocument();
@@ -304,11 +306,10 @@ describe("BudgetsPageClient", () => {
 
     expect(screen.getByText("WARNING")).toBeInTheDocument();
     expect(screen.getByText("Warnings to review")).toBeInTheDocument();
-    expect(screen.getByText(/2 warnings hidden/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 warning hidden/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /show 2 warnings/i }));
+    await user.click(screen.getByRole("button", { name: /show 1 warning/i }));
 
     expect(screen.getByText(/over-budget category/i)).toBeInTheDocument();
-    expect(screen.getByText(/uncategorized expenses need review/i)).toBeInTheDocument();
   });
 });

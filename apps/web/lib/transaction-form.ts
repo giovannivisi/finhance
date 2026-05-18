@@ -121,6 +121,10 @@ export function buildTransactionPayload(values: TransactionFormValues): {
   const categoryId =
     values.kind === "ADJUSTMENT" ? null : values.categoryId.trim() || null;
 
+  if ((values.kind === "EXPENSE" || values.kind === "INCOME") && !categoryId) {
+    return { error: "Please choose a category." };
+  }
+
   if (values.kind === "ADJUSTMENT" && !direction) {
     return { error: "Adjustments require a direction." };
   }

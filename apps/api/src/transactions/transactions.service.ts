@@ -21,9 +21,11 @@ import {
 } from '@transactions/transactions.types';
 import {
   Account,
+  AccountType,
   AssetKind,
   AssetType,
   CategoryType,
+  LiabilityKind,
   Prisma,
   TransactionDirection,
   TransactionKind,
@@ -807,6 +809,16 @@ export class TransactionsService {
             : '',
         );
       categoryId = matchedCategory?.id ?? null;
+    }
+
+    if (
+      (dto.kind === TransactionKind.EXPENSE ||
+        dto.kind === TransactionKind.INCOME) &&
+      !categoryId
+    ) {
+      throw new BadRequestException(
+        'Expense and income transactions require a category.',
+      );
     }
 
     const postedAt = this.parsePostedAt(dto.postedAt);
@@ -2121,6 +2133,12 @@ export class TransactionsService {
   ): Promise<void> {
     if (direction !== TransactionDirection.OUTFLOW) return;
 
+    // Liability accounts (CARD, LOAN) don't require cash validation —
+    // outflows increase the debt rather than spending cash.
+    if (await this.isLiabilityAccount(ownerId, accountId, client)) {
+      return;
+    }
+
     const cashAsset = await client.asset.findFirst({
       where: {
         userId: ownerId,
@@ -2145,12 +2163,17 @@ export class TransactionsService {
   }
 
   /**
-   * Adjust the CASH asset balance in an account to reflect a transaction.
+   * Adjust the asset balance in an account to reflect a transaction.
    *
-   * INFLOW  → balance goes up   (income, transfer-in, adjustment-in)
-   * OUTFLOW → balance goes down (expense, transfer-out, adjustment-out)
+   * For standard accounts (BANK, BROKER, CASH, OTHER):
+   *   INFLOW  → cash balance goes up   (income, transfer-in)
+   *   OUTFLOW → cash balance goes down  (expense, transfer-out)
+   *   Auto-creates a cash asset on first inflow.
    *
-   * For inflows: auto-creates a cash asset if one doesn't exist yet.
+   * For liability accounts (CARD, LOAN):
+   *   OUTFLOW → liability balance goes up   (new expense on credit)
+   *   INFLOW  → liability balance goes down  (debt payment)
+   *   Auto-creates a liability asset on first outflow.
    *
    * Set `skipValidation` to true for reversals (update/delete) where the
    * balance was already validated on the original transaction.
@@ -2163,6 +2186,16 @@ export class TransactionsService {
     client: TransactionWriteClient = this.prisma,
     options?: { skipValidation?: boolean },
   ): Promise<void> {
+    if (await this.isLiabilityAccount(ownerId, accountId, client)) {
+      return this.adjustAccountLiabilityBalance(
+        ownerId,
+        accountId,
+        amount,
+        direction,
+        client,
+      );
+    }
+
     const cashAsset = await client.asset.findFirst({
       where: {
         userId: ownerId,
@@ -2223,6 +2256,93 @@ export class TransactionsService {
     await client.asset.update({
       where: { id: cashAsset.id },
       data: { balance: cashAsset.balance.add(amount) },
+    });
+  }
+
+  /**
+   * Check whether an account is a liability-type account (CARD or LOAN).
+   * For these accounts, transactions adjust the liability asset instead
+   * of the cash asset.
+   */
+  private async isLiabilityAccount(
+    ownerId: string,
+    accountId: string,
+    client: TransactionWriteClient = this.prisma,
+  ): Promise<boolean> {
+    const account = await client.account.findFirst({
+      where: { id: accountId, userId: ownerId },
+      select: { type: true },
+    });
+    return (
+      account?.type === AccountType.CARD || account?.type === AccountType.LOAN
+    );
+  }
+
+  /**
+   * Adjust the LIABILITY asset balance in a CARD/LOAN account.
+   *
+   * OUTFLOW → liability increases (new expense on credit)
+   * INFLOW  → liability decreases (debt payment / refund)
+   *
+   * Auto-creates a liability asset on the first outflow.
+   */
+  private async adjustAccountLiabilityBalance(
+    ownerId: string,
+    accountId: string,
+    amount: Prisma.Decimal,
+    direction: TransactionDirection,
+    client: TransactionWriteClient,
+  ): Promise<void> {
+    const liabilityAsset = await client.asset.findFirst({
+      where: {
+        userId: ownerId,
+        accountId,
+        type: AssetType.LIABILITY,
+      },
+      select: { id: true, balance: true },
+    });
+
+    if (direction === TransactionDirection.OUTFLOW) {
+      // OUTFLOW on a liability account → debt increases
+      if (!liabilityAsset) {
+        const account = await client.account.findFirst({
+          where: { id: accountId, userId: ownerId },
+          select: { currency: true, name: true },
+        });
+
+        if (!account) return;
+
+        await client.asset.create({
+          data: {
+            userId: ownerId,
+            accountId,
+            name: `${account.name} Debt`,
+            type: AssetType.LIABILITY,
+            liabilityKind: LiabilityKind.DEBT,
+            balance: amount,
+            currency: account.currency,
+          },
+        });
+        return;
+      }
+
+      await client.asset.update({
+        where: { id: liabilityAsset.id },
+        data: { balance: liabilityAsset.balance.add(amount) },
+      });
+      return;
+    }
+
+    // INFLOW on a liability account → debt decreases (payment)
+    if (!liabilityAsset) {
+      throw new BadRequestException(
+        'This account has no liability to pay off.',
+      );
+    }
+
+    await client.asset.update({
+      where: { id: liabilityAsset.id },
+      data: { balance: liabilityAsset.balance.sub(amount) },
     });
   }
 }

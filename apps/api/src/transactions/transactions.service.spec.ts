@@ -318,6 +318,7 @@ describe('TransactionsService', () => {
         description: 'Salary',
         accountId: 'account-1',
         direction: TransactionDirection.INFLOW,
+        categoryId: 'category-1',
       }),
     ).rejects.toThrow('Transactions before 2026-04-10 are not allowed');
   });
@@ -404,7 +405,7 @@ describe('TransactionsService', () => {
         description: 'Rent',
         accountId: 'account-1',
         direction: TransactionDirection.OUTFLOW,
-        categoryId: null,
+        categoryId: 'category-1',
         counterparty: null,
       }),
     ).rejects.toThrow('Insufficient cash balance');

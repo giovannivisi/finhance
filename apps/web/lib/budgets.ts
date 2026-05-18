@@ -180,17 +180,9 @@ export function getBudgetQuickFillSuggestions(input: {
 export function getBudgetConfidenceMessage(
   currency: Pick<
     MonthlyBudgetCurrencySummaryResponse,
-    "currency" | "unbudgetedExpenseTotal" | "uncategorizedExpenseTotal"
+    "currency" | "unbudgetedExpenseTotal"
   >,
 ): { tone: "warning" | "info" | "success"; title: string; detail: string } {
-  if (currency.uncategorizedExpenseTotal > 0) {
-    return {
-      tone: "warning",
-      title: "Budget confidence is weak",
-      detail: `${currency.currency} still has uncategorized expense. Clean that up before trusting the month’s budget coverage.`,
-    };
-  }
-
   if (currency.unbudgetedExpenseTotal > 0) {
     return {
       tone: "info",
@@ -202,7 +194,7 @@ export function getBudgetConfidenceMessage(
   return {
     tone: "success",
     title: "Budget coverage is clean",
-    detail: `${currency.currency} has no uncategorized or unbudgeted expense weakening this month’s budget view.`,
+    detail: `${currency.currency} has no unbudgeted expense weakening this month’s budget view.`,
   };
 }
 

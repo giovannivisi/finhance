@@ -120,22 +120,6 @@ function getCurrencyWarnings(
     });
   }
 
-  if (currency.uncategorizedExpenseTotal > 0) {
-    warnings.push({
-      key: `${currency.currency}:uncategorized`,
-      title: "Uncategorized expenses need review",
-      detail: `${formatSensitiveCurrency(
-        currency.uncategorizedExpenseTotal,
-        currency.currency,
-        hidden,
-      )} still needs category cleanup before budget coverage is reliable.`,
-      actionHref: buildBudgetTransactionsLink({
-        month,
-      }),
-      actionLabel: "Open transactions",
-    });
-  }
-
   return warnings;
 }
 
@@ -514,579 +498,615 @@ export default function BudgetsPageClient({
 
                   return (
                     <>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-xl font-semibold text-[var(--text-primary)]">
-                        {currency.currency}
-                      </h3>
-                      {hasWarnings ? (
-                        <span className="status-chip is-warning">WARNING</span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                      {budgetView.month} budget coverage and uncovered expense.
-                    </p>
-                  </div>
-                  <div className="text-sm text-[var(--text-secondary)]">
-                    {currency.budgetedCategoryCount} budgeted categor
-                    {currency.budgetedCategoryCount === 1 ? "y" : "ies"}
-                  </div>
-                </div>
-
-                <div className="summary-grid is-loose mt-5 sm:grid-cols-2 xl:grid-cols-3">
-                  <SummaryCard
-                    label="Budgeted"
-                    value={formatSensitiveCurrency(
-                      currency.budgetTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Spent vs budget"
-                    value={formatSensitiveCurrency(
-                      currency.spentTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Remaining"
-                    value={formatSensitiveCurrency(
-                      currency.remainingTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Over budget"
-                    value={formatSensitiveCurrency(
-                      currency.overBudgetTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Unbudgeted"
-                    value={formatSensitiveCurrency(
-                      currency.unbudgetedExpenseTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Uncategorized"
-                    value={formatSensitiveCurrency(
-                      currency.uncategorizedExpenseTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                </div>
-
-                {currency.items.length === 0 ? (
-                  <p className="budget-empty-note">
-                    No budgeted categories in {currency.currency} for this month
-                    yet. Start with the categories already showing spend below
-                    or create a fresh plan in the editor.
-                  </p>
-                ) : (
-                  <div className="mt-6 list-stack is-loose">
-                    {groupRowsByPrimary(
-                      sortBudgetItemsForDisplay(currency.items),
-                      (item) => item.categoryName,
-                    ).map((group) => (
-                      <div key={group.key} className="section-stack-tight">
-                        <div className="flex items-center justify-between gap-3 px-1">
-                          <h4 className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
-                            {group.label}
-                          </h4>
-                          <span className="text-xs text-[var(--text-tertiary)]">
-                            {group.items.length} budget
-                            {group.items.length === 1 ? "" : "s"}
-                          </span>
-                        </div>
-
-                        <div className="subcard-stack is-loose">
-                          {group.items.map((item) => {
-                            const isBusy = busyBudgetId === item.budgetId;
-                            const hasCurrentOverride =
-                              item.override?.month === budgetView.month;
-
-                            return (
-                              <article
-                                key={item.budgetId}
-                                className={`list-card is-roomy ${
-                                  item.status === "OVER_BUDGET"
-                                    ? "surface-danger"
-                                    : item.status === "AT_LIMIT"
-                                      ? "surface-warning"
-                                      : ""
-                                }`}
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-5">
-                                  <div className="section-stack-tight budget-item-main">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <h5 className="text-lg font-semibold text-[var(--text-primary)]">
-                                        {item.secondaryCategoryName ??
-                                          item.categoryName}
-                                      </h5>
-                                      <span
-                                        className={`status-chip ${getBudgetStatusChipClass(item.status)}`}
-                                      >
-                                        {getBudgetStatusLabel(item.status)}
-                                      </span>
-                                      {hasCurrentOverride ? (
-                                        <span className="status-chip is-info">
-                                          Month override
-                                        </span>
-                                      ) : null}
-                                    </div>
-
-                                    <p className="text-sm text-[var(--text-secondary)]">
-                                      {formatSensitiveCurrency(
-                                        item.spentAmount,
-                                        item.currency,
-                                        shouldHideMoney,
-                                      )}{" "}
-                                      spent against{" "}
-                                      {formatSensitiveCurrency(
-                                        item.budgetAmount,
-                                        item.currency,
-                                        shouldHideMoney,
-                                      )}
-                                      .{" "}
-                                      {formatBudgetDelta(item, shouldHideMoney)}
-                                      .
-                                    </p>
-
-                                    <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-gray-100">
-                                      <div
-                                        className={`h-full ${
-                                          item.status === "OVER_BUDGET"
-                                            ? "bg-red-500"
-                                            : item.status === "AT_LIMIT"
-                                              ? "bg-amber-500"
-                                              : "bg-emerald-500"
-                                        }`}
-                                        style={{ width: progressWidth(item) }}
-                                      />
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-3 text-xs font-medium">
-                                      <span
-                                        className={
-                                          item.remainingAmount < 0
-                                            ? "text-[var(--color-expense)]"
-                                            : "text-[var(--text-secondary)]"
-                                        }
-                                      >
-                                        Variance{" "}
-                                        {formatBudgetDelta(
-                                          item,
-                                          shouldHideMoney,
-                                        )}
-                                      </span>
-                                      <span className="text-[var(--text-tertiary)]">
-                                        Status{" "}
-                                        {getBudgetStatusLabel(item.status)}
-                                      </span>
-                                    </div>
-
-                                    <div className="metric-strip is-relaxed budget-item-metrics">
-                                      <div className="detail-panel is-roomy">
-                                        <p className="detail-metric-label">
-                                          Prev month
-                                        </p>
-                                        <p className="detail-metric-value">
-                                          {item.previousMonthExpense === null
-                                            ? "No history"
-                                            : formatSensitiveCurrency(
-                                                item.previousMonthExpense,
-                                                item.currency,
-                                                shouldHideMoney,
-                                              )}
-                                        </p>
-                                      </div>
-                                      <div className="detail-panel is-roomy">
-                                        <p className="detail-metric-label">
-                                          Avg last 3 months
-                                        </p>
-                                        <p className="detail-metric-value">
-                                          {item.averageExpenseLast3Months ===
-                                          null
-                                            ? "No history"
-                                            : formatSensitiveCurrency(
-                                                item.averageExpenseLast3Months,
-                                                item.currency,
-                                                shouldHideMoney,
-                                              )}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div
-                                    className="budget-item-actions budget-item-action-menu"
-                                    data-budget-action-menu-id={item.budgetId}
-                                  >
-                                    <button
-                                      type="button"
-                                      aria-haspopup="menu"
-                                      aria-expanded={
-                                        openBudgetActionMenuId === item.budgetId
-                                      }
-                                      aria-controls={`budget-item-actions-${item.budgetId}`}
-                                      onClick={() =>
-                                        setOpenBudgetActionMenuId((current) =>
-                                          current === item.budgetId
-                                            ? null
-                                            : item.budgetId,
-                                        )
-                                      }
-                                      className="btn-secondary budget-item-action-trigger"
-                                    >
-                                      <MoreHorizontal
-                                        size={16}
-                                        aria-hidden="true"
-                                      />
-                                      <span>Options</span>
-                                    </button>
-
-                                    {openBudgetActionMenuId === item.budgetId ? (
-                                      <div
-                                        id={`budget-item-actions-${item.budgetId}`}
-                                        role="menu"
-                                        className={`budget-item-action-panel${
-                                          budgetActionMenuPlacement === "above"
-                                            ? " is-above"
-                                            : ""
-                                        }`}
-                                      >
-                                        <Link
-                                          href={buildBudgetTransactionsLink({
-                                            month: budgetView.month,
-                                            primaryCategoryId:
-                                              item.primaryCategoryId,
-                                            secondaryCategoryId:
-                                              item.secondaryCategoryId ??
-                                              item.categoryId,
-                                          })}
-                                          className="budget-item-action-link"
-                                          onClick={() =>
-                                            setOpenBudgetActionMenuId(null)
-                                          }
-                                        >
-                                          <span>Transactions</span>
-                                        </Link>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setOpenBudgetActionMenuId(null);
-                                            openEditPanel(item.budgetId);
-                                          }}
-                                          className="budget-item-action-link"
-                                        >
-                                          <span>Edit plan</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setOpenBudgetActionMenuId(null);
-                                            openOverridePanel(item.budgetId);
-                                          }}
-                                          className="budget-item-action-link"
-                                        >
-                                          <span>Override month</span>
-                                        </button>
-                                        {hasCurrentOverride ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setOpenBudgetActionMenuId(null);
-                                              void handleClearCurrentOverride(
-                                                item,
-                                              );
-                                            }}
-                                            disabled={isBusy}
-                                            className="budget-item-action-link disabled:cursor-not-allowed disabled:opacity-60"
-                                          >
-                                            <span>
-                                              {isBusy
-                                                ? "Clearing..."
-                                                : "Clear override"}
-                                            </span>
-                                          </button>
-                                        ) : null}
-                                        <div
-                                          className="budget-item-action-divider"
-                                          aria-hidden="true"
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setOpenBudgetActionMenuId(null);
-                                            void handleEndBudget(item.budgetId);
-                                          }}
-                                          disabled={isBusy}
-                                          className="budget-item-action-link is-danger disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                          <span>
-                                            {isBusy
-                                              ? "Ending..."
-                                              : "End from this month"}
-                                          </span>
-                                        </button>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              </article>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {hasWarnings ? (
-                  <section className="mt-6 section-stack-tight">
-                    <div className="compact-toolbar">
-                      <div>
-                        <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-                          Warnings to review
-                        </h4>
-                        <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                          {currencyWarnings.length} warning
-                          {currencyWarnings.length === 1 ? "" : "s"}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setOpenWarningsByCurrency((current) => ({
-                            ...current,
-                            [currency.currency]: !current[currency.currency],
-                          }))
-                        }
-                        className="btn-secondary"
-                      >
-                        {isWarningsOpen
-                          ? "Hide warnings"
-                          : `Show ${currencyWarnings.length} warning${
-                              currencyWarnings.length === 1 ? "" : "s"
-                            }`}
-                      </button>
-                    </div>
-
-                    {!isWarningsOpen ? (
-                      <p className="page-inline-notice surface-dashed surface-warning">
-                        {currencyWarnings.length} warning
-                        {currencyWarnings.length === 1 ? "" : "s"} hidden.
-                        Open this section only when you want to inspect the
-                        affected categories.
-                      </p>
-                    ) : (
-                      <div className="subcard-stack is-loose">
-                        {currencyWarnings.map((warning) => (
-                          <article
-                            key={warning.key}
-                            className="page-inline-notice surface-warning"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="font-medium">{warning.title}</p>
-                                <p className="mt-1">{warning.detail}</p>
-                              </div>
-                              {warning.actionHref && warning.actionLabel ? (
-                                <Link
-                                  href={warning.actionHref}
-                                  className="link-button is-warning"
-                                >
-                                  {warning.actionLabel}
-                                </Link>
-                              ) : null}
-                            </div>
-
-                            {warning.key.endsWith(":over-budget") &&
-                            currency.overBudgetHighlights.length > 0 ? (
-                              <div className="mt-4 subcard-stack is-loose">
-                                {currency.overBudgetHighlights
-                                  .slice(0, 3)
-                                  .map((item) => (
-                                    <div
-                                      key={item.budgetId}
-                                      className="detail-panel is-compact flex flex-wrap items-center justify-between gap-3"
-                                    >
-                                      <div className="section-stack-tight">
-                                        <p className="font-medium text-[var(--text-primary)]">
-                                          {item.secondaryCategoryName ??
-                                            item.categoryName}
-                                        </p>
-                                        <p className="text-xs text-[var(--text-secondary)]">
-                                          {formatSensitiveCurrency(
-                                            item.spentAmount,
-                                            item.currency,
-                                            shouldHideMoney,
-                                          )}{" "}
-                                          spent against{" "}
-                                          {formatSensitiveCurrency(
-                                            item.budgetAmount,
-                                            item.currency,
-                                            shouldHideMoney,
-                                          )}
-                                        </p>
-                                      </div>
-                                      <span className="status-chip is-danger">
-                                        Over by{" "}
-                                        {formatSensitiveCurrency(
-                                          Math.abs(item.remainingAmount),
-                                          item.currency,
-                                          shouldHideMoney,
-                                        )}
-                                      </span>
-                                    </div>
-                                  ))}
-                              </div>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-xl font-semibold text-[var(--text-primary)]">
+                              {currency.currency}
+                            </h3>
+                            {hasWarnings ? (
+                              <span className="status-chip is-warning">
+                                WARNING
+                              </span>
                             ) : null}
-                          </article>
-                        ))}
+                          </div>
+                          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                            {budgetView.month} budget coverage and uncovered
+                            expense.
+                          </p>
+                        </div>
+                        <div className="text-sm text-[var(--text-secondary)]">
+                          {currency.budgetedCategoryCount} budgeted categor
+                          {currency.budgetedCategoryCount === 1 ? "y" : "ies"}
+                        </div>
                       </div>
-                    )}
-                  </section>
-                ) : null}
 
-                {currency.unbudgetedCategories.length > 0 ? (
-                  <details className="analytics-filter-shell budget-coverage-shell">
-                    <summary className="analytics-filter-summary">
-                      <span className="analytics-filter-summary-copy">
-                        <span className="analytics-filter-summary-title">
-                          Budget coverage is incomplete
-                        </span>
-                        <span className="analytics-filter-summary-detail">
-                          These categories were used this month without a
-                          matching budget yet.
-                        </span>
-                      </span>
-                      <span className="analytics-filter-summary-meta">
-                        <span className="analytics-filter-summary-status">
-                          {formatSensitiveCurrency(
+                      <div className="summary-grid is-loose mt-5 sm:grid-cols-2 xl:grid-cols-3">
+                        <SummaryCard
+                          label="Budgeted"
+                          value={formatSensitiveCurrency(
+                            currency.budgetTotal,
+                            currency.currency,
+                            shouldHideMoney,
+                          )}
+                        />
+                        <SummaryCard
+                          label="Spent vs budget"
+                          value={formatSensitiveCurrency(
+                            currency.spentTotal,
+                            currency.currency,
+                            shouldHideMoney,
+                          )}
+                        />
+                        <SummaryCard
+                          label="Remaining"
+                          value={formatSensitiveCurrency(
+                            currency.remainingTotal,
+                            currency.currency,
+                            shouldHideMoney,
+                          )}
+                        />
+                        <SummaryCard
+                          label="Over budget"
+                          value={formatSensitiveCurrency(
+                            currency.overBudgetTotal,
+                            currency.currency,
+                            shouldHideMoney,
+                          )}
+                        />
+                        <SummaryCard
+                          label="Unbudgeted"
+                          value={formatSensitiveCurrency(
                             currency.unbudgetedExpenseTotal,
                             currency.currency,
                             shouldHideMoney,
-                          )}{" "}
-                          · {uncoveredCategoryCount} categor
-                          {uncoveredCategoryCount === 1 ? "y" : "ies"}
-                        </span>
-                        <span
-                          className="analytics-filter-summary-chevron"
-                          aria-hidden="true"
+                          )}
                         />
-                      </span>
-                    </summary>
+                      </div>
 
-                    <div className="budget-coverage-details">
-                      {groupRowsByPrimary(
-                        currency.unbudgetedCategories,
-                        (item) => item.categoryName,
-                      ).map((group) => (
-                        <div
-                          key={group.key}
-                          className="section-stack-tight budget-coverage-group"
-                        >
-                          <h5 className="budget-coverage-group-title">
-                            {group.label}
-                          </h5>
+                      {currency.items.length === 0 ? (
+                        <p className="budget-empty-note">
+                          No budgeted categories in {currency.currency} for this
+                          month yet. Start with the categories already showing
+                          spend below or create a fresh plan in the editor.
+                        </p>
+                      ) : (
+                        <div className="mt-6 list-stack is-loose">
+                          {groupRowsByPrimary(
+                            sortBudgetItemsForDisplay(currency.items),
+                            (item) => item.categoryName,
+                          ).map((group) => (
+                            <div
+                              key={group.key}
+                              className="section-stack-tight"
+                            >
+                              <div className="flex items-center justify-between gap-3 px-1">
+                                <h4 className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                                  {group.label}
+                                </h4>
+                                <span className="text-xs text-[var(--text-tertiary)]">
+                                  {group.items.length} budget
+                                  {group.items.length === 1 ? "" : "s"}
+                                </span>
+                              </div>
 
-                          <div className="budget-coverage-entry-list">
-                            {group.items.map((item) => (
-                              <div
-                                key={item.categoryId}
-                                className="budget-coverage-entry"
-                              >
-                                <div className="budget-coverage-entry-main">
-                                  <div className="budget-coverage-entry-head">
-                                    <p className="budget-coverage-entry-name">
-                                      {item.secondaryCategoryName ??
-                                        item.categoryName}
-                                    </p>
-                                    <span className="status-chip is-info">
-                                      {formatSensitiveCurrency(
-                                        item.spentAmount,
-                                        item.currency,
-                                        shouldHideMoney,
-                                      )}
-                                    </span>
-                                    <div className="budget-coverage-entry-actions">
-                                      <Link
-                                        href={buildBudgetTransactionsLink({
-                                          month: budgetView.month,
-                                          primaryCategoryId:
-                                            item.primaryCategoryId,
-                                          secondaryCategoryId:
-                                            item.secondaryCategoryId ??
-                                            item.categoryId,
-                                        })}
-                                        className="link-button"
-                                      >
-                                        Transactions
-                                      </Link>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          openCreatePanel(
-                                            item.categoryId,
-                                            item.currency,
-                                            getBudgetCreatePanelContext({
-                                              categoryId: item.categoryId,
-                                              currency: item.currency,
-                                              previousMonthExpense:
-                                                item.previousMonthExpense,
-                                              averageExpenseLast3Months:
-                                                item.averageExpenseLast3Months,
-                                            }),
-                                          )
-                                        }
-                                        className="link-button"
-                                      >
-                                        Create budget
-                                      </button>
+                              <div className="subcard-stack is-loose">
+                                {group.items.map((item) => {
+                                  const isBusy = busyBudgetId === item.budgetId;
+                                  const hasCurrentOverride =
+                                    item.override?.month === budgetView.month;
+
+                                  return (
+                                    <article
+                                      key={item.budgetId}
+                                      className={`list-card is-roomy ${
+                                        item.status === "OVER_BUDGET"
+                                          ? "surface-danger"
+                                          : item.status === "AT_LIMIT"
+                                            ? "surface-warning"
+                                            : ""
+                                      }`}
+                                    >
+                                      <div className="flex flex-wrap items-start justify-between gap-5">
+                                        <div className="section-stack-tight budget-item-main">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <h5 className="text-lg font-semibold text-[var(--text-primary)]">
+                                              {item.secondaryCategoryName ??
+                                                item.categoryName}
+                                            </h5>
+                                            <span
+                                              className={`status-chip ${getBudgetStatusChipClass(item.status)}`}
+                                            >
+                                              {getBudgetStatusLabel(
+                                                item.status,
+                                              )}
+                                            </span>
+                                            {hasCurrentOverride ? (
+                                              <span className="status-chip is-info">
+                                                Month override
+                                              </span>
+                                            ) : null}
+                                          </div>
+
+                                          <p className="text-sm text-[var(--text-secondary)]">
+                                            {formatSensitiveCurrency(
+                                              item.spentAmount,
+                                              item.currency,
+                                              shouldHideMoney,
+                                            )}{" "}
+                                            spent against{" "}
+                                            {formatSensitiveCurrency(
+                                              item.budgetAmount,
+                                              item.currency,
+                                              shouldHideMoney,
+                                            )}
+                                            .{" "}
+                                            {formatBudgetDelta(
+                                              item,
+                                              shouldHideMoney,
+                                            )}
+                                            .
+                                          </p>
+
+                                          <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-gray-100">
+                                            <div
+                                              className={`h-full ${
+                                                item.status === "OVER_BUDGET"
+                                                  ? "bg-red-500"
+                                                  : item.status === "AT_LIMIT"
+                                                    ? "bg-amber-500"
+                                                    : "bg-emerald-500"
+                                              }`}
+                                              style={{
+                                                width: progressWidth(item),
+                                              }}
+                                            />
+                                          </div>
+
+                                          <div className="flex flex-wrap gap-3 text-xs font-medium">
+                                            <span
+                                              className={
+                                                item.remainingAmount < 0
+                                                  ? "text-[var(--color-expense)]"
+                                                  : "text-[var(--text-secondary)]"
+                                              }
+                                            >
+                                              Variance{" "}
+                                              {formatBudgetDelta(
+                                                item,
+                                                shouldHideMoney,
+                                              )}
+                                            </span>
+                                            <span className="text-[var(--text-tertiary)]">
+                                              Status{" "}
+                                              {getBudgetStatusLabel(
+                                                item.status,
+                                              )}
+                                            </span>
+                                          </div>
+
+                                          <div className="metric-strip is-relaxed budget-item-metrics">
+                                            <div className="detail-panel is-roomy">
+                                              <p className="detail-metric-label">
+                                                Prev month
+                                              </p>
+                                              <p className="detail-metric-value">
+                                                {item.previousMonthExpense ===
+                                                null
+                                                  ? "No history"
+                                                  : formatSensitiveCurrency(
+                                                      item.previousMonthExpense,
+                                                      item.currency,
+                                                      shouldHideMoney,
+                                                    )}
+                                              </p>
+                                            </div>
+                                            <div className="detail-panel is-roomy">
+                                              <p className="detail-metric-label">
+                                                Avg last 3 months
+                                              </p>
+                                              <p className="detail-metric-value">
+                                                {item.averageExpenseLast3Months ===
+                                                null
+                                                  ? "No history"
+                                                  : formatSensitiveCurrency(
+                                                      item.averageExpenseLast3Months,
+                                                      item.currency,
+                                                      shouldHideMoney,
+                                                    )}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div
+                                          className="budget-item-actions budget-item-action-menu"
+                                          data-budget-action-menu-id={
+                                            item.budgetId
+                                          }
+                                        >
+                                          <button
+                                            type="button"
+                                            aria-haspopup="menu"
+                                            aria-expanded={
+                                              openBudgetActionMenuId ===
+                                              item.budgetId
+                                            }
+                                            aria-controls={`budget-item-actions-${item.budgetId}`}
+                                            onClick={() =>
+                                              setOpenBudgetActionMenuId(
+                                                (current) =>
+                                                  current === item.budgetId
+                                                    ? null
+                                                    : item.budgetId,
+                                              )
+                                            }
+                                            className="btn-secondary budget-item-action-trigger"
+                                          >
+                                            <MoreHorizontal
+                                              size={16}
+                                              aria-hidden="true"
+                                            />
+                                            <span>Options</span>
+                                          </button>
+
+                                          {openBudgetActionMenuId ===
+                                          item.budgetId ? (
+                                            <div
+                                              id={`budget-item-actions-${item.budgetId}`}
+                                              role="menu"
+                                              className={`budget-item-action-panel${
+                                                budgetActionMenuPlacement ===
+                                                "above"
+                                                  ? " is-above"
+                                                  : ""
+                                              }`}
+                                            >
+                                              <Link
+                                                href={buildBudgetTransactionsLink(
+                                                  {
+                                                    month: budgetView.month,
+                                                    primaryCategoryId:
+                                                      item.primaryCategoryId,
+                                                    secondaryCategoryId:
+                                                      item.secondaryCategoryId ??
+                                                      item.categoryId,
+                                                  },
+                                                )}
+                                                className="budget-item-action-link"
+                                                onClick={() =>
+                                                  setOpenBudgetActionMenuId(
+                                                    null,
+                                                  )
+                                                }
+                                              >
+                                                <span>Transactions</span>
+                                              </Link>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenBudgetActionMenuId(
+                                                    null,
+                                                  );
+                                                  openEditPanel(item.budgetId);
+                                                }}
+                                                className="budget-item-action-link"
+                                              >
+                                                <span>Edit plan</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenBudgetActionMenuId(
+                                                    null,
+                                                  );
+                                                  openOverridePanel(
+                                                    item.budgetId,
+                                                  );
+                                                }}
+                                                className="budget-item-action-link"
+                                              >
+                                                <span>Override month</span>
+                                              </button>
+                                              {hasCurrentOverride ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setOpenBudgetActionMenuId(
+                                                      null,
+                                                    );
+                                                    void handleClearCurrentOverride(
+                                                      item,
+                                                    );
+                                                  }}
+                                                  disabled={isBusy}
+                                                  className="budget-item-action-link disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                  <span>
+                                                    {isBusy
+                                                      ? "Clearing..."
+                                                      : "Clear override"}
+                                                  </span>
+                                                </button>
+                                              ) : null}
+                                              <div
+                                                className="budget-item-action-divider"
+                                                aria-hidden="true"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenBudgetActionMenuId(
+                                                    null,
+                                                  );
+                                                  void handleEndBudget(
+                                                    item.budgetId,
+                                                  );
+                                                }}
+                                                disabled={isBusy}
+                                                className="budget-item-action-link is-danger disabled:cursor-not-allowed disabled:opacity-60"
+                                              >
+                                                <span>
+                                                  {isBusy
+                                                    ? "Ending..."
+                                                    : "End from this month"}
+                                                </span>
+                                              </button>
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {hasWarnings ? (
+                        <section className="mt-6 section-stack-tight">
+                          <div className="compact-toolbar">
+                            <div>
+                              <h4 className="text-sm font-semibold text-[var(--text-primary)]">
+                                Warnings to review
+                              </h4>
+                              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                                {currencyWarnings.length} warning
+                                {currencyWarnings.length === 1 ? "" : "s"}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenWarningsByCurrency((current) => ({
+                                  ...current,
+                                  [currency.currency]:
+                                    !current[currency.currency],
+                                }))
+                              }
+                              className="btn-secondary"
+                            >
+                              {isWarningsOpen
+                                ? "Hide warnings"
+                                : `Show ${currencyWarnings.length} warning${
+                                    currencyWarnings.length === 1 ? "" : "s"
+                                  }`}
+                            </button>
+                          </div>
+
+                          {!isWarningsOpen ? (
+                            <p className="page-inline-notice surface-dashed surface-warning">
+                              {currencyWarnings.length} warning
+                              {currencyWarnings.length === 1 ? "" : "s"} hidden.
+                              Open this section only when you want to inspect
+                              the affected categories.
+                            </p>
+                          ) : (
+                            <div className="subcard-stack is-loose">
+                              {currencyWarnings.map((warning) => (
+                                <article
+                                  key={warning.key}
+                                  className="page-inline-notice surface-warning"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <p className="font-medium">
+                                        {warning.title}
+                                      </p>
+                                      <p className="mt-1">{warning.detail}</p>
                                     </div>
+                                    {warning.actionHref &&
+                                    warning.actionLabel ? (
+                                      <Link
+                                        href={warning.actionHref}
+                                        className="link-button is-warning"
+                                      >
+                                        {warning.actionLabel}
+                                      </Link>
+                                    ) : null}
                                   </div>
-                                  <div className="budget-coverage-entry-history">
-                                    <span>
-                                      <strong>Prev</strong>{" "}
-                                      {item.previousMonthExpense === null
-                                        ? "No history"
-                                        : formatSensitiveCurrency(
-                                            item.previousMonthExpense,
-                                            item.currency,
-                                            shouldHideMoney,
-                                          )}
-                                    </span>
-                                    <span>
-                                      <strong>3m avg</strong>{" "}
-                                      {item.averageExpenseLast3Months === null
-                                        ? "No history"
-                                        : formatSensitiveCurrency(
-                                            item.averageExpenseLast3Months,
-                                            item.currency,
-                                            shouldHideMoney,
-                                      )}
-                                    </span>
-                                  </div>
+
+                                  {warning.key.endsWith(":over-budget") &&
+                                  currency.overBudgetHighlights.length > 0 ? (
+                                    <div className="mt-4 subcard-stack is-loose">
+                                      {currency.overBudgetHighlights
+                                        .slice(0, 3)
+                                        .map((item) => (
+                                          <div
+                                            key={item.budgetId}
+                                            className="detail-panel is-compact flex flex-wrap items-center justify-between gap-3"
+                                          >
+                                            <div className="section-stack-tight">
+                                              <p className="font-medium text-[var(--text-primary)]">
+                                                {item.secondaryCategoryName ??
+                                                  item.categoryName}
+                                              </p>
+                                              <p className="text-xs text-[var(--text-secondary)]">
+                                                {formatSensitiveCurrency(
+                                                  item.spentAmount,
+                                                  item.currency,
+                                                  shouldHideMoney,
+                                                )}{" "}
+                                                spent against{" "}
+                                                {formatSensitiveCurrency(
+                                                  item.budgetAmount,
+                                                  item.currency,
+                                                  shouldHideMoney,
+                                                )}
+                                              </p>
+                                            </div>
+                                            <span className="status-chip is-danger">
+                                              Over by{" "}
+                                              {formatSensitiveCurrency(
+                                                Math.abs(item.remainingAmount),
+                                                item.currency,
+                                                shouldHideMoney,
+                                              )}
+                                            </span>
+                                          </div>
+                                        ))}
+                                    </div>
+                                  ) : null}
+                                </article>
+                              ))}
+                            </div>
+                          )}
+                        </section>
+                      ) : null}
+
+                      {currency.unbudgetedCategories.length > 0 ? (
+                        <details className="analytics-filter-shell budget-coverage-shell">
+                          <summary className="analytics-filter-summary">
+                            <span className="analytics-filter-summary-copy">
+                              <span className="analytics-filter-summary-title">
+                                Budget coverage is incomplete
+                              </span>
+                              <span className="analytics-filter-summary-detail">
+                                These categories were used this month without a
+                                matching budget yet.
+                              </span>
+                            </span>
+                            <span className="analytics-filter-summary-meta">
+                              <span className="analytics-filter-summary-status">
+                                {formatSensitiveCurrency(
+                                  currency.unbudgetedExpenseTotal,
+                                  currency.currency,
+                                  shouldHideMoney,
+                                )}{" "}
+                                · {uncoveredCategoryCount} categor
+                                {uncoveredCategoryCount === 1 ? "y" : "ies"}
+                              </span>
+                              <span
+                                className="analytics-filter-summary-chevron"
+                                aria-hidden="true"
+                              />
+                            </span>
+                          </summary>
+
+                          <div className="budget-coverage-details">
+                            {groupRowsByPrimary(
+                              currency.unbudgetedCategories,
+                              (item) => item.categoryName,
+                            ).map((group) => (
+                              <div
+                                key={group.key}
+                                className="section-stack-tight budget-coverage-group"
+                              >
+                                <h5 className="budget-coverage-group-title">
+                                  {group.label}
+                                </h5>
+
+                                <div className="budget-coverage-entry-list">
+                                  {group.items.map((item) => (
+                                    <div
+                                      key={item.categoryId}
+                                      className="budget-coverage-entry"
+                                    >
+                                      <div className="budget-coverage-entry-main">
+                                        <div className="budget-coverage-entry-head">
+                                          <p className="budget-coverage-entry-name">
+                                            {item.secondaryCategoryName ??
+                                              item.categoryName}
+                                          </p>
+                                          <span className="status-chip is-info">
+                                            {formatSensitiveCurrency(
+                                              item.spentAmount,
+                                              item.currency,
+                                              shouldHideMoney,
+                                            )}
+                                          </span>
+                                          <div className="budget-coverage-entry-actions">
+                                            <Link
+                                              href={buildBudgetTransactionsLink(
+                                                {
+                                                  month: budgetView.month,
+                                                  primaryCategoryId:
+                                                    item.primaryCategoryId,
+                                                  secondaryCategoryId:
+                                                    item.secondaryCategoryId ??
+                                                    item.categoryId,
+                                                },
+                                              )}
+                                              className="link-button"
+                                            >
+                                              Transactions
+                                            </Link>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                openCreatePanel(
+                                                  item.categoryId,
+                                                  item.currency,
+                                                  getBudgetCreatePanelContext({
+                                                    categoryId: item.categoryId,
+                                                    currency: item.currency,
+                                                    previousMonthExpense:
+                                                      item.previousMonthExpense,
+                                                    averageExpenseLast3Months:
+                                                      item.averageExpenseLast3Months,
+                                                  }),
+                                                )
+                                              }
+                                              className="link-button"
+                                            >
+                                              Create budget
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="budget-coverage-entry-history">
+                                          <span>
+                                            <strong>Prev</strong>{" "}
+                                            {item.previousMonthExpense === null
+                                              ? "No history"
+                                              : formatSensitiveCurrency(
+                                                  item.previousMonthExpense,
+                                                  item.currency,
+                                                  shouldHideMoney,
+                                                )}
+                                          </span>
+                                          <span>
+                                            <strong>3m avg</strong>{" "}
+                                            {item.averageExpenseLast3Months ===
+                                            null
+                                              ? "No history"
+                                              : formatSensitiveCurrency(
+                                                  item.averageExpenseLast3Months,
+                                                  item.currency,
+                                                  shouldHideMoney,
+                                                )}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             ))}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                ) : null}
-
+                        </details>
+                      ) : null}
                     </>
                   );
                 })()}

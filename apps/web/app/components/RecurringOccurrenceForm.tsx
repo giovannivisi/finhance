@@ -345,7 +345,7 @@ export default function RecurringOccurrenceForm({
                 handleExpensePrimaryChange(event.target.value)
               }
             >
-              <option value="">No primary</option>
+              <option value="">Select primary…</option>
               {visibleExpensePrimaries.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -365,7 +365,7 @@ export default function RecurringOccurrenceForm({
                 handleExpenseSecondaryChange(event.target.value)
               }
             >
-              <option value="">Uncategorized</option>
+              <option value="">Select secondary…</option>
               {visibleExpenseSecondaries.map((category) => (
                 <option key={category.id} value={category.id}>
                   {formatCategoryOptionLabel(category)}
@@ -378,16 +378,15 @@ export default function RecurringOccurrenceForm({
 
       {!isTransfer && !isAdjustment && isIncome ? (
         <div className="app-form-field">
-          <label htmlFor={`${fieldPrefix}-category`} className="is-optional">
+          <label htmlFor={`${fieldPrefix}-category`}>
             <span>Category</span>
-            <span>Optional</span>
           </label>
           <select
             id={`${fieldPrefix}-category`}
             value={form.categoryId}
             onChange={(event) => updateField("categoryId", event.target.value)}
           >
-            <option value="">Uncategorized</option>
+            <option value="">Select category…</option>
             {visibleIncomeCategories.map((category) => (
               <option key={category.id} value={category.id}>
                 {formatCategoryOptionLabel(category)}
