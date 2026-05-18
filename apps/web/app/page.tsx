@@ -182,12 +182,6 @@ export default async function Home() {
           assetKindOrder={dashboard.assetKindOrder}
         />
 
-        <WorkflowSection
-          title="Use the current month"
-          description="Move from today’s summary into the month-level workflow: explain it, compare it with plan, and place it in trend context."
-          cards={workflowCards}
-        />
-
         {budgetView ? (
           <section className="glass-card home-budget-section">
             <div className="home-section-header">
@@ -295,6 +289,12 @@ export default async function Home() {
             )}
           </section>
         ) : null}
+
+        <WorkflowSection
+          title="Use the current month"
+          description="Move from today’s summary into the month-level workflow: explain it, compare it with plan, and place it in trend context."
+          cards={workflowCards}
+        />
       </Container>
     </>
   );

@@ -315,21 +315,20 @@ export class AssetsService {
     );
 
     if (prepared.type === AssetType.ASSET && this.isMarketKind(prepared.kind)) {
-      const duplicate = await this.prisma.asset.findUnique({
+      const duplicate = await this.prisma.asset.findFirst({
         where: {
-          userId_type_kind_ticker_exchange: {
-            userId: ownerId,
-            type: AssetType.ASSET,
-            kind: prepared.kind,
-            ticker: prepared.ticker!,
-            exchange: prepared.exchange!,
-          },
+          userId: ownerId,
+          type: AssetType.ASSET,
+          kind: prepared.kind,
+          ticker: prepared.ticker!,
+          exchange: prepared.exchange!,
+          accountId: prepared.accountId,
         },
       });
 
       if (duplicate && duplicate.id !== id) {
         throw new ConflictException(
-          `A position for ${prepared.ticker}${prepared.exchange ?? ''} already exists.`,
+          `A position for ${prepared.ticker}${prepared.exchange ?? ''} already exists in this account.`,
         );
       }
     }
@@ -398,15 +397,14 @@ export class AssetsService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          const existing = await tx.asset.findUnique({
+          const existing = await tx.asset.findFirst({
             where: {
-              userId_type_kind_ticker_exchange: {
-                userId: prepared.userId,
-                type: AssetType.ASSET,
-                kind: prepared.kind!,
-                ticker: prepared.ticker!,
-                exchange: prepared.exchange!,
-              },
+              userId: prepared.userId,
+              type: AssetType.ASSET,
+              kind: prepared.kind!,
+              ticker: prepared.ticker!,
+              exchange: prepared.exchange!,
+              accountId: prepared.accountId,
             },
           });
 

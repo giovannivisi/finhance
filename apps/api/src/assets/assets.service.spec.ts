@@ -5,13 +5,12 @@ import { AssetKind, AssetType, Prisma } from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 type MarketPositionWhere = {
-  userId_type_kind_ticker_exchange: {
-    userId: string;
-    type: AssetType;
-    kind: AssetKind;
-    ticker: string;
-    exchange: string;
-  };
+  userId: string;
+  type: AssetType;
+  kind: AssetKind;
+  ticker: string;
+  exchange: string;
+  accountId: string | null | undefined;
 };
 
 type AssetUpdateCall = {
@@ -169,7 +168,7 @@ describe('AssetsService', () => {
       balance: new Prisma.Decimal('54.75'),
     });
     const transactionAsset = {
-      findUnique: jest.fn().mockResolvedValue(existing),
+      findFirst: jest.fn().mockResolvedValue(existing),
       create: jest.fn(),
       update: jest.fn().mockResolvedValue(updated),
     };
@@ -198,16 +197,14 @@ describe('AssetsService', () => {
       currency: 'usd',
     });
 
-    const findUniqueArgs = firstCallArg<{
+    const findFirstArgs = firstCallArg<{
       where: MarketPositionWhere;
-    }>(transactionAsset.findUnique);
-    expect(findUniqueArgs.where.userId_type_kind_ticker_exchange).toMatchObject(
-      {
-        userId: OWNER_ID,
-        ticker: 'AAPL',
-        exchange: '',
-      },
-    );
+    }>(transactionAsset.findFirst);
+    expect(findFirstArgs.where).toMatchObject({
+      userId: OWNER_ID,
+      ticker: 'AAPL',
+      exchange: '',
+    });
 
     const updateCall = firstCallArg<AssetUpdateCall>(transactionAsset.update);
     expect(updateCall.data.quantity.toString()).toBe('4.5');
@@ -471,10 +468,9 @@ describe('AssetsService', () => {
   });
 
   it('rejects updates that would collide with another position in the same owner scope', async () => {
-    prisma.asset.findFirst.mockResolvedValueOnce(createAsset());
-    prisma.asset.findUnique.mockResolvedValueOnce(
-      createAsset({ id: 'asset-2' }),
-    );
+    prisma.asset.findFirst
+      .mockResolvedValueOnce(createAsset())
+      .mockResolvedValueOnce(createAsset({ id: 'asset-2' }));
 
     await expect(
       service.update(OWNER_ID, 'asset-1', {
@@ -489,16 +485,14 @@ describe('AssetsService', () => {
       }),
     ).rejects.toBeInstanceOf(ConflictException);
 
-    expect(prisma.asset.findUnique).toHaveBeenCalledWith({
-      where: {
-        userId_type_kind_ticker_exchange: {
-          userId: OWNER_ID,
-          type: AssetType.ASSET,
-          kind: AssetKind.STOCK,
-          ticker: 'AAPL',
-          exchange: '',
-        },
-      },
+    expect(prisma.asset.findFirst).toHaveBeenNthCalledWith(2, {
+      where: expect.objectContaining({
+        userId: OWNER_ID,
+        type: AssetType.ASSET,
+        kind: AssetKind.STOCK,
+        ticker: 'AAPL',
+        exchange: '',
+      }) as unknown,
     });
   });
 });

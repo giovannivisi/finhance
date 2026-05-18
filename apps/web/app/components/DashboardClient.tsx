@@ -101,7 +101,7 @@ function SortableKindBlock({
     <div
       ref={setNodeRef}
       style={style}
-      className={`category-block${isEditing && !isDragging ? " is-trembling" : ""}`}
+      className={`glass-card category-block${isEditing && !isDragging ? " is-trembling" : ""}`}
       {...(isEditing ? { ...attributes, ...listeners } : {})}
     >
       {children}
@@ -162,7 +162,7 @@ function SortableAssetRow({
       <li
         ref={setNodeRef}
         style={style}
-        className={`glass-card asset-row${isEditing && !isDragging ? " is-trembling" : ""}`}
+        className={`asset-row${isEditing && !isDragging ? " is-trembling" : ""}`}
         {...(isEditing ? { ...attributes, ...listeners } : {})}
       >
         <div className="asset-row-info">
@@ -228,7 +228,7 @@ function SortableAssetRow({
     <li
       ref={setNodeRef}
       style={style}
-      className={`glass-card asset-row${isEditing ? " is-trembling" : ""}`}
+      className={`asset-row${isEditing ? " is-trembling" : ""}`}
       {...(isEditing ? { ...attributes, ...listeners } : {})}
     >
       <div className="asset-row-info">
@@ -314,6 +314,7 @@ export default function DashboardClient({
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
+  const [lastDataRefreshMs, setLastDataRefreshMs] = useState(Date.now());
   const [isEditing, setIsEditing] = useState(false);
   const actions = useSingleFlightActions<"refresh">();
   const {
@@ -366,6 +367,10 @@ export default function DashboardClient({
       return next;
     });
   }, [grouped, allCategories]);
+
+  useEffect(() => {
+    setLastDataRefreshMs(Date.now());
+  }, [grouped]);
 
   const sortedAssetCategories = useMemo(
     () =>
@@ -554,7 +559,10 @@ export default function DashboardClient({
         ? "Quote snapshot available"
         : `Last refresh ${Math.max(
             0,
-            Math.floor((nowMs - Date.parse(lastRefreshAt)) / 60_000),
+            Math.floor(
+              (nowMs - Math.max(Date.parse(lastRefreshAt), lastDataRefreshMs)) /
+                60_000,
+            ),
           )} min ago`;
 
   const refreshToneClass =

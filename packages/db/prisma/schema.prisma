@@ -97,7 +97,7 @@ model Asset {
   user          User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   account       Account?       @relation(fields: [accountId, userId], references: [id, userId])
 
-  @@unique([userId, type, kind, ticker, exchange])
+  @@unique([userId, type, kind, ticker, exchange, accountId])
   @@unique([userId, importSource, importKey])
   @@index([userId])
   @@index([userId, accountId])
