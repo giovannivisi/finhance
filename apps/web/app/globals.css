@@ -3360,6 +3360,14 @@ textarea,
   color: var(--text-secondary);
 }
 
+.brokerage-position-value-sub.is-positive {
+  color: var(--color-income);
+}
+
+.brokerage-position-value-sub.is-negative {
+  color: var(--color-expense);
+}
+
 .brokerage-position-metrics {
   width: 100%;
 }
@@ -3390,12 +3398,12 @@ textarea,
 
 .brokerage-target-editor-shell {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
 .brokerage-target-toolbar {
-  align-items: center;
-  gap: 14px 18px;
+  align-items: flex-start;
+  gap: 10px 16px;
 }
 
 .brokerage-target-toolbar-meta {
@@ -3473,8 +3481,16 @@ textarea,
 }
 
 .brokerage-target-toggle-option.is-active {
-  background: color-mix(in srgb, var(--color-primary) 18%, var(--bg-card));
   color: var(--text-primary);
+}
+
+.brokerage-target-toggle-option.is-on.is-active {
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--bg-card));
+}
+
+.brokerage-target-toggle-option.is-off.is-active {
+  background: color-mix(in srgb, #ffffff 8%, var(--bg-card));
+  color: var(--text-secondary);
 }
 
 .brokerage-target-toggle-option:focus-visible {
@@ -3554,6 +3570,20 @@ textarea,
 
 .brokerage-target-help-panel .font-semibold {
   color: var(--text-primary);
+}
+
+.brokerage-reconciliation-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 18px;
+}
+
+.brokerage-reconciliation-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .brokerage-target-editor-total {
@@ -3642,6 +3672,10 @@ textarea,
   .brokerage-target-editor-controls {
     justify-content: flex-start;
     margin-left: 0;
+  }
+
+  .brokerage-reconciliation-alert {
+    align-items: flex-start;
   }
 
   .brokerage-target-percent-field {

@@ -16,7 +16,13 @@ import type {
   PortfolioAllocationSnapshotItemResponse,
 } from "@finhance/shared";
 
-type OperationModalKind = "BUY" | "SELL" | "DIVIDEND" | "FEE" | "TARGETS" | null;
+type OperationModalKind =
+  | "BUY"
+  | "SELL"
+  | "DIVIDEND"
+  | "FEE"
+  | "TARGETS"
+  | null;
 type TargetTab = "assetClasses" | "securities";
 
 type BuyFormState = {
@@ -72,7 +78,9 @@ function createCurrentDateTimeValue() {
     .slice(0, 16);
 }
 
-function createEmptyBuyForm(workspace: BrokerageWorkspaceResponse): BuyFormState {
+function createEmptyBuyForm(
+  workspace: BrokerageWorkspaceResponse,
+): BuyFormState {
   return {
     assetId: "",
     name: "",
@@ -122,7 +130,9 @@ function createTargetRows(
     exchange: row.exchange,
     enabled: row.targetPercent != null,
     targetPercent:
-      row.targetPercent == null ? "" : String(Number(row.targetPercent.toFixed(4))),
+      row.targetPercent == null
+        ? ""
+        : String(Number(row.targetPercent.toFixed(4))),
   }));
 }
 
@@ -174,12 +184,14 @@ export default function BrokeragePageClient({
   const [dividendForm, setDividendForm] = useState<CashFormState>(() =>
     createEmptyCashForm(),
   );
-  const [feeForm, setFeeForm] = useState<CashFormState>(() => createEmptyCashForm());
-  const [assetKindTargets, setAssetKindTargets] = useState<EditableTargetRow[]>(() =>
-    createTargetRows(workspace.allocation.assetKindTargets),
+  const [feeForm, setFeeForm] = useState<CashFormState>(() =>
+    createEmptyCashForm(),
   );
-  const [securityTargets, setSecurityTargets] = useState<EditableTargetRow[]>(() =>
-    createTargetRows(workspace.allocation.securityTargets),
+  const [assetKindTargets, setAssetKindTargets] = useState<EditableTargetRow[]>(
+    () => createTargetRows(workspace.allocation.assetKindTargets),
+  );
+  const [securityTargets, setSecurityTargets] = useState<EditableTargetRow[]>(
+    () => createTargetRows(workspace.allocation.securityTargets),
   );
   const [showTargetHelp, setShowTargetHelp] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -207,8 +219,9 @@ export default function BrokeragePageClient({
   );
   const selectedSellPosition = useMemo(
     () =>
-      workspace.positions.find((position) => position.assetId === sellForm.assetId) ??
-      null,
+      workspace.positions.find(
+        (position) => position.assetId === sellForm.assetId,
+      ) ?? null,
     [sellForm.assetId, workspace.positions],
   );
   const buyGross = useMemo(() => {
@@ -229,6 +242,9 @@ export default function BrokeragePageClient({
   const activeTargetRows =
     targetTab === "assetClasses" ? assetKindTargets : securityTargets;
   const activeTargetTotal = getTargetTotal(activeTargetRows);
+  const hasCashMismatch =
+    workspace.cashReconciliation != null &&
+    workspace.cashReconciliation.status !== "CLEAN";
 
   function resetOperationState(nextModal: OperationModalKind) {
     setFormError(null);
@@ -245,8 +261,12 @@ export default function BrokeragePageClient({
       setFeeForm(createEmptyCashForm());
     }
     if (nextModal === "TARGETS") {
-      setAssetKindTargets(createTargetRows(workspace.allocation.assetKindTargets));
-      setSecurityTargets(createTargetRows(workspace.allocation.securityTargets));
+      setAssetKindTargets(
+        createTargetRows(workspace.allocation.assetKindTargets),
+      );
+      setSecurityTargets(
+        createTargetRows(workspace.allocation.securityTargets),
+      );
       setTargetTab("assetClasses");
       setShowTargetHelp(false);
     }
@@ -296,7 +316,9 @@ export default function BrokeragePageClient({
       setOpenModal(null);
       router.refresh();
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Unable to record this buy.");
+      setFormError(
+        error instanceof Error ? error.message : "Unable to record this buy.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -340,7 +362,9 @@ export default function BrokeragePageClient({
       setOpenModal(null);
       router.refresh();
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Unable to record this sale.");
+      setFormError(
+        error instanceof Error ? error.message : "Unable to record this sale.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -364,16 +388,19 @@ export default function BrokeragePageClient({
     setFormError(null);
 
     try {
-      await apiMutation(`/brokerage/${brokerageAccountId}/${kind.toLowerCase()}`, {
-        method: "POST",
-        body: JSON.stringify({
-          assetId: form.assetId || null,
-          amount,
-          categoryId: form.categoryId,
-          postedAt: new Date(form.postedAt).toISOString(),
-          notes: form.notes || null,
-        }),
-      });
+      await apiMutation(
+        `/brokerage/${brokerageAccountId}/${kind.toLowerCase()}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            assetId: form.assetId || null,
+            amount,
+            categoryId: form.categoryId,
+            postedAt: new Date(form.postedAt).toISOString(),
+            notes: form.notes || null,
+          }),
+        },
+      );
       setOpenModal(null);
       router.refresh();
     } catch (error) {
@@ -439,7 +466,9 @@ export default function BrokeragePageClient({
       setOpenModal(null);
       router.refresh();
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Unable to save targets.");
+      setFormError(
+        error instanceof Error ? error.message : "Unable to save targets.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -454,7 +483,8 @@ export default function BrokeragePageClient({
               <p className="page-kicker">Investing</p>
               <h2 className="page-title is-compact">Brokerage</h2>
               <p className="page-description">
-                Cash, positions, trades, and allocation targets in one workspace.
+                Cash, positions, trades, and allocation targets in one
+                workspace.
               </p>
             </div>
 
@@ -464,7 +494,9 @@ export default function BrokeragePageClient({
                   <span className="detail-metric-label">Broker account</span>
                   <select
                     value={brokerageAccountId}
-                    onChange={(event) => router.push(`/brokerage/${event.target.value}`)}
+                    onChange={(event) =>
+                      router.push(`/brokerage/${event.target.value}`)
+                    }
                   >
                     {workspace.brokers.map((broker) => (
                       <option key={broker.account.id} value={broker.account.id}>
@@ -571,64 +603,33 @@ export default function BrokeragePageClient({
         <section className="page-section brokerage-section-card">
           <div className="compact-toolbar">
             <div>
-              <h3 className="page-section-title">Cash reconciliation</h3>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Broker reconciliation now tracks cash only, not mark-to-market positions.
-              </p>
-            </div>
-            {workspace.cashReconciliation ? (
-              <span className="status-chip is-warning">
-                {workspace.cashReconciliation.status}
-              </span>
-            ) : null}
-          </div>
-
-          {workspace.cashReconciliation ? (
-            <div className="metric-strip is-relaxed mt-4">
-              <div className="detail-panel is-roomy">
-                <p className="detail-metric-label">Tracked cash</p>
-                <p className="detail-metric-value">
-                  <MoneyValue
-                    value={workspace.cashReconciliation.trackedBalance}
-                    currency={workspace.cashReconciliation.currency}
-                  />
-                </p>
-              </div>
-              <div className="detail-panel is-roomy">
-                <p className="detail-metric-label">Expected cash</p>
-                <p className="detail-metric-value">
-                  <MoneyValue
-                    value={workspace.cashReconciliation.expectedBalance}
-                    currency={workspace.cashReconciliation.currency}
-                  />
-                </p>
-              </div>
-              <div className="detail-panel is-roomy">
-                <p className="detail-metric-label">Delta</p>
-                <p className="detail-metric-value">
-                  <MoneyValue
-                    value={workspace.cashReconciliation.delta}
-                    currency={workspace.cashReconciliation.currency}
-                  />
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="page-inline-notice surface-dashed mt-4">
-              No reconciliation snapshot is available for this brokerage yet.
-            </p>
-          )}
-        </section>
-
-        <section className="page-section brokerage-section-card">
-          <div className="compact-toolbar">
-            <div>
               <h3 className="page-section-title">Positions</h3>
               <p className="text-sm text-[var(--text-secondary)]">
-                Weighted-average cost, current valuation, and allocation contribution.
+                Weighted-average cost, current valuation, and allocation
+                contribution.
               </p>
             </div>
           </div>
+
+          {hasCashMismatch ? (
+            <div className="page-inline-notice surface-warning brokerage-reconciliation-alert">
+              <div>
+                <p className="font-medium">
+                  Cash reconciliation needs attention before you can trust this
+                  brokerage balance.
+                </p>
+                <p className="mt-1 text-sm">
+                  Resolve the mismatch from Accounts, where you can review the
+                  delta and create an adjustment when it is safe.
+                </p>
+              </div>
+              <div className="brokerage-reconciliation-alert-actions">
+                <Link href="/accounts" className="btn-secondary">
+                  Open Accounts
+                </Link>
+              </div>
+            </div>
+          ) : null}
 
           {workspace.positions.length === 0 ? (
             <div className="page-inline-notice surface-dashed mt-4">
@@ -636,77 +637,99 @@ export default function BrokeragePageClient({
             </div>
           ) : (
             <div className="list-stack mt-4">
-              {workspace.positions.map((position) => (
-                <article key={position.assetId} className="list-card brokerage-position-card">
-                  <div className="brokerage-position-head">
-                    <div>
-                      <div className="brokerage-position-title-row">
-                        <h4 className="brokerage-position-title">{position.name}</h4>
-                        {position.ticker ? (
-                          <span className="status-chip is-neutral">
-                            {position.ticker}
-                            {position.exchange ?? ""}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="text-sm text-[var(--text-secondary)]">
-                        {formatSensitiveNumber(position.quantity, shouldHideMoney)} shares · Avg cost{" "}
-                        {shouldHideMoney
-                          ? "••••"
-                          : `${position.averageCostPerUnit.toFixed(4)} ${position.currency}`}
-                      </p>
-                    </div>
-                    <div className="brokerage-position-value">
-                      <p className="brokerage-position-value-amount">
-                        <MoneyValue
-                          value={position.currentValue}
-                          currency={workspace.baseCurrency}
-                        />
-                      </p>
-                      <p className="brokerage-position-value-sub">
-                        P/L{" "}
-                        <MoneyValue
-                          value={position.unrealisedGainLoss}
-                          currency={workspace.baseCurrency}
-                        />
-                      </p>
-                    </div>
-                  </div>
+              {workspace.positions.map((position) => {
+                const gainLossToneClass =
+                  position.unrealisedGainLoss == null
+                    ? ""
+                    : position.unrealisedGainLoss > 0
+                      ? " is-positive"
+                      : position.unrealisedGainLoss < 0
+                        ? " is-negative"
+                        : "";
 
-                  <div className="metric-strip is-relaxed brokerage-position-metrics">
-                    <div className="detail-panel is-roomy">
-                      <p className="detail-metric-label">Current price</p>
-                      <p className="detail-metric-value">
-                        {shouldHideMoney
-                          ? "••••"
-                          : position.currentPrice == null
-                            ? "Unavailable"
-                            : `${position.currentPrice.toFixed(4)} ${position.currency}`}
-                      </p>
+                return (
+                  <article
+                    key={position.assetId}
+                    className="list-card brokerage-position-card"
+                  >
+                    <div className="brokerage-position-head">
+                      <div>
+                        <div className="brokerage-position-title-row">
+                          <h4 className="brokerage-position-title">
+                            {position.name}
+                          </h4>
+                          {position.ticker ? (
+                            <span className="status-chip is-neutral">
+                              {position.ticker}
+                              {position.exchange ?? ""}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-sm text-[var(--text-secondary)]">
+                          {formatSensitiveNumber(
+                            position.quantity,
+                            shouldHideMoney,
+                          )}{" "}
+                          shares · Avg cost{" "}
+                          {shouldHideMoney
+                            ? "••••"
+                            : `${position.averageCostPerUnit.toFixed(2)} ${position.currency}`}
+                        </p>
+                      </div>
+                      <div className="brokerage-position-value">
+                        <p className="brokerage-position-value-amount">
+                          <MoneyValue
+                            value={position.currentValue}
+                            currency={workspace.baseCurrency}
+                          />
+                        </p>
+                        <p
+                          className={`brokerage-position-value-sub${gainLossToneClass}`}
+                        >
+                          P/L{" "}
+                          <MoneyValue
+                            value={position.unrealisedGainLoss}
+                            currency={workspace.baseCurrency}
+                          />
+                        </p>
+                      </div>
                     </div>
-                    <div className="detail-panel is-roomy">
-                      <p className="detail-metric-label">% of brokerage</p>
-                      <p className="detail-metric-value">
-                        {formatPercent(position.percentOfBrokerage)}
-                      </p>
+
+                    <div className="metric-strip is-relaxed brokerage-position-metrics">
+                      <div className="detail-panel is-roomy">
+                        <p className="detail-metric-label">Current price</p>
+                        <p className="detail-metric-value">
+                          {shouldHideMoney
+                            ? "••••"
+                            : position.currentPrice == null
+                              ? "Unavailable"
+                              : `${position.currentPrice.toFixed(2)} ${position.currency}`}
+                        </p>
+                      </div>
+                      <div className="detail-panel is-roomy">
+                        <p className="detail-metric-label">% of brokerage</p>
+                        <p className="detail-metric-value">
+                          {formatPercent(position.percentOfBrokerage)}
+                        </p>
+                      </div>
+                      <div className="detail-panel is-roomy">
+                        <p className="detail-metric-label">% of portfolio</p>
+                        <p className="detail-metric-value">
+                          {formatPercent(position.percentOfPortfolio)}
+                        </p>
+                      </div>
+                      <div className="detail-panel is-roomy">
+                        <p className="detail-metric-label">Target / delta</p>
+                        <p className="detail-metric-value">
+                          {position.targetPercent == null
+                            ? "No target"
+                            : `${formatPercent(position.targetPercent)} · ${formatPercent(position.deltaPercent)}`}
+                        </p>
+                      </div>
                     </div>
-                    <div className="detail-panel is-roomy">
-                      <p className="detail-metric-label">% of portfolio</p>
-                      <p className="detail-metric-value">
-                        {formatPercent(position.percentOfPortfolio)}
-                      </p>
-                    </div>
-                    <div className="detail-panel is-roomy">
-                      <p className="detail-metric-label">Target / delta</p>
-                      <p className="detail-metric-value">
-                        {position.targetPercent == null
-                          ? "No target"
-                          : `${formatPercent(position.targetPercent)} · ${formatPercent(position.deltaPercent)}`}
-                      </p>
-                    </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
@@ -716,7 +739,8 @@ export default function BrokeragePageClient({
             <div>
               <h3 className="page-section-title">Allocation snapshot</h3>
               <p className="text-sm text-[var(--text-secondary)]">
-                Portfolio-wide current, target, and delta, surfaced here for investing decisions.
+                Portfolio-wide current, target, and delta, surfaced here for
+                investing decisions.
               </p>
             </div>
             <button
@@ -762,16 +786,80 @@ export default function BrokeragePageClient({
         <section className="page-section brokerage-section-card">
           <div className="compact-toolbar">
             <div>
+              <h3 className="page-section-title">Cash reconciliation</h3>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Broker reconciliation now tracks cash only, not mark-to-market
+                positions.
+              </p>
+            </div>
+            <div className="compact-toolbar-actions">
+              {hasCashMismatch ? (
+                <Link href="/accounts" className="btn-secondary">
+                  Review in Accounts
+                </Link>
+              ) : null}
+              {workspace.cashReconciliation ? (
+                <span className="status-chip is-warning">
+                  {workspace.cashReconciliation.status}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          {workspace.cashReconciliation ? (
+            <div className="metric-strip is-relaxed mt-4">
+              <div className="detail-panel is-roomy">
+                <p className="detail-metric-label">Tracked cash</p>
+                <p className="detail-metric-value">
+                  <MoneyValue
+                    value={workspace.cashReconciliation.trackedBalance}
+                    currency={workspace.cashReconciliation.currency}
+                  />
+                </p>
+              </div>
+              <div className="detail-panel is-roomy">
+                <p className="detail-metric-label">Expected cash</p>
+                <p className="detail-metric-value">
+                  <MoneyValue
+                    value={workspace.cashReconciliation.expectedBalance}
+                    currency={workspace.cashReconciliation.currency}
+                  />
+                </p>
+              </div>
+              <div className="detail-panel is-roomy">
+                <p className="detail-metric-label">Delta</p>
+                <p className="detail-metric-value">
+                  <MoneyValue
+                    value={workspace.cashReconciliation.delta}
+                    currency={workspace.cashReconciliation.currency}
+                  />
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="page-inline-notice surface-dashed mt-4">
+              No reconciliation snapshot is available for this brokerage yet.
+            </p>
+          )}
+        </section>
+
+        <section className="page-section brokerage-section-card">
+          <div className="compact-toolbar">
+            <div>
               <h3 className="page-section-title">Activity</h3>
               <p className="text-sm text-[var(--text-secondary)]">
-                Trades plus non-duplicated cash activity for this brokerage account.
+                Trades plus non-duplicated cash activity for this brokerage
+                account.
               </p>
             </div>
           </div>
 
           <div className="list-stack mt-4">
             {workspace.activity.map((item) => (
-              <article key={`${item.source}:${item.id}`} className="list-card brokerage-activity-card">
+              <article
+                key={`${item.source}:${item.id}`}
+                className="list-card brokerage-activity-card"
+              >
                 <div className="brokerage-activity-row">
                   <div>
                     <p className="brokerage-activity-title">{item.title}</p>
@@ -804,7 +892,10 @@ export default function BrokeragePageClient({
             <select
               value={buyForm.assetId}
               onChange={(event) =>
-                setBuyForm((current) => ({ ...current, assetId: event.target.value }))
+                setBuyForm((current) => ({
+                  ...current,
+                  assetId: event.target.value,
+                }))
               }
             >
               <option value="">Create new holding</option>
@@ -822,7 +913,10 @@ export default function BrokeragePageClient({
                 <input
                   value={buyForm.name}
                   onChange={(event) =>
-                    setBuyForm((current) => ({ ...current, name: event.target.value }))
+                    setBuyForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -847,7 +941,10 @@ export default function BrokeragePageClient({
                 <input
                   value={buyForm.ticker}
                   onChange={(event) =>
-                    setBuyForm((current) => ({ ...current, ticker: event.target.value }))
+                    setBuyForm((current) => ({
+                      ...current,
+                      ticker: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -856,7 +953,10 @@ export default function BrokeragePageClient({
                 <input
                   value={buyForm.exchange}
                   onChange={(event) =>
-                    setBuyForm((current) => ({ ...current, exchange: event.target.value }))
+                    setBuyForm((current) => ({
+                      ...current,
+                      exchange: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -865,7 +965,10 @@ export default function BrokeragePageClient({
                 <input
                   value={buyForm.currency}
                   onChange={(event) =>
-                    setBuyForm((current) => ({ ...current, currency: event.target.value }))
+                    setBuyForm((current) => ({
+                      ...current,
+                      currency: event.target.value,
+                    }))
                   }
                 />
               </label>
@@ -878,7 +981,10 @@ export default function BrokeragePageClient({
               step="0.0001"
               value={buyForm.quantity}
               onChange={(event) =>
-                setBuyForm((current) => ({ ...current, quantity: event.target.value }))
+                setBuyForm((current) => ({
+                  ...current,
+                  quantity: event.target.value,
+                }))
               }
             />
           </label>
@@ -889,7 +995,10 @@ export default function BrokeragePageClient({
               step="0.0001"
               value={buyForm.unitPrice}
               onChange={(event) =>
-                setBuyForm((current) => ({ ...current, unitPrice: event.target.value }))
+                setBuyForm((current) => ({
+                  ...current,
+                  unitPrice: event.target.value,
+                }))
               }
             />
           </label>
@@ -900,7 +1009,10 @@ export default function BrokeragePageClient({
               step="0.01"
               value={buyForm.feeAmount}
               onChange={(event) =>
-                setBuyForm((current) => ({ ...current, feeAmount: event.target.value }))
+                setBuyForm((current) => ({
+                  ...current,
+                  feeAmount: event.target.value,
+                }))
               }
             />
           </label>
@@ -910,7 +1022,10 @@ export default function BrokeragePageClient({
               type="datetime-local"
               value={buyForm.postedAt}
               onChange={(event) =>
-                setBuyForm((current) => ({ ...current, postedAt: event.target.value }))
+                setBuyForm((current) => ({
+                  ...current,
+                  postedAt: event.target.value,
+                }))
               }
             />
           </label>
@@ -919,7 +1034,10 @@ export default function BrokeragePageClient({
             <textarea
               value={buyForm.notes}
               onChange={(event) =>
-                setBuyForm((current) => ({ ...current, notes: event.target.value }))
+                setBuyForm((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
               }
             />
           </label>
@@ -929,17 +1047,31 @@ export default function BrokeragePageClient({
           <p className="detail-metric-label">Trade summary</p>
           <p className="text-sm text-[var(--text-secondary)]">
             Cash used:{" "}
-            <MoneyValue value={buyCashUsed} currency={buyForm.currency || workspace.baseCurrency} />
+            <MoneyValue
+              value={buyCashUsed}
+              currency={buyForm.currency || workspace.baseCurrency}
+            />
           </p>
         </div>
 
-        {formError ? <p className="page-inline-notice surface-danger mt-4">{formError}</p> : null}
+        {formError ? (
+          <p className="page-inline-notice surface-danger mt-4">{formError}</p>
+        ) : null}
 
         <div className="modal-action-row">
-          <button type="button" className="btn-secondary" onClick={() => setOpenModal(null)}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setOpenModal(null)}
+          >
             Cancel
           </button>
-          <button type="button" className="btn-primary" onClick={handleBuySubmit} disabled={isSubmitting}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleBuySubmit}
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Recording..." : "Record buy"}
           </button>
         </div>
@@ -957,7 +1089,10 @@ export default function BrokeragePageClient({
             <select
               value={sellForm.assetId}
               onChange={(event) =>
-                setSellForm((current) => ({ ...current, assetId: event.target.value }))
+                setSellForm((current) => ({
+                  ...current,
+                  assetId: event.target.value,
+                }))
               }
             >
               {workspace.positions.map((position) => (
@@ -974,7 +1109,10 @@ export default function BrokeragePageClient({
               step="0.0001"
               value={sellForm.quantity}
               onChange={(event) =>
-                setSellForm((current) => ({ ...current, quantity: event.target.value }))
+                setSellForm((current) => ({
+                  ...current,
+                  quantity: event.target.value,
+                }))
               }
             />
           </label>
@@ -985,7 +1123,10 @@ export default function BrokeragePageClient({
               step="0.0001"
               value={sellForm.unitPrice}
               onChange={(event) =>
-                setSellForm((current) => ({ ...current, unitPrice: event.target.value }))
+                setSellForm((current) => ({
+                  ...current,
+                  unitPrice: event.target.value,
+                }))
               }
             />
           </label>
@@ -996,7 +1137,10 @@ export default function BrokeragePageClient({
               step="0.01"
               value={sellForm.feeAmount}
               onChange={(event) =>
-                setSellForm((current) => ({ ...current, feeAmount: event.target.value }))
+                setSellForm((current) => ({
+                  ...current,
+                  feeAmount: event.target.value,
+                }))
               }
             />
           </label>
@@ -1006,7 +1150,10 @@ export default function BrokeragePageClient({
               type="datetime-local"
               value={sellForm.postedAt}
               onChange={(event) =>
-                setSellForm((current) => ({ ...current, postedAt: event.target.value }))
+                setSellForm((current) => ({
+                  ...current,
+                  postedAt: event.target.value,
+                }))
               }
             />
           </label>
@@ -1015,7 +1162,10 @@ export default function BrokeragePageClient({
             <textarea
               value={sellForm.notes}
               onChange={(event) =>
-                setSellForm((current) => ({ ...current, notes: event.target.value }))
+                setSellForm((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
               }
             />
           </label>
@@ -1027,18 +1177,31 @@ export default function BrokeragePageClient({
             Net cash added:{" "}
             <MoneyValue
               value={sellNetCash}
-              currency={selectedSellPosition?.currency ?? workspace.baseCurrency}
+              currency={
+                selectedSellPosition?.currency ?? workspace.baseCurrency
+              }
             />
           </p>
         </div>
 
-        {formError ? <p className="page-inline-notice surface-danger mt-4">{formError}</p> : null}
+        {formError ? (
+          <p className="page-inline-notice surface-danger mt-4">{formError}</p>
+        ) : null}
 
         <div className="modal-action-row">
-          <button type="button" className="btn-secondary" onClick={() => setOpenModal(null)}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setOpenModal(null)}
+          >
             Cancel
           </button>
-          <button type="button" className="btn-primary" onClick={handleSellSubmit} disabled={isSubmitting}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleSellSubmit}
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Recording..." : "Record sale"}
           </button>
         </div>
@@ -1055,7 +1218,10 @@ export default function BrokeragePageClient({
             <select
               value={dividendForm.assetId}
               onChange={(event) =>
-                setDividendForm((current) => ({ ...current, assetId: event.target.value }))
+                setDividendForm((current) => ({
+                  ...current,
+                  assetId: event.target.value,
+                }))
               }
             >
               <option value="">Cash dividend</option>
@@ -1073,7 +1239,10 @@ export default function BrokeragePageClient({
               step="0.01"
               value={dividendForm.amount}
               onChange={(event) =>
-                setDividendForm((current) => ({ ...current, amount: event.target.value }))
+                setDividendForm((current) => ({
+                  ...current,
+                  amount: event.target.value,
+                }))
               }
             />
           </label>
@@ -1082,7 +1251,10 @@ export default function BrokeragePageClient({
             <select
               value={dividendForm.categoryId}
               onChange={(event) =>
-                setDividendForm((current) => ({ ...current, categoryId: event.target.value }))
+                setDividendForm((current) => ({
+                  ...current,
+                  categoryId: event.target.value,
+                }))
               }
             >
               <option value="">Select income category</option>
@@ -1099,7 +1271,10 @@ export default function BrokeragePageClient({
               type="datetime-local"
               value={dividendForm.postedAt}
               onChange={(event) =>
-                setDividendForm((current) => ({ ...current, postedAt: event.target.value }))
+                setDividendForm((current) => ({
+                  ...current,
+                  postedAt: event.target.value,
+                }))
               }
             />
           </label>
@@ -1108,16 +1283,25 @@ export default function BrokeragePageClient({
             <textarea
               value={dividendForm.notes}
               onChange={(event) =>
-                setDividendForm((current) => ({ ...current, notes: event.target.value }))
+                setDividendForm((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
               }
             />
           </label>
         </div>
 
-        {formError ? <p className="page-inline-notice surface-danger mt-4">{formError}</p> : null}
+        {formError ? (
+          <p className="page-inline-notice surface-danger mt-4">{formError}</p>
+        ) : null}
 
         <div className="modal-action-row">
-          <button type="button" className="btn-secondary" onClick={() => setOpenModal(null)}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setOpenModal(null)}
+          >
             Cancel
           </button>
           <button
@@ -1131,14 +1315,21 @@ export default function BrokeragePageClient({
         </div>
       </Modal>
 
-      <Modal open={openModal === "FEE"} onClose={() => setOpenModal(null)} title="Record fee">
+      <Modal
+        open={openModal === "FEE"}
+        onClose={() => setOpenModal(null)}
+        title="Record fee"
+      >
         <div className="app-form-grid brokerage-form-grid">
           <label className="app-form-field">
             <span className="detail-metric-label">Holding</span>
             <select
               value={feeForm.assetId}
               onChange={(event) =>
-                setFeeForm((current) => ({ ...current, assetId: event.target.value }))
+                setFeeForm((current) => ({
+                  ...current,
+                  assetId: event.target.value,
+                }))
               }
             >
               <option value="">General brokerage fee</option>
@@ -1156,7 +1347,10 @@ export default function BrokeragePageClient({
               step="0.01"
               value={feeForm.amount}
               onChange={(event) =>
-                setFeeForm((current) => ({ ...current, amount: event.target.value }))
+                setFeeForm((current) => ({
+                  ...current,
+                  amount: event.target.value,
+                }))
               }
             />
           </label>
@@ -1165,7 +1359,10 @@ export default function BrokeragePageClient({
             <select
               value={feeForm.categoryId}
               onChange={(event) =>
-                setFeeForm((current) => ({ ...current, categoryId: event.target.value }))
+                setFeeForm((current) => ({
+                  ...current,
+                  categoryId: event.target.value,
+                }))
               }
             >
               <option value="">Select expense category</option>
@@ -1182,7 +1379,10 @@ export default function BrokeragePageClient({
               type="datetime-local"
               value={feeForm.postedAt}
               onChange={(event) =>
-                setFeeForm((current) => ({ ...current, postedAt: event.target.value }))
+                setFeeForm((current) => ({
+                  ...current,
+                  postedAt: event.target.value,
+                }))
               }
             />
           </label>
@@ -1191,16 +1391,25 @@ export default function BrokeragePageClient({
             <textarea
               value={feeForm.notes}
               onChange={(event) =>
-                setFeeForm((current) => ({ ...current, notes: event.target.value }))
+                setFeeForm((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
               }
             />
           </label>
         </div>
 
-        {formError ? <p className="page-inline-notice surface-danger mt-4">{formError}</p> : null}
+        {formError ? (
+          <p className="page-inline-notice surface-danger mt-4">{formError}</p>
+        ) : null}
 
         <div className="modal-action-row">
-          <button type="button" className="btn-secondary" onClick={() => setOpenModal(null)}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setOpenModal(null)}
+          >
             Cancel
           </button>
           <button
@@ -1214,7 +1423,12 @@ export default function BrokeragePageClient({
         </div>
       </Modal>
 
-      <Modal open={openModal === "TARGETS"} onClose={() => setOpenModal(null)} title="Edit allocation targets" maxWidth={820}>
+      <Modal
+        open={openModal === "TARGETS"}
+        onClose={() => setOpenModal(null)}
+        title="Edit allocation targets"
+        maxWidth={820}
+      >
         <div className="brokerage-target-editor-shell">
           <div className="compact-toolbar brokerage-target-toolbar">
             <div className="brokerage-tab-strip">
@@ -1244,7 +1458,10 @@ export default function BrokeragePageClient({
                       : " is-warning"
                 }`}
               >
-                Current total <span className="font-semibold">{activeTargetTotal.toFixed(2)}%</span>
+                Current total{" "}
+                <span className="font-semibold">
+                  {activeTargetTotal.toFixed(2)}%
+                </span>
               </p>
               <div className="brokerage-target-help">
                 <button
@@ -1258,15 +1475,17 @@ export default function BrokeragePageClient({
                 {showTargetHelp ? (
                   <div className="brokerage-target-help-panel" role="note">
                     <p>
-                      Enter whole percentages, for example <span className="font-semibold">25</span> for{" "}
+                      Enter whole percentages, for example{" "}
+                      <span className="font-semibold">25</span> for{" "}
                       <span className="font-semibold">25%</span>.
                     </p>
                     <p>
-                      Switch a row to <span className="font-semibold">OFF</span> to exclude it from allocation targets, for
-                      example cash.
+                      Switch a row to <span className="font-semibold">OFF</span>{" "}
+                      to exclude it from allocation targets, for example cash.
                     </p>
                     <p>
-                      Enabled rows must sum to exactly <span className="font-semibold">100%</span>.
+                      Enabled rows must sum to exactly{" "}
+                      <span className="font-semibold">100%</span>.
                     </p>
                   </div>
                 ) : null}
@@ -1275,102 +1494,117 @@ export default function BrokeragePageClient({
           </div>
 
           <div className="brokerage-target-editor">
-          {activeTargetRows.map((row, index) => (
-            <div key={row.key} className="brokerage-target-editor-row">
-              <div className="brokerage-target-editor-summary">
-                <span className="brokerage-target-editor-label">{row.label}</span>
-                <span className="brokerage-target-editor-caption">
-                  {row.enabled ? "Included in target total" : "Ignored in target total"}
-                </span>
-              </div>
-              <div className="brokerage-target-editor-controls">
-                <div
-                  className="brokerage-target-toggle-group"
-                  role="group"
-                  aria-label={`${row.label} target enabled`}
-                >
-                  <button
-                    type="button"
-                    className={`brokerage-target-toggle-option${!row.enabled ? " is-active" : ""}`}
-                    aria-pressed={!row.enabled}
-                    onClick={() => {
-                      const updater =
-                        targetTab === "assetClasses"
-                          ? setAssetKindTargets
-                          : setSecurityTargets;
-                      updater((current) =>
-                        current.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, enabled: false }
-                            : item,
-                        ),
-                      );
-                    }}
-                  >
-                    Off
-                  </button>
-                  <button
-                    type="button"
-                    className={`brokerage-target-toggle-option${row.enabled ? " is-active" : ""}`}
-                    aria-pressed={row.enabled}
-                    onClick={() => {
-                      const updater =
-                        targetTab === "assetClasses"
-                          ? setAssetKindTargets
-                          : setSecurityTargets;
-                      updater((current) =>
-                        current.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, enabled: true }
-                            : item,
-                        ),
-                      );
-                    }}
-                  >
-                    On
-                  </button>
+            {activeTargetRows.map((row, index) => (
+              <div key={row.key} className="brokerage-target-editor-row">
+                <div className="brokerage-target-editor-summary">
+                  <span className="brokerage-target-editor-label">
+                    {row.label}
+                  </span>
+                  <span className="brokerage-target-editor-caption">
+                    {row.enabled
+                      ? "Included in target total"
+                      : "Ignored in target total"}
+                  </span>
                 </div>
-                <label
-                  className={`brokerage-target-percent-field${row.enabled ? "" : " is-disabled"}`}
-                >
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    inputMode="decimal"
-                    placeholder="0"
-                    disabled={!row.enabled}
-                    aria-label={`${row.label} target percent`}
-                    value={row.targetPercent}
-                    onChange={(event) => {
-                      const updater =
-                        targetTab === "assetClasses"
-                          ? setAssetKindTargets
-                          : setSecurityTargets;
-                      updater((current) =>
-                        current.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, targetPercent: event.target.value }
-                            : item,
-                        ),
-                      );
-                    }}
-                  />
-                  <span>%</span>
-                </label>
+                <div className="brokerage-target-editor-controls">
+                  <div
+                    className="brokerage-target-toggle-group"
+                    role="group"
+                    aria-label={`${row.label} target enabled`}
+                  >
+                    <button
+                      type="button"
+                      className={`brokerage-target-toggle-option is-off${!row.enabled ? " is-active" : ""}`}
+                      aria-pressed={!row.enabled}
+                      onClick={() => {
+                        const updater =
+                          targetTab === "assetClasses"
+                            ? setAssetKindTargets
+                            : setSecurityTargets;
+                        updater((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, enabled: false }
+                              : item,
+                          ),
+                        );
+                      }}
+                    >
+                      Off
+                    </button>
+                    <button
+                      type="button"
+                      className={`brokerage-target-toggle-option is-on${row.enabled ? " is-active" : ""}`}
+                      aria-pressed={row.enabled}
+                      onClick={() => {
+                        const updater =
+                          targetTab === "assetClasses"
+                            ? setAssetKindTargets
+                            : setSecurityTargets;
+                        updater((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, enabled: true }
+                              : item,
+                          ),
+                        );
+                      }}
+                    >
+                      On
+                    </button>
+                  </div>
+                  <label
+                    className={`brokerage-target-percent-field${row.enabled ? "" : " is-disabled"}`}
+                  >
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      inputMode="decimal"
+                      placeholder="0"
+                      disabled={!row.enabled}
+                      aria-label={`${row.label} target percent`}
+                      value={row.targetPercent}
+                      onChange={(event) => {
+                        const updater =
+                          targetTab === "assetClasses"
+                            ? setAssetKindTargets
+                            : setSecurityTargets;
+                        updater((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, targetPercent: event.target.value }
+                              : item,
+                          ),
+                        );
+                      }}
+                    />
+                    <span>%</span>
+                  </label>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
         </div>
 
-        {formError ? <p className="page-inline-notice surface-danger mt-4">{formError}</p> : null}
+        {formError ? (
+          <p className="page-inline-notice surface-danger mt-4">{formError}</p>
+        ) : null}
 
         <div className="modal-action-row">
-          <button type="button" className="btn-secondary" onClick={() => setOpenModal(null)}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setOpenModal(null)}
+          >
             Cancel
           </button>
-          <button type="button" className="btn-primary" onClick={handleTargetsSubmit} disabled={isSubmitting}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleTargetsSubmit}
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Saving..." : "Save targets"}
           </button>
         </div>
