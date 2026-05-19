@@ -10,6 +10,7 @@ import { BudgetsModule } from '@budgets/budgets.module';
 import { RecurringModule } from '@recurring/recurring.module';
 import { ImportsModule } from '@imports/imports.module';
 import { DashboardModule } from '@/dashboard/dashboard.module';
+import { BrokerageModule } from '@brokerage/brokerage.module';
 import { SetupModule } from '@/setup/setup.module';
 import { SnapshotsModule } from '@snapshots/snapshots.module';
 import { TransactionsModule } from '@transactions/transactions.module';
@@ -33,6 +34,7 @@ import { createThrottlerOptions } from '@/config/throttle.config';
     RecurringModule,
     ImportsModule,
     DashboardModule,
+    BrokerageModule,
     SetupModule,
     SnapshotsModule,
     TransactionsModule,

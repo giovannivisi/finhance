@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Container from "@components/Container";
 import type {
+  AccountResponse,
   DashboardAssetResponse,
   DashboardResponse,
   MonthlyBudgetResponse,
@@ -34,15 +35,17 @@ function BudgetMetric({
 export default async function Home() {
   let dashboard: DashboardResponse | null = null;
   let budgetView: MonthlyBudgetResponse | null = null;
+  let accounts: AccountResponse[] | null = null;
   let setup: SetupStatusResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
-    [dashboard, budgetView] = await Promise.all([
+    [dashboard, budgetView, accounts] = await Promise.all([
       api<DashboardResponse>("/dashboard"),
       api<MonthlyBudgetResponse>(
         `/budgets?month=${encodeURIComponent(getCurrentRomeMonth())}`,
       ),
+      api<AccountResponse[]>("/accounts"),
     ]);
   } catch (error) {
     errorMessage =
@@ -119,6 +122,11 @@ export default async function Home() {
           setup,
         })
       : [];
+  const brokerageAccountIds = new Set(
+    (accounts ?? [])
+      .filter((account) => account.type === "BROKER" && account.archivedAt === null)
+      .map((account) => account.id),
+  );
 
   return (
     <>
@@ -180,6 +188,7 @@ export default async function Home() {
           lastRefreshAt={dashboard.lastRefreshAt}
           summary={dashboard.summary}
           assetKindOrder={dashboard.assetKindOrder}
+          brokerageAccountIds={[...brokerageAccountIds]}
         />
 
         {budgetView ? (

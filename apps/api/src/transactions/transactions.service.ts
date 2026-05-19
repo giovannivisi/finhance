@@ -243,6 +243,24 @@ export class TransactionsService {
     };
   }
 
+  async applyAccountCashMovement(
+    ownerId: string,
+    accountId: string,
+    amount: Prisma.Decimal,
+    direction: TransactionDirection,
+    client: TransactionWriteClient = this.prisma,
+    options?: { skipValidation?: boolean },
+  ): Promise<void> {
+    return this.adjustAccountCashBalance(
+      ownerId,
+      accountId,
+      amount,
+      direction,
+      client,
+      options,
+    );
+  }
+
   async createReconciliationAdjustment(
     ownerId: string,
     input: {

@@ -10,6 +10,7 @@ export default function TopHeader() {
           alt="finhance logo dark"
           width={44}
           height={44}
+          loading="eager"
           style={{ objectFit: "contain" }}
           className="theme-logo-dark"
         />
@@ -18,6 +19,7 @@ export default function TopHeader() {
           alt="finhance logo light"
           width={44}
           height={44}
+          loading="eager"
           style={{ objectFit: "contain" }}
           className="theme-logo-light"
         />

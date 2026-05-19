@@ -4,6 +4,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
@@ -18,6 +19,9 @@ import {
   Account,
   AccountType,
   Asset,
+  AssetKind,
+  BrokerageOperation,
+  BrokerageOperationKind,
   Prisma,
   Transaction,
   TransactionDirection,
@@ -71,6 +75,8 @@ const ZERO = new Prisma.Decimal(0);
 
 @Injectable()
 export class AccountsService {
+  private readonly logger = new Logger(AccountsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricesService: PricesService,
@@ -138,7 +144,7 @@ export class AccountsService {
     }
 
     const accountIds = new Set(accounts.map((account) => account.id));
-    const [assets, transactions] = await Promise.all([
+    const [assets, transactions, brokerageOperations] = await Promise.all([
       client.asset.findMany({
         where: {
           userId: ownerId,
@@ -154,9 +160,19 @@ export class AccountsService {
         },
         orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       }),
+      this.findBrokerageOperationsForReconciliation(
+        client,
+        ownerId,
+        [...accountIds],
+      ),
     ]);
 
-    return this.buildReconciliation(accounts, assets, transactions);
+    return this.buildReconciliation(
+      accounts,
+      assets,
+      transactions,
+      brokerageOperations,
+    );
   }
 
   async createReconciliationAdjustment(
@@ -583,9 +599,11 @@ export class AccountsService {
     accounts: Account[],
     assets: Asset[],
     transactions: Transaction[],
+    brokerageOperations: BrokerageOperation[],
   ): Promise<AccountReconciliationModel[]> {
     const assetsByAccountId = new Map<string, Asset[]>();
     const transactionsByAccountId = new Map<string, Transaction[]>();
+    const brokerageOperationsByAccountId = new Map<string, BrokerageOperation[]>();
     const transferIssueAccountIds = new Set<string>();
     const fxPairKeys = new Set<string>();
     const accountById = new Map(
@@ -619,6 +637,13 @@ export class AccountsService {
         group.push(transaction);
         transferGroups.set(transaction.transferGroupId, group);
       }
+    }
+
+    for (const operation of brokerageOperations) {
+      const existing =
+        brokerageOperationsByAccountId.get(operation.accountId) ?? [];
+      existing.push(operation);
+      brokerageOperationsByAccountId.set(operation.accountId, existing);
     }
 
     for (const [groupId, group] of transferGroups.entries()) {
@@ -666,6 +691,7 @@ export class AccountsService {
         account,
         assetsByAccountId.get(account.id) ?? [],
         transactionsByAccountId.get(account.id) ?? [],
+        brokerageOperationsByAccountId.get(account.id) ?? [],
         transferIssueAccountIds,
         fxRates,
       ),
@@ -676,6 +702,7 @@ export class AccountsService {
     account: Account,
     assets: Asset[],
     transactions: Transaction[],
+    brokerageOperations: BrokerageOperation[],
     transferIssueAccountIds: Set<string>,
     fxRates: Map<string, Prisma.Decimal | null>,
   ): AccountReconciliationModel {
@@ -686,6 +713,10 @@ export class AccountsService {
     let expectedBalance = account.openingBalance;
 
     for (const asset of assets) {
+      if (account.type === AccountType.BROKER && asset.kind !== AssetKind.CASH) {
+        continue;
+      }
+
       let signedBalance =
         asset.type === 'LIABILITY' ? ZERO.sub(asset.balance) : asset.balance;
 
@@ -712,6 +743,17 @@ export class AccountsService {
       expectedBalance = expectedBalance.add(signedAmount);
     }
 
+    for (const operation of brokerageOperations) {
+      if (
+        account.openingBalanceDate &&
+        operation.postedAt < this.getOpeningBalanceCutoff(account)
+      ) {
+        continue;
+      }
+
+      expectedBalance = expectedBalance.add(operation.cashAmount);
+    }
+
     if (transferIssueAccountIds.has(account.id)) {
       issueCodes.add('TRANSFER_GROUP_INCOMPLETE');
     }
@@ -722,7 +764,7 @@ export class AccountsService {
         issueCodes: [...issueCodes],
         delta: null,
         assetCount: assets.length,
-        transactionCount: transactions.length,
+        transactionCount: transactions.length + brokerageOperations.length,
       });
       return {
         account,
@@ -732,7 +774,7 @@ export class AccountsService {
         expectedBalance: null,
         delta: null,
         assetCount: assets.length,
-        transactionCount: transactions.length,
+        transactionCount: transactions.length + brokerageOperations.length,
         issueCodes: [...issueCodes],
         diagnostics,
         canCreateAdjustment: false,
@@ -767,7 +809,7 @@ export class AccountsService {
       issueCodes: issueCodeList,
       delta,
       assetCount: assets.length,
-      transactionCount: transactions.length,
+      transactionCount: transactions.length + brokerageOperations.length,
     });
     const canCreateAdjustment =
       account.archivedAt === null &&
@@ -788,7 +830,7 @@ export class AccountsService {
       expectedBalance,
       delta,
       assetCount: assets.length,
-      transactionCount: transactions.length,
+      transactionCount: transactions.length + brokerageOperations.length,
       issueCodes: issueCodeList,
       diagnostics,
       canCreateAdjustment,
@@ -809,6 +851,57 @@ export class AccountsService {
         canCreateAdjustment,
       }),
     };
+  }
+
+  private async findBrokerageOperationsForReconciliation(
+    client: ReconciliationReadClient,
+    ownerId: string,
+    accountIds: string[],
+  ): Promise<BrokerageOperation[]> {
+    try {
+      return await client.brokerageOperation.findMany({
+        where: {
+          userId: ownerId,
+          accountId: {
+            in: accountIds,
+          },
+          kind: {
+            in: [BrokerageOperationKind.BUY, BrokerageOperationKind.SELL],
+          },
+        },
+        orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      });
+    } catch (error) {
+      if (this.isMissingTableError(error, 'BrokerageOperation')) {
+        this.logger.warn(
+          'BrokerageOperation table is unavailable; broker cash reconciliation is falling back to pre-brokerage behaviour until migrations are applied.',
+        );
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  private isMissingTableError(error: unknown, tableName: string): boolean {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+      return false;
+    }
+
+    if (error.code !== 'P2021') {
+      return false;
+    }
+
+    const table =
+      error.meta && typeof error.meta === 'object' && 'table' in error.meta
+        ? error.meta.table
+        : null;
+    const modelName =
+      error.meta && typeof error.meta === 'object' && 'modelName' in error.meta
+        ? error.meta.modelName
+        : null;
+
+    return table === `public.${tableName}` || modelName === tableName;
   }
 
   private buildReconciliationDiagnostics(input: {

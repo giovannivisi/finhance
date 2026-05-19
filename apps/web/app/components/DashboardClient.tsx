@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -116,6 +117,7 @@ function SortableAssetRow({
   shouldHideMoney,
   isAssetType,
   onEdit,
+  brokerageAccountIds,
 }: {
   asset: DashboardAssetResponse;
   isEditing: boolean;
@@ -123,6 +125,7 @@ function SortableAssetRow({
   shouldHideMoney: boolean;
   isAssetType: boolean;
   onEdit: (id: string) => void;
+  brokerageAccountIds: Set<string>;
 }) {
   const {
     attributes,
@@ -140,6 +143,10 @@ function SortableAssetRow({
   };
 
   const displayValue = asset.currentValue ?? asset.referenceValue;
+  const brokerageHref =
+    asset.accountId && brokerageAccountIds.has(asset.accountId)
+      ? `/brokerage/${asset.accountId}`
+      : null;
 
   if (isAssetType) {
     const referenceDiffers =
@@ -210,6 +217,11 @@ function SortableAssetRow({
 
         {!isEditing ? (
           <div className="asset-row-actions">
+            {brokerageHref ? (
+              <Link href={brokerageHref} className="asset-row-edit-btn">
+                Brokerage
+              </Link>
+            ) : null}
             <button
               type="button"
               onClick={() => onEdit(asset.id)}
@@ -296,6 +308,7 @@ export default function DashboardClient({
   lastRefreshAt,
   summary,
   assetKindOrder: savedKindOrder,
+  brokerageAccountIds,
 }: {
   grouped: Record<string, DashboardAssetResponse[]>;
   kindTotalsArray: { kind: string; total: number }[];
@@ -303,8 +316,13 @@ export default function DashboardClient({
   lastRefreshAt?: string | null;
   summary: { assets: number; liabilities: number; netWorth: number };
   assetKindOrder: string[];
+  brokerageAccountIds: string[];
 }) {
   const router = useRouter();
+  const brokerageAccountIdSet = useMemo(
+    () => new Set(brokerageAccountIds),
+    [brokerageAccountIds],
+  );
   const [editAssetId, setEditAssetId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(
@@ -800,6 +818,7 @@ export default function DashboardClient({
                                   shouldHideMoney={shouldHideMoney}
                                   isAssetType={true}
                                   onEdit={setEditAssetId}
+                                  brokerageAccountIds={brokerageAccountIdSet}
                                 />
                               ))}
                             </ul>
@@ -897,6 +916,7 @@ export default function DashboardClient({
                                   shouldHideMoney={shouldHideMoney}
                                   isAssetType={false}
                                   onEdit={setEditAssetId}
+                                  brokerageAccountIds={brokerageAccountIdSet}
                                 />
                               ))}
                             </ul>

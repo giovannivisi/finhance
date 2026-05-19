@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   History,
   Import,
+  Landmark,
   LayoutDashboard,
   ListChecks,
   PieChart,
@@ -28,6 +29,7 @@ export const PRIMARY_NAV_ITEMS: readonly AppNavItem[] = [
 
 export const SECONDARY_NAV_ITEMS: readonly AppNavItem[] = [
   { href: "/history", label: "History", icon: History },
+  { href: "/brokerage", label: "Brokerage", icon: Landmark },
   { href: "/budgets", label: "Budgets", icon: PieChart },
   { href: "/recurring", label: "Recurring", icon: Repeat },
   { href: "/review", label: "Review", icon: ClipboardCheck },
