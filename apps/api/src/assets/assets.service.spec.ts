@@ -506,7 +506,9 @@ describe('AssetsService', () => {
     );
 
     await expect(service.remove(OWNER_ID, 'asset-1')).rejects.toThrow(
-      new ConflictException('Assets with brokerage activity cannot be deleted.'),
+      new ConflictException(
+        'Assets with brokerage activity cannot be deleted.',
+      ),
     );
   });
 });

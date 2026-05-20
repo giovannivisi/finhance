@@ -216,25 +216,29 @@ describe('BrokerageService', () => {
     prisma.asset.findFirst.mockResolvedValue(createAsset());
     prisma.asset.update.mockResolvedValue(createAsset());
     prisma.brokerageOperation.create.mockImplementation(
-      async (args: { data: Record<string, unknown> }) => ({
-        id: 'operation-1',
-        userId: OWNER_ID,
-        accountId: 'account-1',
-        assetId: 'asset-1',
-        kind: args.data.kind,
-        postedAt: args.data.postedAt,
-        currency: args.data.currency,
-        quantity: args.data.quantity,
-        unitPrice: args.data.unitPrice,
-        grossAmount: args.data.grossAmount,
-        feeAmount: args.data.feeAmount,
-        cashAmount: args.data.cashAmount,
-        realisedGainLoss: args.data.realisedGainLoss,
-        notes: args.data.notes,
-        mirroredTransactionId: args.data.mirroredTransactionId,
-        createdAt: new Date('2026-05-20T09:00:00.000Z'),
-        updatedAt: new Date('2026-05-20T09:00:00.000Z'),
-      }),
+      (args: { data: { currency?: string } & Record<string, unknown> }) => {
+        expect(args.data.currency).toBe('USD');
+
+        return {
+          id: 'operation-1',
+          userId: OWNER_ID,
+          accountId: 'account-1',
+          assetId: 'asset-1',
+          kind: args.data.kind,
+          postedAt: args.data.postedAt,
+          currency: args.data.currency,
+          quantity: args.data.quantity,
+          unitPrice: args.data.unitPrice,
+          grossAmount: args.data.grossAmount,
+          feeAmount: args.data.feeAmount,
+          cashAmount: args.data.cashAmount,
+          realisedGainLoss: args.data.realisedGainLoss,
+          notes: args.data.notes,
+          mirroredTransactionId: args.data.mirroredTransactionId,
+          createdAt: new Date('2026-05-20T09:00:00.000Z'),
+          updatedAt: new Date('2026-05-20T09:00:00.000Z'),
+        };
+      },
     );
 
     await service.createBuy(OWNER_ID, 'account-1', {
@@ -247,10 +251,6 @@ describe('BrokerageService', () => {
       postedAt: '2026-05-20T12:00:00.000Z',
     });
 
-    expect(prisma.brokerageOperation.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        currency: 'USD',
-      }),
-    });
+    expect(prisma.brokerageOperation.create).toHaveBeenCalledTimes(1);
   });
 });

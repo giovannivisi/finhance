@@ -1,0 +1,318 @@
+import type { ComponentProps } from "react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  AccountResponse,
+  CategoryResponse,
+  ExpenseValidationRuleResponse,
+  TransactionResponse,
+} from "@finhance/shared";
+import TransactionForm from "@components/TransactionForm";
+import {
+  createEmptyTransactionFormValues,
+  type TransactionFormValues,
+} from "@lib/transaction-form";
+import { apiMutation } from "@lib/api";
+
+const refreshMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    refresh: refreshMock,
+  }),
+}));
+
+vi.mock("@lib/api", () => ({
+  apiMutation: vi.fn(),
+}));
+
+const mockedApiMutation = vi.mocked(apiMutation);
+
+const accounts: AccountResponse[] = [
+  {
+    id: "account-bank",
+    name: "Main account",
+    type: "BANK",
+    currency: "EUR",
+    institution: null,
+    notes: null,
+    order: 0,
+    openingBalance: 0,
+    openingBalanceDate: null,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-05-20T10:00:00.000Z",
+    updatedAt: "2026-05-20T10:00:00.000Z",
+  },
+  {
+    id: "account-savings",
+    name: "Savings",
+    type: "BANK",
+    currency: "EUR",
+    institution: null,
+    notes: null,
+    order: 1,
+    openingBalance: 0,
+    openingBalanceDate: null,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-05-20T10:00:00.000Z",
+    updatedAt: "2026-05-20T10:00:00.000Z",
+  },
+];
+
+const categories: CategoryResponse[] = [
+  {
+    id: "category-food",
+    name: "Food",
+    type: "EXPENSE",
+    parentCategoryId: null,
+    parentCategoryName: null,
+    isPrimary: true,
+    isSecondary: false,
+    order: 0,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-05-20T10:00:00.000Z",
+    updatedAt: "2026-05-20T10:00:00.000Z",
+  },
+  {
+    id: "category-cafes",
+    name: "Cafes",
+    type: "EXPENSE",
+    parentCategoryId: "category-food",
+    parentCategoryName: "Food",
+    isPrimary: false,
+    isSecondary: true,
+    order: 0,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-05-20T10:00:00.000Z",
+    updatedAt: "2026-05-20T10:00:00.000Z",
+  },
+  {
+    id: "category-salary",
+    name: "Salary",
+    type: "INCOME",
+    parentCategoryId: null,
+    parentCategoryName: null,
+    isPrimary: true,
+    isSecondary: false,
+    order: 1,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-05-20T10:00:00.000Z",
+    updatedAt: "2026-05-20T10:00:00.000Z",
+  },
+];
+
+const rules: ExpenseValidationRuleResponse[] = [
+  {
+    id: "rule-coffee",
+    entry: "Coffee",
+    normalizedEntry: "coffee",
+    primaryCategoryId: "category-food",
+    primaryCategoryName: "Food",
+    secondaryCategoryId: "category-cafes",
+    secondaryCategoryName: "Cafes",
+    createdAt: "2026-05-20T10:00:00.000Z",
+    updatedAt: "2026-05-20T10:00:00.000Z",
+  },
+];
+
+function buildCreateValues(): TransactionFormValues {
+  return {
+    ...createEmptyTransactionFormValues(),
+    postedAt: "2026-05-20T10:30",
+    amount: "15",
+    description: "",
+    accountId: "account-bank",
+  };
+}
+
+function renderForm(
+  overrides: Partial<ComponentProps<typeof TransactionForm>> = {},
+) {
+  return render(
+    <TransactionForm
+      mode="create"
+      initialValues={buildCreateValues()}
+      accounts={accounts}
+      categories={categories}
+      expenseValidationRules={rules}
+      {...overrides}
+    />,
+  );
+}
+
+describe("TransactionForm", () => {
+  beforeEach(() => {
+    refreshMock.mockReset();
+    mockedApiMutation.mockReset();
+  });
+
+  it("auto-categorises expense descriptions until the user overrides the category", async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.type(screen.getByLabelText("Description"), "Coffee");
+
+    expect(screen.getByLabelText("Primary")).toHaveValue("category-food");
+    expect(screen.getByLabelText("Secondary")).toHaveValue("category-cafes");
+
+    await user.selectOptions(
+      screen.getByLabelText("Secondary"),
+      "category-cafes",
+    );
+    await user.clear(screen.getByLabelText("Description"));
+    await user.type(screen.getByLabelText("Description"), "Unknown vendor");
+
+    expect(screen.getByLabelText("Secondary")).toHaveValue("category-cafes");
+  });
+
+  it("switches into transfer mode and submits the transfer payload", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue(undefined);
+
+    renderForm();
+
+    await user.selectOptions(screen.getByLabelText("Kind"), "TRANSFER");
+
+    expect(
+      screen.getByText(/transfers create one outflow row/i),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Source account")).toBeInTheDocument();
+    expect(screen.getByLabelText("Destination account")).toBeInTheDocument();
+
+    await user.selectOptions(
+      screen.getByLabelText("Source account"),
+      "account-bank",
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Destination account"),
+      "account-savings",
+    );
+    await user.clear(screen.getByLabelText("Description"));
+    await user.type(screen.getByLabelText("Description"), "Move to savings");
+    await user.click(
+      screen.getByRole("button", { name: /create transaction/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          postedAt: new Date("2026-05-20T10:30").toISOString(),
+          kind: "TRANSFER",
+          amount: 15,
+          description: "Move to savings",
+          notes: null,
+          sourceAccountId: "account-bank",
+          destinationAccountId: "account-savings",
+        }),
+      });
+    });
+  });
+
+  it("routes cash-account submit errors to the account field only", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockRejectedValueOnce(
+      new Error("Insufficient cash balance for this account."),
+    );
+
+    renderForm({
+      initialValues: {
+        ...buildCreateValues(),
+        description: "Coffee",
+        categoryId: "category-cafes",
+      },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /create transaction/i }),
+    );
+
+    expect(
+      await screen.findByText("Insufficient cash balance for this account."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps generic submit errors in the global error area", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockRejectedValueOnce(new Error("Server exploded."));
+
+    renderForm({
+      initialValues: {
+        ...buildCreateValues(),
+        description: "Coffee",
+        categoryId: "category-cafes",
+      },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /create transaction/i }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Server exploded.",
+    );
+  });
+
+  it("shows the transfer-identity note while editing a transfer", () => {
+    const editingTransaction: TransactionResponse = {
+      id: "transaction-1",
+      postedAt: "2026-05-20T10:30:00.000Z",
+      amount: 15,
+      currency: "EUR",
+      kind: "TRANSFER",
+      description: "Move to savings",
+      notes: null,
+      accountId: null,
+      categoryId: null,
+      direction: null,
+      counterparty: null,
+      sourceAccountId: "account-bank",
+      destinationAccountId: "account-savings",
+      primaryCategoryId: null,
+      primaryCategoryName: null,
+      secondaryCategoryId: null,
+      secondaryCategoryName: null,
+      recurringRuleId: null,
+      recurringOccurrenceMonth: null,
+      isRecurringGenerated: false,
+      createdAt: "2026-05-20T10:30:00.000Z",
+      updatedAt: "2026-05-20T10:30:00.000Z",
+    };
+
+    renderForm({
+      mode: "edit",
+      transactionId: "transaction-1",
+      editingTransaction,
+      initialValues: {
+        postedAt: "2026-05-20T10:30",
+        kind: "TRANSFER",
+        amount: "15",
+        description: "Move to savings",
+        notes: "",
+        accountId: "",
+        direction: "OUTFLOW",
+        categoryId: "",
+        counterparty: "",
+        sourceAccountId: "account-bank",
+        destinationAccountId: "account-savings",
+      },
+    });
+
+    expect(
+      screen.getByText(/this transaction keeps its transfer identity/i),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Kind")).toBeDisabled();
+  });
+});
