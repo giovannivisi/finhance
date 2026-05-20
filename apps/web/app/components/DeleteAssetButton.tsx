@@ -1,16 +1,28 @@
 "use client";
 
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "@components/Modal";
 import { apiMutation } from "@lib/api";
 import { useSingleFlightActions } from "@lib/single-flight";
 
-interface DeleteAssetButtonProps {
+interface DeleteAssetButtonProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "type"> {
   id: string;
+  children?: ReactNode;
+  onOpen?: () => void;
 }
 
-export default function DeleteAssetButton({ id }: DeleteAssetButtonProps) {
+export default function DeleteAssetButton({
+  id,
+  className,
+  children,
+  disabled,
+  onOpen,
+  title,
+  ...buttonProps
+}: DeleteAssetButtonProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
@@ -47,17 +59,19 @@ export default function DeleteAssetButton({ id }: DeleteAssetButtonProps) {
   return (
     <>
       <button
+        {...buttonProps}
         type="button"
         onClick={() => {
+          onOpen?.();
           setError(null);
           setIsConfirmOpen(true);
         }}
-        disabled={actions.isRunning("delete")}
-        aria-label="Delete asset"
-        title={error ?? undefined}
-        className="asset-row-delete-btn"
+        disabled={disabled || actions.isRunning("delete")}
+        aria-label={buttonProps["aria-label"] ?? "Delete asset"}
+        title={error ?? title ?? undefined}
+        className={className ?? "asset-row-delete-btn"}
       >
-        ✕
+        {children ?? "✕"}
       </button>
       <Modal
         open={isConfirmOpen}

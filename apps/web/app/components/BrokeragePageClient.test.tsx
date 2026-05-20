@@ -350,7 +350,10 @@ describe("BrokeragePageClient", () => {
     await user.click(within(dialog).getByRole("button", { name: "Record dividend" }));
 
     expect(apiMutation).toHaveBeenCalledTimes(1);
-    const [path, request] = vi.mocked(apiMutation).mock.calls[0];
+    const dividendCall = vi.mocked(apiMutation).mock.calls[0];
+    expect(dividendCall).toBeDefined();
+    const path = dividendCall![0];
+    const request = dividendCall![1]!;
     expect(path).toBe("/brokerage/broker-1/dividend");
     expect(request.method).toBe("POST");
     expect(JSON.parse(request.body as string)).toMatchObject({
@@ -433,7 +436,9 @@ describe("BrokeragePageClient", () => {
     await user.click(within(dialog).getByRole("button", { name: "Save targets" }));
 
     expect(apiMutation).toHaveBeenCalledTimes(1);
-    const [, request] = vi.mocked(apiMutation).mock.calls[0];
+    const targetsCall = vi.mocked(apiMutation).mock.calls[0];
+    expect(targetsCall).toBeDefined();
+    const request = targetsCall![1]!;
     const payload = JSON.parse(request.body as string);
     expect(payload).toMatchObject({
       assetKindTargets: [{ kind: "STOCK", targetPercent: 100 }],
@@ -463,5 +468,39 @@ describe("BrokeragePageClient", () => {
     expect(
       screen.queryByRole("heading", { name: "April 2026" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("uses Europe/Rome month keys for activity filters at month boundaries", async () => {
+    const user = userEvent.setup();
+    const workspace = buildWorkspace();
+
+    workspace.activity = [
+      {
+        id: "txn-boundary",
+        source: "TRANSACTION" as const,
+        kind: "INCOME",
+        postedAt: "2026-04-30T22:30:00.000Z",
+        title: "Boundary dividend",
+        detail: "Dividends",
+        amount: 8,
+        currency: "EUR",
+        notes: null,
+        assetId: "asset-stock",
+        assetName: "VWCE",
+        quantity: null,
+        unitPrice: null,
+        feeAmount: null,
+        transactionId: "transaction-boundary",
+      },
+    ];
+
+    render(<BrokeragePageClient workspace={workspace} categories={categories} />);
+
+    await user.click(screen.getByText("Activity"));
+    await user.click(screen.getByText("Filter"));
+    await user.selectOptions(screen.getByLabelText("Month"), "2026-05");
+
+    expect(screen.getByText("Boundary dividend")).toBeInTheDocument();
+    expect(screen.getByText("1 active")).toBeInTheDocument();
   });
 });

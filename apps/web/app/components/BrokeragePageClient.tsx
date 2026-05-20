@@ -86,6 +86,12 @@ const BROKERAGE_ACTIVITY_MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
+const BROKERAGE_ACTIVITY_MONTH_KEY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Rome",
+  year: "numeric",
+  month: "2-digit",
+});
+
 function createCurrentDateTimeValue() {
   return new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
     .toISOString()
@@ -177,6 +183,10 @@ function getTargetTotal(rows: EditableTargetRow[]): number {
   }, 0);
 }
 
+function getBrokerageActivityMonthKey(postedAt: string): string {
+  return BROKERAGE_ACTIVITY_MONTH_KEY_FORMATTER.format(new Date(postedAt));
+}
+
 function buildBrokerageActivityGroups(items: BrokerageActivityItemResponse[]) {
   const groups = new Map<
     string,
@@ -185,7 +195,7 @@ function buildBrokerageActivityGroups(items: BrokerageActivityItemResponse[]) {
 
   for (const item of items) {
     const postedAt = new Date(item.postedAt);
-    const groupKey = postedAt.toISOString().slice(0, 7);
+    const groupKey = getBrokerageActivityMonthKey(item.postedAt);
     const existing = groups.get(groupKey);
 
     if (existing) {
@@ -307,7 +317,7 @@ export default function BrokeragePageClient({
   const filteredActivity = useMemo(() => {
     return workspace.activity.filter((item) => {
       if (activityFilters.month) {
-        const itemMonth = new Date(item.postedAt).toISOString().slice(0, 7);
+        const itemMonth = getBrokerageActivityMonthKey(item.postedAt);
         if (itemMonth !== activityFilters.month) {
           return false;
         }
