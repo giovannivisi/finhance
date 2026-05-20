@@ -195,6 +195,40 @@ function buildWorkspace() {
         feeAmount: 1,
         transactionId: null,
       },
+      {
+        id: "txn-1",
+        source: "TRANSACTION" as const,
+        kind: "INCOME",
+        postedAt: "2026-05-10T08:00:00.000Z",
+        title: "Dividend mirrored transaction",
+        detail: "Dividends",
+        amount: 12.5,
+        currency: "EUR",
+        notes: null,
+        assetId: "asset-stock",
+        assetName: "VWCE",
+        quantity: null,
+        unitPrice: null,
+        feeAmount: null,
+        transactionId: "transaction-1",
+      },
+      {
+        id: "op-2",
+        source: "BROKERAGE_OPERATION" as const,
+        kind: "SELL",
+        postedAt: "2026-04-15T10:00:00.000Z",
+        title: "Sell",
+        detail: "VWCE",
+        amount: 220,
+        currency: "EUR",
+        notes: null,
+        assetId: "asset-stock",
+        assetName: "VWCE",
+        quantity: 4,
+        unitPrice: 55,
+        feeAmount: 0,
+        transactionId: null,
+      },
     ],
     allocation: {
       assetKindTargets: [
@@ -405,5 +439,29 @@ describe("BrokeragePageClient", () => {
       assetKindTargets: [{ kind: "STOCK", targetPercent: 100 }],
     });
     expect(payload.assetKindTargets[0]).not.toHaveProperty("enabled");
+  });
+
+  it("filters brokerage activity by month and source with month groups matching the activity pattern", async () => {
+    const user = userEvent.setup();
+
+    render(<BrokeragePageClient workspace={buildWorkspace()} categories={categories} />);
+
+    await user.click(screen.getByText("Activity"));
+    await user.click(screen.getByText("Filter"));
+
+    expect(screen.getByRole("option", { name: "May 2026" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "April 2026" }),
+    ).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Month"), "2026-05");
+    await user.selectOptions(screen.getByLabelText("Source"), "TRANSACTION");
+
+    expect(screen.getByText("2 active")).toBeInTheDocument();
+    expect(screen.getByText("Dividend mirrored transaction")).toBeInTheDocument();
+    expect(screen.queryByText("Sell")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "April 2026" }),
+    ).not.toBeInTheDocument();
   });
 });

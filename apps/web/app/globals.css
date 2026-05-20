@@ -3411,6 +3411,22 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   gap: 18px;
 }
 
+.brokerage-workspace-card {
+  gap: 24px;
+}
+
+.brokerage-workspace-block {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.brokerage-workspace-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border-glass);
+}
+
 .brokerage-summary-head {
   display: flex;
   flex-wrap: wrap;
@@ -3505,6 +3521,12 @@ html[data-theme="light"] .brokerage-account-switcher::after {
 
 .brokerage-position-copy > p {
   margin: 0;
+}
+
+.brokerage-position-ticker {
+  background: rgba(38, 70, 98, 0.22);
+  border-color: rgba(74, 122, 168, 0.38);
+  color: #d8e6f5;
 }
 
 .brokerage-position-value-sub.is-positive,
@@ -3766,6 +3788,82 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   gap: 10px;
 }
 
+.brokerage-reconciliation-shell {
+  margin-top: 0;
+}
+
+.brokerage-reconciliation-details {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 20px 20px;
+  border-top: 1px solid var(--border-glass);
+}
+
+.brokerage-reconciliation-actions {
+  justify-content: flex-end;
+}
+
+.brokerage-reconciliation-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px 28px;
+}
+
+.brokerage-reconciliation-metric {
+  display: flex;
+  flex: 1 1 200px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  align-content: start;
+}
+
+.brokerage-reconciliation-metric .detail-metric-value {
+  margin-top: 0;
+}
+
+.brokerage-activity-shell {
+  margin-top: 0;
+}
+
+.brokerage-activity-details {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 18px 20px 20px;
+  border-top: 1px solid var(--border-glass);
+}
+
+.brokerage-activity-filter-shell {
+  margin-top: 0;
+}
+
+.brokerage-activity-filter-shell .filter-grid {
+  padding-top: 18px;
+}
+
+.brokerage-activity-filter-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.brokerage-activity-filter-actions {
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.brokerage-activity-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.brokerage-activity-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .brokerage-target-editor-total {
   display: inline-flex;
   align-items: center;
@@ -3857,7 +3955,43 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   }
 
   .brokerage-target-row {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .brokerage-target-row > span:first-child {
+    grid-column: 1 / -1;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .brokerage-target-row > span:nth-child(n + 2) {
+    display: grid;
+    gap: 4px;
+    align-content: start;
+  }
+
+  .brokerage-target-row > span:nth-child(2)::before,
+  .brokerage-target-row > span:nth-child(3)::before,
+  .brokerage-target-row > span:nth-child(4)::before {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+
+  .brokerage-target-row > span:nth-child(2)::before {
+    content: "Current";
+  }
+
+  .brokerage-target-row > span:nth-child(3)::before {
+    content: "Target";
+  }
+
+  .brokerage-target-row > span:nth-child(4)::before {
+    content: "Delta";
   }
 
   .brokerage-target-editor-row {
@@ -3876,6 +4010,14 @@ html[data-theme="light"] .brokerage-account-switcher::after {
 
   .brokerage-target-percent-field {
     min-width: 100%;
+  }
+
+  .brokerage-activity-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brokerage-activity-filter-actions {
+    justify-content: stretch;
   }
 
   .brokerage-target-help-panel {

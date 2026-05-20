@@ -11,6 +11,7 @@ import { apiMutation } from "@lib/api";
 import { formatSensitiveNumber } from "@lib/money";
 import type {
   AssetKind,
+  BrokerageActivityItemResponse,
   BrokeragePositionResponse,
   BrokerageWorkspaceResponse,
   CategoryResponse,
@@ -25,6 +26,12 @@ type OperationModalKind =
   | "TARGETS"
   | null;
 type TargetTab = "assetClasses" | "securities";
+type BrokerageActivitySourceFilter = "ALL" | "BROKERAGE_OPERATION" | "TRANSACTION";
+type BrokerageActivityFilters = {
+  month: string;
+  kind: string;
+  source: BrokerageActivitySourceFilter;
+};
 
 type BuyFormState = {
   assetId: string;
@@ -71,6 +78,12 @@ const BROKERAGE_ACTIVITY_DATETIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   timeZone: "Europe/Rome",
   dateStyle: "short",
   timeStyle: "medium",
+});
+
+const BROKERAGE_ACTIVITY_MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Rome",
+  month: "long",
+  year: "numeric",
 });
 
 function createCurrentDateTimeValue() {
@@ -164,6 +177,37 @@ function getTargetTotal(rows: EditableTargetRow[]): number {
   }, 0);
 }
 
+function buildBrokerageActivityGroups(items: BrokerageActivityItemResponse[]) {
+  const groups = new Map<
+    string,
+    { label: string; items: BrokerageActivityItemResponse[] }
+  >();
+
+  for (const item of items) {
+    const postedAt = new Date(item.postedAt);
+    const groupKey = postedAt.toISOString().slice(0, 7);
+    const existing = groups.get(groupKey);
+
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+
+    groups.set(groupKey, {
+      label: BROKERAGE_ACTIVITY_MONTH_FORMATTER.format(postedAt),
+      items: [item],
+    });
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, value]) => ({
+      key,
+      label: value.label,
+      items: value.items,
+    }))
+    .sort((left, right) => right.key.localeCompare(left.key));
+}
+
 export default function BrokeragePageClient({
   workspace,
   categories,
@@ -201,6 +245,14 @@ export default function BrokeragePageClient({
   const [showTargetHelp, setShowTargetHelp] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activityFilters, setActivityFilters] = useState<BrokerageActivityFilters>({
+    month: "",
+    kind: "",
+    source: "ALL",
+  });
+  const [openActivityMonthKey, setOpenActivityMonthKey] = useState<string | null>(
+    null,
+  );
   const operationsMenuRef = useRef<HTMLDivElement | null>(null);
 
   const dividendCategories = useMemo(
@@ -248,9 +300,57 @@ export default function BrokeragePageClient({
   const activeTargetRows =
     targetTab === "assetClasses" ? assetKindTargets : securityTargets;
   const activeTargetTotal = getTargetTotal(activeTargetRows);
+  const allActivityGroups = useMemo(
+    () => buildBrokerageActivityGroups(workspace.activity),
+    [workspace.activity],
+  );
+  const filteredActivity = useMemo(() => {
+    return workspace.activity.filter((item) => {
+      if (activityFilters.month) {
+        const itemMonth = new Date(item.postedAt).toISOString().slice(0, 7);
+        if (itemMonth !== activityFilters.month) {
+          return false;
+        }
+      }
+
+      if (activityFilters.kind && item.kind !== activityFilters.kind) {
+        return false;
+      }
+
+      if (
+        activityFilters.source !== "ALL" &&
+        item.source !== activityFilters.source
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [activityFilters, workspace.activity]);
+  const groupedActivity = useMemo(
+    () => buildBrokerageActivityGroups(filteredActivity),
+    [filteredActivity],
+  );
+  const availableActivityKinds = useMemo(
+    () => Array.from(new Set(workspace.activity.map((item) => item.kind))).sort(),
+    [workspace.activity],
+  );
+  const activityFilterCount = [
+    Boolean(activityFilters.month),
+    Boolean(activityFilters.kind),
+    activityFilters.source !== "ALL",
+  ].filter(Boolean).length;
   const hasCashMismatch =
     workspace.cashReconciliation != null &&
     workspace.cashReconciliation.status !== "CLEAN";
+  const cashReconciliationStatusClass =
+    workspace.cashReconciliation == null
+      ? "status-chip is-neutral"
+      : workspace.cashReconciliation.status === "CLEAN"
+        ? "status-chip is-success"
+        : workspace.cashReconciliation.status === "MISMATCH"
+          ? "status-chip is-warning"
+          : "status-chip is-danger";
   const unrealisedGainLossTone =
     workspace.selectedBroker.unrealisedGainLoss > 0
       ? "brokerage-value-positive"
@@ -273,6 +373,10 @@ export default function BrokeragePageClient({
       router.prefetch(`/brokerage/${broker.account.id}`);
     }
   }, [brokerageAccountId, router, workspace.brokers]);
+
+  useEffect(() => {
+    setOpenActivityMonthKey(groupedActivity[0]?.key ?? null);
+  }, [groupedActivity]);
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -367,6 +471,14 @@ export default function BrokeragePageClient({
       setShowTargetHelp(false);
     }
     setOpenModal(nextModal);
+  }
+
+  function clearActivityFilters() {
+    setActivityFilters({
+      month: "",
+      kind: "",
+      source: "ALL",
+    });
   }
 
   async function handleBuySubmit() {
@@ -683,217 +795,477 @@ export default function BrokeragePageClient({
           </div>
         </div>
 
-        <section className="page-section brokerage-summary-card">
-          <div className="brokerage-summary-head">
-            <div>
-              <h3 className="brokerage-summary-title">
-                {workspace.selectedBroker.account.name}
-              </h3>
-              {workspace.selectedBroker.account.institution ? (
-                <p className="brokerage-summary-subtitle">
-                  {workspace.selectedBroker.account.institution}
+        <section className="page-section brokerage-section-card brokerage-workspace-card">
+          <div className="brokerage-workspace-block">
+            <div className="brokerage-summary-head">
+              <div>
+                <h3 className="brokerage-summary-title">
+                  {workspace.selectedBroker.account.name}
+                </h3>
+                {workspace.selectedBroker.account.institution ? (
+                  <p className="brokerage-summary-subtitle">
+                    {workspace.selectedBroker.account.institution}
+                  </p>
+                ) : null}
+              </div>
+              <div className="brokerage-summary-total">
+                <p className="detail-metric-label">Total value</p>
+                <p className="brokerage-summary-total-value">
+                  <MoneyValue
+                    value={workspace.selectedBroker.totalValue}
+                    currency={workspace.baseCurrency}
+                  />
                 </p>
-              ) : null}
+              </div>
             </div>
-            <div className="brokerage-summary-total">
-              <p className="detail-metric-label">Total value</p>
-              <p className="brokerage-summary-total-value">
-                <MoneyValue
-                  value={workspace.selectedBroker.totalValue}
-                  currency={workspace.baseCurrency}
-                />
-              </p>
-            </div>
-          </div>
 
-          <div className="metric-strip is-relaxed brokerage-summary-metrics">
-            <div className="detail-panel is-roomy">
-              <p className="detail-metric-label">Cash available</p>
-              <p className="detail-metric-value">
-                <MoneyValue
-                  value={workspace.selectedBroker.cashAvailable}
-                  currency={workspace.baseCurrency}
-                />
-              </p>
-            </div>
-            <div className="detail-panel is-roomy">
-              <p className="detail-metric-label">Invested</p>
-              <p className="detail-metric-value">
-                <MoneyValue
-                  value={workspace.selectedBroker.investedValue}
-                  currency={workspace.baseCurrency}
-                />
-              </p>
-            </div>
-            <div className="detail-panel is-roomy">
-              <p className="detail-metric-label">Unrealised P/L</p>
-              <p
-                className={`detail-metric-value${
-                  unrealisedGainLossTone ? ` ${unrealisedGainLossTone}` : ""
-                }`}
-                style={
-                  unrealisedGainLossColor
-                    ? { color: unrealisedGainLossColor }
-                    : undefined
-                }
-              >
-                <MoneyValue
-                  value={workspace.selectedBroker.unrealisedGainLoss}
-                  currency={workspace.baseCurrency}
-                  className={unrealisedGainLossTone}
+            <div className="metric-strip is-relaxed brokerage-summary-metrics">
+              <div className="detail-panel is-roomy">
+                <p className="detail-metric-label">Cash available</p>
+                <p className="detail-metric-value">
+                  <MoneyValue
+                    value={workspace.selectedBroker.cashAvailable}
+                    currency={workspace.baseCurrency}
+                  />
+                </p>
+              </div>
+              <div className="detail-panel is-roomy">
+                <p className="detail-metric-label">Invested</p>
+                <p className="detail-metric-value">
+                  <MoneyValue
+                    value={workspace.selectedBroker.investedValue}
+                    currency={workspace.baseCurrency}
+                  />
+                </p>
+              </div>
+              <div className="detail-panel is-roomy">
+                <p className="detail-metric-label">Unrealised P/L</p>
+                <p
+                  className={`detail-metric-value${
+                    unrealisedGainLossTone ? ` ${unrealisedGainLossTone}` : ""
+                  }`}
                   style={
                     unrealisedGainLossColor
                       ? { color: unrealisedGainLossColor }
                       : undefined
                   }
-                />
-              </p>
+                >
+                  <MoneyValue
+                    value={workspace.selectedBroker.unrealisedGainLoss}
+                    currency={workspace.baseCurrency}
+                    className={unrealisedGainLossTone}
+                    style={
+                      unrealisedGainLossColor
+                        ? { color: unrealisedGainLossColor }
+                        : undefined
+                    }
+                  />
+                </p>
+              </div>
             </div>
           </div>
-        </section>
 
-        <section className="page-section brokerage-section-card">
-          <div className="compact-toolbar">
-            <div>
-              <h3 className="page-section-title">Positions</h3>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Weighted-average cost, current valuation, and allocation
-                contribution.
-              </p>
-            </div>
-          </div>
+          <div className="brokerage-workspace-divider" />
 
-          {hasCashMismatch ? (
-            <div className="page-inline-notice surface-warning brokerage-reconciliation-alert">
+          <div className="brokerage-workspace-block">
+            <div className="compact-toolbar">
               <div>
-                <p className="font-medium">
-                  Cash reconciliation needs attention before you can trust this
-                  brokerage balance.
-                </p>
-                <p className="mt-1 text-sm">
-                  Resolve the mismatch from Accounts, where you can review the
-                  delta and create an adjustment when it is safe.
+                <h3 className="page-section-title">Positions</h3>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Weighted-average cost, current valuation, and account-level
+                  contribution.
                 </p>
               </div>
-              <div className="brokerage-reconciliation-alert-actions">
-                <Link href="/accounts" className="btn-secondary">
-                  Open Accounts
-                </Link>
+            </div>
+
+            {hasCashMismatch ? (
+              <div className="page-inline-notice surface-warning brokerage-reconciliation-alert">
+                <div>
+                  <p className="font-medium">
+                    Cash reconciliation needs attention before you can trust this
+                    brokerage balance.
+                  </p>
+                  <p className="mt-1 text-sm">
+                    Resolve the mismatch from Accounts, where you can review the
+                    delta and create an adjustment when it is safe.
+                  </p>
+                </div>
+                <div className="brokerage-reconciliation-alert-actions">
+                  <Link href="/accounts" className="btn-secondary">
+                    Open Accounts
+                  </Link>
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {workspace.positions.length === 0 ? (
-            <div className="page-inline-notice surface-dashed mt-4">
-              No active positions yet.
-            </div>
-          ) : (
-            <div className="list-stack mt-4">
-              {workspace.positions.map((position) => {
-                const gainLossTone =
-                  position.unrealisedGainLoss == null
-                    ? "neutral"
-                    : position.unrealisedGainLoss > 0
-                      ? "positive"
-                      : position.unrealisedGainLoss < 0
-                        ? "negative"
-                        : "neutral";
+            {workspace.positions.length === 0 ? (
+              <div className="page-inline-notice surface-dashed">
+                No active positions yet.
+              </div>
+            ) : (
+              <div className="list-stack">
+                {workspace.positions.map((position) => {
+                  const gainLossTone =
+                    position.unrealisedGainLoss == null
+                      ? "neutral"
+                      : position.unrealisedGainLoss > 0
+                        ? "positive"
+                        : position.unrealisedGainLoss < 0
+                          ? "negative"
+                          : "neutral";
 
-                return (
-                  <article
-                    key={position.assetId}
-                    className="list-card brokerage-position-card"
-                  >
-                    <div className="brokerage-position-head">
-                      <div className="brokerage-position-copy">
-                        <div className="brokerage-position-title-row">
-                          <h4 className="brokerage-position-title">
-                            {position.name}
-                          </h4>
-                          {position.ticker ? (
-                            <span className="status-chip is-neutral">
-                              {position.ticker}
-                              {position.exchange ?? ""}
-                            </span>
-                          ) : null}
+                  return (
+                    <article
+                      key={position.assetId}
+                      className="list-card brokerage-position-card"
+                    >
+                      <div className="brokerage-position-head">
+                        <div className="brokerage-position-copy">
+                          <div className="brokerage-position-title-row">
+                            <h4 className="brokerage-position-title">
+                              {position.name}
+                            </h4>
+                            {position.ticker ? (
+                              <span className="status-chip is-info brokerage-position-ticker">
+                                {position.ticker}
+                                {position.exchange ?? ""}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            {formatSensitiveNumber(
+                              position.quantity,
+                              shouldHideMoney,
+                            )}{" "}
+                            shares · Avg cost{" "}
+                            {shouldHideMoney
+                              ? "••••"
+                              : `${position.averageCostPerUnit.toFixed(2)} ${position.currency}`}
+                          </p>
                         </div>
-                        <p className="text-sm text-[var(--text-secondary)]">
-                          {formatSensitiveNumber(
-                            position.quantity,
-                            shouldHideMoney,
-                          )}{" "}
-                          shares · Avg cost{" "}
-                          {shouldHideMoney
-                            ? "••••"
-                            : `${position.averageCostPerUnit.toFixed(2)} ${position.currency}`}
-                        </p>
+                        <div className="brokerage-position-value">
+                          <p className="brokerage-position-value-amount">
+                            <MoneyValue
+                              value={position.currentValue}
+                              currency={workspace.baseCurrency}
+                            />
+                          </p>
+                          <p
+                            className={`brokerage-position-value-sub is-${gainLossTone}`}
+                          >
+                            P/L{" "}
+                            <MoneyValue
+                              value={position.unrealisedGainLoss}
+                              currency={workspace.baseCurrency}
+                              className={`brokerage-position-money is-${gainLossTone}`}
+                            />
+                          </p>
+                        </div>
                       </div>
-                      <div className="brokerage-position-value">
-                        <p className="brokerage-position-value-amount">
+
+                      <div className="metric-strip is-relaxed brokerage-position-metrics">
+                        <div className="detail-panel is-roomy">
+                          <p className="detail-metric-label">Current price</p>
+                          <p className="detail-metric-value">
+                            {shouldHideMoney
+                              ? "••••"
+                              : position.currentPrice == null
+                                ? "Unavailable"
+                                : `${position.currentPrice.toFixed(2)} ${position.currency}`}
+                          </p>
+                        </div>
+                        <div className="detail-panel is-roomy">
+                          <p className="detail-metric-label">% of brokerage</p>
+                          <p className="detail-metric-value">
+                            {formatPercent(position.percentOfBrokerage)}
+                          </p>
+                        </div>
+                        <div className="detail-panel is-roomy">
+                          <p className="detail-metric-label">% of portfolio</p>
+                          <p className="detail-metric-value">
+                            {formatPercent(position.percentOfPortfolio)}
+                          </p>
+                        </div>
+                        <div className="detail-panel is-roomy">
+                          <p className="detail-metric-label">Target / delta</p>
+                          <p className="detail-metric-value">
+                            {position.targetPercent == null
+                              ? "No target"
+                              : `${formatPercent(position.targetPercent)} · ${formatPercent(position.deltaPercent)}`}
+                          </p>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="brokerage-workspace-divider" />
+
+          <div className="brokerage-workspace-block">
+            <details className="analytics-filter-shell brokerage-reconciliation-shell">
+              <summary className="analytics-filter-summary">
+                <div className="analytics-filter-summary-copy">
+                  <span className="analytics-filter-summary-title">
+                    Cash reconciliation
+                  </span>
+                  <span className="analytics-filter-summary-detail">
+                    Cash only for this broker account, separate from
+                    mark-to-market positions.
+                  </span>
+                </div>
+                <div className="analytics-filter-summary-meta">
+                  <span className={cashReconciliationStatusClass}>
+                    {workspace.cashReconciliation?.status ?? "Unavailable"}
+                  </span>
+                  <span className="analytics-filter-summary-chevron" />
+                </div>
+              </summary>
+
+              <div className="brokerage-reconciliation-details">
+                {workspace.cashReconciliation ? (
+                  <>
+                    {hasCashMismatch ? (
+                      <div className="compact-toolbar-actions brokerage-reconciliation-actions">
+                        <Link href="/accounts" className="btn-secondary">
+                          Review in Accounts
+                        </Link>
+                      </div>
+                    ) : null}
+                    <div className="brokerage-reconciliation-metrics">
+                      <div className="brokerage-reconciliation-metric">
+                        <p className="detail-metric-label">Tracked cash</p>
+                        <p className="detail-metric-value">
                           <MoneyValue
-                            value={position.currentValue}
-                            currency={workspace.baseCurrency}
+                            value={workspace.cashReconciliation.trackedBalance}
+                            currency={workspace.cashReconciliation.currency}
                           />
                         </p>
-                        <p
-                          className={`brokerage-position-value-sub is-${gainLossTone}`}
-                        >
-                          P/L{" "}
+                      </div>
+                      <div className="brokerage-reconciliation-metric">
+                        <p className="detail-metric-label">Expected cash</p>
+                        <p className="detail-metric-value">
                           <MoneyValue
-                            value={position.unrealisedGainLoss}
-                            currency={workspace.baseCurrency}
-                            className={`brokerage-position-money is-${gainLossTone}`}
+                            value={workspace.cashReconciliation.expectedBalance}
+                            currency={workspace.cashReconciliation.currency}
                           />
                         </p>
                       </div>
+                      <div className="brokerage-reconciliation-metric">
+                        <p className="detail-metric-label">Delta</p>
+                        <p className="detail-metric-value">
+                          <MoneyValue
+                            value={workspace.cashReconciliation.delta}
+                            currency={workspace.cashReconciliation.currency}
+                          />
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="page-inline-notice surface-dashed">
+                    No reconciliation snapshot is available for this brokerage
+                    yet.
+                  </p>
+                )}
+              </div>
+            </details>
+          </div>
+
+          <div className="brokerage-workspace-divider" />
+
+          <div className="brokerage-workspace-block">
+            <details className="analytics-filter-shell brokerage-activity-shell">
+              <summary className="analytics-filter-summary">
+                <div className="analytics-filter-summary-copy">
+                  <span className="analytics-filter-summary-title">Activity</span>
+                  <span className="analytics-filter-summary-detail">
+                    Trades plus non-duplicated cash activity for this brokerage
+                    account.
+                  </span>
+                </div>
+                <div className="analytics-filter-summary-meta">
+                  <span className="analytics-filter-summary-status">
+                    {workspace.activity.length} entries
+                  </span>
+                  <span className="analytics-filter-summary-chevron" />
+                </div>
+              </summary>
+
+              <div className="brokerage-activity-details">
+                <details className="analytics-filter-shell brokerage-activity-filter-shell">
+                  <summary className="analytics-filter-summary">
+                    <span className="analytics-filter-summary-copy">
+                      <span className="analytics-filter-summary-title">Filter</span>
+                      <span className="analytics-filter-summary-detail">
+                        Month, kind, and source for this brokerage ledger.
+                      </span>
+                    </span>
+                    <span className="analytics-filter-summary-meta">
+                      <span className="analytics-filter-summary-status">
+                        {activityFilterCount > 0
+                          ? `${activityFilterCount} active`
+                          : "All activity"}
+                      </span>
+                      <span className="analytics-filter-summary-chevron" />
+                    </span>
+                  </summary>
+
+                  <div className="filter-grid brokerage-activity-filter-grid">
+                    <div className="app-form-field">
+                      <label htmlFor="brokerage-activity-filter-month">Month</label>
+                      <select
+                        id="brokerage-activity-filter-month"
+                        value={activityFilters.month}
+                        onChange={(event) =>
+                          setActivityFilters((current) => ({
+                            ...current,
+                            month: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">All</option>
+                        {allActivityGroups.map((group) => (
+                          <option key={group.key} value={group.key}>
+                            {group.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <div className="metric-strip is-relaxed brokerage-position-metrics">
-                      <div className="detail-panel is-roomy">
-                        <p className="detail-metric-label">Current price</p>
-                        <p className="detail-metric-value">
-                          {shouldHideMoney
-                            ? "••••"
-                            : position.currentPrice == null
-                              ? "Unavailable"
-                              : `${position.currentPrice.toFixed(2)} ${position.currency}`}
-                        </p>
-                      </div>
-                      <div className="detail-panel is-roomy">
-                        <p className="detail-metric-label">% of brokerage</p>
-                        <p className="detail-metric-value">
-                          {formatPercent(position.percentOfBrokerage)}
-                        </p>
-                      </div>
-                      <div className="detail-panel is-roomy">
-                        <p className="detail-metric-label">% of portfolio</p>
-                        <p className="detail-metric-value">
-                          {formatPercent(position.percentOfPortfolio)}
-                        </p>
-                      </div>
-                      <div className="detail-panel is-roomy">
-                        <p className="detail-metric-label">Target / delta</p>
-                        <p className="detail-metric-value">
-                          {position.targetPercent == null
-                            ? "No target"
-                            : `${formatPercent(position.targetPercent)} · ${formatPercent(position.deltaPercent)}`}
-                        </p>
-                      </div>
+                    <div className="app-form-field">
+                      <label htmlFor="brokerage-activity-filter-kind">Kind</label>
+                      <select
+                        id="brokerage-activity-filter-kind"
+                        value={activityFilters.kind}
+                        onChange={(event) =>
+                          setActivityFilters((current) => ({
+                            ...current,
+                            kind: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">All</option>
+                        {availableActivityKinds.map((kind) => (
+                          <option key={kind} value={kind}>
+                            {kind}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
+
+                    <div className="app-form-field">
+                      <label htmlFor="brokerage-activity-filter-source">Source</label>
+                      <select
+                        id="brokerage-activity-filter-source"
+                        value={activityFilters.source}
+                        onChange={(event) =>
+                          setActivityFilters((current) => ({
+                            ...current,
+                            source: event.target.value as BrokerageActivitySourceFilter,
+                          }))
+                        }
+                      >
+                        <option value="ALL">All</option>
+                        <option value="BROKERAGE_OPERATION">Operations</option>
+                        <option value="TRANSACTION">Cash activity</option>
+                      </select>
+                    </div>
+
+                    <div className="filter-actions brokerage-activity-filter-actions">
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={clearActivityFilters}
+                        disabled={activityFilterCount === 0}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                {groupedActivity.length === 0 ? (
+                  <p className="page-inline-notice surface-dashed">
+                    No brokerage activity yet.
+                  </p>
+                ) : (
+                  <div className="activity-month-stack brokerage-activity-groups">
+                    {groupedActivity.map((group) => (
+                      <section
+                        key={group.key}
+                        className="detail-panel is-roomy brokerage-activity-group"
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenActivityMonthKey((previous) =>
+                              previous === group.key ? null : group.key,
+                            )
+                          }
+                          className="activity-month-toggle"
+                        >
+                          <div className="activity-month-toggle-copy">
+                            <h4 className="activity-month-title">{group.label}</h4>
+                            <p className="text-sm text-[var(--text-secondary)]">
+                              {group.items.length}{" "}
+                              {group.items.length === 1 ? "entry" : "entries"}
+                            </p>
+                          </div>
+                          <span className="activity-month-toggle-indicator">
+                            {openActivityMonthKey === group.key ? "−" : "+"}
+                          </span>
+                        </button>
+
+                        {openActivityMonthKey === group.key ? (
+                          <div className="list-stack">
+                            {group.items.map((item) => (
+                              <article
+                                key={`${item.source}:${item.id}`}
+                                className="list-card brokerage-activity-card"
+                              >
+                                <div className="brokerage-activity-row">
+                                  <div>
+                                    <p className="brokerage-activity-title">
+                                      {item.title}
+                                    </p>
+                                    <p className="text-sm text-[var(--text-secondary)]">
+                                      {item.detail ?? item.kind} ·{" "}
+                                      {BROKERAGE_ACTIVITY_DATETIME_FORMATTER.format(
+                                        new Date(item.postedAt),
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="brokerage-activity-value">
+                                    <MoneyValue
+                                      value={item.amount}
+                                      currency={item.currency}
+                                    />
+                                  </div>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        ) : null}
+                      </section>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </details>
+          </div>
         </section>
 
         <section className="page-section brokerage-section-card">
           <div className="compact-toolbar">
             <div>
-              <h3 className="page-section-title">Allocation snapshot</h3>
+              <h3 className="page-section-title">
+                Portfolio allocation snapshot
+              </h3>
               <p className="text-sm text-[var(--text-secondary)]">
-                Portfolio-wide current, target, and delta, surfaced here for
-                investing decisions.
+                Across all investable holdings, not just this broker account.
               </p>
             </div>
             <button
@@ -933,102 +1305,6 @@ export default function BrokeragePageClient({
                 ))}
               </div>
             </div>
-          </div>
-        </section>
-
-        <section className="page-section brokerage-section-card">
-          <div className="compact-toolbar">
-            <div>
-              <h3 className="page-section-title">Cash reconciliation</h3>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Broker reconciliation now tracks cash only, not mark-to-market
-                positions.
-              </p>
-            </div>
-            <div className="compact-toolbar-actions">
-              {hasCashMismatch ? (
-                <Link href="/accounts" className="btn-secondary">
-                  Review in Accounts
-                </Link>
-              ) : null}
-              {workspace.cashReconciliation ? (
-                <span className="status-chip is-warning">
-                  {workspace.cashReconciliation.status}
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          {workspace.cashReconciliation ? (
-            <div className="metric-strip is-relaxed mt-4">
-              <div className="detail-panel is-roomy">
-                <p className="detail-metric-label">Tracked cash</p>
-                <p className="detail-metric-value">
-                  <MoneyValue
-                    value={workspace.cashReconciliation.trackedBalance}
-                    currency={workspace.cashReconciliation.currency}
-                  />
-                </p>
-              </div>
-              <div className="detail-panel is-roomy">
-                <p className="detail-metric-label">Expected cash</p>
-                <p className="detail-metric-value">
-                  <MoneyValue
-                    value={workspace.cashReconciliation.expectedBalance}
-                    currency={workspace.cashReconciliation.currency}
-                  />
-                </p>
-              </div>
-              <div className="detail-panel is-roomy">
-                <p className="detail-metric-label">Delta</p>
-                <p className="detail-metric-value">
-                  <MoneyValue
-                    value={workspace.cashReconciliation.delta}
-                    currency={workspace.cashReconciliation.currency}
-                  />
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="page-inline-notice surface-dashed mt-4">
-              No reconciliation snapshot is available for this brokerage yet.
-            </p>
-          )}
-        </section>
-
-        <section className="page-section brokerage-section-card">
-          <div className="compact-toolbar">
-            <div>
-              <h3 className="page-section-title">Activity</h3>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Trades plus non-duplicated cash activity for this brokerage
-                account.
-              </p>
-            </div>
-          </div>
-
-          <div className="list-stack mt-4">
-            {workspace.activity.map((item) => (
-              <article
-                key={`${item.source}:${item.id}`}
-                className="list-card brokerage-activity-card"
-              >
-                <div className="brokerage-activity-row">
-                  <div>
-                    <p className="brokerage-activity-title">{item.title}</p>
-                    <p className="text-sm text-[var(--text-secondary)]">
-                      {item.detail ?? item.kind} ·{" "}
-                      {BROKERAGE_ACTIVITY_DATETIME_FORMATTER.format(
-                        new Date(item.postedAt),
-                      )}
-                    </p>
-                  </div>
-                  <div className="brokerage-activity-value">
-                    <MoneyValue value={item.amount} currency={item.currency} />
-                  </div>
-                </div>
-              </article>
-            ))}
           </div>
         </section>
       </section>
