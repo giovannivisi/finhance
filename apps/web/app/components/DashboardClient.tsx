@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -8,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, MoreHorizontal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { DashboardAssetResponse } from "@finhance/shared";
 import {
@@ -37,6 +38,7 @@ import CreateAssetModal from "@/components/CreateAssetModal";
 import CooldownNotice from "@components/CooldownNotice";
 import EditAssetModal from "@components/EditAssetModal";
 import DeleteAssetButton from "@components/DeleteAssetButton";
+import OverflowMenu from "@components/OverflowMenu";
 import {
   getDashboardRefreshNotice,
   requestDashboardRefresh,
@@ -101,7 +103,7 @@ function SortableKindBlock({
     <div
       ref={setNodeRef}
       style={style}
-      className={`category-block${isEditing && !isDragging ? " is-trembling" : ""}`}
+      className={`glass-card category-block${isEditing && !isDragging ? " is-trembling" : ""}`}
       {...(isEditing ? { ...attributes, ...listeners } : {})}
     >
       {children}
@@ -116,6 +118,7 @@ function SortableAssetRow({
   shouldHideMoney,
   isAssetType,
   onEdit,
+  brokerageAccountIds,
 }: {
   asset: DashboardAssetResponse;
   isEditing: boolean;
@@ -123,6 +126,7 @@ function SortableAssetRow({
   shouldHideMoney: boolean;
   isAssetType: boolean;
   onEdit: (id: string) => void;
+  brokerageAccountIds: Set<string>;
 }) {
   const {
     attributes,
@@ -140,6 +144,10 @@ function SortableAssetRow({
   };
 
   const displayValue = asset.currentValue ?? asset.referenceValue;
+  const brokerageHref =
+    asset.accountId && brokerageAccountIds.has(asset.accountId)
+      ? `/brokerage/${asset.accountId}`
+      : null;
 
   if (isAssetType) {
     const referenceDiffers =
@@ -162,7 +170,7 @@ function SortableAssetRow({
       <li
         ref={setNodeRef}
         style={style}
-        className={`glass-card asset-row${isEditing && !isDragging ? " is-trembling" : ""}`}
+        className={`asset-row${isEditing && !isDragging ? " is-trembling" : ""}`}
         {...(isEditing ? { ...attributes, ...listeners } : {})}
       >
         <div className="asset-row-info">
@@ -209,16 +217,60 @@ function SortableAssetRow({
         </div>
 
         {!isEditing ? (
-          <div className="asset-row-actions">
-            <button
-              type="button"
-              onClick={() => onEdit(asset.id)}
-              className="asset-row-edit-btn"
-            >
-              Edit
-            </button>
-            <DeleteAssetButton id={asset.id} />
-          </div>
+          <OverflowMenu
+            label="Asset actions"
+            panelClassName="asset-row-action-panel"
+            renderTrigger={({ isOpen, triggerProps, setTriggerNode }) => (
+              <div
+                className={`asset-row-actions asset-row-action-menu${
+                  isOpen ? " is-open" : ""
+                }`}
+              >
+                <button
+                  {...triggerProps}
+                  ref={setTriggerNode}
+                  className="asset-row-action-trigger"
+                >
+                  <MoreHorizontal size={16} aria-hidden="true" />
+                  <span className="sr-only">Asset actions</span>
+                </button>
+              </div>
+            )}
+          >
+            {({ closeMenu }) => (
+              <>
+                {brokerageHref ? (
+                  <Link
+                    href={brokerageHref}
+                    role="menuitem"
+                    className="overflow-menu-item"
+                    onClick={() => closeMenu()}
+                  >
+                    Brokerage
+                  </Link>
+                ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    closeMenu();
+                    onEdit(asset.id);
+                  }}
+                  className="overflow-menu-item"
+                >
+                  Edit
+                </button>
+                <DeleteAssetButton
+                  id={asset.id}
+                  role="menuitem"
+                  className="overflow-menu-item is-danger"
+                  onOpen={() => closeMenu()}
+                >
+                  Delete
+                </DeleteAssetButton>
+              </>
+            )}
+          </OverflowMenu>
         ) : null}
       </li>
     );
@@ -228,7 +280,7 @@ function SortableAssetRow({
     <li
       ref={setNodeRef}
       style={style}
-      className={`glass-card asset-row${isEditing ? " is-trembling" : ""}`}
+      className={`asset-row${isEditing ? " is-trembling" : ""}`}
       {...(isEditing ? { ...attributes, ...listeners } : {})}
     >
       <div className="asset-row-info">
@@ -254,16 +306,50 @@ function SortableAssetRow({
       </div>
 
       {!isEditing ? (
-        <div className="asset-row-actions">
-          <button
-            type="button"
-            onClick={() => onEdit(asset.id)}
-            className="asset-row-edit-btn"
-          >
-            Edit
-          </button>
-          <DeleteAssetButton id={asset.id} />
-        </div>
+        <OverflowMenu
+          label="Asset actions"
+          panelClassName="asset-row-action-panel"
+          renderTrigger={({ isOpen, triggerProps, setTriggerNode }) => (
+            <div
+              className={`asset-row-actions asset-row-action-menu${
+                isOpen ? " is-open" : ""
+              }`}
+            >
+              <button
+                {...triggerProps}
+                ref={setTriggerNode}
+                className="asset-row-action-trigger"
+              >
+                <MoreHorizontal size={16} aria-hidden="true" />
+                <span className="sr-only">Asset actions</span>
+              </button>
+            </div>
+          )}
+        >
+          {({ closeMenu }) => (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  closeMenu();
+                  onEdit(asset.id);
+                }}
+                className="overflow-menu-item"
+              >
+                Edit
+              </button>
+              <DeleteAssetButton
+                id={asset.id}
+                role="menuitem"
+                className="overflow-menu-item is-danger"
+                onOpen={() => closeMenu()}
+              >
+                Delete
+              </DeleteAssetButton>
+            </>
+          )}
+        </OverflowMenu>
       ) : null}
     </li>
   );
@@ -296,6 +382,7 @@ export default function DashboardClient({
   lastRefreshAt,
   summary,
   assetKindOrder: savedKindOrder,
+  brokerageAccountIds,
 }: {
   grouped: Record<string, DashboardAssetResponse[]>;
   kindTotalsArray: { kind: string; total: number }[];
@@ -303,8 +390,13 @@ export default function DashboardClient({
   lastRefreshAt?: string | null;
   summary: { assets: number; liabilities: number; netWorth: number };
   assetKindOrder: string[];
+  brokerageAccountIds: string[];
 }) {
   const router = useRouter();
+  const brokerageAccountIdSet = useMemo(
+    () => new Set(brokerageAccountIds),
+    [brokerageAccountIds],
+  );
   const [editAssetId, setEditAssetId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>(
@@ -314,6 +406,7 @@ export default function DashboardClient({
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
+  const [lastDataRefreshMs, setLastDataRefreshMs] = useState(Date.now());
   const [isEditing, setIsEditing] = useState(false);
   const actions = useSingleFlightActions<"refresh">();
   const {
@@ -366,6 +459,10 @@ export default function DashboardClient({
       return next;
     });
   }, [grouped, allCategories]);
+
+  useEffect(() => {
+    setLastDataRefreshMs(Date.now());
+  }, [grouped]);
 
   const sortedAssetCategories = useMemo(
     () =>
@@ -554,7 +651,10 @@ export default function DashboardClient({
         ? "Quote snapshot available"
         : `Last refresh ${Math.max(
             0,
-            Math.floor((nowMs - Date.parse(lastRefreshAt)) / 60_000),
+            Math.floor(
+              (nowMs - Math.max(Date.parse(lastRefreshAt), lastDataRefreshMs)) /
+                60_000,
+            ),
           )} min ago`;
 
   const refreshToneClass =
@@ -792,6 +892,7 @@ export default function DashboardClient({
                                   shouldHideMoney={shouldHideMoney}
                                   isAssetType={true}
                                   onEdit={setEditAssetId}
+                                  brokerageAccountIds={brokerageAccountIdSet}
                                 />
                               ))}
                             </ul>
@@ -889,6 +990,7 @@ export default function DashboardClient({
                                   shouldHideMoney={shouldHideMoney}
                                   isAssetType={false}
                                   onEdit={setEditAssetId}
+                                  brokerageAccountIds={brokerageAccountIdSet}
                                 />
                               ))}
                             </ul>

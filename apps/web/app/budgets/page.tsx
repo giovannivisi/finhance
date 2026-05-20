@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type {
   CategoryResponse,
   MonthlyBudgetResponse,
@@ -6,11 +5,8 @@ import type {
 } from "@finhance/shared";
 import BudgetsPageClient from "@components/BudgetsPageClient";
 import Container from "@components/Container";
-
-import WorkflowSection from "@components/WorkflowSection";
 import { api } from "@lib/server-api";
 import {
-  buildBudgetMonthNavigationLink,
   buildBudgetsQueryString,
   getBudgetFilters,
 } from "@lib/budgets";
@@ -87,102 +83,16 @@ export default async function BudgetsPage({
           </section>
         ) : (
           <div className="route-stack-desktop-xl">
-            <section className="page-hero">
-              <div className="section-stack-relaxed">
-                <div className="page-hero-row">
-                  <div className="page-hero-copy">
-                    <p className="page-kicker">Planning</p>
-                    <h1 className="page-title is-compact">Budgets</h1>
-                    <p className="page-description">
-                      Monthly expense plans with manual month overrides and
-                      clear visibility into uncovered spend.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="page-hero-actions">
-                  <Link
-                    href={buildBudgetMonthNavigationLink({
-                      month: budgetView.month,
-                      delta: -1,
-                      includeArchivedCategories:
-                        filters.includeArchivedCategories,
-                    })}
-                    className="btn-secondary"
-                  >
-                    Previous month
-                  </Link>
-                  <div
-                    className="page-pill"
-                    aria-label={`Current month ${budgetMonthPillLabel ?? budgetView.month}`}
-                  >
-                    {budgetMonthPillLabel ?? budgetView.month}
-                  </div>
-                  <Link
-                    href={buildBudgetMonthNavigationLink({
-                      month: budgetView.month,
-                      delta: 1,
-                      includeArchivedCategories:
-                        filters.includeArchivedCategories,
-                    })}
-                    className="btn-secondary"
-                  >
-                    Next month
-                  </Link>
-                </div>
-
-                <form className="filter-grid is-relaxed budget-filter-grid">
-                  <div className="app-form-field">
-                    <label htmlFor="budget-month">Month</label>
-                    <input
-                      id="budget-month"
-                      type="month"
-                      name="month"
-                      defaultValue={filters.month}
-                    />
-                  </div>
-
-                  <div className="app-form-field budget-filter-field--offset">
-                    <label className="page-pill budget-toggle-pill">
-                      <input
-                        id="budget-archived"
-                        type="checkbox"
-                        name="includeArchivedCategories"
-                        value="true"
-                        defaultChecked={filters.includeArchivedCategories}
-                      />
-                      Archived categories
-                    </label>
-                  </div>
-
-                  <div className="app-form-field budget-filter-field--offset">
-                    <div className="filter-actions is-equal budget-filter-actions">
-                      <button type="submit" className="btn-primary">
-                        Apply
-                      </button>
-                      <Link href="/budgets" className="btn-secondary">
-                        Clear
-                      </Link>
-                    </div>
-                  </div>
-                </form>
-              </div>
-            </section>
-
-            <WorkflowSection
-              title="Use this month in context"
-              description={`Keep ${budgetView.month} connected to review and trend analysis instead of treating budgets as a standalone page.`}
-              className="is-roomy"
-              cards={getWorkflowCards({
+            <BudgetsPageClient
+              budgetView={budgetView}
+              categories={categories}
+              filters={filters}
+              budgetMonthPillLabel={budgetMonthPillLabel ?? budgetView.month}
+              workflowCards={getWorkflowCards({
                 currentPage: "budgets",
                 month: budgetView.month,
                 setup,
               })}
-            />
-
-            <BudgetsPageClient
-              budgetView={budgetView}
-              categories={categories}
             />
           </div>
         )}

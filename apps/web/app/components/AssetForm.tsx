@@ -289,8 +289,9 @@ export default function AssetForm({
           </div>
 
           <div className="app-form-field">
-            <label htmlFor={`${fieldPrefix}-exchange`}>
+            <label htmlFor={`${fieldPrefix}-exchange`} className="is-optional">
               <span>Exchange</span>
+              <span>Optional</span>
             </label>
             <select
               id={`${fieldPrefix}-exchange`}
@@ -309,8 +310,9 @@ export default function AssetForm({
 
       <div className="app-form-grid">
         <div className="app-form-field">
-          <label htmlFor={`${fieldPrefix}-currency`}>
-            Currency
+          <label htmlFor={`${fieldPrefix}-currency`} className="is-optional">
+            <span>Currency</span>
+            <span>Optional</span>
           </label>
           <input
             id={`${fieldPrefix}-currency`}
@@ -320,8 +322,9 @@ export default function AssetForm({
         </div>
 
         <div className="app-form-field">
-          <label htmlFor={`${fieldPrefix}-account`}>
-            Account
+          <label htmlFor={`${fieldPrefix}-account`} className="is-optional">
+            <span>Account</span>
+            <span>Optional</span>
           </label>
           <select
             id={`${fieldPrefix}-account`}
@@ -350,8 +353,9 @@ export default function AssetForm({
       </div>
 
       <div className="app-form-field">
-        <label htmlFor={`${fieldPrefix}-notes`}>
-          Notes
+        <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">
+          <span>Notes</span>
+          <span>Optional</span>
         </label>
         <textarea
           id={`${fieldPrefix}-notes`}

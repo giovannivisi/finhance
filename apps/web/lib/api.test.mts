@@ -18,6 +18,42 @@ test("readApiError returns JSON message strings", async () => {
   assert.equal(await readApiError(response), "Invalid asset.");
 });
 
+test("readApiError flattens structured Nest validation payloads", async () => {
+  const response = new Response(
+    JSON.stringify({
+      message: [
+        {
+          property: "securityTargets",
+          children: [
+            {
+              property: "0",
+              children: [
+                {
+                  property: "ticker",
+                  constraints: {
+                    matches: "ticker must match /^[A-Z0-9.\\-=]{1,32}$/ regular expression",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+    {
+      status: 400,
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  assert.equal(
+    await readApiError(response),
+    "securityTargets.0.ticker: ticker must match /^[A-Z0-9.\\-=]{1,32}$/ regular expression",
+  );
+});
+
 test("readApiError returns short plain-text errors", async () => {
   const response = new Response("Upstream timeout", {
     status: 504,

@@ -3,20 +3,26 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { MoreHorizontal } from "lucide-react";
 import type {
   CategoryBudgetOverrideResponse,
   CategoryResponse,
+  MonthlyBudgetCurrencySummaryResponse,
   MonthlyBudgetItemResponse,
   MonthlyBudgetResponse,
 } from "@finhance/shared";
 import BudgetOverrideForm from "@components/BudgetOverrideForm";
 import BudgetPlanForm from "@components/BudgetPlanForm";
 import Modal from "@components/Modal";
+import OverflowMenu, { OverflowMenuDivider } from "@components/OverflowMenu";
 import { useAppPreferences } from "@components/ThemeProvider";
+import WorkflowSection from "@components/WorkflowSection";
 import { api, apiMutation } from "@lib/api";
 import {
+  type BudgetFilters,
+  buildBudgetMonthNavigationLink,
   buildBudgetTransactionsLink,
-  getBudgetConfidenceMessage,
+  getBudgetFilterSummaryStatus,
   getBudgetCreatePanelContext,
   getBudgetQuickFillSuggestions,
   getBudgetStatusLabel,
@@ -25,6 +31,7 @@ import {
 import { groupRowsByPrimary } from "@lib/hierarchical-categories";
 import { formatSensitiveCurrency } from "@lib/money";
 import { useSingleFlightActions } from "@lib/single-flight";
+import type { WorkflowCard } from "@lib/workflow";
 
 type PanelMode = "create" | "edit" | "override";
 
@@ -33,6 +40,14 @@ interface CreatePanelContext {
   currency: string;
   previousMonthExpense: number | null;
   averageExpenseLast3Months: number | null;
+}
+
+interface BudgetWarningEntry {
+  key: string;
+  title: string;
+  detail: string;
+  actionHref?: string;
+  actionLabel?: string;
 }
 
 function formatBudgetDelta(
@@ -81,12 +96,46 @@ function getBudgetStatusChipClass(
   }
 }
 
+function getCurrencyWarnings(
+  currency: MonthlyBudgetCurrencySummaryResponse,
+  hidden: boolean,
+  month: string,
+): BudgetWarningEntry[] {
+  const warnings: BudgetWarningEntry[] = [];
+
+  if (currency.overBudgetCount > 0) {
+    warnings.push({
+      key: `${currency.currency}:over-budget`,
+      title: `${currency.overBudgetCount} over-budget categor${
+        currency.overBudgetCount === 1 ? "y" : "ies"
+      }`,
+      detail: `${formatSensitiveCurrency(
+        currency.overBudgetTotal,
+        currency.currency,
+        hidden,
+      )} above plan across the selected month.`,
+      actionHref: buildBudgetTransactionsLink({
+        month,
+      }),
+      actionLabel: "Review transactions",
+    });
+  }
+
+  return warnings;
+}
+
 export default function BudgetsPageClient({
   budgetView,
   categories,
+  filters,
+  budgetMonthPillLabel,
+  workflowCards,
 }: {
   budgetView: MonthlyBudgetResponse;
   categories: CategoryResponse[];
+  filters: BudgetFilters;
+  budgetMonthPillLabel: string;
+  workflowCards: WorkflowCard[];
 }) {
   const router = useRouter();
   const [panelMode, setPanelMode] = useState<PanelMode | null>(null);
@@ -101,6 +150,9 @@ export default function BudgetsPageClient({
   const [actionError, setActionError] = useState<string | null>(null);
   const [isLoadingOverrides, setIsLoadingOverrides] = useState(false);
   const [busyBudgetId, setBusyBudgetId] = useState<string | null>(null);
+  const [openWarningsByCurrency, setOpenWarningsByCurrency] = useState<
+    Record<string, boolean>
+  >({});
   const actions = useSingleFlightActions<string>();
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
@@ -233,97 +285,130 @@ export default function BudgetsPageClient({
     );
   }
 
-  const warningCards = budgetView.currencies.flatMap((currency) => {
-    const cards: { key: string; title: string; detail: string }[] = [];
-
-    if (currency.overBudgetCount > 0) {
-      cards.push({
-        key: `${currency.currency}:over`,
-        title: `${currency.overBudgetCount} over-budget categor${
-          currency.overBudgetCount === 1 ? "y" : "ies"
-        } in ${currency.currency}`,
-        detail: `${formatSensitiveCurrency(
-          currency.overBudgetTotal,
-          currency.currency,
-          shouldHideMoney,
-        )} above planned spend.`,
-      });
-    }
-
-    if (currency.unbudgetedExpenseTotal > 0) {
-      cards.push({
-        key: `${currency.currency}:unbudgeted`,
-        title: `Unbudgeted spend in ${currency.currency}`,
-        detail: `${formatSensitiveCurrency(
-          currency.unbudgetedExpenseTotal,
-          currency.currency,
-          shouldHideMoney,
-        )} is categorized but has no matching budget.`,
-      });
-    }
-
-    if (currency.uncategorizedExpenseTotal > 0) {
-      cards.push({
-        key: `${currency.currency}:uncategorized`,
-        title: `Uncategorized spend in ${currency.currency}`,
-        detail: `${formatSensitiveCurrency(
-          currency.uncategorizedExpenseTotal,
-          currency.currency,
-          shouldHideMoney,
-        )} still needs category cleanup before budgets tell the full story.`,
-      });
-    }
-
-    return cards;
-  });
-
   return (
     <div className="page-shell is-relaxed">
       <section className="route-stack-desktop-xl">
-        <div className="page-section is-spacious section-stack-tight">
-          <div className="compact-toolbar">
-            <div className="page-hero-copy">
-              <p className="page-kicker">Planning</p>
-              <h2 className="section-title">Budget workspace</h2>
-              <p className="section-subtitle">
-                Monthly expense plans, manual month overrides, and the gaps that
-                still weaken budget trust.
-              </p>
+        <section className="page-hero">
+          <div className="section-stack-relaxed">
+            <div className="page-hero-row">
+              <div className="page-hero-copy">
+                <p className="page-kicker">Planning</p>
+                <h1 className="page-title is-compact">Budgets</h1>
+                <p className="page-description">
+                  Monthly expense plans with manual month overrides and clear
+                  visibility into uncovered spend.
+                </p>
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => openCreatePanel()}
-              className="btn-primary"
-            >
-              New budget
-            </button>
+            <div className="budget-hero-toolbar">
+              <div className="budget-hero-month-nav">
+                <Link
+                  href={buildBudgetMonthNavigationLink({
+                    month: budgetView.month,
+                    delta: -1,
+                    includeArchivedCategories:
+                      filters.includeArchivedCategories,
+                  })}
+                  className="btn-secondary"
+                >
+                  Previous
+                </Link>
+                <div
+                  className="page-pill budget-hero-month-pill"
+                  aria-label={`Current month ${budgetMonthPillLabel}`}
+                >
+                  {budgetMonthPillLabel}
+                </div>
+                <Link
+                  href={buildBudgetMonthNavigationLink({
+                    month: budgetView.month,
+                    delta: 1,
+                    includeArchivedCategories:
+                      filters.includeArchivedCategories,
+                  })}
+                  className="btn-secondary"
+                >
+                  Next
+                </Link>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openCreatePanel()}
+                className="btn-primary budget-hero-create-btn"
+              >
+                New budget
+              </button>
+            </div>
+
+            <details className="analytics-filter-shell">
+              <summary className="analytics-filter-summary">
+                <span className="analytics-filter-summary-copy">
+                  <span className="analytics-filter-summary-title">Filter</span>
+                  <span className="analytics-filter-summary-detail">
+                    Month and archived-category scope.
+                  </span>
+                </span>
+                <span className="analytics-filter-summary-meta">
+                  <span className="analytics-filter-summary-status">
+                    {getBudgetFilterSummaryStatus({
+                      monthLabel: budgetMonthPillLabel,
+                      includeArchivedCategories:
+                        filters.includeArchivedCategories,
+                    })}
+                  </span>
+                  <span
+                    className="analytics-filter-summary-chevron"
+                    aria-hidden="true"
+                  />
+                </span>
+              </summary>
+
+              <form className="filter-grid is-relaxed budget-filter-grid">
+                <div className="app-form-field">
+                  <label htmlFor="budget-month">Month</label>
+                  <input
+                    id="budget-month"
+                    type="month"
+                    name="month"
+                    defaultValue={filters.month}
+                  />
+                </div>
+
+                <div className="app-form-field budget-filter-field--offset">
+                  <label className="page-pill budget-toggle-pill">
+                    <input
+                      id="budget-archived"
+                      type="checkbox"
+                      name="includeArchivedCategories"
+                      value="true"
+                      defaultChecked={filters.includeArchivedCategories}
+                    />
+                    Archived categories
+                  </label>
+                </div>
+
+                <div className="app-form-field budget-filter-field--offset">
+                  <div className="filter-actions is-equal budget-filter-actions">
+                    <button type="submit" className="btn-primary">
+                      Apply
+                    </button>
+                    <Link href="/budgets" className="btn-secondary">
+                      Clear
+                    </Link>
+                  </div>
+                </div>
+              </form>
+            </details>
           </div>
-        </div>
+        </section>
 
         {actionError ? (
           <p role="alert" className="page-inline-notice surface-danger">
             {actionError}
           </p>
         ) : null}
-
-        {warningCards.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            {warningCards.map((warning) => (
-              <div
-                key={warning.key}
-                className="page-inline-notice surface-warning"
-              >
-                <p className="font-medium">{warning.title}</p>
-                <p className="mt-1 text-amber-900/80">{warning.detail}</p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="page-inline-notice surface-success">
-            No budget warnings for {budgetView.month}.
-          </div>
-        )}
 
         {budgetView.currencies.length === 0 ? (
           <div className="page-inline-notice surface-dashed">
@@ -337,440 +422,613 @@ export default function BudgetsPageClient({
                 className="page-section is-spacious section-stack-desktop-xl"
               >
                 {(() => {
-                  const confidence = getBudgetConfidenceMessage(currency);
+                  const currencyWarnings = getCurrencyWarnings(
+                    currency,
+                    shouldHideMoney,
+                    budgetView.month,
+                  );
+                  const hasWarnings = currencyWarnings.length > 0;
+                  const isWarningsOpen =
+                    openWarningsByCurrency[currency.currency] ?? false;
+                  const uncoveredCategoryCount =
+                    currency.unbudgetedCategories.length;
 
                   return (
-                    <div
-                      className={`mb-5 page-inline-notice ${
-                        confidence.tone === "warning"
-                          ? "surface-warning"
-                          : confidence.tone === "info"
-                            ? "surface-info"
-                            : "surface-success"
-                      }`}
-                    >
-                      <p className="font-medium">{confidence.title}</p>
-                      <p className="mt-1">{confidence.detail}</p>
-                    </div>
-                  );
-                })()}
-
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-xl font-semibold text-[var(--text-primary)]">
-                      {currency.currency}
-                    </h3>
-                    <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                      {budgetView.month} budget coverage and uncovered expense.
-                    </p>
-                  </div>
-                  <div className="text-sm text-[var(--text-secondary)]">
-                    {currency.budgetedCategoryCount} budgeted categor
-                    {currency.budgetedCategoryCount === 1 ? "y" : "ies"}
-                  </div>
-                </div>
-
-                <div className="summary-grid is-loose mt-5 sm:grid-cols-2 xl:grid-cols-3">
-                  <SummaryCard
-                    label="Budgeted"
-                    value={formatSensitiveCurrency(
-                      currency.budgetTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Spent vs budget"
-                    value={formatSensitiveCurrency(
-                      currency.spentTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Remaining"
-                    value={formatSensitiveCurrency(
-                      currency.remainingTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Over budget"
-                    value={formatSensitiveCurrency(
-                      currency.overBudgetTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Unbudgeted"
-                    value={formatSensitiveCurrency(
-                      currency.unbudgetedExpenseTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                  <SummaryCard
-                    label="Uncategorized"
-                    value={formatSensitiveCurrency(
-                      currency.uncategorizedExpenseTotal,
-                      currency.currency,
-                      shouldHideMoney,
-                    )}
-                  />
-                </div>
-
-                {currency.items.length === 0 ? (
-                  <div className="mt-6 page-inline-notice surface-dashed">
-                    No budgeted categories in {currency.currency} for this month
-                    yet. Start with the categories already showing spend below
-                    or create a fresh plan in the editor.
-                  </div>
-                ) : (
-                  <div className="mt-6 list-stack is-loose">
-                    {groupRowsByPrimary(
-                      sortBudgetItemsForDisplay(currency.items),
-                      (item) => item.categoryName,
-                    ).map((group) => (
-                      <div key={group.key} className="section-stack-tight">
-                        <div className="flex items-center justify-between gap-3 px-1">
-                          <h4 className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
-                            {group.label}
-                          </h4>
-                          <span className="text-xs text-[var(--text-tertiary)]">
-                            {group.items.length} budget
-                            {group.items.length === 1 ? "" : "s"}
-                          </span>
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-xl font-semibold text-[var(--text-primary)]">
+                              {currency.currency}
+                            </h3>
+                            {hasWarnings ? (
+                              <span className="status-chip is-warning">
+                                WARNING
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                            {budgetView.month} budget coverage and uncovered
+                            expense.
+                          </p>
                         </div>
-
-                        <div className="subcard-stack is-loose">
-                          {group.items.map((item) => {
-                            const isBusy = busyBudgetId === item.budgetId;
-                            const hasCurrentOverride =
-                              item.override?.month === budgetView.month;
-
-                            return (
-                              <article
-                                key={item.budgetId}
-                                className={`list-card is-roomy ${
-                                  item.status === "OVER_BUDGET"
-                                    ? "surface-danger"
-                                    : item.status === "AT_LIMIT"
-                                      ? "surface-warning"
-                                      : ""
-                                }`}
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-5">
-                                  <div className="section-stack-tight">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <h5 className="text-lg font-semibold text-[var(--text-primary)]">
-                                        {item.secondaryCategoryName ??
-                                          item.categoryName}
-                                      </h5>
-                                      <span
-                                        className={`status-chip ${getBudgetStatusChipClass(item.status)}`}
-                                      >
-                                        {getBudgetStatusLabel(item.status)}
-                                      </span>
-                                      {hasCurrentOverride ? (
-                                        <span className="status-chip is-info">
-                                          Month override
-                                        </span>
-                                      ) : null}
-                                    </div>
-
-                                    <p className="text-sm text-[var(--text-secondary)]">
-                                      {formatSensitiveCurrency(
-                                        item.spentAmount,
-                                        item.currency,
-                                        shouldHideMoney,
-                                      )}{" "}
-                                      spent against{" "}
-                                      {formatSensitiveCurrency(
-                                        item.budgetAmount,
-                                        item.currency,
-                                        shouldHideMoney,
-                                      )}
-                                      .{" "}
-                                      {formatBudgetDelta(item, shouldHideMoney)}
-                                      .
-                                    </p>
-
-                                    <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-gray-100">
-                                      <div
-                                        className={`h-full ${
-                                          item.status === "OVER_BUDGET"
-                                            ? "bg-red-500"
-                                            : item.status === "AT_LIMIT"
-                                              ? "bg-amber-500"
-                                              : "bg-emerald-500"
-                                        }`}
-                                        style={{ width: progressWidth(item) }}
-                                      />
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-3 text-xs font-medium">
-                                      <span
-                                        className={
-                                          item.remainingAmount < 0
-                                            ? "text-[var(--color-expense)]"
-                                            : "text-[var(--text-secondary)]"
-                                        }
-                                      >
-                                        Variance{" "}
-                                        {formatBudgetDelta(
-                                          item,
-                                          shouldHideMoney,
-                                        )}
-                                      </span>
-                                      <span className="text-[var(--text-tertiary)]">
-                                        Status{" "}
-                                        {getBudgetStatusLabel(item.status)}
-                                      </span>
-                                    </div>
-
-                                    <div className="metric-strip is-relaxed">
-                                      <div className="detail-panel is-roomy">
-                                        <p className="detail-metric-label">
-                                          Prev month
-                                        </p>
-                                        <p className="detail-metric-value">
-                                          {item.previousMonthExpense === null
-                                            ? "No history"
-                                            : formatSensitiveCurrency(
-                                                item.previousMonthExpense,
-                                                item.currency,
-                                                shouldHideMoney,
-                                              )}
-                                        </p>
-                                      </div>
-                                      <div className="detail-panel is-roomy">
-                                        <p className="detail-metric-label">
-                                          Avg last 3 months
-                                        </p>
-                                        <p className="detail-metric-value">
-                                          {item.averageExpenseLast3Months ===
-                                          null
-                                            ? "No history"
-                                            : formatSensitiveCurrency(
-                                                item.averageExpenseLast3Months,
-                                                item.currency,
-                                                shouldHideMoney,
-                                              )}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex flex-wrap items-center gap-3 text-sm">
-                                    <Link
-                                      href={buildBudgetTransactionsLink({
-                                        month: budgetView.month,
-                                        primaryCategoryId:
-                                          item.primaryCategoryId,
-                                        secondaryCategoryId:
-                                          item.secondaryCategoryId ??
-                                          item.categoryId,
-                                      })}
-                                      className="link-button"
-                                    >
-                                      Transactions
-                                    </Link>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        openEditPanel(item.budgetId)
-                                      }
-                                      className="link-button"
-                                    >
-                                      Edit plan
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        openOverridePanel(item.budgetId)
-                                      }
-                                      className="link-button"
-                                    >
-                                      Override month
-                                    </button>
-                                    {hasCurrentOverride ? (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          void handleClearCurrentOverride(item)
-                                        }
-                                        disabled={isBusy}
-                                        className="link-button disabled:cursor-not-allowed disabled:opacity-60"
-                                      >
-                                        {isBusy
-                                          ? "Clearing..."
-                                          : "Clear override"}
-                                      </button>
-                                    ) : null}
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        void handleEndBudget(item.budgetId)
-                                      }
-                                      disabled={isBusy}
-                                      className="link-button is-danger disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                      {isBusy
-                                        ? "Ending..."
-                                        : "End from this month"}
-                                    </button>
-                                  </div>
-                                </div>
-                              </article>
-                            );
-                          })}
+                        <div className="text-sm text-[var(--text-secondary)]">
+                          {currency.budgetedCategoryCount} budgeted categor
+                          {currency.budgetedCategoryCount === 1 ? "y" : "ies"}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
 
-                {currency.unbudgetedCategories.length > 0 ? (
-                  <div className="mt-6 page-inline-notice surface-warning">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-                          Unbudgeted categorized spend
-                        </h4>
-                        <p className="mt-1 text-sm">
-                          These expense categories were used this month without
-                          a matching budget.
+                      <div className="summary-grid is-loose mt-5 sm:grid-cols-2 xl:grid-cols-3">
+                        <SummaryCard
+                          label="Budgeted"
+                          value={formatSensitiveCurrency(
+                            currency.budgetTotal,
+                            currency.currency,
+                            shouldHideMoney,
+                          )}
+                        />
+                        <SummaryCard
+                          label="Spent vs budget"
+                          value={formatSensitiveCurrency(
+                            currency.spentTotal,
+                            currency.currency,
+                            shouldHideMoney,
+                          )}
+                        />
+                        <SummaryCard
+                          label="Remaining"
+                          value={formatSensitiveCurrency(
+                            currency.remainingTotal,
+                            currency.currency,
+                            shouldHideMoney,
+                          )}
+                        />
+                        <SummaryCard
+                          label="Over budget"
+                          value={formatSensitiveCurrency(
+                            currency.overBudgetTotal,
+                            currency.currency,
+                            shouldHideMoney,
+                          )}
+                        />
+                        <SummaryCard
+                          label="Unbudgeted"
+                          value={formatSensitiveCurrency(
+                            currency.unbudgetedExpenseTotal,
+                            currency.currency,
+                            shouldHideMoney,
+                          )}
+                        />
+                      </div>
+
+                      {currency.items.length === 0 ? (
+                        <p className="budget-empty-note">
+                          No budgeted categories in {currency.currency} for this
+                          month yet. Start with the categories already showing
+                          spend below or create a fresh plan in the editor.
                         </p>
-                      </div>
-                      <span className="text-sm font-medium text-[var(--text-primary)]">
-                        {formatSensitiveCurrency(
-                          currency.unbudgetedExpenseTotal,
-                          currency.currency,
-                          shouldHideMoney,
-                        )}
-                      </span>
-                    </div>
+                      ) : (
+                        <div className="mt-6 list-stack is-loose">
+                          {groupRowsByPrimary(
+                            sortBudgetItemsForDisplay(currency.items),
+                            (item) => item.categoryName,
+                          ).map((group) => (
+                            <div
+                              key={group.key}
+                              className="section-stack-tight"
+                            >
+                              <div className="flex items-center justify-between gap-3 px-1">
+                                <h4 className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                                  {group.label}
+                                </h4>
+                                <span className="text-xs text-[var(--text-tertiary)]">
+                                  {group.items.length} budget
+                                  {group.items.length === 1 ? "" : "s"}
+                                </span>
+                              </div>
 
-                    <div className="mt-4 section-stack-tight">
-                      {groupRowsByPrimary(
-                        currency.unbudgetedCategories,
-                        (item) => item.categoryName,
-                      ).map((group) => (
-                        <div key={group.key} className="section-stack-tight">
-                          <h5 className="px-1 text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
-                            {group.label}
-                          </h5>
+                              <div className="subcard-stack is-loose">
+                                {group.items.map((item) => {
+                                  const isBusy = busyBudgetId === item.budgetId;
+                                  const hasCurrentOverride =
+                                    item.override?.month === budgetView.month;
 
-                          <div className="subcard-stack is-loose">
-                            {group.items.map((item) => (
+                                  return (
+                                    <article
+                                      key={item.budgetId}
+                                      className={`list-card is-roomy ${
+                                        item.status === "OVER_BUDGET"
+                                          ? "surface-danger"
+                                          : item.status === "AT_LIMIT"
+                                            ? "surface-warning"
+                                            : ""
+                                      }`}
+                                    >
+                                      <div className="flex flex-wrap items-start justify-between gap-5">
+                                        <div className="section-stack-tight budget-item-main">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <h5 className="text-lg font-semibold text-[var(--text-primary)]">
+                                              {item.secondaryCategoryName ??
+                                                item.categoryName}
+                                            </h5>
+                                            <span
+                                              className={`status-chip ${getBudgetStatusChipClass(item.status)}`}
+                                            >
+                                              {getBudgetStatusLabel(
+                                                item.status,
+                                              )}
+                                            </span>
+                                            {hasCurrentOverride ? (
+                                              <span className="status-chip is-info">
+                                                Month override
+                                              </span>
+                                            ) : null}
+                                          </div>
+
+                                          <p className="text-sm text-[var(--text-secondary)]">
+                                            {formatSensitiveCurrency(
+                                              item.spentAmount,
+                                              item.currency,
+                                              shouldHideMoney,
+                                            )}{" "}
+                                            spent against{" "}
+                                            {formatSensitiveCurrency(
+                                              item.budgetAmount,
+                                              item.currency,
+                                              shouldHideMoney,
+                                            )}
+                                            .{" "}
+                                            {formatBudgetDelta(
+                                              item,
+                                              shouldHideMoney,
+                                            )}
+                                            .
+                                          </p>
+
+                                          <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-gray-100">
+                                            <div
+                                              className={`h-full ${
+                                                item.status === "OVER_BUDGET"
+                                                  ? "bg-red-500"
+                                                  : item.status === "AT_LIMIT"
+                                                    ? "bg-amber-500"
+                                                    : "bg-emerald-500"
+                                              }`}
+                                              style={{
+                                                width: progressWidth(item),
+                                              }}
+                                            />
+                                          </div>
+
+                                          <div className="flex flex-wrap gap-3 text-xs font-medium">
+                                            <span
+                                              className={
+                                                item.remainingAmount < 0
+                                                  ? "text-[var(--color-expense)]"
+                                                  : "text-[var(--text-secondary)]"
+                                              }
+                                            >
+                                              Variance{" "}
+                                              {formatBudgetDelta(
+                                                item,
+                                                shouldHideMoney,
+                                              )}
+                                            </span>
+                                            <span className="text-[var(--text-tertiary)]">
+                                              Status{" "}
+                                              {getBudgetStatusLabel(
+                                                item.status,
+                                              )}
+                                            </span>
+                                          </div>
+
+                                          <div className="metric-strip is-relaxed budget-item-metrics">
+                                            <div className="detail-panel is-roomy">
+                                              <p className="detail-metric-label">
+                                                Prev month
+                                              </p>
+                                              <p className="detail-metric-value">
+                                                {item.previousMonthExpense ===
+                                                null
+                                                  ? "No history"
+                                                  : formatSensitiveCurrency(
+                                                      item.previousMonthExpense,
+                                                      item.currency,
+                                                      shouldHideMoney,
+                                                    )}
+                                              </p>
+                                            </div>
+                                            <div className="detail-panel is-roomy">
+                                              <p className="detail-metric-label">
+                                                Avg last 3 months
+                                              </p>
+                                              <p className="detail-metric-value">
+                                                {item.averageExpenseLast3Months ===
+                                                null
+                                                  ? "No history"
+                                                  : formatSensitiveCurrency(
+                                                      item.averageExpenseLast3Months,
+                                                      item.currency,
+                                                      shouldHideMoney,
+                                                    )}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <OverflowMenu
+                                          label="Budget actions"
+                                          panelClassName="budget-item-action-panel"
+                                          renderTrigger={({
+                                            triggerProps,
+                                            setTriggerNode,
+                                          }) => (
+                                            <div className="budget-item-actions budget-item-action-menu">
+                                              <button
+                                                {...triggerProps}
+                                                ref={setTriggerNode}
+                                                className="btn-secondary budget-item-action-trigger"
+                                              >
+                                                <MoreHorizontal
+                                                  size={16}
+                                                  aria-hidden="true"
+                                                />
+                                                <span>Options</span>
+                                              </button>
+                                            </div>
+                                          )}
+                                        >
+                                          {({ closeMenu }) => (
+                                            <>
+                                              <Link
+                                                href={buildBudgetTransactionsLink(
+                                                  {
+                                                    month: budgetView.month,
+                                                    primaryCategoryId:
+                                                      item.primaryCategoryId,
+                                                    secondaryCategoryId:
+                                                      item.secondaryCategoryId ??
+                                                      item.categoryId,
+                                                  },
+                                                )}
+                                                role="menuitem"
+                                                className="overflow-menu-item"
+                                                onClick={() => closeMenu()}
+                                              >
+                                                <span>Transactions</span>
+                                              </Link>
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                  closeMenu();
+                                                  openEditPanel(item.budgetId);
+                                                }}
+                                                className="overflow-menu-item"
+                                              >
+                                                <span>Edit plan</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                  closeMenu();
+                                                  openOverridePanel(
+                                                    item.budgetId,
+                                                  );
+                                                }}
+                                                className="overflow-menu-item"
+                                              >
+                                                <span>Override month</span>
+                                              </button>
+                                              {hasCurrentOverride ? (
+                                                <button
+                                                  type="button"
+                                                  role="menuitem"
+                                                  onClick={() => {
+                                                    closeMenu();
+                                                    void handleClearCurrentOverride(
+                                                      item,
+                                                    );
+                                                  }}
+                                                  disabled={isBusy}
+                                                  className="overflow-menu-item disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                  <span>
+                                                    {isBusy
+                                                      ? "Clearing..."
+                                                      : "Clear override"}
+                                                  </span>
+                                                </button>
+                                              ) : null}
+                                              <OverflowMenuDivider />
+                                              <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => {
+                                                  closeMenu();
+                                                  void handleEndBudget(
+                                                    item.budgetId,
+                                                  );
+                                                }}
+                                                disabled={isBusy}
+                                                className="overflow-menu-item is-danger disabled:cursor-not-allowed disabled:opacity-60"
+                                              >
+                                                <span>
+                                                  {isBusy
+                                                    ? "Ending..."
+                                                    : "End from this month"}
+                                                </span>
+                                              </button>
+                                            </>
+                                          )}
+                                        </OverflowMenu>
+                                      </div>
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {hasWarnings ? (
+                        <section className="mt-6 section-stack-tight">
+                          <div className="compact-toolbar">
+                            <div>
+                              <h4 className="text-sm font-semibold text-[var(--text-primary)]">
+                                Warnings to review
+                              </h4>
+                              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                                {currencyWarnings.length} warning
+                                {currencyWarnings.length === 1 ? "" : "s"}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenWarningsByCurrency((current) => ({
+                                  ...current,
+                                  [currency.currency]:
+                                    !current[currency.currency],
+                                }))
+                              }
+                              className="btn-secondary"
+                            >
+                              {isWarningsOpen
+                                ? "Hide warnings"
+                                : `Show ${currencyWarnings.length} warning${
+                                    currencyWarnings.length === 1 ? "" : "s"
+                                  }`}
+                            </button>
+                          </div>
+
+                          {!isWarningsOpen ? (
+                            <p className="page-inline-notice surface-dashed surface-warning">
+                              {currencyWarnings.length} warning
+                              {currencyWarnings.length === 1 ? "" : "s"} hidden.
+                              Open this section only when you want to inspect
+                              the affected categories.
+                            </p>
+                          ) : (
+                            <div className="subcard-stack is-loose">
+                              {currencyWarnings.map((warning) => (
+                                <article
+                                  key={warning.key}
+                                  className="page-inline-notice surface-warning"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <p className="font-medium">
+                                        {warning.title}
+                                      </p>
+                                      <p className="mt-1">{warning.detail}</p>
+                                    </div>
+                                    {warning.actionHref &&
+                                    warning.actionLabel ? (
+                                      <Link
+                                        href={warning.actionHref}
+                                        className="link-button is-warning"
+                                      >
+                                        {warning.actionLabel}
+                                      </Link>
+                                    ) : null}
+                                  </div>
+
+                                  {warning.key.endsWith(":over-budget") &&
+                                  currency.overBudgetHighlights.length > 0 ? (
+                                    <div className="mt-4 subcard-stack is-loose">
+                                      {currency.overBudgetHighlights
+                                        .slice(0, 3)
+                                        .map((item) => (
+                                          <div
+                                            key={item.budgetId}
+                                            className="detail-panel is-compact flex flex-wrap items-center justify-between gap-3"
+                                          >
+                                            <div className="section-stack-tight">
+                                              <p className="font-medium text-[var(--text-primary)]">
+                                                {item.secondaryCategoryName ??
+                                                  item.categoryName}
+                                              </p>
+                                              <p className="text-xs text-[var(--text-secondary)]">
+                                                {formatSensitiveCurrency(
+                                                  item.spentAmount,
+                                                  item.currency,
+                                                  shouldHideMoney,
+                                                )}{" "}
+                                                spent against{" "}
+                                                {formatSensitiveCurrency(
+                                                  item.budgetAmount,
+                                                  item.currency,
+                                                  shouldHideMoney,
+                                                )}
+                                              </p>
+                                            </div>
+                                            <span className="status-chip is-danger">
+                                              Over by{" "}
+                                              {formatSensitiveCurrency(
+                                                Math.abs(item.remainingAmount),
+                                                item.currency,
+                                                shouldHideMoney,
+                                              )}
+                                            </span>
+                                          </div>
+                                        ))}
+                                    </div>
+                                  ) : null}
+                                </article>
+                              ))}
+                            </div>
+                          )}
+                        </section>
+                      ) : null}
+
+                      {currency.unbudgetedCategories.length > 0 ? (
+                        <details className="analytics-filter-shell budget-coverage-shell">
+                          <summary className="analytics-filter-summary">
+                            <span className="analytics-filter-summary-copy">
+                              <span className="analytics-filter-summary-title">
+                                Budget coverage is incomplete
+                              </span>
+                              <span className="analytics-filter-summary-detail">
+                                These categories were used this month without a
+                                matching budget yet.
+                              </span>
+                            </span>
+                            <span className="analytics-filter-summary-meta">
+                              <span className="analytics-filter-summary-status">
+                                {formatSensitiveCurrency(
+                                  currency.unbudgetedExpenseTotal,
+                                  currency.currency,
+                                  shouldHideMoney,
+                                )}{" "}
+                                · {uncoveredCategoryCount} categor
+                                {uncoveredCategoryCount === 1 ? "y" : "ies"}
+                              </span>
+                              <span
+                                className="analytics-filter-summary-chevron"
+                                aria-hidden="true"
+                              />
+                            </span>
+                          </summary>
+
+                          <div className="budget-coverage-details">
+                            {groupRowsByPrimary(
+                              currency.unbudgetedCategories,
+                              (item) => item.categoryName,
+                            ).map((group) => (
                               <div
-                                key={item.categoryId}
-                                className="detail-panel flex flex-wrap items-center justify-between gap-3 text-sm"
+                                key={group.key}
+                                className="section-stack-tight budget-coverage-group"
                               >
-                                <div>
-                                  <p className="font-medium text-[var(--text-primary)]">
-                                    {item.secondaryCategoryName ??
-                                      item.categoryName}
-                                  </p>
-                                  <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                                    Prev month:{" "}
-                                    {item.previousMonthExpense === null
-                                      ? "No history"
-                                      : formatSensitiveCurrency(
-                                          item.previousMonthExpense,
-                                          item.currency,
-                                          shouldHideMoney,
-                                        )}{" "}
-                                    • Avg last 3 months:{" "}
-                                    {item.averageExpenseLast3Months === null
-                                      ? "No history"
-                                      : formatSensitiveCurrency(
-                                          item.averageExpenseLast3Months,
-                                          item.currency,
-                                          shouldHideMoney,
-                                        )}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <span className="font-medium text-[var(--text-primary)]">
-                                    {formatSensitiveCurrency(
-                                      item.spentAmount,
-                                      item.currency,
-                                      shouldHideMoney,
-                                    )}
-                                  </span>
-                                  <Link
-                                    href={buildBudgetTransactionsLink({
-                                      month: budgetView.month,
-                                      primaryCategoryId: item.primaryCategoryId,
-                                      secondaryCategoryId:
-                                        item.secondaryCategoryId ??
-                                        item.categoryId,
-                                    })}
-                                    className="link-button"
-                                  >
-                                    Transactions
-                                  </Link>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      openCreatePanel(
-                                        item.categoryId,
-                                        item.currency,
-                                        getBudgetCreatePanelContext({
-                                          categoryId: item.categoryId,
-                                          currency: item.currency,
-                                          previousMonthExpense:
-                                            item.previousMonthExpense,
-                                          averageExpenseLast3Months:
-                                            item.averageExpenseLast3Months,
-                                        }),
-                                      )
-                                    }
-                                    className="link-button"
-                                  >
-                                    Create budget
-                                  </button>
+                                <h5 className="budget-coverage-group-title">
+                                  {group.label}
+                                </h5>
+
+                                <div className="budget-coverage-entry-list">
+                                  {group.items.map((item) => (
+                                    <div
+                                      key={item.categoryId}
+                                      className="budget-coverage-entry"
+                                    >
+                                      <div className="budget-coverage-entry-main">
+                                        <div className="budget-coverage-entry-head">
+                                          <p className="budget-coverage-entry-name">
+                                            {item.secondaryCategoryName ??
+                                              item.categoryName}
+                                          </p>
+                                          <span className="status-chip is-info">
+                                            {formatSensitiveCurrency(
+                                              item.spentAmount,
+                                              item.currency,
+                                              shouldHideMoney,
+                                            )}
+                                          </span>
+                                          <div className="budget-coverage-entry-actions">
+                                            <Link
+                                              href={buildBudgetTransactionsLink(
+                                                {
+                                                  month: budgetView.month,
+                                                  primaryCategoryId:
+                                                    item.primaryCategoryId,
+                                                  secondaryCategoryId:
+                                                    item.secondaryCategoryId ??
+                                                    item.categoryId,
+                                                },
+                                              )}
+                                              className="link-button"
+                                            >
+                                              Transactions
+                                            </Link>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                openCreatePanel(
+                                                  item.categoryId,
+                                                  item.currency,
+                                                  getBudgetCreatePanelContext({
+                                                    categoryId: item.categoryId,
+                                                    currency: item.currency,
+                                                    previousMonthExpense:
+                                                      item.previousMonthExpense,
+                                                    averageExpenseLast3Months:
+                                                      item.averageExpenseLast3Months,
+                                                  }),
+                                                )
+                                              }
+                                              className="link-button"
+                                            >
+                                              Create budget
+                                            </button>
+                                          </div>
+                                        </div>
+                                        <div className="budget-coverage-entry-history">
+                                          <span>
+                                            <strong>Prev</strong>{" "}
+                                            {item.previousMonthExpense === null
+                                              ? "No history"
+                                              : formatSensitiveCurrency(
+                                                  item.previousMonthExpense,
+                                                  item.currency,
+                                                  shouldHideMoney,
+                                                )}
+                                          </span>
+                                          <span>
+                                            <strong>3m avg</strong>{" "}
+                                            {item.averageExpenseLast3Months ===
+                                            null
+                                              ? "No history"
+                                              : formatSensitiveCurrency(
+                                                  item.averageExpenseLast3Months,
+                                                  item.currency,
+                                                  shouldHideMoney,
+                                                )}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             ))}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {currency.uncategorizedExpenseTotal > 0 ? (
-                  <div className="mt-4 page-inline-notice surface-warning surface-dashed">
-                    <p className="font-medium">
-                      Uncategorized expenses are not budgeted automatically.
-                    </p>
-                    <p className="mt-1">
-                      {formatSensitiveCurrency(
-                        currency.uncategorizedExpenseTotal,
-                        currency.currency,
-                        shouldHideMoney,
-                      )}{" "}
-                      in {currency.currency} still needs category cleanup before
-                      budget coverage is complete.
-                    </p>
-                    <Link
-                      href={buildBudgetTransactionsLink({
-                        month: budgetView.month,
-                      })}
-                      className="mt-2 inline-block link-button"
-                    >
-                      Open transactions
-                    </Link>
-                  </div>
-                ) : null}
+                        </details>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </section>
             ))}
           </div>
         )}
+
+        <WorkflowSection
+          title="Use this month in context"
+          description={`Keep ${budgetView.month} connected to review and trend analysis instead of treating budgets as a standalone page.`}
+          className="is-roomy"
+          cards={workflowCards}
+        />
       </section>
 
       <Modal

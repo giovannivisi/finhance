@@ -398,12 +398,8 @@ export default function TransactionForm({
           {!isAdjustment && isExpense ? (
             <>
               <div className="app-form-field">
-                <label
-                  htmlFor={`${fieldPrefix}-primary-category`}
-                  className="is-optional"
-                >
+                <label htmlFor={`${fieldPrefix}-primary-category`}>
                   <span>Primary</span>
-                  <span>Optional</span>
                 </label>
                 <select
                   id={`${fieldPrefix}-primary-category`}
@@ -412,7 +408,7 @@ export default function TransactionForm({
                     handleExpensePrimaryChange(event.target.value)
                   }
                 >
-                  <option value="">No primary</option>
+                  <option value="">Select primary…</option>
                   {visibleExpensePrimaries.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.name}
@@ -422,12 +418,8 @@ export default function TransactionForm({
               </div>
 
               <div className="app-form-field">
-                <label
-                  htmlFor={`${fieldPrefix}-secondary-category`}
-                  className="is-optional"
-                >
+                <label htmlFor={`${fieldPrefix}-secondary-category`}>
                   <span>Secondary</span>
-                  <span>Optional</span>
                 </label>
                 <select
                   id={`${fieldPrefix}-secondary-category`}
@@ -436,7 +428,7 @@ export default function TransactionForm({
                     handleExpenseSecondaryChange(event.target.value)
                   }
                 >
-                  <option value="">No secondary</option>
+                  <option value="">Select secondary…</option>
                   {visibleExpenseSecondaries.map((category) => (
                     <option key={category.id} value={category.id}>
                       {formatCategoryOptionLabel(category)}
@@ -455,12 +447,8 @@ export default function TransactionForm({
 
           {!isAdjustment && isIncome ? (
             <div className="app-form-field">
-              <label
-                htmlFor={`${fieldPrefix}-category`}
-                className="is-optional"
-              >
+              <label htmlFor={`${fieldPrefix}-category`}>
                 <span>Category</span>
-                <span>Optional</span>
               </label>
               <select
                 id={`${fieldPrefix}-category`}
@@ -469,7 +457,7 @@ export default function TransactionForm({
                   updateField("categoryId", event.target.value)
                 }
               >
-                <option value="">No category</option>
+                <option value="">Select category…</option>
                 {visibleIncomeCategories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {formatCategoryOptionLabel(category)}

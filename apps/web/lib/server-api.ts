@@ -2,7 +2,11 @@ import "server-only";
 
 import { auth } from "@lib/auth";
 import { getDirectApiUrl, mintApiAccessToken } from "@lib/api-auth";
-import { readApiError, withDefaultHeaders } from "@lib/api-core";
+import {
+  readApiError,
+  readApiResponseBody,
+  withDefaultHeaders,
+} from "@lib/api-core";
 import { isHostedAuthMode } from "@lib/auth-mode";
 import { resolveProxyAuthorization } from "@lib/proxy-auth";
 
@@ -44,9 +48,5 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(await readApiError(response));
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
+  return readApiResponseBody<T>(response);
 }

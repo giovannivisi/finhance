@@ -33,6 +33,9 @@ model User {
   recurringTransactionRules       RecurringTransactionRule[]
   recurringTransactionOccurrences RecurringTransactionOccurrence[]
   importBatches                   ImportBatch[]
+  brokerageOperations             BrokerageOperation[]
+  portfolioAssetKindTargets       PortfolioAssetKindTarget[]
+  portfolioSecurityTargets        PortfolioSecurityTarget[]
 
   @@map("users")
 }
@@ -96,8 +99,10 @@ model Asset {
   importKey     String?
   user          User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   account       Account?       @relation(fields: [accountId, userId], references: [id, userId])
+  brokerageOperations BrokerageOperation[]
 
-  @@unique([userId, type, kind, ticker, exchange])
+  @@unique([id, userId])
+  @@unique([userId, type, kind, ticker, exchange, accountId])
   @@unique([userId, importSource, importKey])
   @@index([userId])
   @@index([userId, accountId])
@@ -125,6 +130,7 @@ model Account {
   recurringTransferDestinations RecurringTransactionRule[] @relation("TransferRecurringRuleDestination")
   recurringTransferSources      RecurringTransactionRule[] @relation("TransferRecurringRuleSource")
   transactions                  Transaction[]
+  brokerageOperations           BrokerageOperation[]
 
   @@unique([id, userId])
   @@unique([userId, importSource, importKey])
@@ -296,7 +302,9 @@ model Transaction {
   account                  Account                   @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
   category                 Category?                 @relation(fields: [categoryId, userId], references: [id, userId], onUpdate: Cascade)
   recurringRule            RecurringTransactionRule? @relation(fields: [recurringRuleId], references: [id])
+  brokerageOperationMirror BrokerageOperation?
 
+  @@unique([id, userId])
   @@unique([userId, importSource, importKey, direction])
   @@unique([userId, recurringRuleId, recurringOccurrenceMonth, direction], map: "Transaction_userId_recurringRuleId_recurringOccurrenceMonth_dir")
   @@index([userId, postedAt])
@@ -305,6 +313,64 @@ model Transaction {
   @@index([userId, categoryId, postedAt])
   @@index([userId, transferGroupId])
   @@index([userId, recurringRuleId, recurringOccurrenceMonth])
+}
+
+model BrokerageOperation {
+  id                  String                @id @default(cuid())
+  userId              String
+  accountId           String
+  assetId             String?
+  kind                BrokerageOperationKind
+  postedAt            DateTime
+  currency            String
+  quantity            Decimal?              @db.Decimal(20, 10)
+  unitPrice           Decimal?              @db.Decimal(20, 10)
+  grossAmount         Decimal?              @db.Decimal(20, 10)
+  feeAmount           Decimal?              @db.Decimal(20, 10)
+  cashAmount          Decimal               @db.Decimal(20, 10)
+  realisedGainLoss    Decimal?              @db.Decimal(20, 10)
+  notes               String?
+  mirroredTransactionId String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  account             Account               @relation(fields: [accountId, userId], references: [id, userId], onDelete: Cascade)
+  asset               Asset?                @relation(fields: [assetId, userId], references: [id, userId], onDelete: Restrict)
+  mirroredTransaction Transaction?          @relation(fields: [mirroredTransactionId, userId], references: [id, userId], onDelete: Restrict)
+
+  @@index([userId, accountId, postedAt(sort: Desc)])
+  @@index([userId, assetId, postedAt(sort: Desc)])
+  @@unique([mirroredTransactionId, userId])
+  @@unique([mirroredTransactionId])
+}
+
+model PortfolioAssetKindTarget {
+  id            String    @id @default(cuid())
+  userId        String
+  kind          AssetKind
+  targetPercent Decimal   @db.Decimal(8, 4)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, kind])
+  @@index([userId, kind])
+}
+
+model PortfolioSecurityTarget {
+  id            String    @id @default(cuid())
+  userId        String
+  kind          AssetKind
+  ticker        String
+  exchange      String    @default("")
+  name          String?
+  targetPercent Decimal   @db.Decimal(8, 4)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, kind, ticker, exchange])
+  @@index([userId, kind, ticker, exchange])
 }
 
 model RecurringTransactionRule {
@@ -428,6 +494,13 @@ enum TransactionKind {
   INCOME
   TRANSFER
   ADJUSTMENT
+}
+
+enum BrokerageOperationKind {
+  BUY
+  SELL
+  DIVIDEND
+  FEE
 }
 
 enum TransactionDirection {

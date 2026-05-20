@@ -6,6 +6,7 @@ import {
   buildBudgetTransactionsLink,
   buildBudgetsQueryString,
   getBudgetConfidenceMessage,
+  getBudgetFilterSummaryStatus,
   getBudgetQuickFillSuggestions,
   getBudgetFilters,
   getCurrentRomeMonth,
@@ -84,6 +85,23 @@ test("buildBudgetPageLink and month navigation preserve archived filters", () =>
   );
 });
 
+test("getBudgetFilterSummaryStatus shows month by default and active count for archived categories", () => {
+  assert.equal(
+    getBudgetFilterSummaryStatus({
+      monthLabel: "April 2026",
+      includeArchivedCategories: false,
+    }),
+    "April 2026",
+  );
+  assert.equal(
+    getBudgetFilterSummaryStatus({
+      monthLabel: "April 2026",
+      includeArchivedCategories: true,
+    }),
+    "1 active",
+  );
+});
+
 test("sortBudgetItemsForDisplay promotes over-budget rows first", () => {
   const items = sortBudgetItemsForDisplay([
     {
@@ -146,20 +164,11 @@ test("getBudgetQuickFillSuggestions returns available history suggestions", () =
   );
 });
 
-test("getBudgetConfidenceMessage distinguishes uncategorized and unbudgeted gaps", () => {
-  assert.equal(
-    getBudgetConfidenceMessage({
-      currency: "EUR",
-      unbudgetedExpenseTotal: 0,
-      uncategorizedExpenseTotal: 10,
-    }).tone,
-    "warning",
-  );
+test("getBudgetConfidenceMessage distinguishes unbudgeted and clean states", () => {
   assert.equal(
     getBudgetConfidenceMessage({
       currency: "EUR",
       unbudgetedExpenseTotal: 10,
-      uncategorizedExpenseTotal: 0,
     }).tone,
     "info",
   );
@@ -167,7 +176,6 @@ test("getBudgetConfidenceMessage distinguishes uncategorized and unbudgeted gaps
     getBudgetConfidenceMessage({
       currency: "EUR",
       unbudgetedExpenseTotal: 0,
-      uncategorizedExpenseTotal: 0,
     }).tone,
     "success",
   );

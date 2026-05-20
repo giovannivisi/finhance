@@ -318,6 +318,7 @@ describe('TransactionsService', () => {
         description: 'Salary',
         accountId: 'account-1',
         direction: TransactionDirection.INFLOW,
+        categoryId: 'category-1',
       }),
     ).rejects.toThrow('Transactions before 2026-04-10 are not allowed');
   });
@@ -404,7 +405,7 @@ describe('TransactionsService', () => {
         description: 'Rent',
         accountId: 'account-1',
         direction: TransactionDirection.OUTFLOW,
-        categoryId: null,
+        categoryId: 'category-1',
         counterparty: null,
       }),
     ).rejects.toThrow('Insufficient cash balance');
@@ -470,6 +471,78 @@ describe('TransactionsService', () => {
       ).where,
     ).toEqual({
       userId: OWNER_ID,
+    });
+  });
+
+  it('loads recent account history with a bounded query and hydrates transfer counterparts', async () => {
+    prisma.transaction.findMany
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'transfer-out',
+          postedAt: new Date('2026-04-18T09:00:00.000Z'),
+          accountId: 'account-1',
+          categoryId: null,
+          category: null,
+          kind: TransactionKind.TRANSFER,
+          direction: TransactionDirection.OUTFLOW,
+          transferGroupId: 'transfer-1',
+        }),
+        createTransactionRow({
+          id: 'income-1',
+          postedAt: new Date('2026-04-17T09:00:00.000Z'),
+          kind: TransactionKind.INCOME,
+        }),
+      ])
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'transfer-in',
+          postedAt: new Date('2026-04-18T09:00:00.000Z'),
+          accountId: 'account-2',
+          account: createAccount({ id: 'account-2' }),
+          categoryId: null,
+          category: null,
+          kind: TransactionKind.TRANSFER,
+          direction: TransactionDirection.INFLOW,
+          transferGroupId: 'transfer-1',
+        }),
+      ]);
+
+    const result = await service.findRecentByAccount(OWNER_ID, 'account-1', {
+      includeArchivedAccounts: true,
+      limit: 2,
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.entryType).toBe('TRANSFER');
+    expect(result[1]?.entryType).toBe('STANDARD');
+    expect(prisma.transaction.findMany).toHaveBeenCalledTimes(2);
+    expect(
+      nthCallArg<{
+        where: Record<string, unknown>;
+        take: number;
+        skip: number;
+      }>(prisma.transaction.findMany, 0),
+    ).toMatchObject({
+      where: {
+        userId: OWNER_ID,
+        accountId: 'account-1',
+      },
+      take: 50,
+      skip: 0,
+    });
+    expect(
+      nthCallArg<{ where: Record<string, unknown> }>(
+        prisma.transaction.findMany,
+        1,
+      ).where,
+    ).toMatchObject({
+      userId: OWNER_ID,
+      transferGroupId: {
+        in: ['transfer-1'],
+      },
+      accountId: {
+        not: 'account-1',
+      },
     });
   });
 

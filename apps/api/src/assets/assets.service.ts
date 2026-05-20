@@ -315,21 +315,20 @@ export class AssetsService {
     );
 
     if (prepared.type === AssetType.ASSET && this.isMarketKind(prepared.kind)) {
-      const duplicate = await this.prisma.asset.findUnique({
+      const duplicate = await this.prisma.asset.findFirst({
         where: {
-          userId_type_kind_ticker_exchange: {
-            userId: ownerId,
-            type: AssetType.ASSET,
-            kind: prepared.kind,
-            ticker: prepared.ticker!,
-            exchange: prepared.exchange!,
-          },
+          userId: ownerId,
+          type: AssetType.ASSET,
+          kind: prepared.kind,
+          ticker: prepared.ticker!,
+          exchange: prepared.exchange!,
+          accountId: prepared.accountId,
         },
       });
 
       if (duplicate && duplicate.id !== id) {
         throw new ConflictException(
-          `A position for ${prepared.ticker}${prepared.exchange ?? ''} already exists.`,
+          `A position for ${prepared.ticker}${prepared.exchange ?? ''} already exists in this account.`,
         );
       }
     }
@@ -367,7 +366,17 @@ export class AssetsService {
 
   async remove(ownerId: string, id: string): Promise<void> {
     await this.findOne(ownerId, id);
-    await this.prisma.asset.delete({ where: { id } });
+    try {
+      await this.prisma.asset.delete({ where: { id } });
+    } catch (error) {
+      if (this.isPrismaError(error, 'P2003')) {
+        throw new ConflictException(
+          'Assets with brokerage activity cannot be deleted.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   async reorderAssets(ownerId: string, assetIds: string[]): Promise<void> {
@@ -398,15 +407,14 @@ export class AssetsService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
-          const existing = await tx.asset.findUnique({
+          const existing = await tx.asset.findFirst({
             where: {
-              userId_type_kind_ticker_exchange: {
-                userId: prepared.userId,
-                type: AssetType.ASSET,
-                kind: prepared.kind!,
-                ticker: prepared.ticker!,
-                exchange: prepared.exchange!,
-              },
+              userId: prepared.userId,
+              type: AssetType.ASSET,
+              kind: prepared.kind!,
+              ticker: prepared.ticker!,
+              exchange: prepared.exchange!,
+              accountId: prepared.accountId,
             },
           });
 

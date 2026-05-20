@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
@@ -366,6 +367,15 @@ export default function AccountsPageClient({
                           Edit
                         </button>
 
+                        {account.type === "BROKER" && !account.archivedAt ? (
+                          <Link
+                            href={`/brokerage/${account.id}`}
+                            className="link-button mobile-hit-target"
+                          >
+                            Open brokerage
+                          </Link>
+                        ) : null}
+
                         {!account.archivedAt ? (
                           <button
                             type="button"
@@ -413,7 +423,9 @@ export default function AccountsPageClient({
                       <div className="detail-panel is-roomy section-stack-relaxed">
                         <div className="metric-strip is-relaxed">
                           <div className="detail-panel is-roomy">
-                            <p className="detail-metric-label">Tracked</p>
+                            <p className="detail-metric-label">
+                              {account.type === "BROKER" ? "Tracked cash" : "Tracked"}
+                            </p>
                             <p className="detail-metric-value">
                               {reconciliation.trackedBalance === null
                                 ? "Unavailable"
@@ -425,7 +437,9 @@ export default function AccountsPageClient({
                           </div>
 
                           <div className="detail-panel is-roomy">
-                            <p className="detail-metric-label">Expected</p>
+                            <p className="detail-metric-label">
+                              {account.type === "BROKER" ? "Expected cash" : "Expected"}
+                            </p>
                             <p className="detail-metric-value">
                               {reconciliation.expectedBalance === null
                                 ? "Unavailable"
@@ -478,6 +492,12 @@ export default function AccountsPageClient({
                               className="account-reconciliation-details"
                             >
                               <div className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                                {account.type === "BROKER" ? (
+                                  <p>
+                                    Brokerage reconciliation tracks cash movements only.
+                                    Open positions are excluded from this balance check.
+                                  </p>
+                                ) : null}
                                 <p>
                                   {account.openingBalanceDate
                                     ? `Baseline: ${formatCurrency(
