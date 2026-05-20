@@ -593,6 +593,25 @@ export class AccountsService {
     return account;
   }
 
+  assertPostedAtAllowed(
+    account: Pick<Account, 'name' | 'openingBalanceDate'>,
+    postedAt: Date,
+  ): void {
+    if (!account.openingBalanceDate) {
+      return;
+    }
+
+    const openingBalanceDate = account.openingBalanceDate
+      .toISOString()
+      .slice(0, 10);
+
+    if (postedAt < this.getOpeningBalanceCutoff(account)) {
+      throw new BadRequestException(
+        `Transactions before ${openingBalanceDate} are not allowed for account ${account.name}.`,
+      );
+    }
+  }
+
   private async buildReconciliation(
     accounts: Account[],
     assets: Asset[],
@@ -1203,7 +1222,9 @@ export class AccountsService {
     return transaction.postedAt >= this.getOpeningBalanceCutoff(account);
   }
 
-  private getOpeningBalanceCutoff(account: Account): Date {
+  private getOpeningBalanceCutoff(
+    account: Pick<Account, 'openingBalanceDate'>,
+  ): Date {
     return romeDateToUtcStart(
       account.openingBalanceDate!.toISOString().slice(0, 10),
     );

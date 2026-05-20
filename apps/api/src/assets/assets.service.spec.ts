@@ -495,4 +495,18 @@ describe('AssetsService', () => {
       }) as unknown,
     });
   });
+
+  it('surfaces a conflict when deleting an asset with linked brokerage activity', async () => {
+    prisma.asset.findFirst.mockResolvedValue(createAsset());
+    prisma.asset.delete.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('foreign key', {
+        code: 'P2003',
+        clientVersion: 'test',
+      }),
+    );
+
+    await expect(service.remove(OWNER_ID, 'asset-1')).rejects.toThrow(
+      new ConflictException('Assets with brokerage activity cannot be deleted.'),
+    );
+  });
 });

@@ -232,6 +232,7 @@ export class BrokerageService {
           tx,
         );
         const postedAt = this.parsePostedAt(input.postedAt);
+        this.accountsService.assertPostedAtAllowed(account, postedAt);
         const quantity = this.toPositiveDecimal(
           input.quantity,
           'Quantity is required.',
@@ -245,7 +246,7 @@ export class BrokerageService {
         const cashAmount = grossAmount.add(feeAmount);
         const signedCashAmount = ZERO.sub(cashAmount);
         const kind = this.requireMarketKind(input.kind);
-        const currency = this.normalizeCurrency(input.currency);
+        const requestedCurrency = this.normalizeCurrency(input.currency);
 
         const existingAsset = input.assetId
           ? await this.getRequiredBrokerageAsset(
@@ -264,6 +265,7 @@ export class BrokerageService {
               },
               tx,
             );
+        const operationCurrency = existingAsset?.currency ?? requestedCurrency;
 
         await this.transactionsService.applyAccountCashMovement(
           ownerId,
@@ -301,7 +303,7 @@ export class BrokerageService {
             assetId: asset.id,
             kind: BrokerageOperationKind.BUY,
             postedAt,
-            currency,
+            currency: operationCurrency,
             quantity,
             unitPrice,
             grossAmount,
@@ -326,14 +328,19 @@ export class BrokerageService {
   ): Promise<BrokerageOperationResponse> {
     return this.prisma.$transaction(
       async (tx) => {
-        await this.getRequiredBrokerAccount(ownerId, accountId, tx);
+        const account = await this.getRequiredBrokerAccount(
+          ownerId,
+          accountId,
+          tx,
+        );
+        const postedAt = this.parsePostedAt(input.postedAt);
+        this.accountsService.assertPostedAtAllowed(account, postedAt);
         const asset = await this.getRequiredBrokerageAsset(
           ownerId,
           accountId,
           input.assetId,
           tx,
         );
-        const postedAt = this.parsePostedAt(input.postedAt);
         const quantity = this.toPositiveDecimal(
           input.quantity,
           'Quantity is required.',

@@ -366,7 +366,17 @@ export class AssetsService {
 
   async remove(ownerId: string, id: string): Promise<void> {
     await this.findOne(ownerId, id);
-    await this.prisma.asset.delete({ where: { id } });
+    try {
+      await this.prisma.asset.delete({ where: { id } });
+    } catch (error) {
+      if (this.isPrismaError(error, 'P2003')) {
+        throw new ConflictException(
+          'Assets with brokerage activity cannot be deleted.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   async reorderAssets(ownerId: string, assetIds: string[]): Promise<void> {
