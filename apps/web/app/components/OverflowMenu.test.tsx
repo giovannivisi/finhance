@@ -14,8 +14,8 @@ function TestMenu({
   return (
     <OverflowMenu
       label={label}
-      renderTrigger={({ triggerProps, triggerRef }) => (
-        <button {...triggerProps} ref={triggerRef}>
+      renderTrigger={({ triggerProps, setTriggerNode }) => (
+        <button {...triggerProps} ref={setTriggerNode}>
           {label}
         </button>
       )}

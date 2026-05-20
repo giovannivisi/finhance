@@ -670,11 +670,11 @@ export default function BrokeragePageClient({
               <OverflowMenu
                 label="Operations"
                 panelClassName="brokerage-operations-panel"
-                renderTrigger={({ triggerProps, triggerRef }) => (
+                renderTrigger={({ triggerProps, setTriggerNode }) => (
                   <div className="brokerage-operations-menu">
                     <button
                       {...triggerProps}
-                      ref={triggerRef}
+                      ref={setTriggerNode}
                       className="btn-secondary brokerage-operations-trigger"
                     >
                       <MoreHorizontal size={16} aria-hidden="true" />

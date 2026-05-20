@@ -144,6 +144,132 @@ export class TransactionsService {
     );
   }
 
+  async findRecentByAccount(
+    ownerId: string,
+    accountId: string,
+    options: {
+      includeArchivedAccounts?: boolean;
+      limit?: number;
+    } = {},
+  ): Promise<LogicalTransactionEntry[]> {
+    const limit = this.normalizeLimit(
+      options.limit ?? DEFAULT_TRANSACTION_LIMIT,
+    );
+    const includeArchivedAccounts = options.includeArchivedAccounts ?? false;
+    const batchSize = Math.min(MAX_TRANSACTION_LIMIT, Math.max(limit * 2, 50));
+    const entries: LogicalTransactionEntry[] = [];
+    const seenEntryKeys = new Set<string>();
+    const seenTransferGroupIds = new Set<string>();
+    let skip = 0;
+
+    while (entries.length < limit) {
+      const accountRows = await this.prisma.transaction.findMany({
+        where: {
+          userId: ownerId,
+          accountId,
+          ...(!includeArchivedAccounts
+            ? {
+                account: {
+                  archivedAt: null,
+                },
+              }
+            : {}),
+        },
+        include: {
+          account: true,
+          category: {
+            include: {
+              parentCategory: true,
+            },
+          },
+        },
+        orderBy: [{ postedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        take: batchSize,
+        skip,
+      });
+
+      if (accountRows.length === 0) {
+        break;
+      }
+
+      skip += accountRows.length;
+
+      const transferGroupIds = [
+        ...new Set(
+          accountRows
+            .filter(
+              (row) =>
+                row.kind === TransactionKind.TRANSFER &&
+                row.transferGroupId &&
+                !seenTransferGroupIds.has(row.transferGroupId),
+            )
+            .map((row) => row.transferGroupId as string),
+        ),
+      ];
+
+      for (const transferGroupId of transferGroupIds) {
+        seenTransferGroupIds.add(transferGroupId);
+      }
+
+      const counterpartRows =
+        transferGroupIds.length === 0
+          ? []
+          : await this.prisma.transaction.findMany({
+              where: {
+                userId: ownerId,
+                transferGroupId: { in: transferGroupIds },
+                accountId: { not: accountId },
+              },
+              include: {
+                account: true,
+                category: {
+                  include: {
+                    parentCategory: true,
+                  },
+                },
+              },
+            });
+
+      const batchEntries = this.toLogicalEntries([
+        ...accountRows,
+        ...counterpartRows,
+      ])
+        .filter((entry) =>
+          this.matchesFilters(entry, {
+            accountId,
+            includeArchivedAccounts,
+          }),
+        )
+        .sort((left, right) => this.compareEntriesDesc(left, right));
+
+      for (const entry of batchEntries) {
+        const entryKey =
+          entry.entryType === 'TRANSFER'
+            ? `TRANSFER:${entry.transferGroupId}`
+            : `STANDARD:${entry.row.id}`;
+
+        if (seenEntryKeys.has(entryKey)) {
+          continue;
+        }
+
+        seenEntryKeys.add(entryKey);
+        entries.push(entry);
+
+        if (entries.length === limit) {
+          break;
+        }
+      }
+
+      if (accountRows.length < batchSize) {
+        break;
+      }
+    }
+
+    return entries
+      .sort((left, right) => this.compareEntriesDesc(left, right))
+      .slice(0, limit);
+  }
+
   async findOne(ownerId: string, id: string): Promise<LogicalTransactionEntry> {
     const byId = await this.prisma.transaction.findFirst({
       where: { id, userId: ownerId },

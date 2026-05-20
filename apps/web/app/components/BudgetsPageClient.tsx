@@ -661,12 +661,12 @@ export default function BudgetsPageClient({
                                           panelClassName="budget-item-action-panel"
                                           renderTrigger={({
                                             triggerProps,
-                                            triggerRef,
+                                            setTriggerNode,
                                           }) => (
                                             <div className="budget-item-actions budget-item-action-menu">
                                               <button
                                                 {...triggerProps}
-                                                ref={triggerRef}
+                                                ref={setTriggerNode}
                                                 className="btn-secondary budget-item-action-trigger"
                                               >
                                                 <MoreHorizontal

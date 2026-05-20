@@ -11,7 +11,6 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
-  type RefObject,
 } from "react";
 
 const MENU_OPEN_EVENT = "finhance:overflow-menu-open";
@@ -28,7 +27,7 @@ type TriggerProps = Pick<
 type OverflowMenuTriggerRenderArgs = {
   isOpen: boolean;
   triggerProps: TriggerProps;
-  triggerRef: RefObject<HTMLButtonElement | null>;
+  setTriggerNode: (node: HTMLButtonElement | null) => void;
 };
 
 type OverflowMenuChildrenRenderArgs = {
@@ -78,18 +77,52 @@ export default function OverflowMenu({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [shouldRenderPanel, setShouldRenderPanel] = useState(false);
+  const [shouldRestoreFocus, setShouldRestoreFocus] = useState(false);
   const [panelStyle, setPanelStyle] = useState<CSSProperties>({
     visibility: "hidden",
   });
 
   function closeMenu(options?: { restoreFocus?: boolean }) {
+    setShouldRestoreFocus(Boolean(options?.restoreFocus));
     setIsOpen(false);
-    if (options?.restoreFocus) {
-      window.requestAnimationFrame(() => {
-        triggerRef.current?.focus();
-      });
-    }
   }
+
+  function setTriggerNode(node: HTMLButtonElement | null) {
+    triggerRef.current = node;
+  }
+
+  useEffect(() => {
+    if (isOpen || !shouldRestoreFocus) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      triggerRef.current?.focus();
+      setShouldRestoreFocus(false);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isOpen, shouldRestoreFocus]);
+
+  const panelChildren = children({ closeMenu });
+  const trigger = renderTrigger({
+    isOpen,
+    setTriggerNode,
+    triggerProps: {
+      type: "button",
+      "aria-haspopup": "menu",
+      "aria-expanded": isOpen,
+      "aria-controls": menuId,
+      onClick: () =>
+        setIsOpen((current) => {
+          const nextIsOpen = !current;
+          if (nextIsOpen) {
+            setShouldRenderPanel(true);
+          }
+          return nextIsOpen;
+        }),
+    },
+  });
 
   useEffect(() => {
     function handleAnotherMenuOpening(event: Event) {
@@ -271,25 +304,6 @@ export default function OverflowMenu({
     enabledItems[nextIndex]?.focus();
   }
 
-  const trigger = renderTrigger({
-    isOpen,
-    triggerRef,
-    triggerProps: {
-      type: "button",
-      "aria-haspopup": "menu",
-      "aria-expanded": isOpen,
-      "aria-controls": menuId,
-      onClick: () =>
-        setIsOpen((current) => {
-          const nextIsOpen = !current;
-          if (nextIsOpen) {
-            setShouldRenderPanel(true);
-          }
-          return nextIsOpen;
-        }),
-    },
-  });
-
   return (
     <>
       {trigger}
@@ -311,7 +325,7 @@ export default function OverflowMenu({
               }
               onKeyDown={handlePanelKeyDown}
             >
-              {children({ closeMenu })}
+              {panelChildren}
             </div>,
             document.body,
           )

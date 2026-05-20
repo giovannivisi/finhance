@@ -220,7 +220,7 @@ function SortableAssetRow({
           <OverflowMenu
             label="Asset actions"
             panelClassName="asset-row-action-panel"
-            renderTrigger={({ isOpen, triggerProps, triggerRef }) => (
+            renderTrigger={({ isOpen, triggerProps, setTriggerNode }) => (
               <div
                 className={`asset-row-actions asset-row-action-menu${
                   isOpen ? " is-open" : ""
@@ -228,7 +228,7 @@ function SortableAssetRow({
               >
                 <button
                   {...triggerProps}
-                  ref={triggerRef}
+                  ref={setTriggerNode}
                   className="asset-row-action-trigger"
                 >
                   <MoreHorizontal size={16} aria-hidden="true" />
@@ -309,7 +309,7 @@ function SortableAssetRow({
         <OverflowMenu
           label="Asset actions"
           panelClassName="asset-row-action-panel"
-          renderTrigger={({ isOpen, triggerProps, triggerRef }) => (
+          renderTrigger={({ isOpen, triggerProps, setTriggerNode }) => (
             <div
               className={`asset-row-actions asset-row-action-menu${
                 isOpen ? " is-open" : ""
@@ -317,7 +317,7 @@ function SortableAssetRow({
             >
               <button
                 {...triggerProps}
-                ref={triggerRef}
+                ref={setTriggerNode}
                 className="asset-row-action-trigger"
               >
                 <MoreHorizontal size={16} aria-hidden="true" />

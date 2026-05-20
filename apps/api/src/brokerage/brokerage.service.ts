@@ -46,6 +46,7 @@ import type {
 
 const ZERO = new Prisma.Decimal(0);
 const HUNDRED = new Prisma.Decimal(100);
+const BROKERAGE_ACTIVITY_LIMIT = 200;
 const MARKET_KINDS = new Set<AssetKind>([
   AssetKind.STOCK,
   AssetKind.BOND,
@@ -125,7 +126,11 @@ export class BrokerageService {
       dashboardPromise,
       deletionStatesPromise,
       this.accountsService.findReconciliation(ownerId),
-      this.findBrokerageOperationsSafe(ownerId, accountId),
+      this.findBrokerageOperationsSafe(
+        ownerId,
+        accountId,
+        BROKERAGE_ACTIVITY_LIMIT,
+      ),
       this.findPortfolioAssetKindTargetsSafe(ownerId),
       this.findPortfolioSecurityTargetsSafe(ownerId),
     ]);
@@ -183,10 +188,11 @@ export class BrokerageService {
         .map((operation) => operation.mirroredTransactionId)
         .filter((value): value is string => Boolean(value)),
     );
-    const transactionEntries = await this.transactionsService.findAll(ownerId, {
-      accountId,
-      includeArchivedAccounts: true,
-    });
+    const transactionEntries =
+      await this.transactionsService.findRecentByAccount(ownerId, accountId, {
+        includeArchivedAccounts: true,
+        limit: BROKERAGE_ACTIVITY_LIMIT,
+      });
     const transactionActivity = transactionEntries
       .filter(
         (entry) =>
@@ -208,7 +214,7 @@ export class BrokerageService {
         ? toAccountReconciliationResponse(cashReconciliation)
         : null,
       positions,
-      activity,
+      activity: activity.slice(0, BROKERAGE_ACTIVITY_LIMIT),
       allocation,
     };
   }
@@ -1344,6 +1350,7 @@ export class BrokerageService {
   private async findBrokerageOperationsSafe(
     ownerId: string,
     accountId: string,
+    limit?: number,
   ): Promise<(BrokerageOperation & { asset?: Asset | null })[]> {
     try {
       return await this.prisma.brokerageOperation.findMany({
@@ -1352,6 +1359,7 @@ export class BrokerageService {
           asset: true,
         },
         orderBy: [{ postedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        ...(limit ? { take: limit } : {}),
       });
     } catch (error) {
       if (this.isMissingTableError(error, 'BrokerageOperation')) {
