@@ -116,6 +116,9 @@ describe('AccountsService', () => {
       findMany: jest.Mock;
       findFirst: jest.Mock;
     };
+    brokerageOperation: {
+      findMany: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
   let prices: {
@@ -142,6 +145,9 @@ describe('AccountsService', () => {
         findMany: jest.fn(),
         findFirst: jest.fn(),
       },
+      brokerageOperation: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       $transaction: jest.fn(),
     };
 
@@ -151,12 +157,14 @@ describe('AccountsService', () => {
           account: typeof prisma.account;
           asset: typeof prisma.asset;
           transaction: typeof prisma.transaction;
+          brokerageOperation: typeof prisma.brokerageOperation;
         }) => Promise<unknown>,
       ) =>
         callback({
           account: prisma.account,
           asset: prisma.asset,
           transaction: prisma.transaction,
+          brokerageOperation: prisma.brokerageOperation,
         }),
     );
 

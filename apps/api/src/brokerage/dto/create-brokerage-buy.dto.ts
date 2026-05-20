@@ -18,16 +18,18 @@ function trimOptionalStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() || undefined : value;
 }
 
-function trimStringValue({ value }: TransformFnParams): unknown {
-  return typeof value === 'string' ? value.trim() : value;
-}
-
 function uppercaseOptionalStringValue({ value }: TransformFnParams): unknown {
-  return typeof value === 'string' ? value.trim().toUpperCase() || undefined : value;
+  return typeof value === 'string'
+    ? value.trim().toUpperCase() || undefined
+    : value;
 }
 
 const NAME_MAX_LENGTH = 120;
+const TICKER_MAX_LENGTH = 32;
+const EXCHANGE_MAX_LENGTH = 24;
 const NOTES_MAX_LENGTH = 2_000;
+const MARKET_SYMBOL_PATTERN = /^[A-Z0-9.=-]+$/;
+const EXCHANGE_PATTERN = /^[A-Z0-9.=-]+$/;
 
 export class CreateBrokerageBuyDto implements CreateBrokerageBuyRequest {
   @IsOptional()
@@ -49,11 +51,15 @@ export class CreateBrokerageBuyDto implements CreateBrokerageBuyRequest {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  @MaxLength(TICKER_MAX_LENGTH)
+  @Matches(MARKET_SYMBOL_PATTERN)
   @Transform(uppercaseOptionalStringValue)
   ticker?: string | null;
 
   @IsOptional()
   @IsString()
+  @MaxLength(EXCHANGE_MAX_LENGTH)
+  @Matches(EXCHANGE_PATTERN)
   @Transform(uppercaseOptionalStringValue)
   exchange?: string | null;
 

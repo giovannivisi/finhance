@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
 import { AccountsService } from '@accounts/accounts.service';
-import { toAccountResponse, toAccountReconciliationResponse } from '@accounts/accounts.mapper';
+import {
+  toAccountResponse,
+  toAccountReconciliationResponse,
+} from '@accounts/accounts.mapper';
 import { AssetsService } from '@assets/assets.service';
 import { TransactionsService } from '@transactions/transactions.service';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
@@ -39,7 +42,6 @@ import type {
   PortfolioAllocationSnapshotResponse,
   PortfolioAllocationTargetsResponse,
   UpdatePortfolioAllocationTargetsRequest,
-  ValuationSource,
 } from '@finhance/shared';
 
 const ZERO = new Prisma.Decimal(0);
@@ -72,6 +74,11 @@ interface SecurityTargetModel {
   ticker: string;
   exchange: string;
   name: string | null;
+  targetPercent: Prisma.Decimal;
+}
+
+interface AssetKindTargetModel {
+  kind: AssetKind;
   targetPercent: Prisma.Decimal;
 }
 
@@ -133,14 +140,20 @@ export class BrokerageService {
     );
 
     if (!selectedBroker) {
-      throw new NotFoundException(`Brokerage account ${accountId} was not found.`);
+      throw new NotFoundException(
+        `Brokerage account ${accountId} was not found.`,
+      );
     }
 
     const cashReconciliation = reconciliations.find(
       (entry) => entry.account.id === accountId,
     );
-    const allAssets = dashboard.assets.filter((asset) => asset.type === 'ASSET');
-    const selectedAssets = allAssets.filter((asset) => asset.accountId === accountId);
+    const allAssets = dashboard.assets.filter(
+      (asset) => asset.type === 'ASSET',
+    );
+    const selectedAssets = allAssets.filter(
+      (asset) => asset.accountId === accountId,
+    );
     const activePositions = selectedAssets.filter(
       (asset) =>
         asset.kind &&
@@ -175,13 +188,16 @@ export class BrokerageService {
       includeArchivedAccounts: true,
     });
     const transactionActivity = transactionEntries
-      .filter((entry) => !this.isMirroredBrokerageCashflow(entry, mirroredTransactionIds))
+      .filter(
+        (entry) =>
+          !this.isMirroredBrokerageCashflow(entry, mirroredTransactionIds),
+      )
       .map((entry) => this.toBrokerageTransactionActivity(entry));
     const operationActivity = operations.map((operation) =>
       this.toBrokerageOperationActivity(operation),
     );
-    const activity = [...operationActivity, ...transactionActivity].sort((left, right) =>
-      right.postedAt.localeCompare(left.postedAt),
+    const activity = [...operationActivity, ...transactionActivity].sort(
+      (left, right) => right.postedAt.localeCompare(left.postedAt),
     );
 
     return {
@@ -204,9 +220,16 @@ export class BrokerageService {
   ): Promise<BrokerageOperationResponse> {
     return this.prisma.$transaction(
       async (tx) => {
-        const account = await this.getRequiredBrokerAccount(ownerId, accountId, tx);
+        const account = await this.getRequiredBrokerAccount(
+          ownerId,
+          accountId,
+          tx,
+        );
         const postedAt = this.parsePostedAt(input.postedAt);
-        const quantity = this.toPositiveDecimal(input.quantity, 'Quantity is required.');
+        const quantity = this.toPositiveDecimal(
+          input.quantity,
+          'Quantity is required.',
+        );
         const unitPrice = this.toPositiveDecimal(
           input.unitPrice,
           'Unit price is required.',
@@ -219,12 +242,22 @@ export class BrokerageService {
         const currency = this.normalizeCurrency(input.currency);
 
         const existingAsset = input.assetId
-          ? await this.getRequiredBrokerageAsset(ownerId, accountId, input.assetId, tx)
-          : await this.findExistingHoldingByIdentity(ownerId, accountId, {
-              kind,
-              ticker: input.ticker ?? null,
-              exchange: input.exchange ?? null,
-            }, tx);
+          ? await this.getRequiredBrokerageAsset(
+              ownerId,
+              accountId,
+              input.assetId,
+              tx,
+            )
+          : await this.findExistingHoldingByIdentity(
+              ownerId,
+              accountId,
+              {
+                kind,
+                ticker: input.ticker ?? null,
+                exchange: input.exchange ?? null,
+              },
+              tx,
+            );
 
         await this.transactionsService.applyAccountCashMovement(
           ownerId,
@@ -244,7 +277,15 @@ export class BrokerageService {
             tx,
           );
         } else {
-          asset = await this.createNewHolding(ownerId, account, input, quantity, grossAmount, feeAmount, tx);
+          asset = await this.createNewHolding(
+            ownerId,
+            account,
+            input,
+            quantity,
+            grossAmount,
+            feeAmount,
+            tx,
+          );
         }
 
         const operation = await tx.brokerageOperation.create({
@@ -287,7 +328,10 @@ export class BrokerageService {
           tx,
         );
         const postedAt = this.parsePostedAt(input.postedAt);
-        const quantity = this.toPositiveDecimal(input.quantity, 'Quantity is required.');
+        const quantity = this.toPositiveDecimal(
+          input.quantity,
+          'Quantity is required.',
+        );
         const unitPrice = this.toPositiveDecimal(
           input.unitPrice,
           'Unit price is required.',
@@ -297,7 +341,9 @@ export class BrokerageService {
         const existingUnitPrice = this.toDecimal(asset.unitPrice);
 
         if (existingQuantity.lt(quantity)) {
-          throw new ConflictException('Cannot sell more than the current position quantity.');
+          throw new ConflictException(
+            'Cannot sell more than the current position quantity.',
+          );
         }
 
         const grossAmount = quantity.mul(unitPrice);
@@ -385,24 +431,38 @@ export class BrokerageService {
     ownerId: string,
     input: UpdatePortfolioAllocationTargetsRequest,
   ): Promise<PortfolioAllocationTargetsResponse> {
-    const assetKindTargets = input.assetKindTargets.map((entry) => ({
-      kind: entry.kind,
-      targetPercent: this.toNonNegativeDecimal(entry.targetPercent),
-    }));
-    const securityTargets = input.securityTargets.map((entry) => ({
-      kind: this.requireMarketKind(entry.kind),
-      ticker: this.normalizeTicker(entry.ticker),
-      exchange: this.normalizeExchange(entry.kind, entry.exchange ?? null),
-      name: this.optionalText(entry.name),
-      targetPercent: this.toNonNegativeDecimal(entry.targetPercent),
-    }));
+    const assetKindTargets: AssetKindTargetModel[] = input.assetKindTargets.map(
+      (entry) => ({
+        kind: entry.kind,
+        targetPercent: this.toNonNegativeDecimal(entry.targetPercent),
+      }),
+    );
+    const securityTargets: SecurityTargetModel[] = input.securityTargets.map(
+      (entry) => ({
+        kind: this.requireMarketKind(entry.kind),
+        ticker: this.normalizeTicker(entry.ticker),
+        exchange: this.normalizeExchange(entry.kind, entry.exchange ?? null),
+        name: this.optionalText(entry.name),
+        targetPercent: this.toNonNegativeDecimal(entry.targetPercent),
+      }),
+    );
 
-    this.assertTargetsSumToHundred(assetKindTargets.map((entry) => entry.targetPercent));
-    this.assertTargetsSumToHundred(securityTargets.map((entry) => entry.targetPercent));
+    this.assertNoDuplicateAssetKindTargets(assetKindTargets);
+    this.assertNoDuplicateSecurityTargets(securityTargets);
+    this.assertTargetsSumToHundred(
+      assetKindTargets.map((entry) => entry.targetPercent),
+    );
+    this.assertTargetsSumToHundred(
+      securityTargets.map((entry) => entry.targetPercent),
+    );
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.portfolioAssetKindTarget.deleteMany({ where: { userId: ownerId } });
-      await tx.portfolioSecurityTarget.deleteMany({ where: { userId: ownerId } });
+      await tx.portfolioAssetKindTarget.deleteMany({
+        where: { userId: ownerId },
+      });
+      await tx.portfolioSecurityTarget.deleteMany({
+        where: { userId: ownerId },
+      });
 
       if (assetKindTargets.length > 0) {
         await tx.portfolioAssetKindTarget.createMany({
@@ -454,9 +514,18 @@ export class BrokerageService {
   ): Promise<BrokerageOperationResponse> {
     return this.prisma.$transaction(
       async (tx) => {
-        const account = await this.getRequiredBrokerAccount(ownerId, accountId, tx);
+        const account = await this.getRequiredBrokerAccount(
+          ownerId,
+          accountId,
+          tx,
+        );
         const asset = input.assetId
-          ? await this.getRequiredBrokerageAsset(ownerId, account.id, input.assetId, tx)
+          ? await this.getRequiredBrokerageAsset(
+              ownerId,
+              account.id,
+              input.assetId,
+              tx,
+            )
           : null;
         const amount = this.toPositiveDecimal(
           input.amount,
@@ -494,7 +563,9 @@ export class BrokerageService {
             grossAmount: amount,
             feeAmount: null,
             cashAmount:
-              direction === TransactionDirection.INFLOW ? amount : ZERO.sub(amount),
+              direction === TransactionDirection.INFLOW
+                ? amount
+                : ZERO.sub(amount),
             realisedGainLoss: null,
             notes: this.optionalText(input.notes),
             mirroredTransactionId: transactionId,
@@ -546,7 +617,10 @@ export class BrokerageService {
         assignedAssets.filter((asset) => asset.kind === AssetKind.CASH),
       );
       const investedAssets = assignedAssets.filter(
-        (asset) => asset.kind && this.isMarketKind(asset.kind) && (asset.quantity ?? 0) > 0,
+        (asset) =>
+          asset.kind &&
+          this.isMarketKind(asset.kind) &&
+          (asset.quantity ?? 0) > 0,
       );
       const investedValue = this.sumEffectiveValues(investedAssets);
       const totalValue = this.sumEffectiveValues(assignedAssets);
@@ -574,10 +648,19 @@ export class BrokerageService {
     assetKindTargets: { kind: AssetKind; targetPercent: Prisma.Decimal }[];
     securityTargets: SecurityTargetModel[];
   }): PortfolioAllocationSnapshotResponse {
-    const byKind = new Map<AssetKind, { label: string; currentValue: number }>();
+    const byKind = new Map<
+      AssetKind,
+      { label: string; currentValue: number }
+    >();
     const bySecurity = new Map<
       string,
-      { label: string; currentValue: number; kind: AssetKind; ticker: string; exchange: string }
+      {
+        label: string;
+        currentValue: number;
+        kind: AssetKind;
+        ticker: string;
+        exchange: string;
+      }
     >();
 
     for (const asset of input.assets) {
@@ -586,7 +669,8 @@ export class BrokerageService {
       }
 
       const currentValue = this.effectiveValue(asset);
-      const nextKindValue = (byKind.get(asset.kind)?.currentValue ?? 0) + currentValue;
+      const nextKindValue =
+        (byKind.get(asset.kind)?.currentValue ?? 0) + currentValue;
       byKind.set(asset.kind, {
         label: KIND_LABELS[asset.kind] ?? asset.kind,
         currentValue: nextKindValue,
@@ -600,7 +684,11 @@ export class BrokerageService {
         continue;
       }
 
-      const key = this.securityKey(asset.kind, asset.ticker, asset.exchange ?? '');
+      const key = this.securityKey(
+        asset.kind,
+        asset.ticker,
+        asset.exchange ?? '',
+      );
       const existing = bySecurity.get(key);
       bySecurity.set(key, {
         label: asset.name,
@@ -673,17 +761,26 @@ export class BrokerageService {
       existing.deltaValue =
         existing.targetPercent === null
           ? null
-          : (portfolioTotal * existing.targetPercent) / 100 - existing.currentValue;
+          : (portfolioTotal * existing.targetPercent) / 100 -
+            existing.currentValue;
       rows.set(target.kind, existing);
     }
 
-    return [...rows.values()].sort((left, right) => right.currentValue - left.currentValue);
+    return [...rows.values()].sort(
+      (left, right) => right.currentValue - left.currentValue,
+    );
   }
 
   private buildSecurityAllocationRows(
     bySecurity: Map<
       string,
-      { label: string; currentValue: number; kind: AssetKind; ticker: string; exchange: string }
+      {
+        label: string;
+        currentValue: number;
+        kind: AssetKind;
+        ticker: string;
+        exchange: string;
+      }
     >,
     targets: SecurityTargetModel[],
     portfolioTotal: number,
@@ -729,11 +826,14 @@ export class BrokerageService {
       existing.deltaValue =
         existing.targetPercent === null
           ? null
-          : (portfolioTotal * existing.targetPercent) / 100 - existing.currentValue;
+          : (portfolioTotal * existing.targetPercent) / 100 -
+            existing.currentValue;
       rows.set(key, existing);
     }
 
-    return [...rows.values()].sort((left, right) => right.currentValue - left.currentValue);
+    return [...rows.values()].sort(
+      (left, right) => right.currentValue - left.currentValue,
+    );
   }
 
   private toBrokeragePositionResponse(input: {
@@ -745,8 +845,7 @@ export class BrokerageService {
   }): BrokeragePositionResponse {
     const asset = input.asset;
     const currentValue = asset.currentValue ?? asset.referenceValue ?? null;
-    const currentPrice =
-      asset.lastPrice ?? asset.unitPrice ?? null;
+    const currentPrice = asset.lastPrice ?? asset.unitPrice ?? null;
     const costBasis = asset.referenceValue ?? asset.balance;
     const unrealisedGainLoss =
       currentValue === null ? null : currentValue - costBasis;
@@ -792,7 +891,7 @@ export class BrokerageService {
       targetPercent,
       deltaPercent,
       deltaValue,
-      valuationSource: asset.valuationSource as ValuationSource,
+      valuationSource: asset.valuationSource,
       valuationAsOf: asset.valuationAsOf,
       isStale: asset.isStale,
     };
@@ -855,7 +954,8 @@ export class BrokerageService {
     }
 
     const response = toTransactionResponse(entry);
-    const amount = response.direction === 'OUTFLOW' ? -response.amount : response.amount;
+    const amount =
+      response.direction === 'OUTFLOW' ? -response.amount : response.amount;
     return {
       id: response.id,
       source: 'TRANSACTION',
@@ -893,7 +993,9 @@ export class BrokerageService {
     });
 
     if (!account) {
-      throw new NotFoundException(`Brokerage account ${accountId} was not found.`);
+      throw new NotFoundException(
+        `Brokerage account ${accountId} was not found.`,
+      );
     }
 
     return account;
@@ -910,7 +1012,9 @@ export class BrokerageService {
     });
 
     if (!asset) {
-      throw new NotFoundException(`Brokerage position ${assetId} was not found.`);
+      throw new NotFoundException(
+        `Brokerage position ${assetId} was not found.`,
+      );
     }
 
     if (
@@ -1023,7 +1127,9 @@ export class BrokerageService {
     return assets.reduce((sum, asset) => sum + this.effectiveValue(asset), 0);
   }
 
-  private effectiveValue(asset: Pick<DashboardAssetView, 'currentValue' | 'referenceValue'>): number {
+  private effectiveValue(
+    asset: Pick<DashboardAssetView, 'currentValue' | 'referenceValue'>,
+  ): number {
     return asset.currentValue ?? asset.referenceValue ?? 0;
   }
 
@@ -1053,7 +1159,62 @@ export class BrokerageService {
     }
   }
 
-  private securityKey(kind: AssetKind, ticker: string, exchange: string): string {
+  private assertNoDuplicateAssetKindTargets(
+    targets: AssetKindTargetModel[],
+  ): void {
+    const seen = new Set<AssetKind>();
+    const duplicates = new Set<AssetKind>();
+
+    for (const target of targets) {
+      if (seen.has(target.kind)) {
+        duplicates.add(target.kind);
+        continue;
+      }
+
+      seen.add(target.kind);
+    }
+
+    if (duplicates.size > 0) {
+      throw new BadRequestException(
+        `Duplicate asset-class targets are not allowed: ${[...duplicates].join(', ')}.`,
+      );
+    }
+  }
+
+  private assertNoDuplicateSecurityTargets(
+    targets: SecurityTargetModel[],
+  ): void {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+
+    for (const target of targets) {
+      const key = this.securityKey(target.kind, target.ticker, target.exchange);
+
+      if (seen.has(key)) {
+        duplicates.add(key);
+        continue;
+      }
+
+      seen.add(key);
+    }
+
+    if (duplicates.size > 0) {
+      const duplicateLabels = [...duplicates].map((key) => {
+        const [kind, ticker, exchange] = key.split(':');
+        return exchange ? `${kind}:${ticker}:${exchange}` : `${kind}:${ticker}`;
+      });
+
+      throw new BadRequestException(
+        `Duplicate security targets are not allowed: ${duplicateLabels.join(', ')}.`,
+      );
+    }
+  }
+
+  private securityKey(
+    kind: AssetKind,
+    ticker: string,
+    exchange: string,
+  ): string {
     return `${kind}:${ticker}:${exchange}`;
   }
 
@@ -1104,7 +1265,10 @@ export class BrokerageService {
     return parsed;
   }
 
-  private requireText(value: string | null | undefined, message: string): string {
+  private requireText(
+    value: string | null | undefined,
+    message: string,
+  ): string {
     const trimmed = value?.trim();
     if (!trimmed) {
       throw new BadRequestException(message);
@@ -1117,14 +1281,15 @@ export class BrokerageService {
     return value?.trim() || null;
   }
 
-  private toDecimal(value: Prisma.Decimal | number | string | null | undefined): Prisma.Decimal {
-    return value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value ?? 0);
+  private toDecimal(
+    value: Prisma.Decimal | number | string | null | undefined,
+  ): Prisma.Decimal {
+    return value instanceof Prisma.Decimal
+      ? value
+      : new Prisma.Decimal(value ?? 0);
   }
 
-  private toPositiveDecimal(
-    value: number,
-    message: string,
-  ): Prisma.Decimal {
+  private toPositiveDecimal(value: number, message: string): Prisma.Decimal {
     const decimal = this.toDecimal(value);
     if (!decimal.gt(ZERO)) {
       throw new BadRequestException(message);

@@ -21,12 +21,17 @@ import type {
 } from '@finhance/shared';
 
 function uppercaseOptionalStringValue({ value }: TransformFnParams): unknown {
-  return typeof value === 'string' ? value.trim().toUpperCase() || undefined : value;
+  return typeof value === 'string'
+    ? value.trim().toUpperCase() || undefined
+    : value;
 }
 
 function trimOptionalStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() || undefined : value;
 }
+
+const EXCHANGE_MAX_LENGTH = 24;
+const EXCHANGE_PATTERN = /^[A-Z0-9.=-]+$/;
 
 class PortfolioAssetKindTargetInputDto
   implements PortfolioAssetKindTargetInput
@@ -44,12 +49,14 @@ class PortfolioSecurityTargetInputDto implements PortfolioSecurityTargetInput {
   kind!: AssetKind;
 
   @IsString()
-  @Matches(/^[A-Z0-9.\-=]{1,32}$/)
+  @Matches(/^[A-Z0-9.=-]{1,32}$/)
   @Transform(uppercaseOptionalStringValue)
   ticker!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(EXCHANGE_MAX_LENGTH)
+  @Matches(EXCHANGE_PATTERN)
   @Transform(uppercaseOptionalStringValue)
   exchange?: string | null;
 

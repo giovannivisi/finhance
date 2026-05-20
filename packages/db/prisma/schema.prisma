@@ -101,6 +101,7 @@ model Asset {
   account       Account?       @relation(fields: [accountId, userId], references: [id, userId])
   brokerageOperations BrokerageOperation[]
 
+  @@unique([id, userId])
   @@unique([userId, type, kind, ticker, exchange, accountId])
   @@unique([userId, importSource, importKey])
   @@index([userId])
@@ -303,6 +304,7 @@ model Transaction {
   recurringRule            RecurringTransactionRule? @relation(fields: [recurringRuleId], references: [id])
   brokerageOperationMirror BrokerageOperation?
 
+  @@unique([id, userId])
   @@unique([userId, importSource, importKey, direction])
   @@unique([userId, recurringRuleId, recurringOccurrenceMonth, direction], map: "Transaction_userId_recurringRuleId_recurringOccurrenceMonth_dir")
   @@index([userId, postedAt])
@@ -333,11 +335,12 @@ model BrokerageOperation {
   updatedAt           DateTime              @updatedAt
   user                User                  @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   account             Account               @relation(fields: [accountId, userId], references: [id, userId], onDelete: Cascade)
-  asset               Asset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  mirroredTransaction Transaction?          @relation(fields: [mirroredTransactionId], references: [id], onDelete: SetNull)
+  asset               Asset?                @relation(fields: [assetId, userId], references: [id, userId], onDelete: Restrict)
+  mirroredTransaction Transaction?          @relation(fields: [mirroredTransactionId, userId], references: [id, userId], onDelete: Restrict)
 
   @@index([userId, accountId, postedAt(sort: Desc)])
   @@index([userId, assetId, postedAt(sort: Desc)])
+  @@unique([mirroredTransactionId, userId])
   @@unique([mirroredTransactionId])
 }
 

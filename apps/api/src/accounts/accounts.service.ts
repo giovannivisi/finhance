@@ -160,11 +160,9 @@ export class AccountsService {
         },
         orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       }),
-      this.findBrokerageOperationsForReconciliation(
-        client,
-        ownerId,
-        [...accountIds],
-      ),
+      this.findBrokerageOperationsForReconciliation(client, ownerId, [
+        ...accountIds,
+      ]),
     ]);
 
     return this.buildReconciliation(
@@ -603,7 +601,10 @@ export class AccountsService {
   ): Promise<AccountReconciliationModel[]> {
     const assetsByAccountId = new Map<string, Asset[]>();
     const transactionsByAccountId = new Map<string, Transaction[]>();
-    const brokerageOperationsByAccountId = new Map<string, BrokerageOperation[]>();
+    const brokerageOperationsByAccountId = new Map<
+      string,
+      BrokerageOperation[]
+    >();
     const transferIssueAccountIds = new Set<string>();
     const fxPairKeys = new Set<string>();
     const accountById = new Map(
@@ -713,7 +714,10 @@ export class AccountsService {
     let expectedBalance = account.openingBalance;
 
     for (const asset of assets) {
-      if (account.type === AccountType.BROKER && asset.kind !== AssetKind.CASH) {
+      if (
+        account.type === AccountType.BROKER &&
+        asset.kind !== AssetKind.CASH
+      ) {
         continue;
       }
 
