@@ -5,7 +5,6 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -39,6 +38,7 @@ import CreateAssetModal from "@/components/CreateAssetModal";
 import CooldownNotice from "@components/CooldownNotice";
 import EditAssetModal from "@components/EditAssetModal";
 import DeleteAssetButton from "@components/DeleteAssetButton";
+import OverflowMenu from "@components/OverflowMenu";
 import {
   getDashboardRefreshNotice,
   requestDashboardRefresh,
@@ -148,88 +148,6 @@ function SortableAssetRow({
     asset.accountId && brokerageAccountIds.has(asset.accountId)
       ? `/brokerage/${asset.accountId}`
       : null;
-  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
-  const [actionMenuPlacement, setActionMenuPlacement] = useState<
-    "above" | "below"
-  >("below");
-  const actionMenuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!isActionMenuOpen) {
-      return;
-    }
-
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-
-      if (actionMenuRef.current?.contains(target)) {
-        return;
-      }
-
-      setIsActionMenuOpen(false);
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setIsActionMenuOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isActionMenuOpen]);
-
-  useEffect(() => {
-    if (isEditing) {
-      setIsActionMenuOpen(false);
-    }
-  }, [isEditing]);
-
-  useLayoutEffect(() => {
-    if (!isActionMenuOpen) {
-      return;
-    }
-
-    function updatePlacement() {
-      const menuAnchor = actionMenuRef.current;
-      const menuPanel = menuAnchor?.querySelector<HTMLElement>(
-        ".asset-row-action-panel",
-      );
-
-      if (!menuAnchor || !menuPanel) {
-        return;
-      }
-
-      const anchorRect = menuAnchor.getBoundingClientRect();
-      const panelHeight = menuPanel.offsetHeight;
-      const gap = 12;
-      const spaceBelow = window.innerHeight - anchorRect.bottom;
-      const spaceAbove = anchorRect.top;
-
-      setActionMenuPlacement(
-        spaceBelow < panelHeight + gap && spaceAbove > spaceBelow
-          ? "above"
-          : "below",
-      );
-    }
-
-    updatePlacement();
-    window.addEventListener("resize", updatePlacement);
-    window.addEventListener("scroll", updatePlacement, true);
-
-    return () => {
-      window.removeEventListener("resize", updatePlacement);
-      window.removeEventListener("scroll", updatePlacement, true);
-    };
-  }, [isActionMenuOpen]);
 
   if (isAssetType) {
     const referenceDiffers =
@@ -299,38 +217,34 @@ function SortableAssetRow({
         </div>
 
         {!isEditing ? (
-          <div
-            ref={actionMenuRef}
-            className={`asset-row-actions asset-row-action-menu${
-              isActionMenuOpen ? " is-open" : ""
-            }`}
-          >
-            <button
-              type="button"
-              aria-haspopup="menu"
-              aria-expanded={isActionMenuOpen}
-              aria-controls={`asset-row-actions-${asset.id}`}
-              onClick={() => setIsActionMenuOpen((current) => !current)}
-              className="asset-row-action-trigger"
-            >
-              <MoreHorizontal size={16} aria-hidden="true" />
-              <span className="sr-only">Asset actions</span>
-            </button>
-
-            {isActionMenuOpen ? (
+          <OverflowMenu
+            label="Asset actions"
+            panelClassName="asset-row-action-panel"
+            renderTrigger={({ isOpen, triggerProps, triggerRef }) => (
               <div
-                id={`asset-row-actions-${asset.id}`}
-                role="menu"
-                className={`asset-row-action-panel${
-                  actionMenuPlacement === "above" ? " is-above" : ""
+                className={`asset-row-actions asset-row-action-menu${
+                  isOpen ? " is-open" : ""
                 }`}
               >
+                <button
+                  {...triggerProps}
+                  ref={triggerRef}
+                  className="asset-row-action-trigger"
+                >
+                  <MoreHorizontal size={16} aria-hidden="true" />
+                  <span className="sr-only">Asset actions</span>
+                </button>
+              </div>
+            )}
+          >
+            {({ closeMenu }) => (
+              <>
                 {brokerageHref ? (
                   <Link
                     href={brokerageHref}
                     role="menuitem"
-                    className="asset-row-action-link"
-                    onClick={() => setIsActionMenuOpen(false)}
+                    className="overflow-menu-item"
+                    onClick={() => closeMenu()}
                   >
                     Brokerage
                   </Link>
@@ -339,24 +253,24 @@ function SortableAssetRow({
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setIsActionMenuOpen(false);
+                    closeMenu();
                     onEdit(asset.id);
                   }}
-                  className="asset-row-action-link"
+                  className="overflow-menu-item"
                 >
                   Edit
                 </button>
                 <DeleteAssetButton
                   id={asset.id}
                   role="menuitem"
-                  className="asset-row-action-link is-danger"
-                  onOpen={() => setIsActionMenuOpen(false)}
+                  className="overflow-menu-item is-danger"
+                  onOpen={() => closeMenu()}
                 >
                   Delete
                 </DeleteAssetButton>
-              </div>
-            ) : null}
-          </div>
+              </>
+            )}
+          </OverflowMenu>
         ) : null}
       </li>
     );
@@ -392,54 +306,50 @@ function SortableAssetRow({
       </div>
 
       {!isEditing ? (
-        <div
-          ref={actionMenuRef}
-          className={`asset-row-actions asset-row-action-menu${
-            isActionMenuOpen ? " is-open" : ""
-          }`}
-        >
-          <button
-            type="button"
-            aria-haspopup="menu"
-            aria-expanded={isActionMenuOpen}
-            aria-controls={`asset-row-actions-${asset.id}`}
-            onClick={() => setIsActionMenuOpen((current) => !current)}
-            className="asset-row-action-trigger"
-          >
-            <MoreHorizontal size={16} aria-hidden="true" />
-            <span className="sr-only">Asset actions</span>
-          </button>
-
-          {isActionMenuOpen ? (
+        <OverflowMenu
+          label="Asset actions"
+          panelClassName="asset-row-action-panel"
+          renderTrigger={({ isOpen, triggerProps, triggerRef }) => (
             <div
-              id={`asset-row-actions-${asset.id}`}
-              role="menu"
-              className={`asset-row-action-panel${
-                actionMenuPlacement === "above" ? " is-above" : ""
+              className={`asset-row-actions asset-row-action-menu${
+                isOpen ? " is-open" : ""
               }`}
             >
+              <button
+                {...triggerProps}
+                ref={triggerRef}
+                className="asset-row-action-trigger"
+              >
+                <MoreHorizontal size={16} aria-hidden="true" />
+                <span className="sr-only">Asset actions</span>
+              </button>
+            </div>
+          )}
+        >
+          {({ closeMenu }) => (
+            <>
               <button
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  setIsActionMenuOpen(false);
+                  closeMenu();
                   onEdit(asset.id);
                 }}
-                className="asset-row-action-link"
+                className="overflow-menu-item"
               >
                 Edit
               </button>
               <DeleteAssetButton
                 id={asset.id}
                 role="menuitem"
-                className="asset-row-action-link is-danger"
-                onOpen={() => setIsActionMenuOpen(false)}
+                className="overflow-menu-item is-danger"
+                onOpen={() => closeMenu()}
               >
                 Delete
               </DeleteAssetButton>
-            </div>
-          ) : null}
-        </div>
+            </>
+          )}
+        </OverflowMenu>
       ) : null}
     </li>
   );

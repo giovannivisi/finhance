@@ -3155,74 +3155,7 @@ textarea,
 }
 
 .budget-item-action-panel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 12px);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  z-index: 30;
   width: min(240px, calc(100vw - 48px));
-  padding: 6px;
-  background: var(--tab-more-panel-bg);
-  backdrop-filter: var(--tab-pill-blur);
-  -webkit-backdrop-filter: var(--tab-pill-blur);
-  border: 0.5px solid var(--tab-more-panel-border);
-  border-radius: 22px;
-  corner-shape: superellipse(0.7);
-  box-shadow:
-    0 12px 24px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  overflow: hidden;
-}
-
-.budget-item-action-panel.is-above {
-  top: auto;
-  bottom: calc(100% + 12px);
-}
-
-.budget-item-action-link {
-  width: 100%;
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  border: 0;
-  background: transparent;
-  padding: 10px 12px;
-  border-radius: 15px;
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 0.95rem;
-  font-weight: 500;
-  text-align: left;
-}
-
-.budget-item-action-link:hover {
-  background: var(--tab-bg-highlight);
-  color: #ffffff;
-}
-
-.budget-item-action-divider {
-  margin: 2px 8px;
-  height: 1px;
-  background: var(--tab-border);
-  opacity: 0.5;
-}
-
-.budget-item-action-link.is-danger {
-  color: var(--color-expense);
-}
-
-.budget-item-action-link.is-danger:hover {
-  color: color-mix(in srgb, var(--color-expense) 88%, white);
-}
-
-[data-theme="light"] .budget-item-action-link {
-  color: rgba(0, 0, 0, 0.72);
-}
-
-[data-theme="light"] .budget-item-action-link:hover {
-  color: rgba(0, 0, 0, 0.92);
 }
 
 .budget-item-metrics {
@@ -3231,13 +3164,8 @@ textarea,
 }
 
 @media (max-width: 767px) {
-  .budget-item-action-panel.is-above {
-    bottom: calc(100% + 10px);
-  }
-
   .budget-item-action-panel {
-    left: 0;
-    right: auto;
+    width: min(220px, calc(100vw - 32px));
   }
 
   .budget-item-metrics {
@@ -3349,59 +3277,7 @@ html[data-theme="light"] .brokerage-account-switcher::after {
 }
 
 .brokerage-operations-panel {
-  position: absolute;
-  top: calc(100% + 12px);
-  right: 0;
-  z-index: 15;
   min-width: 196px;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  background-color: var(--tab-more-panel-bg);
-  backdrop-filter: var(--tab-pill-blur);
-  -webkit-backdrop-filter: var(--tab-pill-blur);
-  border: 0.5px solid var(--tab-more-panel-border);
-  border-radius: 22px;
-  corner-shape: superellipse(0.7);
-  box-shadow:
-    0 12px 24px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  overflow: hidden;
-}
-
-.brokerage-operations-panel.is-above {
-  top: auto;
-  bottom: calc(100% + 12px);
-}
-
-.brokerage-operations-link {
-  width: 100%;
-  min-height: 42px;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  border: 0;
-  background: transparent;
-  border-radius: 15px;
-  color: rgba(255, 255, 255, 0.84);
-  text-align: left;
-  font-size: 0.95rem;
-  font-weight: 500;
-  transition:
-    background 0.18s ease,
-    color 0.18s ease;
-}
-
-.brokerage-operations-link:hover:not(:disabled) {
-  background: var(--tab-bg-highlight);
-  color: var(--text-primary);
-}
-
-.brokerage-operations-link:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .brokerage-summary-card,
@@ -3934,13 +3810,7 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   }
 
   .brokerage-operations-panel {
-    left: 0;
-    right: auto;
-  }
-
-  .brokerage-operations-panel.is-above {
-    top: auto;
-    bottom: calc(100% + 12px);
+    min-width: 180px;
   }
 
   .brokerage-summary-total,
@@ -5193,7 +5063,7 @@ html[data-theme="dark"] .text-red-800 {
   flex-direction: column;
   padding: 0;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .category-block:hover {
@@ -5378,6 +5248,81 @@ html[data-theme="dark"] .text-red-800 {
   position: relative;
 }
 
+.overflow-menu-panel {
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(220px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  padding: 6px;
+  background: var(--bg-popover-solid);
+  border: 1px solid var(--border-glass-strong);
+  border-radius: 22px;
+  corner-shape: superellipse(0.7);
+  box-shadow:
+    0 18px 36px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.overflow-menu-item {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 10px 12px;
+  border-radius: 15px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-align: left;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.overflow-menu-item:hover:not(:disabled),
+.overflow-menu-item:focus-visible {
+  background: var(--tab-bg-highlight);
+  color: #ffffff;
+  outline: none;
+}
+
+.overflow-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.overflow-menu-item.is-danger {
+  color: var(--color-expense);
+}
+
+.overflow-menu-item.is-danger:hover:not(:disabled),
+.overflow-menu-item.is-danger:focus-visible {
+  color: color-mix(in srgb, var(--color-expense) 88%, white);
+}
+
+.overflow-menu-divider {
+  margin: 2px 8px;
+  height: 1px;
+  background: var(--tab-border);
+  opacity: 0.5;
+}
+
+[data-theme="light"] .overflow-menu-item {
+  color: rgba(0, 0, 0, 0.72);
+}
+
+[data-theme="light"] .overflow-menu-item:hover:not(:disabled),
+[data-theme="light"] .overflow-menu-item:focus-visible {
+  color: rgba(0, 0, 0, 0.92);
+}
+
 .asset-row-action-trigger {
   display: inline-flex;
   align-items: center;
@@ -5413,65 +5358,7 @@ html[data-theme="dark"] .text-red-800 {
 }
 
 .asset-row-action-panel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 12px);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  z-index: 30;
   width: min(220px, calc(100vw - 48px));
-  padding: 6px;
-  background: var(--bg-popover-solid);
-  border: 1px solid var(--border-glass-strong);
-  border-radius: 22px;
-  corner-shape: superellipse(0.7);
-  box-shadow:
-    0 18px 36px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  overflow: hidden;
-}
-
-.asset-row-action-panel.is-above {
-  top: auto;
-  bottom: calc(100% + 12px);
-}
-
-.asset-row-action-link {
-  width: 100%;
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  border: 0;
-  background: transparent;
-  padding: 10px 12px;
-  border-radius: 15px;
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 0.95rem;
-  font-weight: 500;
-  text-align: left;
-}
-
-.asset-row-action-link:hover {
-  background: var(--tab-bg-highlight);
-  color: #ffffff;
-}
-
-.asset-row-action-link.is-danger {
-  color: var(--color-expense);
-}
-
-.asset-row-action-link.is-danger:hover {
-  color: color-mix(in srgb, var(--color-expense) 88%, white);
-}
-
-[data-theme="light"] .asset-row-action-link {
-  color: rgba(0, 0, 0, 0.72);
-}
-
-[data-theme="light"] .asset-row-action-link:hover {
-  color: rgba(0, 0, 0, 0.92);
 }
 
 .asset-row-edit-btn {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import type {
@@ -14,6 +14,7 @@ import type {
 import BudgetOverrideForm from "@components/BudgetOverrideForm";
 import BudgetPlanForm from "@components/BudgetPlanForm";
 import Modal from "@components/Modal";
+import OverflowMenu, { OverflowMenuDivider } from "@components/OverflowMenu";
 import { useAppPreferences } from "@components/ThemeProvider";
 import WorkflowSection from "@components/WorkflowSection";
 import { api, apiMutation } from "@lib/api";
@@ -152,73 +153,9 @@ export default function BudgetsPageClient({
   const [openWarningsByCurrency, setOpenWarningsByCurrency] = useState<
     Record<string, boolean>
   >({});
-  const [openBudgetActionMenuId, setOpenBudgetActionMenuId] = useState<
-    string | null
-  >(null);
-  const [budgetActionMenuPlacement, setBudgetActionMenuPlacement] = useState<
-    "above" | "below"
-  >("below");
   const actions = useSingleFlightActions<string>();
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
-
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-
-      if (target.closest(".budget-item-action-menu")) {
-        return;
-      }
-
-      setOpenBudgetActionMenuId(null);
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!openBudgetActionMenuId) {
-      return;
-    }
-
-    function updatePlacement() {
-      const menuAnchor = document.querySelector<HTMLElement>(
-        `[data-budget-action-menu-id="${openBudgetActionMenuId}"]`,
-      );
-      const menuPanel = menuAnchor?.querySelector<HTMLElement>(
-        ".budget-item-action-panel",
-      );
-
-      if (!menuAnchor || !menuPanel) {
-        return;
-      }
-
-      const anchorRect = menuAnchor.getBoundingClientRect();
-      const panelHeight = menuPanel.offsetHeight;
-      const gap = 12;
-      const spaceBelow = window.innerHeight - anchorRect.bottom;
-      const spaceAbove = anchorRect.top;
-
-      setBudgetActionMenuPlacement(
-        spaceBelow < panelHeight + gap && spaceAbove > spaceBelow
-          ? "above"
-          : "below",
-      );
-    }
-
-    updatePlacement();
-    window.addEventListener("resize", updatePlacement);
-    window.addEventListener("scroll", updatePlacement, true);
-
-    return () => {
-      window.removeEventListener("resize", updatePlacement);
-      window.removeEventListener("scroll", updatePlacement, true);
-    };
-  }, [openBudgetActionMenuId]);
 
   const allBudgetItems = useMemo(
     () => budgetView.currencies.flatMap((currency) => currency.items),
@@ -719,49 +656,30 @@ export default function BudgetsPageClient({
                                           </div>
                                         </div>
 
-                                        <div
-                                          className="budget-item-actions budget-item-action-menu"
-                                          data-budget-action-menu-id={
-                                            item.budgetId
-                                          }
+                                        <OverflowMenu
+                                          label="Budget actions"
+                                          panelClassName="budget-item-action-panel"
+                                          renderTrigger={({
+                                            triggerProps,
+                                            triggerRef,
+                                          }) => (
+                                            <div className="budget-item-actions budget-item-action-menu">
+                                              <button
+                                                {...triggerProps}
+                                                ref={triggerRef}
+                                                className="btn-secondary budget-item-action-trigger"
+                                              >
+                                                <MoreHorizontal
+                                                  size={16}
+                                                  aria-hidden="true"
+                                                />
+                                                <span>Options</span>
+                                              </button>
+                                            </div>
+                                          )}
                                         >
-                                          <button
-                                            type="button"
-                                            aria-haspopup="menu"
-                                            aria-expanded={
-                                              openBudgetActionMenuId ===
-                                              item.budgetId
-                                            }
-                                            aria-controls={`budget-item-actions-${item.budgetId}`}
-                                            onClick={() =>
-                                              setOpenBudgetActionMenuId(
-                                                (current) =>
-                                                  current === item.budgetId
-                                                    ? null
-                                                    : item.budgetId,
-                                              )
-                                            }
-                                            className="btn-secondary budget-item-action-trigger"
-                                          >
-                                            <MoreHorizontal
-                                              size={16}
-                                              aria-hidden="true"
-                                            />
-                                            <span>Options</span>
-                                          </button>
-
-                                          {openBudgetActionMenuId ===
-                                          item.budgetId ? (
-                                            <div
-                                              id={`budget-item-actions-${item.budgetId}`}
-                                              role="menu"
-                                              className={`budget-item-action-panel${
-                                                budgetActionMenuPlacement ===
-                                                "above"
-                                                  ? " is-above"
-                                                  : ""
-                                              }`}
-                                            >
+                                          {({ closeMenu }) => (
+                                            <>
                                               <Link
                                                 href={buildBudgetTransactionsLink(
                                                   {
@@ -773,54 +691,48 @@ export default function BudgetsPageClient({
                                                       item.categoryId,
                                                   },
                                                 )}
-                                                className="budget-item-action-link"
-                                                onClick={() =>
-                                                  setOpenBudgetActionMenuId(
-                                                    null,
-                                                  )
-                                                }
+                                                role="menuitem"
+                                                className="overflow-menu-item"
+                                                onClick={() => closeMenu()}
                                               >
                                                 <span>Transactions</span>
                                               </Link>
                                               <button
                                                 type="button"
+                                                role="menuitem"
                                                 onClick={() => {
-                                                  setOpenBudgetActionMenuId(
-                                                    null,
-                                                  );
+                                                  closeMenu();
                                                   openEditPanel(item.budgetId);
                                                 }}
-                                                className="budget-item-action-link"
+                                                className="overflow-menu-item"
                                               >
                                                 <span>Edit plan</span>
                                               </button>
                                               <button
                                                 type="button"
+                                                role="menuitem"
                                                 onClick={() => {
-                                                  setOpenBudgetActionMenuId(
-                                                    null,
-                                                  );
+                                                  closeMenu();
                                                   openOverridePanel(
                                                     item.budgetId,
                                                   );
                                                 }}
-                                                className="budget-item-action-link"
+                                                className="overflow-menu-item"
                                               >
                                                 <span>Override month</span>
                                               </button>
                                               {hasCurrentOverride ? (
                                                 <button
                                                   type="button"
+                                                  role="menuitem"
                                                   onClick={() => {
-                                                    setOpenBudgetActionMenuId(
-                                                      null,
-                                                    );
+                                                    closeMenu();
                                                     void handleClearCurrentOverride(
                                                       item,
                                                     );
                                                   }}
                                                   disabled={isBusy}
-                                                  className="budget-item-action-link disabled:cursor-not-allowed disabled:opacity-60"
+                                                  className="overflow-menu-item disabled:cursor-not-allowed disabled:opacity-60"
                                                 >
                                                   <span>
                                                     {isBusy
@@ -829,22 +741,18 @@ export default function BudgetsPageClient({
                                                   </span>
                                                 </button>
                                               ) : null}
-                                              <div
-                                                className="budget-item-action-divider"
-                                                aria-hidden="true"
-                                              />
+                                              <OverflowMenuDivider />
                                               <button
                                                 type="button"
+                                                role="menuitem"
                                                 onClick={() => {
-                                                  setOpenBudgetActionMenuId(
-                                                    null,
-                                                  );
+                                                  closeMenu();
                                                   void handleEndBudget(
                                                     item.budgetId,
                                                   );
                                                 }}
                                                 disabled={isBusy}
-                                                className="budget-item-action-link is-danger disabled:cursor-not-allowed disabled:opacity-60"
+                                                className="overflow-menu-item is-danger disabled:cursor-not-allowed disabled:opacity-60"
                                               >
                                                 <span>
                                                   {isBusy
@@ -852,9 +760,9 @@ export default function BudgetsPageClient({
                                                     : "End from this month"}
                                                 </span>
                                               </button>
-                                            </div>
-                                          ) : null}
-                                        </div>
+                                            </>
+                                          )}
+                                        </OverflowMenu>
                                       </div>
                                     </article>
                                   );

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import Modal from "@components/Modal";
 import MoneyValue from "@components/MoneyValue";
+import OverflowMenu from "@components/OverflowMenu";
 import { useAppPreferences } from "@components/ThemeProvider";
 import { apiMutation } from "@lib/api";
 import { formatSensitiveNumber } from "@lib/money";
@@ -248,10 +249,6 @@ export default function BrokeragePageClient({
   const [securityTargets, setSecurityTargets] = useState<EditableTargetRow[]>(
     () => createTargetRows(workspace.allocation.securityTargets),
   );
-  const [showOperationsMenu, setShowOperationsMenu] = useState(false);
-  const [operationsMenuPlacement, setOperationsMenuPlacement] = useState<
-    "above" | "below"
-  >("below");
   const [showTargetHelp, setShowTargetHelp] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -263,7 +260,6 @@ export default function BrokeragePageClient({
   const [openActivityMonthKey, setOpenActivityMonthKey] = useState<string | null>(
     null,
   );
-  const operationsMenuRef = useRef<HTMLDivElement | null>(null);
 
   const dividendCategories = useMemo(
     () =>
@@ -388,76 +384,8 @@ export default function BrokeragePageClient({
     setOpenActivityMonthKey(groupedActivity[0]?.key ?? null);
   }, [groupedActivity]);
 
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-
-      if (operationsMenuRef.current?.contains(target)) {
-        return;
-      }
-
-      setShowOperationsMenu(false);
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setShowOperationsMenu(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!showOperationsMenu) {
-      return;
-    }
-
-    function updatePlacement() {
-      const menuAnchor = operationsMenuRef.current;
-      const menuPanel = menuAnchor?.querySelector<HTMLElement>(
-        ".brokerage-operations-panel",
-      );
-
-      if (!menuAnchor || !menuPanel) {
-        return;
-      }
-
-      const anchorRect = menuAnchor.getBoundingClientRect();
-      const panelHeight = menuPanel.offsetHeight;
-      const gap = 12;
-      const spaceBelow = window.innerHeight - anchorRect.bottom;
-      const spaceAbove = anchorRect.top;
-
-      setOperationsMenuPlacement(
-        spaceBelow < panelHeight + gap && spaceAbove > spaceBelow
-          ? "above"
-          : "below",
-      );
-    }
-
-    updatePlacement();
-    window.addEventListener("resize", updatePlacement);
-    window.addEventListener("scroll", updatePlacement, true);
-
-    return () => {
-      window.removeEventListener("resize", updatePlacement);
-      window.removeEventListener("scroll", updatePlacement, true);
-    };
-  }, [showOperationsMenu]);
-
   function resetOperationState(nextModal: OperationModalKind) {
     setFormError(null);
-    setShowOperationsMenu(false);
     if (nextModal === "BUY") {
       setBuyForm(createEmptyBuyForm(workspace));
     }
@@ -739,68 +667,69 @@ export default function BrokeragePageClient({
                 Buy
               </button>
 
-              <div
-                ref={operationsMenuRef}
-                className="brokerage-operations-menu"
+              <OverflowMenu
+                label="Operations"
+                panelClassName="brokerage-operations-panel"
+                renderTrigger={({ triggerProps, triggerRef }) => (
+                  <div className="brokerage-operations-menu">
+                    <button
+                      {...triggerProps}
+                      ref={triggerRef}
+                      className="btn-secondary brokerage-operations-trigger"
+                    >
+                      <MoreHorizontal size={16} aria-hidden="true" />
+                      <span>Operations</span>
+                    </button>
+                  </div>
+                )}
               >
-                <button
-                  type="button"
-                  className="btn-secondary brokerage-operations-trigger"
-                  aria-haspopup="menu"
-                  aria-expanded={showOperationsMenu}
-                  aria-controls="brokerage-operations-menu"
-                  onClick={() =>
-                    setShowOperationsMenu((current) => !current)
-                  }
-                >
-                  <MoreHorizontal size={16} aria-hidden="true" />
-                  <span>Operations</span>
-                </button>
-
-                {showOperationsMenu ? (
-                  <div
-                    id="brokerage-operations-menu"
-                    role="menu"
-                    className={`brokerage-operations-panel${
-                      operationsMenuPlacement === "above" ? " is-above" : ""
-                    }`}
-                  >
+                {({ closeMenu }) => (
+                  <>
                     <button
                       type="button"
-                      className="brokerage-operations-link"
+                      className="overflow-menu-item"
                       role="menuitem"
-                      onClick={() => resetOperationState("SELL")}
+                      onClick={() => {
+                        closeMenu();
+                        resetOperationState("SELL");
+                      }}
                       disabled={workspace.positions.length === 0}
                     >
                       Sell
                     </button>
                     <button
                       type="button"
-                      className="brokerage-operations-link"
+                      className="overflow-menu-item"
                       role="menuitem"
-                      onClick={() => resetOperationState("DIVIDEND")}
+                      onClick={() => {
+                        closeMenu();
+                        resetOperationState("DIVIDEND");
+                      }}
                     >
                       Dividend
                     </button>
                     <button
                       type="button"
-                      className="brokerage-operations-link"
+                      className="overflow-menu-item"
                       role="menuitem"
-                      onClick={() => resetOperationState("FEE")}
+                      onClick={() => {
+                        closeMenu();
+                        resetOperationState("FEE");
+                      }}
                     >
                       Fee
                     </button>
                     <Link
                       href={`/transactions?accountId=${encodeURIComponent(brokerageAccountId)}`}
-                      className="brokerage-operations-link"
+                      className="overflow-menu-item"
                       role="menuitem"
-                      onClick={() => setShowOperationsMenu(false)}
+                      onClick={() => closeMenu()}
                     >
                       Cash activity
                     </Link>
-                  </div>
-                ) : null}
-              </div>
+                  </>
+                )}
+              </OverflowMenu>
             </div>
           </div>
         </div>

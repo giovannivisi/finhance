@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CategoryResponse, MonthlyBudgetResponse } from "@finhance/shared";
@@ -311,5 +311,41 @@ describe("BudgetsPageClient", () => {
     await user.click(screen.getByRole("button", { name: /show 1 warning/i }));
 
     expect(screen.getByText(/over-budget category/i)).toBeInTheDocument();
+  });
+
+  it("opens the budget actions menu, renders the divider, and closes on action", async () => {
+    const user = userEvent.setup();
+    render(
+      <BudgetsPageClient
+        budgetView={budgetViewWithWarning}
+        categories={categories}
+        filters={filters}
+        budgetMonthPillLabel="April 2026"
+        workflowCards={workflowCards}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Options" }));
+
+    const menu = screen.getByRole("menu", { name: "Budget actions" });
+    expect(
+      within(menu).getByRole("menuitem", { name: "Transactions" }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Edit plan" }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Override month" }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole("menuitem", { name: "End from this month" }),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".overflow-menu-divider")).not.toBeNull();
+
+    await user.click(within(menu).getByRole("menuitem", { name: "Edit plan" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("menu", { name: "Budget actions" })).toBeNull(),
+    );
   });
 });

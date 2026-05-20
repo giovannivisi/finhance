@@ -275,6 +275,18 @@ function buildWorkspace() {
   };
 }
 
+function buildWorkspaceWithoutPositions() {
+  const workspace = buildWorkspace();
+  return {
+    ...workspace,
+    positions: [],
+    selectedBroker: {
+      ...workspace.selectedBroker,
+      activePositionCount: 0,
+    },
+  };
+}
+
 const categories = [
   {
     id: "income-dividend",
@@ -363,6 +375,25 @@ describe("BrokeragePageClient", () => {
       notes: null,
     });
     expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the operations menu with Cash activity and keeps Sell disabled when no holdings exist", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <BrokeragePageClient
+        workspace={buildWorkspaceWithoutPositions()}
+        categories={categories}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Operations" }));
+
+    const menu = screen.getByRole("menu", { name: "Operations" });
+    expect(within(menu).getByRole("menuitem", { name: "Sell" })).toBeDisabled();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Cash activity" }),
+    ).toHaveAttribute("href", "/transactions?accountId=broker-1");
   });
 
   it("blocks invalid target totals before calling the API", async () => {
