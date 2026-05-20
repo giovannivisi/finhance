@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import Container from "@components/Container";
 import BrokeragePageClient from "@components/BrokeragePageClient";
 import { api } from "@lib/server-api";
@@ -25,11 +24,7 @@ export default async function BrokeragePage() {
         : "Brokerage data is currently unavailable.";
   }
 
-  if (brokers?.length === 1) {
-    redirect(`/brokerage/${brokers[0].account.id}`);
-  }
-
-  if (brokers && brokers.length > 1) {
+  if (brokers && brokers.length > 0) {
     try {
       [workspace, categories] = await Promise.all([
         api<BrokerageWorkspaceResponse>(`/brokerage/${brokers[0].account.id}`),

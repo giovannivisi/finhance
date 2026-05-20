@@ -7,11 +7,13 @@ import { apiMutation } from "@lib/api";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
+const prefetchMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: pushMock,
     refresh: refreshMock,
+    prefetch: prefetchMock,
   }),
 }));
 
@@ -276,6 +278,7 @@ describe("BrokeragePageClient", () => {
   beforeEach(() => {
     pushMock.mockReset();
     refreshMock.mockReset();
+    prefetchMock.mockReset();
     vi.mocked(apiMutation).mockReset();
   });
 
@@ -300,7 +303,8 @@ describe("BrokeragePageClient", () => {
 
     render(<BrokeragePageClient workspace={buildWorkspace()} categories={categories} />);
 
-    await user.click(screen.getByRole("button", { name: "Dividend" }));
+    await user.click(screen.getByRole("button", { name: "Operations" }));
+    await user.click(screen.getByRole("menuitem", { name: "Dividend" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Record dividend" });
     await user.selectOptions(within(dialog).getByLabelText("Holding"), "asset-stock");

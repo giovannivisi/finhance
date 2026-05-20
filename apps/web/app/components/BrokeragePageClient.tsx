@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
 import Modal from "@components/Modal";
 import MoneyValue from "@components/MoneyValue";
 import { useAppPreferences } from "@components/ThemeProvider";
@@ -193,9 +194,14 @@ export default function BrokeragePageClient({
   const [securityTargets, setSecurityTargets] = useState<EditableTargetRow[]>(
     () => createTargetRows(workspace.allocation.securityTargets),
   );
+  const [showOperationsMenu, setShowOperationsMenu] = useState(false);
+  const [operationsMenuPlacement, setOperationsMenuPlacement] = useState<
+    "above" | "below"
+  >("below");
   const [showTargetHelp, setShowTargetHelp] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const operationsMenuRef = useRef<HTMLDivElement | null>(null);
 
   const dividendCategories = useMemo(
     () =>
@@ -245,9 +251,99 @@ export default function BrokeragePageClient({
   const hasCashMismatch =
     workspace.cashReconciliation != null &&
     workspace.cashReconciliation.status !== "CLEAN";
+  const unrealisedGainLossTone =
+    workspace.selectedBroker.unrealisedGainLoss > 0
+      ? "brokerage-value-positive"
+      : workspace.selectedBroker.unrealisedGainLoss < 0
+        ? "brokerage-value-negative"
+        : undefined;
+  const unrealisedGainLossColor =
+    workspace.selectedBroker.unrealisedGainLoss > 0
+      ? "var(--color-income)"
+      : workspace.selectedBroker.unrealisedGainLoss < 0
+        ? "var(--color-expense)"
+        : undefined;
+
+  useEffect(() => {
+    for (const broker of workspace.brokers) {
+      if (broker.account.id === brokerageAccountId) {
+        continue;
+      }
+
+      router.prefetch(`/brokerage/${broker.account.id}`);
+    }
+  }, [brokerageAccountId, router, workspace.brokers]);
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      if (operationsMenuRef.current?.contains(target)) {
+        return;
+      }
+
+      setShowOperationsMenu(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowOperationsMenu(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!showOperationsMenu) {
+      return;
+    }
+
+    function updatePlacement() {
+      const menuAnchor = operationsMenuRef.current;
+      const menuPanel = menuAnchor?.querySelector<HTMLElement>(
+        ".brokerage-operations-panel",
+      );
+
+      if (!menuAnchor || !menuPanel) {
+        return;
+      }
+
+      const anchorRect = menuAnchor.getBoundingClientRect();
+      const panelHeight = menuPanel.offsetHeight;
+      const gap = 12;
+      const spaceBelow = window.innerHeight - anchorRect.bottom;
+      const spaceAbove = anchorRect.top;
+
+      setOperationsMenuPlacement(
+        spaceBelow < panelHeight + gap && spaceAbove > spaceBelow
+          ? "above"
+          : "below",
+      );
+    }
+
+    updatePlacement();
+    window.addEventListener("resize", updatePlacement);
+    window.addEventListener("scroll", updatePlacement, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePlacement);
+      window.removeEventListener("scroll", updatePlacement, true);
+    };
+  }, [showOperationsMenu]);
 
   function resetOperationState(nextModal: OperationModalKind) {
     setFormError(null);
+    setShowOperationsMenu(false);
     if (nextModal === "BUY") {
       setBuyForm(createEmptyBuyForm(workspace));
     }
@@ -475,36 +571,44 @@ export default function BrokeragePageClient({
   return (
     <div className="page-shell is-relaxed">
       <section className="route-stack-desktop-xl">
-        <div className="page-hero">
-          <div className="page-hero-row brokerage-hero-row">
-            <div className="page-hero-copy">
-              <p className="page-kicker">Investing</p>
-              <h2 className="page-title is-compact">Brokerage</h2>
-              <p className="page-description">
-                Cash, positions, trades, and allocation targets in one
-                workspace.
-              </p>
-            </div>
+        <div className="page-hero page-section--allow-overflow brokerage-hero">
+          <div className="page-hero-copy">
+            <p className="page-kicker">Investing</p>
+            <h2 className="page-title is-compact">Brokerage</h2>
+            <p className="page-description">
+              Cash, positions, trades, and allocation targets in one
+              workspace.
+            </p>
+          </div>
+
+          <div className="brokerage-hero-toolbar">
+            {workspace.brokers.length > 1 ? (
+              <label className="brokerage-account-switcher">
+                <span className="detail-metric-label">Broker account</span>
+                <select
+                  className="brokerage-account-select"
+                  value={brokerageAccountId}
+                  onChange={(event) =>
+                    router.push(`/brokerage/${event.target.value}`)
+                  }
+                >
+                  {workspace.brokers.map((broker) => (
+                    <option key={broker.account.id} value={broker.account.id}>
+                      {broker.account.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <div className="brokerage-account-switcher brokerage-account-chip">
+                <span className="detail-metric-label">Broker account</span>
+                <p className="brokerage-account-chip-value">
+                  {workspace.selectedBroker.account.name}
+                </p>
+              </div>
+            )}
 
             <div className="brokerage-hero-actions">
-              {workspace.brokers.length > 1 ? (
-                <label className="app-form-field brokerage-account-switcher">
-                  <span className="detail-metric-label">Broker account</span>
-                  <select
-                    value={brokerageAccountId}
-                    onChange={(event) =>
-                      router.push(`/brokerage/${event.target.value}`)
-                    }
-                  >
-                    {workspace.brokers.map((broker) => (
-                      <option key={broker.account.id} value={broker.account.id}>
-                        {broker.account.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-
               <button
                 type="button"
                 className="btn-primary"
@@ -512,34 +616,69 @@ export default function BrokeragePageClient({
               >
                 Buy
               </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => resetOperationState("SELL")}
-                disabled={workspace.positions.length === 0}
+
+              <div
+                ref={operationsMenuRef}
+                className="brokerage-operations-menu"
               >
-                Sell
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => resetOperationState("DIVIDEND")}
-              >
-                Dividend
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => resetOperationState("FEE")}
-              >
-                Fee
-              </button>
-              <Link
-                href={`/transactions?accountId=${encodeURIComponent(brokerageAccountId)}`}
-                className="btn-secondary"
-              >
-                Cash activity
-              </Link>
+                <button
+                  type="button"
+                  className="btn-secondary brokerage-operations-trigger"
+                  aria-haspopup="menu"
+                  aria-expanded={showOperationsMenu}
+                  aria-controls="brokerage-operations-menu"
+                  onClick={() =>
+                    setShowOperationsMenu((current) => !current)
+                  }
+                >
+                  <MoreHorizontal size={16} aria-hidden="true" />
+                  <span>Operations</span>
+                </button>
+
+                {showOperationsMenu ? (
+                  <div
+                    id="brokerage-operations-menu"
+                    role="menu"
+                    className={`brokerage-operations-panel${
+                      operationsMenuPlacement === "above" ? " is-above" : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className="brokerage-operations-link"
+                      role="menuitem"
+                      onClick={() => resetOperationState("SELL")}
+                      disabled={workspace.positions.length === 0}
+                    >
+                      Sell
+                    </button>
+                    <button
+                      type="button"
+                      className="brokerage-operations-link"
+                      role="menuitem"
+                      onClick={() => resetOperationState("DIVIDEND")}
+                    >
+                      Dividend
+                    </button>
+                    <button
+                      type="button"
+                      className="brokerage-operations-link"
+                      role="menuitem"
+                      onClick={() => resetOperationState("FEE")}
+                    >
+                      Fee
+                    </button>
+                    <Link
+                      href={`/transactions?accountId=${encodeURIComponent(brokerageAccountId)}`}
+                      className="brokerage-operations-link"
+                      role="menuitem"
+                      onClick={() => setShowOperationsMenu(false)}
+                    >
+                      Cash activity
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -588,10 +727,25 @@ export default function BrokeragePageClient({
             </div>
             <div className="detail-panel is-roomy">
               <p className="detail-metric-label">Unrealised P/L</p>
-              <p className="detail-metric-value">
+              <p
+                className={`detail-metric-value${
+                  unrealisedGainLossTone ? ` ${unrealisedGainLossTone}` : ""
+                }`}
+                style={
+                  unrealisedGainLossColor
+                    ? { color: unrealisedGainLossColor }
+                    : undefined
+                }
+              >
                 <MoneyValue
                   value={workspace.selectedBroker.unrealisedGainLoss}
                   currency={workspace.baseCurrency}
+                  className={unrealisedGainLossTone}
+                  style={
+                    unrealisedGainLossColor
+                      ? { color: unrealisedGainLossColor }
+                      : undefined
+                  }
                 />
               </p>
             </div>

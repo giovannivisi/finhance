@@ -12,6 +12,7 @@ import { AssetsService } from '@assets/assets.service';
 import { TransactionsService } from '@transactions/transactions.service';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
 import { toTransactionResponse } from '@transactions/transactions.mapper';
+import type { AccountDeletionState } from '@accounts/accounts.service';
 import {
   Account,
   AccountType,
@@ -95,7 +96,38 @@ export class BrokerageService {
     ownerId: string,
     accountId: string,
   ): Promise<BrokerageWorkspaceResponse> {
-    const summaries = await this.buildBrokerageSummaries(ownerId);
+    const brokerAccountsPromise = this.listActiveBrokerAccounts(ownerId);
+    const dashboardPromise = this.assetsService.getDashboard(ownerId);
+    const deletionStatesPromise = brokerAccountsPromise.then((brokerAccounts) =>
+      this.accountsService.getDeletionStates(
+        ownerId,
+        brokerAccounts.map((account) => account.id),
+      ),
+    );
+
+    const [
+      brokerAccounts,
+      dashboard,
+      deletionStates,
+      reconciliations,
+      operations,
+      assetKindTargets,
+      securityTargets,
+    ] = await Promise.all([
+      brokerAccountsPromise,
+      dashboardPromise,
+      deletionStatesPromise,
+      this.accountsService.findReconciliation(ownerId),
+      this.findBrokerageOperationsSafe(ownerId, accountId),
+      this.findPortfolioAssetKindTargetsSafe(ownerId),
+      this.findPortfolioSecurityTargetsSafe(ownerId),
+    ]);
+
+    const summaries = this.buildBrokerageSummariesFromDashboard(
+      brokerAccounts,
+      deletionStates,
+      dashboard,
+    );
     const selectedBroker = summaries.find(
       (summary) => summary.account.id === accountId,
     );
@@ -103,20 +135,6 @@ export class BrokerageService {
     if (!selectedBroker) {
       throw new NotFoundException(`Brokerage account ${accountId} was not found.`);
     }
-
-    const [
-      dashboard,
-      reconciliations,
-      operations,
-      assetKindTargets,
-      securityTargets,
-    ] = await Promise.all([
-      this.assetsService.getDashboard(ownerId),
-      this.accountsService.findReconciliation(ownerId),
-      this.findBrokerageOperationsSafe(ownerId, accountId),
-      this.findPortfolioAssetKindTargetsSafe(ownerId),
-      this.findPortfolioSecurityTargetsSafe(ownerId),
-    ]);
 
     const cashReconciliation = reconciliations.find(
       (entry) => entry.account.id === accountId,
@@ -492,10 +510,7 @@ export class BrokerageService {
   private async buildBrokerageSummaries(
     ownerId: string,
   ): Promise<BrokerageAccountSummaryResponse[]> {
-    const brokerAccounts = await this.prisma.account.findMany({
-      where: { userId: ownerId, type: AccountType.BROKER, archivedAt: null },
-      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-    });
+    const brokerAccounts = await this.listActiveBrokerAccounts(ownerId);
     const [deletionStates, dashboard] = await Promise.all([
       this.accountsService.getDeletionStates(
         ownerId,
@@ -504,6 +519,25 @@ export class BrokerageService {
       this.assetsService.getDashboard(ownerId),
     ]);
 
+    return this.buildBrokerageSummariesFromDashboard(
+      brokerAccounts,
+      deletionStates,
+      dashboard,
+    );
+  }
+
+  private async listActiveBrokerAccounts(ownerId: string): Promise<Account[]> {
+    return this.prisma.account.findMany({
+      where: { userId: ownerId, type: AccountType.BROKER, archivedAt: null },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  private buildBrokerageSummariesFromDashboard(
+    brokerAccounts: Account[],
+    deletionStates: Map<string, AccountDeletionState>,
+    dashboard: Awaited<ReturnType<AssetsService['getDashboard']>>,
+  ): BrokerageAccountSummaryResponse[] {
     return brokerAccounts.map((account) => {
       const assignedAssets = dashboard.assets.filter(
         (asset) => asset.type === 'ASSET' && asset.accountId === account.id,

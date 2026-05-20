@@ -3,13 +3,8 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import BrokeragePage from "@/brokerage/page";
 
-const { apiMock, redirectMock } = vi.hoisted(() => ({
+const { apiMock } = vi.hoisted(() => ({
   apiMock: vi.fn(),
-  redirectMock: vi.fn(),
-}));
-
-vi.mock("next/navigation", () => ({
-  redirect: redirectMock,
 }));
 
 vi.mock("@lib/server-api", () => ({
@@ -53,7 +48,6 @@ function buildBroker(id: string, name: string) {
 describe("BrokeragePage", () => {
   beforeEach(() => {
     apiMock.mockReset();
-    redirectMock.mockReset();
   });
 
   it("renders an empty state when no active broker accounts exist", async () => {
@@ -67,12 +61,23 @@ describe("BrokeragePage", () => {
     expect(screen.getByText("No active broker accounts yet.")).toBeInTheDocument();
   });
 
-  it("redirects to the only broker when exactly one broker account exists", async () => {
-    apiMock.mockResolvedValueOnce([buildBroker("broker-1", "IBKR")]);
+  it("renders the shared brokerage client directly when exactly one broker account exists", async () => {
+    apiMock
+      .mockResolvedValueOnce([buildBroker("broker-1", "IBKR")])
+      .mockResolvedValueOnce({
+        baseCurrency: "EUR",
+        brokers: [buildBroker("broker-1", "IBKR")],
+        selectedBroker: buildBroker("broker-1", "IBKR"),
+        cashReconciliation: null,
+        positions: [],
+        activity: [],
+        allocation: { assetKindTargets: [], securityTargets: [] },
+      })
+      .mockResolvedValueOnce([]);
 
-    await BrokeragePage();
+    render(await BrokeragePage());
 
-    expect(redirectMock).toHaveBeenCalledWith("/brokerage/broker-1");
+    expect(screen.getByText("Brokerage client: IBKR")).toBeInTheDocument();
   });
 
   it("renders the shared brokerage client when multiple brokers exist", async () => {

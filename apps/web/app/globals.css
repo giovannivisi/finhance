@@ -3257,20 +3257,151 @@ textarea,
 
 /* Brokerage */
 
-.brokerage-hero-row {
+.brokerage-hero-toolbar {
+  display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.brokerage-hero {
+  position: relative;
+  z-index: 4;
+}
+
+.brokerage-account-switcher {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 1 320px;
+  width: min(320px, 100%);
+  min-width: 0;
+}
+
+.brokerage-account-switcher .detail-metric-label {
+  margin: 0;
+}
+
+.brokerage-account-switcher::after {
+  content: "";
+  position: absolute;
+  right: 20px;
+  bottom: 21px;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  opacity: 0.86;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6L8 10L12 6' stroke='%23a1a1aa' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+}
+
+.brokerage-account-select {
+  min-height: 56px;
+  width: 100%;
+  padding: 0 52px 0 18px;
+  font-size: 1rem;
+  font-weight: 700;
+  background-image: none;
+}
+
+html[data-theme="light"] .brokerage-account-switcher::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6L8 10L12 6' stroke='%2352525b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.brokerage-account-chip {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-width: 220px;
+  min-height: 72px;
+  padding: 16px 18px;
+  border-radius: 26px;
+  background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+  border: 1px solid var(--border-glass-strong);
+}
+
+.brokerage-account-chip-value {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.15rem;
+  font-weight: 700;
 }
 
 .brokerage-hero-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
+  align-items: center;
   justify-content: flex-end;
   gap: 12px;
 }
 
-.brokerage-account-switcher {
-  min-width: 220px;
+.brokerage-operations-menu {
+  position: relative;
+}
+
+.brokerage-operations-trigger {
+  gap: 10px;
+}
+
+.brokerage-operations-panel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 15;
+  min-width: 196px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background-color: var(--tab-more-panel-bg);
+  backdrop-filter: var(--tab-pill-blur);
+  -webkit-backdrop-filter: var(--tab-pill-blur);
+  border: 0.5px solid var(--tab-more-panel-border);
+  border-radius: 22px;
+  corner-shape: superellipse(0.7);
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.brokerage-operations-panel.is-above {
+  top: auto;
+  bottom: calc(100% + 12px);
+}
+
+.brokerage-operations-link {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+  border-radius: 15px;
+  color: rgba(255, 255, 255, 0.84);
+  text-align: left;
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.brokerage-operations-link:hover:not(:disabled) {
+  background: var(--tab-bg-highlight);
+  color: var(--text-primary);
+}
+
+.brokerage-operations-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .brokerage-summary-card,
@@ -3383,6 +3514,14 @@ textarea,
 
 .brokerage-position-value-sub.is-negative,
 .brokerage-position-money.is-negative {
+  color: var(--color-expense);
+}
+
+.brokerage-value-positive {
+  color: var(--color-income);
+}
+
+.brokerage-value-negative {
   color: var(--color-expense);
 }
 
@@ -3691,8 +3830,19 @@ textarea,
 }
 
 @media (max-width: 767px) {
+  .brokerage-hero-toolbar,
   .brokerage-hero-actions {
     justify-content: flex-start;
+  }
+
+  .brokerage-operations-panel {
+    left: 0;
+    right: auto;
+  }
+
+  .brokerage-operations-panel.is-above {
+    top: auto;
+    bottom: calc(100% + 12px);
   }
 
   .brokerage-summary-total,
