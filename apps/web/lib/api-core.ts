@@ -2,6 +2,12 @@ const HTML_ERROR_HINT =
   "Received an HTML page instead of API JSON. Check the web/API routing configuration.";
 const MAX_TEXT_ERROR_LENGTH = 240;
 
+type ValidationErrorLike = {
+  property?: unknown;
+  constraints?: unknown;
+  children?: unknown;
+};
+
 function isHtmlBody(text: string): boolean {
   const normalized = text.trimStart().toLowerCase();
   return (
@@ -37,6 +43,62 @@ function sanitizeApiErrorText(
   }
 
   return truncatePlainTextError(text);
+}
+
+function collectStructuredErrorMessages(
+  value: unknown,
+  path: string[] = [],
+): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectStructuredErrorMessages(item, path));
+  }
+
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  const error = value as ValidationErrorLike & {
+    message?: unknown;
+    error?: unknown;
+  };
+
+  if (error.message && error.message !== value) {
+    const nestedMessages = collectStructuredErrorMessages(error.message, path);
+    if (nestedMessages.length > 0) {
+      return nestedMessages;
+    }
+  }
+
+  const nextPath =
+    typeof error.property === "string" && error.property.length > 0
+      ? [...path, error.property]
+      : path;
+
+  const constraints =
+    error.constraints && typeof error.constraints === "object"
+      ? Object.values(error.constraints as Record<string, unknown>).filter(
+          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+        )
+      : [];
+
+  const messages = constraints.map((message) =>
+    nextPath.length > 0 ? `${nextPath.join(".")}: ${message}` : message,
+  );
+
+  const childMessages = collectStructuredErrorMessages(error.children, nextPath);
+  if (messages.length > 0 || childMessages.length > 0) {
+    return [...messages, ...childMessages];
+  }
+
+  if (typeof error.error === "string" && error.error.trim().length > 0) {
+    return [error.error];
+  }
+
+  return [];
 }
 
 export function createIdempotencyKey(): string {
@@ -94,12 +156,16 @@ export async function readApiError(response: Response): Promise<string> {
   }
 
   try {
-    const parsed = JSON.parse(text) as { message?: string | string[] };
-    if (Array.isArray(parsed.message)) {
-      return parsed.message.join(", ");
+    const parsed = JSON.parse(text) as {
+      message?: unknown;
+      error?: unknown;
+    };
+    const structuredMessages = collectStructuredErrorMessages(parsed.message);
+    if (structuredMessages.length > 0) {
+      return structuredMessages.join(", ");
     }
-    if (typeof parsed.message === "string") {
-      return parsed.message;
+    if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
+      return parsed.error;
     }
   } catch {
     return sanitizeApiErrorText(text, response.status, contentType);

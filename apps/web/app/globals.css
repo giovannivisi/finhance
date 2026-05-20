@@ -3322,11 +3322,10 @@ textarea,
 
 .brokerage-position-head,
 .brokerage-activity-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px 20px;
 }
 
 .brokerage-position-title-row {
@@ -3339,9 +3338,14 @@ textarea,
 .brokerage-position-title,
 .brokerage-activity-title,
 .brokerage-subsection-title {
+  margin: 0;
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.brokerage-subsection-title {
+  margin: 0 0 10px;
 }
 
 .brokerage-position-value,
@@ -3349,22 +3353,36 @@ textarea,
   text-align: right;
 }
 
+.brokerage-position-copy,
+.brokerage-position-value {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
 .brokerage-position-value-amount {
+  margin: 0;
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--text-primary);
 }
 
 .brokerage-position-value-sub {
-  margin-top: 6px;
+  margin: 0;
   color: var(--text-secondary);
 }
 
-.brokerage-position-value-sub.is-positive {
+.brokerage-position-copy > p {
+  margin: 0;
+}
+
+.brokerage-position-value-sub.is-positive,
+.brokerage-position-money.is-positive {
   color: var(--color-income);
 }
 
-.brokerage-position-value-sub.is-negative {
+.brokerage-position-value-sub.is-negative,
+.brokerage-position-money.is-negative {
   color: var(--color-expense);
 }
 
@@ -3398,7 +3416,7 @@ textarea,
 
 .brokerage-target-editor-shell {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .brokerage-target-toolbar {
@@ -3486,10 +3504,12 @@ textarea,
 
 .brokerage-target-toggle-option.is-on.is-active {
   background: color-mix(in srgb, var(--color-primary) 18%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 36%, var(--border-glass-strong));
 }
 
 .brokerage-target-toggle-option.is-off.is-active {
-  background: color-mix(in srgb, #ffffff 8%, var(--bg-card));
+  background: color-mix(in srgb, #ffffff 10%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, #ffffff 16%, var(--border-glass-strong));
   color: var(--text-secondary);
 }
 
@@ -3509,6 +3529,13 @@ textarea,
   background: color-mix(in srgb, var(--bg-card) 88%, transparent);
 }
 
+.brokerage-target-percent-field:focus-within {
+  border-color: var(--border-glass-strong);
+  background: var(--bg-control-hover);
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
 .brokerage-target-percent-field span {
   color: var(--text-tertiary);
   font-weight: 600;
@@ -3523,6 +3550,20 @@ textarea,
   padding: 10px 0;
   border: 0;
   background: transparent;
+  background-image: none;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding-right: 0;
+}
+
+.brokerage-target-percent-field input:focus,
+.brokerage-target-percent-field input:focus-visible {
+  outline: none;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .brokerage-target-help {
@@ -3658,6 +3699,11 @@ textarea,
   .brokerage-position-value,
   .brokerage-activity-value {
     text-align: left;
+  }
+
+  .brokerage-position-head,
+  .brokerage-activity-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .brokerage-target-row {
@@ -3907,7 +3953,18 @@ textarea,
   font-weight: 800;
 }
 
+.brokerage-form-grid .app-form-field > label:not(.is-optional),
+.brokerage-form-grid > label.app-form-field {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
 .app-form-field label.is-optional {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.brokerage-form-grid .app-form-field > label.is-optional {
   color: var(--text-tertiary);
   font-weight: 500;
 }
@@ -3917,7 +3974,23 @@ textarea,
   font-weight: inherit;
 }
 
+.brokerage-form-grid .app-form-field > label.is-optional span:first-child,
+.brokerage-form-grid > label.app-form-field > .detail-metric-label {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.brokerage-form-grid > label.app-form-field > .detail-metric-label {
+  font-size: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .app-form-field label.is-optional span:last-child {
+  display: none;
+}
+
+.brokerage-form-grid .app-form-field > label.is-optional span:last-child {
   display: none;
 }
 

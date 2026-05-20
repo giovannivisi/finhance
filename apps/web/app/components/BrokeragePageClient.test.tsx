@@ -396,8 +396,10 @@ describe("BrokeragePageClient", () => {
 
     expect(apiMutation).toHaveBeenCalledTimes(1);
     const [, request] = vi.mocked(apiMutation).mock.calls[0];
-    expect(JSON.parse(request.body as string)).toMatchObject({
+    const payload = JSON.parse(request.body as string);
+    expect(payload).toMatchObject({
       assetKindTargets: [{ kind: "STOCK", targetPercent: 100 }],
     });
+    expect(payload.assetKindTargets[0]).not.toHaveProperty("enabled");
   });
 });

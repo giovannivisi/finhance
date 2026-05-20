@@ -416,22 +416,20 @@ export default function BrokeragePageClient({
 
   async function handleTargetsSubmit() {
     const assetKindPayload = assetKindTargets
+      .filter((row) => row.enabled && (parseNumber(row.targetPercent) ?? 0) > 0)
       .map((row) => ({
         kind: row.kind,
         targetPercent: parseNumber(row.targetPercent) ?? 0,
-        enabled: row.enabled,
-      }))
-      .filter((row) => row.enabled && row.targetPercent > 0);
+      }));
     const securityPayload = securityTargets
+      .filter((row) => row.enabled && (parseNumber(row.targetPercent) ?? 0) > 0)
       .map((row) => ({
         kind: row.kind,
         ticker: row.ticker ?? "",
         exchange: row.exchange,
         name: row.label,
         targetPercent: parseNumber(row.targetPercent) ?? 0,
-        enabled: row.enabled,
-      }))
-      .filter((row) => row.enabled && row.targetPercent > 0);
+      }));
 
     const assetKindTotal = assetKindPayload.reduce(
       (sum, row) => sum + row.targetPercent,
@@ -638,14 +636,14 @@ export default function BrokeragePageClient({
           ) : (
             <div className="list-stack mt-4">
               {workspace.positions.map((position) => {
-                const gainLossToneClass =
+                const gainLossTone =
                   position.unrealisedGainLoss == null
-                    ? ""
+                    ? "neutral"
                     : position.unrealisedGainLoss > 0
-                      ? " is-positive"
+                      ? "positive"
                       : position.unrealisedGainLoss < 0
-                        ? " is-negative"
-                        : "";
+                        ? "negative"
+                        : "neutral";
 
                 return (
                   <article
@@ -653,7 +651,7 @@ export default function BrokeragePageClient({
                     className="list-card brokerage-position-card"
                   >
                     <div className="brokerage-position-head">
-                      <div>
+                      <div className="brokerage-position-copy">
                         <div className="brokerage-position-title-row">
                           <h4 className="brokerage-position-title">
                             {position.name}
@@ -684,12 +682,13 @@ export default function BrokeragePageClient({
                           />
                         </p>
                         <p
-                          className={`brokerage-position-value-sub${gainLossToneClass}`}
+                          className={`brokerage-position-value-sub is-${gainLossTone}`}
                         >
                           P/L{" "}
                           <MoneyValue
                             value={position.unrealisedGainLoss}
                             currency={workspace.baseCurrency}
+                            className={`brokerage-position-money is-${gainLossTone}`}
                           />
                         </p>
                       </div>
@@ -886,10 +885,21 @@ export default function BrokeragePageClient({
         title="Buy investment"
         maxWidth={760}
       >
+        {(() => {
+          const fieldPrefix = "brokerage-buy";
+
+          return (
         <div className="app-form-grid brokerage-form-grid">
-          <label className="app-form-field">
-            <span className="detail-metric-label">Existing holding</span>
+          <div className="app-form-field">
+            <label
+              htmlFor={`${fieldPrefix}-asset-id`}
+              className="is-optional"
+            >
+              <span>Existing holding</span>
+              <span>Optional</span>
+            </label>
             <select
+              id={`${fieldPrefix}-asset-id`}
               value={buyForm.assetId}
               onChange={(event) =>
                 setBuyForm((current) => ({
@@ -905,12 +915,15 @@ export default function BrokeragePageClient({
                 </option>
               ))}
             </select>
-          </label>
+          </div>
           {!buyForm.assetId ? (
             <>
-              <label className="app-form-field">
-                <span className="detail-metric-label">Name</span>
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-name`}>
+                  <span>Name</span>
+                </label>
                 <input
+                  id={`${fieldPrefix}-name`}
                   value={buyForm.name}
                   onChange={(event) =>
                     setBuyForm((current) => ({
@@ -919,10 +932,13 @@ export default function BrokeragePageClient({
                     }))
                   }
                 />
-              </label>
-              <label className="app-form-field">
-                <span className="detail-metric-label">Kind</span>
+              </div>
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-kind`}>
+                  <span>Kind</span>
+                </label>
                 <select
+                  id={`${fieldPrefix}-kind`}
                   value={buyForm.kind}
                   onChange={(event) =>
                     setBuyForm((current) => ({
@@ -935,10 +951,13 @@ export default function BrokeragePageClient({
                   <option value="BOND">Bond</option>
                   <option value="CRYPTO">Crypto</option>
                 </select>
-              </label>
-              <label className="app-form-field">
-                <span className="detail-metric-label">Ticker</span>
+              </div>
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-ticker`}>
+                  <span>Ticker</span>
+                </label>
                 <input
+                  id={`${fieldPrefix}-ticker`}
                   value={buyForm.ticker}
                   onChange={(event) =>
                     setBuyForm((current) => ({
@@ -947,10 +966,17 @@ export default function BrokeragePageClient({
                     }))
                   }
                 />
-              </label>
-              <label className="app-form-field">
-                <span className="detail-metric-label">Exchange</span>
+              </div>
+              <div className="app-form-field">
+                <label
+                  htmlFor={`${fieldPrefix}-exchange`}
+                  className="is-optional"
+                >
+                  <span>Exchange</span>
+                  <span>Optional</span>
+                </label>
                 <input
+                  id={`${fieldPrefix}-exchange`}
                   value={buyForm.exchange}
                   onChange={(event) =>
                     setBuyForm((current) => ({
@@ -959,10 +985,13 @@ export default function BrokeragePageClient({
                     }))
                   }
                 />
-              </label>
-              <label className="app-form-field">
-                <span className="detail-metric-label">Currency</span>
+              </div>
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-currency`}>
+                  <span>Currency</span>
+                </label>
                 <input
+                  id={`${fieldPrefix}-currency`}
                   value={buyForm.currency}
                   onChange={(event) =>
                     setBuyForm((current) => ({
@@ -971,12 +1000,15 @@ export default function BrokeragePageClient({
                     }))
                   }
                 />
-              </label>
+              </div>
             </>
           ) : null}
-          <label className="app-form-field">
-            <span className="detail-metric-label">Quantity</span>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-quantity`}>
+              <span>Quantity</span>
+            </label>
             <input
+              id={`${fieldPrefix}-quantity`}
               type="number"
               step="0.0001"
               value={buyForm.quantity}
@@ -987,10 +1019,13 @@ export default function BrokeragePageClient({
                 }))
               }
             />
-          </label>
-          <label className="app-form-field">
-            <span className="detail-metric-label">Price per unit</span>
+          </div>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-unit-price`}>
+              <span>Price per unit</span>
+            </label>
             <input
+              id={`${fieldPrefix}-unit-price`}
               type="number"
               step="0.0001"
               value={buyForm.unitPrice}
@@ -1001,10 +1036,17 @@ export default function BrokeragePageClient({
                 }))
               }
             />
-          </label>
-          <label className="app-form-field">
-            <span className="detail-metric-label">Fee</span>
+          </div>
+          <div className="app-form-field">
+            <label
+              htmlFor={`${fieldPrefix}-fee-amount`}
+              className="is-optional"
+            >
+              <span>Fee</span>
+              <span>Optional</span>
+            </label>
             <input
+              id={`${fieldPrefix}-fee-amount`}
               type="number"
               step="0.01"
               value={buyForm.feeAmount}
@@ -1015,10 +1057,13 @@ export default function BrokeragePageClient({
                 }))
               }
             />
-          </label>
-          <label className="app-form-field">
-            <span className="detail-metric-label">Posted at</span>
+          </div>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-posted-at`}>
+              <span>Posted at</span>
+            </label>
             <input
+              id={`${fieldPrefix}-posted-at`}
               type="datetime-local"
               value={buyForm.postedAt}
               onChange={(event) =>
@@ -1028,10 +1073,14 @@ export default function BrokeragePageClient({
                 }))
               }
             />
-          </label>
-          <label className="app-form-field app-form-field-span-2">
-            <span className="detail-metric-label">Notes</span>
+          </div>
+          <div className="app-form-field app-form-field-span-2">
+            <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">
+              <span>Notes</span>
+              <span>Optional</span>
+            </label>
             <textarea
+              id={`${fieldPrefix}-notes`}
               value={buyForm.notes}
               onChange={(event) =>
                 setBuyForm((current) => ({
@@ -1040,8 +1089,10 @@ export default function BrokeragePageClient({
                 }))
               }
             />
-          </label>
+          </div>
         </div>
+          );
+        })()}
 
         <div className="detail-panel is-roomy mt-4">
           <p className="detail-metric-label">Trade summary</p>
