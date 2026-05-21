@@ -122,6 +122,10 @@ const accounts: AccountResponse[] = [
     id: "account-main",
     name: "Main account",
   }),
+  buildAccount({
+    id: "account-savings",
+    name: "Savings",
+  }),
 ];
 
 const categories: CategoryResponse[] = [
@@ -203,10 +207,13 @@ const baseCashflow: CashflowSummaryResponse = [
   },
 ];
 
-function renderPage(cashflow = baseCashflow) {
+function renderPage(
+  cashflow = baseCashflow,
+  entries: TransactionResponse[] = transactions,
+) {
   return render(
     <TransactionsPageClient
-      transactions={transactions}
+      transactions={entries}
       cashflow={cashflow}
       accounts={accounts}
       categories={categories}
@@ -302,5 +309,49 @@ describe("TransactionsPageClient cashflow drill-down", () => {
     expect(
       screen.queryByRole("button", { name: "Open in Activity" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders split-funded expenses as one expandable logical row", () => {
+    renderPage(baseCashflow, [
+      {
+        id: "split-1",
+        postedAt: "2026-05-20T10:30:00.000Z",
+        amount: 12,
+        currency: "EUR",
+        kind: "EXPENSE",
+        accountId: null,
+        direction: "OUTFLOW",
+        categoryId: "secondary-bars",
+        primaryCategoryId: "primary-food",
+        primaryCategoryName: "Food",
+        secondaryCategoryId: "secondary-bars",
+        secondaryCategoryName: "Bars",
+        description: "Lunch",
+        notes: null,
+        counterparty: "Cafe",
+        sourceAccountId: null,
+        destinationAccountId: null,
+        splitGroupId: "split-1",
+        fundingLegs: [
+          { accountId: "account-main", amount: 7, currency: "EUR" },
+          { accountId: "account-savings", amount: 5, currency: "EUR" },
+        ],
+        recurringRuleId: null,
+        recurringOccurrenceMonth: null,
+        isRecurringGenerated: false,
+        createdAt: "2026-05-20T10:30:00.000Z",
+        updatedAt: "2026-05-20T10:30:00.000Z",
+      },
+    ]);
+
+    expect(screen.getByText("Split")).toBeInTheDocument();
+    expect(
+      screen.getByText("Split across 2 accounts"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Split across 2 accounts"));
+
+    expect(screen.getByText(/Main account: .*7,00/)).toBeInTheDocument();
+    expect(screen.getByText(/Savings: .*5,00/)).toBeInTheDocument();
   });
 });

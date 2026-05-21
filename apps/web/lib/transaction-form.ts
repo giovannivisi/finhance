@@ -1,9 +1,15 @@
 import type {
+  SplitTransactionFundingLegRequest,
   TransactionDirection,
   TransactionKind,
   TransactionResponse,
   UpsertTransactionRequest,
 } from "@finhance/shared";
+
+export interface TransactionFundingLegFormValue {
+  accountId: string;
+  amount: string;
+}
 
 export interface TransactionFormValues {
   postedAt: string;
@@ -17,6 +23,8 @@ export interface TransactionFormValues {
   counterparty: string;
   sourceAccountId: string;
   destinationAccountId: string;
+  fundingMode: "SINGLE" | "SPLIT";
+  fundingLegs: TransactionFundingLegFormValue[];
 }
 
 const DEFAULT_TRANSACTION_KIND: TransactionKind = "EXPENSE";
@@ -35,6 +43,8 @@ export function createEmptyTransactionFormValues(): TransactionFormValues {
     counterparty: "",
     sourceAccountId: "",
     destinationAccountId: "",
+    fundingMode: "SINGLE",
+    fundingLegs: createEmptyFundingLegs(),
   };
 }
 
@@ -53,6 +63,19 @@ export function transactionToFormValues(
     counterparty: transaction.counterparty ?? "",
     sourceAccountId: transaction.sourceAccountId ?? "",
     destinationAccountId: transaction.destinationAccountId ?? "",
+    fundingMode:
+      transaction.kind === "EXPENSE" &&
+      (transaction.fundingLegs?.length ?? 0) >= 2
+        ? "SPLIT"
+        : "SINGLE",
+    fundingLegs:
+      transaction.kind === "EXPENSE" &&
+      (transaction.fundingLegs?.length ?? 0) >= 2
+        ? transaction.fundingLegs!.map((leg) => ({
+            accountId: leg.accountId,
+            amount: formatNumber(leg.amount),
+          }))
+        : createEmptyFundingLegs(),
   };
 }
 
@@ -107,11 +130,6 @@ export function buildTransactionPayload(values: TransactionFormValues): {
     };
   }
 
-  const accountId = values.accountId.trim();
-  if (!accountId) {
-    return { error: "Please choose an account." };
-  }
-
   const direction =
     values.kind === "EXPENSE"
       ? "OUTFLOW"
@@ -129,6 +147,71 @@ export function buildTransactionPayload(values: TransactionFormValues): {
     return { error: "Adjustments require a direction." };
   }
 
+  if (values.kind === "EXPENSE" && values.fundingMode === "SPLIT") {
+    if (!categoryId) {
+      return { error: "Please choose a category." };
+    }
+
+    const fundingLegs = normalizeFundingLegs(values.fundingLegs);
+    if (fundingLegs.length < 2) {
+      return {
+        error: "Split-funded expenses require at least two funding legs.",
+      };
+    }
+
+    const parsedLegs: SplitTransactionFundingLegRequest[] = [];
+    for (const leg of fundingLegs) {
+      const legAmount = parseNumber(leg.amount);
+      if (!leg.accountId) {
+        return {
+          error: "Each funding leg must choose an account.",
+        };
+      }
+
+      if (legAmount === null || legAmount <= 0) {
+        return {
+          error: "Each funding leg must use a positive amount.",
+        };
+      }
+
+      parsedLegs.push({
+        accountId: leg.accountId,
+        amount: legAmount,
+      });
+    }
+
+    if (new Set(parsedLegs.map((leg) => leg.accountId)).size !== parsedLegs.length) {
+      return {
+        error: "Split funding cannot reuse the same account twice.",
+      };
+    }
+
+    const legTotal = parsedLegs.reduce((sum, leg) => sum + leg.amount, 0);
+    if (Math.abs(legTotal - amount) > 0.000001) {
+      return {
+        error: "The main amount must match the sum of the funding legs.",
+      };
+    }
+
+    return {
+      payload: {
+        postedAt,
+        kind: "EXPENSE",
+        amount,
+        description,
+        notes,
+        categoryId,
+        counterparty: values.counterparty.trim() || null,
+        fundingLegs: parsedLegs,
+      },
+    };
+  }
+
+  const accountId = values.accountId.trim();
+  if (!accountId) {
+    return { error: "Please choose an account." };
+  }
+
   return {
     payload: {
       postedAt,
@@ -144,12 +227,30 @@ export function buildTransactionPayload(values: TransactionFormValues): {
   };
 }
 
+export function createEmptyFundingLegs(): TransactionFundingLegFormValue[] {
+  return [
+    { accountId: "", amount: "" },
+    { accountId: "", amount: "" },
+  ];
+}
+
 export function toDateTimeLocalValue(isoString: string): string {
   const date = new Date(isoString);
   const localDate = new Date(
     date.getTime() - date.getTimezoneOffset() * 60_000,
   );
   return localDate.toISOString().slice(0, 16);
+}
+
+function normalizeFundingLegs(
+  legs: TransactionFundingLegFormValue[],
+): TransactionFundingLegFormValue[] {
+  return legs
+    .map((leg) => ({
+      accountId: leg.accountId.trim(),
+      amount: leg.amount.trim(),
+    }))
+    .filter((leg) => leg.accountId || leg.amount);
 }
 
 function parsePostedAt(value: string): string | null {
@@ -172,4 +273,8 @@ function parseNumber(value: string): number | null {
 
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toString();
 }

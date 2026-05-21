@@ -35,6 +35,11 @@ interface BaseUpsertTransactionRequest {
   notes?: string | null;
 }
 
+export interface SplitTransactionFundingLegRequest {
+  accountId: string;
+  amount: number;
+}
+
 export interface UpsertStandardTransactionRequest
   extends BaseUpsertTransactionRequest {
   kind: "EXPENSE" | "INCOME" | "ADJUSTMENT";
@@ -42,6 +47,14 @@ export interface UpsertStandardTransactionRequest
   direction: TransactionDirection;
   categoryId?: string | null;
   counterparty?: string | null;
+}
+
+export interface UpsertSplitExpenseTransactionRequest
+  extends BaseUpsertTransactionRequest {
+  kind: "EXPENSE";
+  categoryId: string;
+  counterparty?: string | null;
+  fundingLegs: SplitTransactionFundingLegRequest[];
 }
 
 export interface UpsertTransferTransactionRequest
@@ -52,8 +65,15 @@ export interface UpsertTransferTransactionRequest
 }
 
 export type UpsertTransactionRequest =
+  | UpsertSplitExpenseTransactionRequest
   | UpsertStandardTransactionRequest
   | UpsertTransferTransactionRequest;
+
+export interface TransactionFundingLegResponse {
+  accountId: string;
+  amount: number;
+  currency: string;
+}
 
 export interface TransactionResponse {
   id: string;
@@ -73,6 +93,8 @@ export interface TransactionResponse {
   counterparty: string | null;
   sourceAccountId: string | null;
   destinationAccountId: string | null;
+  splitGroupId?: string | null;
+  fundingLegs?: TransactionFundingLegResponse[] | null;
   recurringRuleId: string | null;
   recurringOccurrenceMonth: string | null;
   isRecurringGenerated: boolean;

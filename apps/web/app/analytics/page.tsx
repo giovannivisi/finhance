@@ -346,7 +346,7 @@ export default async function AnalyticsPage({
                     href={`/review?month=${encodeURIComponent(analytics.focusMonth)}`}
                     className="btn-secondary"
                   >
-                    Open review
+                    Open monthly close
                   </Link>
                 </div>
               </section>
@@ -761,7 +761,7 @@ export default async function AnalyticsPage({
 
                 <WorkflowSection
                   title="Turn the focus month into action"
-                  description={`Use ${analytics.focusMonth} as the bridge between trend analysis, monthly review, and budgets.`}
+                  description={`Use ${analytics.focusMonth} as the bridge between trend analysis, monthly close, and budgets.`}
                   className="is-roomy"
                   cards={getWorkflowCards({
                     currentPage: "analytics",

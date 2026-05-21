@@ -220,6 +220,50 @@ describe("TransactionForm", () => {
     });
   });
 
+  it("submits split-funded expense payloads as one logical expense", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue(undefined);
+
+    renderForm({
+      initialValues: {
+        ...buildCreateValues(),
+        description: "Lunch",
+        categoryId: "category-cafes",
+      },
+    });
+
+    await user.selectOptions(screen.getByLabelText("Funding"), "SPLIT");
+    await user.selectOptions(screen.getByLabelText("Account 1"), "account-bank");
+    const legAmountInputs = screen.getAllByLabelText("Leg amount");
+    await user.clear(legAmountInputs[0]!);
+    await user.type(legAmountInputs[0]!, "7");
+    await user.selectOptions(screen.getByLabelText("Account 2"), "account-savings");
+    await user.clear(legAmountInputs[1]!);
+    await user.type(legAmountInputs[1]!, "8");
+    await user.click(
+      screen.getByRole("button", { name: /create transaction/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          postedAt: new Date("2026-05-20T10:30").toISOString(),
+          kind: "EXPENSE",
+          amount: 15,
+          description: "Lunch",
+          notes: null,
+          categoryId: "category-cafes",
+          counterparty: null,
+          fundingLegs: [
+            { accountId: "account-bank", amount: 7 },
+            { accountId: "account-savings", amount: 8 },
+          ],
+        }),
+      });
+    });
+  });
+
   it("routes cash-account submit errors to the account field only", async () => {
     const user = userEvent.setup();
     mockedApiMutation.mockRejectedValueOnce(
@@ -307,6 +351,11 @@ describe("TransactionForm", () => {
         counterparty: "",
         sourceAccountId: "account-bank",
         destinationAccountId: "account-savings",
+        fundingMode: "SINGLE",
+        fundingLegs: [
+          { accountId: "", amount: "" },
+          { accountId: "", amount: "" },
+        ],
       },
     });
 

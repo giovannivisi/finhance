@@ -15,6 +15,11 @@ test("buildTransactionPayload creates income payloads", () => {
     counterparty: " Employer ",
     sourceAccountId: "",
     destinationAccountId: "",
+    fundingMode: "SINGLE",
+    fundingLegs: [
+      { accountId: "", amount: "" },
+      { accountId: "", amount: "" },
+    ],
   });
 
   assert.equal(result.payload?.kind, "INCOME");
@@ -44,6 +49,11 @@ test("buildTransactionPayload creates transfer payloads", () => {
     counterparty: "",
     sourceAccountId: "account-a",
     destinationAccountId: "account-b",
+    fundingMode: "SINGLE",
+    fundingLegs: [
+      { accountId: "", amount: "" },
+      { accountId: "", amount: "" },
+    ],
   });
 
   assert.deepEqual(result.payload, {
@@ -70,7 +80,47 @@ test("buildTransactionPayload rejects same-account transfers", () => {
     counterparty: "",
     sourceAccountId: "account-a",
     destinationAccountId: "account-a",
+    fundingMode: "SINGLE",
+    fundingLegs: [
+      { accountId: "", amount: "" },
+      { accountId: "", amount: "" },
+    ],
   });
 
   assert.equal(result.error, "Transfers require two different accounts.");
+});
+
+test("buildTransactionPayload creates split-funded expense payloads", () => {
+  const result = buildTransactionPayload({
+    postedAt: "2026-04-17T10:30",
+    kind: "EXPENSE",
+    amount: "12",
+    description: "Lunch",
+    notes: "",
+    accountId: "",
+    direction: "OUTFLOW",
+    categoryId: "category-food",
+    counterparty: "Cafe",
+    sourceAccountId: "",
+    destinationAccountId: "",
+    fundingMode: "SPLIT",
+    fundingLegs: [
+      { accountId: "voucher", amount: "7" },
+      { accountId: "cash", amount: "5" },
+    ],
+  });
+
+  assert.deepEqual(result.payload, {
+    postedAt: new Date("2026-04-17T10:30").toISOString(),
+    kind: "EXPENSE",
+    amount: 12,
+    description: "Lunch",
+    notes: null,
+    categoryId: "category-food",
+    counterparty: "Cafe",
+    fundingLegs: [
+      { accountId: "voucher", amount: 7 },
+      { accountId: "cash", amount: 5 },
+    ],
+  });
 });

@@ -143,7 +143,7 @@ export default async function Home() {
                 </h3>
                 <p className="home-setup-copy">
                   {getSetupProgressLabel(setup)}. Finish the baseline first,
-                  then move into review, analytics, budgets, and recurring
+                  then move into monthly close, analytics, budgets, and recurring
                   workflows with fewer surprises.
                 </p>
               </div>

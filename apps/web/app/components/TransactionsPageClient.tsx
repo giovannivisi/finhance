@@ -1110,7 +1110,7 @@ export default function TransactionsPageClient({
                 Entries
               </h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                Logical transactions, including paired transfers.
+                Logical transactions, including paired transfers and split-funded expenses.
               </p>
             </div>
           </div>
@@ -1205,6 +1205,10 @@ export default function TransactionsPageClient({
                                 transaction.categoryId !== null
                                   ? categoriesById.get(transaction.categoryId)
                                   : null;
+                              const fundingLegs = transaction.fundingLegs ?? [];
+                              const isSplitExpense =
+                                transaction.kind === "EXPENSE" &&
+                                fundingLegs.length >= 2;
 
                               return (
                                 <tr
@@ -1225,6 +1229,11 @@ export default function TransactionsPageClient({
                                           ]
                                         }
                                       </span>
+                                      {isSplitExpense ? (
+                                        <span className="status-chip is-neutral">
+                                          Split
+                                        </span>
+                                      ) : null}
                                       {transaction.isRecurringGenerated ? (
                                         <span className="status-chip is-neutral">
                                           Recurring
@@ -1251,6 +1260,26 @@ export default function TransactionsPageClient({
                                         {destinationAccount?.name ??
                                           transaction.destinationAccountId}
                                       </p>
+                                    ) : isSplitExpense ? (
+                                      <details className="group">
+                                        <summary className="cursor-pointer font-medium text-[var(--text-primary)]">
+                                          Split across {fundingLegs.length} accounts
+                                        </summary>
+                                        <ul className="mt-2 space-y-1 text-xs text-[var(--text-secondary)]">
+                                          {fundingLegs.map((leg) => (
+                                            <li key={`${transaction.id}-${leg.accountId}`}>
+                                              {(accountsById.get(leg.accountId)?.name ??
+                                                leg.accountId) +
+                                                ": " +
+                                                formatSensitiveCurrency(
+                                                  leg.amount,
+                                                  leg.currency,
+                                                  shouldHideMoney,
+                                                )}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </details>
                                     ) : (
                                       <p>
                                         {account?.name ?? transaction.accountId}

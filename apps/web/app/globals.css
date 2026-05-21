@@ -3703,6 +3703,14 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   margin-top: 0;
 }
 
+.review-highlights-details {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 20px 20px;
+  border-top: 1px solid var(--border-glass);
+}
+
 .brokerage-activity-details {
   display: flex;
   flex-direction: column;

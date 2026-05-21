@@ -32,7 +32,7 @@ export const SECONDARY_NAV_ITEMS: readonly AppNavItem[] = [
   { href: "/brokerage", label: "Brokerage", icon: Landmark },
   { href: "/budgets", label: "Budgets", icon: PieChart },
   { href: "/recurring", label: "Recurring", icon: Repeat },
-  { href: "/review", label: "Review", icon: ClipboardCheck },
+  { href: "/review", label: "Monthly close", icon: ClipboardCheck },
   { href: "/categories", label: "Categories", icon: Tag },
   {
     href: "/expense-validation",

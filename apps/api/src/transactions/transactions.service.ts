@@ -97,6 +97,22 @@ interface PreparedTransferTransactionInput {
   destinationAccountId: string;
 }
 
+interface PreparedSplitFundingLegInput {
+  accountId: string;
+  amount: Prisma.Decimal;
+}
+
+interface PreparedSplitTransactionInput {
+  postedAt: Date;
+  amount: Prisma.Decimal;
+  currency: string;
+  categoryId: string;
+  description: string;
+  notes: string | null;
+  counterparty: string | null;
+  fundingLegs: PreparedSplitFundingLegInput[];
+}
+
 interface CashflowAnalyticsFilters {
   from: string;
   to: string;
@@ -206,19 +222,46 @@ export class TransactionsService {
             .map((row) => row.transferGroupId as string),
         ),
       ];
+      const splitGroupIds = [
+        ...new Set(
+          accountRows
+            .filter(
+              (row) =>
+                row.splitGroupId &&
+                !seenEntryKeys.has(`SPLIT:${row.splitGroupId}`),
+            )
+            .map((row) => row.splitGroupId as string),
+        ),
+      ];
 
       for (const transferGroupId of transferGroupIds) {
         seenTransferGroupIds.add(transferGroupId);
       }
 
       const counterpartRows =
-        transferGroupIds.length === 0
+        transferGroupIds.length === 0 && splitGroupIds.length === 0
           ? []
           : await this.prisma.transaction.findMany({
               where: {
                 userId: ownerId,
-                transferGroupId: { in: transferGroupIds },
-                accountId: { not: accountId },
+                OR: [
+                  ...(transferGroupIds.length > 0
+                    ? [
+                        {
+                          transferGroupId: { in: transferGroupIds },
+                          accountId: { not: accountId },
+                        },
+                      ]
+                    : []),
+                  ...(splitGroupIds.length > 0
+                    ? [
+                        {
+                          splitGroupId: { in: splitGroupIds },
+                          accountId: { not: accountId },
+                        },
+                      ]
+                    : []),
+                ],
               },
               include: {
                 account: true,
@@ -246,7 +289,9 @@ export class TransactionsService {
         const entryKey =
           entry.entryType === 'TRANSFER'
             ? `TRANSFER:${entry.transferGroupId}`
-            : `STANDARD:${entry.row.id}`;
+            : entry.entryType === 'SPLIT'
+              ? `SPLIT:${entry.splitGroupId}`
+              : `STANDARD:${entry.row.id}`;
 
         if (seenEntryKeys.has(entryKey)) {
           continue;
@@ -285,6 +330,10 @@ export class TransactionsService {
 
     if (byId) {
       if (byId.kind !== TransactionKind.TRANSFER) {
+        if (byId.splitGroupId) {
+          return this.findSplitEntry(ownerId, byId.splitGroupId);
+        }
+
         return {
           entryType: 'STANDARD',
           row: byId,
@@ -294,7 +343,36 @@ export class TransactionsService {
       return this.findTransferEntry(ownerId, byId.transferGroupId ?? id);
     }
 
-    return this.findTransferEntry(ownerId, id);
+    const groupedRows = await this.prisma.transaction.findMany({
+      where: {
+        userId: ownerId,
+        OR: [{ transferGroupId: id }, { splitGroupId: id }],
+      },
+      include: {
+        account: true,
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
+    });
+
+    if (groupedRows.some((row) => row.transferGroupId === id)) {
+      return this.toTransferEntry(
+        id,
+        groupedRows.filter((row) => row.transferGroupId === id),
+      );
+    }
+
+    if (groupedRows.some((row) => row.splitGroupId === id)) {
+      return this.toSplitEntry(
+        id,
+        groupedRows.filter((row) => row.splitGroupId === id),
+      );
+    }
+
+    throw new NotFoundException(`Transaction ${id} was not found.`);
   }
 
   async create(
@@ -302,6 +380,10 @@ export class TransactionsService {
     dto: CreateTransactionDto,
     client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
+    if (dto.fundingLegs && dto.fundingLegs.length > 0) {
+      return this.createSplitExpense(ownerId, dto, client);
+    }
+
     if (dto.kind === TransactionKind.TRANSFER) {
       return this.createTransfer(ownerId, dto, client);
     }
@@ -521,10 +603,236 @@ export class TransactionsService {
       return this.findTransferEntry(ownerId, existing.transferGroupId);
     }
 
+    if (existing.entryType === 'SPLIT') {
+      if (dto.kind !== TransactionKind.EXPENSE) {
+        throw new ConflictException(
+          'Transaction kind cannot be changed. Delete and recreate the transaction.',
+        );
+      }
+
+      if (dto.fundingLegs && dto.fundingLegs.length > 0) {
+        const prepared = await this.prepareSplitExpenseTransaction(ownerId, dto, {
+          fundingAccountIds: existing.rows.map((row) => row.accountId),
+          categoryId: existing.rows[0]?.categoryId,
+        });
+
+        await this.prisma.$transaction(async (tx) => {
+          for (const row of existing.rows) {
+            await this.adjustAccountCashBalance(
+              ownerId,
+              row.accountId,
+              row.amount,
+              TransactionDirection.INFLOW,
+              tx,
+              { skipValidation: true },
+            );
+          }
+
+          for (const leg of prepared.fundingLegs) {
+            await this.validateAccountCashBalance(
+              ownerId,
+              leg.accountId,
+              leg.amount,
+              TransactionDirection.OUTFLOW,
+              tx,
+            );
+          }
+
+          await tx.transaction.deleteMany({
+            where: {
+              userId: ownerId,
+              splitGroupId: existing.splitGroupId,
+            },
+          });
+
+          for (const leg of prepared.fundingLegs) {
+            await tx.transaction.create({
+              data: {
+                userId: ownerId,
+                postedAt: prepared.postedAt,
+                accountId: leg.accountId,
+                categoryId: prepared.categoryId,
+                amount: leg.amount,
+                currency: prepared.currency,
+                direction: TransactionDirection.OUTFLOW,
+                kind: TransactionKind.EXPENSE,
+                description: prepared.description,
+                notes: prepared.notes,
+                counterparty: prepared.counterparty,
+                transferGroupId: null,
+                splitGroupId: existing.splitGroupId,
+              },
+            });
+          }
+
+          for (const leg of prepared.fundingLegs) {
+            await this.adjustAccountCashBalance(
+              ownerId,
+              leg.accountId,
+              leg.amount,
+              TransactionDirection.OUTFLOW,
+              tx,
+            );
+          }
+        });
+
+        return this.findSplitEntry(ownerId, existing.splitGroupId);
+      }
+
+      const prepared = await this.prepareStandardTransaction(ownerId, dto, {
+        categoryId: existing.rows[0]?.categoryId,
+      });
+      const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
+
+      const row = await this.prisma.$transaction(async (tx) => {
+        for (const existingRow of existing.rows) {
+          await this.adjustAccountCashBalance(
+            ownerId,
+            existingRow.accountId,
+            existingRow.amount,
+            TransactionDirection.INFLOW,
+            tx,
+            { skipValidation: true },
+          );
+        }
+
+        if (!isAdjustment) {
+          await this.validateAccountCashBalance(
+            ownerId,
+            prepared.accountId,
+            prepared.amount,
+            prepared.direction,
+            tx,
+          );
+        }
+
+        await tx.transaction.deleteMany({
+          where: {
+            userId: ownerId,
+            splitGroupId: existing.splitGroupId,
+          },
+        });
+
+        const createdRow = await tx.transaction.create({
+          data: {
+            userId: ownerId,
+            postedAt: prepared.postedAt,
+            accountId: prepared.accountId,
+            categoryId: prepared.categoryId,
+            amount: prepared.amount,
+            currency: prepared.currency,
+            direction: prepared.direction,
+            kind: prepared.kind,
+            description: prepared.description,
+            notes: prepared.notes,
+            counterparty: prepared.counterparty,
+            transferGroupId: null,
+            splitGroupId: null,
+          },
+          include: {
+            account: true,
+            category: {
+              include: {
+                parentCategory: true,
+              },
+            },
+          },
+        });
+
+        if (!isAdjustment) {
+          await this.adjustAccountCashBalance(
+            ownerId,
+            prepared.accountId,
+            prepared.amount,
+            prepared.direction,
+            tx,
+          );
+        }
+
+        return createdRow;
+      });
+
+      return {
+        entryType: 'STANDARD',
+        row,
+      };
+    }
+
     if (dto.kind === TransactionKind.TRANSFER) {
       throw new ConflictException(
         'Transaction kind cannot be changed. Delete and recreate the transaction.',
       );
+    }
+
+    if (dto.fundingLegs && dto.fundingLegs.length > 0) {
+      if (existing.row.kind !== TransactionKind.EXPENSE) {
+        throw new ConflictException(
+          'Only expense transactions can be split across multiple accounts.',
+        );
+      }
+
+      const prepared = await this.prepareSplitExpenseTransaction(ownerId, dto, {
+        fundingAccountIds: [existing.row.accountId],
+        categoryId: existing.row.categoryId,
+      });
+      const splitGroupId = `split_${randomUUID()}`;
+
+      await this.prisma.$transaction(async (tx) => {
+        await this.adjustAccountCashBalance(
+          ownerId,
+          existing.row.accountId,
+          existing.row.amount,
+          TransactionDirection.INFLOW,
+          tx,
+          { skipValidation: true },
+        );
+
+        for (const leg of prepared.fundingLegs) {
+          await this.validateAccountCashBalance(
+            ownerId,
+            leg.accountId,
+            leg.amount,
+            TransactionDirection.OUTFLOW,
+            tx,
+          );
+        }
+
+        await tx.transaction.delete({
+          where: { id: existing.row.id },
+        });
+
+        for (const leg of prepared.fundingLegs) {
+          await tx.transaction.create({
+            data: {
+              userId: ownerId,
+              postedAt: prepared.postedAt,
+              accountId: leg.accountId,
+              categoryId: prepared.categoryId,
+              amount: leg.amount,
+              currency: prepared.currency,
+              direction: TransactionDirection.OUTFLOW,
+              kind: TransactionKind.EXPENSE,
+              description: prepared.description,
+              notes: prepared.notes,
+              counterparty: prepared.counterparty,
+              transferGroupId: null,
+              splitGroupId,
+            },
+          });
+        }
+
+        for (const leg of prepared.fundingLegs) {
+          await this.adjustAccountCashBalance(
+            ownerId,
+            leg.accountId,
+            leg.amount,
+            TransactionDirection.OUTFLOW,
+            tx,
+          );
+        }
+      });
+
+      return this.findSplitEntry(ownerId, splitGroupId);
     }
 
     if (dto.kind !== existing.row.kind) {
@@ -634,6 +942,27 @@ export class TransactionsService {
         where: {
           userId: ownerId,
           transferGroupId: existing.transferGroupId,
+        },
+      });
+      return;
+    }
+
+    if (existing.entryType === 'SPLIT') {
+      for (const row of existing.rows) {
+        await this.adjustAccountCashBalance(
+          ownerId,
+          row.accountId,
+          row.amount,
+          TransactionDirection.INFLOW,
+          this.prisma,
+          { skipValidation: true },
+        );
+      }
+
+      await this.prisma.transaction.deleteMany({
+        where: {
+          userId: ownerId,
+          splitGroupId: existing.splitGroupId,
         },
       });
       return;
@@ -877,6 +1206,67 @@ export class TransactionsService {
     return this.findTransferEntry(ownerId, transferGroupId, client);
   }
 
+  private async createSplitExpense(
+    ownerId: string,
+    dto: CreateTransactionDto,
+    client: TransactionWriteClient = this.prisma,
+  ): Promise<LogicalTransactionEntry> {
+    const prepared = await this.prepareSplitExpenseTransaction(ownerId, dto);
+    const splitGroupId = `split_${randomUUID()}`;
+
+    const persistSplitExpense = async (
+      tx: Prisma.TransactionClient,
+    ): Promise<void> => {
+      for (const leg of prepared.fundingLegs) {
+        await this.validateAccountCashBalance(
+          ownerId,
+          leg.accountId,
+          leg.amount,
+          TransactionDirection.OUTFLOW,
+          tx,
+        );
+      }
+
+      for (const leg of prepared.fundingLegs) {
+        await tx.transaction.create({
+          data: {
+            userId: ownerId,
+            postedAt: prepared.postedAt,
+            accountId: leg.accountId,
+            categoryId: prepared.categoryId,
+            amount: leg.amount,
+            currency: prepared.currency,
+            direction: TransactionDirection.OUTFLOW,
+            kind: TransactionKind.EXPENSE,
+            description: prepared.description,
+            notes: prepared.notes,
+            counterparty: prepared.counterparty,
+            transferGroupId: null,
+            splitGroupId,
+          },
+        });
+      }
+
+      for (const leg of prepared.fundingLegs) {
+        await this.adjustAccountCashBalance(
+          ownerId,
+          leg.accountId,
+          leg.amount,
+          TransactionDirection.OUTFLOW,
+          tx,
+        );
+      }
+    };
+
+    if (client === this.prisma) {
+      await this.prisma.$transaction(persistSplitExpense);
+    } else {
+      await persistSplitExpense(client);
+    }
+
+    return this.findSplitEntry(ownerId, splitGroupId, client);
+  }
+
   private async prepareStandardTransaction(
     ownerId: string,
     dto: CreateTransactionDto | UpdateTransactionDto,
@@ -888,6 +1278,12 @@ export class TransactionsService {
     if (dto.kind === TransactionKind.TRANSFER) {
       throw new BadRequestException(
         'Transfer transactions must use source and destination accounts.',
+      );
+    }
+
+    if (dto.fundingLegs && dto.fundingLegs.length > 0) {
+      throw new BadRequestException(
+        'Split funding is only valid for split expense transactions.',
       );
     }
 
@@ -985,6 +1381,140 @@ export class TransactionsService {
     };
   }
 
+  private async prepareSplitExpenseTransaction(
+    ownerId: string,
+    dto: CreateTransactionDto | UpdateTransactionDto,
+    current?: {
+      fundingAccountIds?: string[];
+      categoryId?: string | null;
+    },
+  ): Promise<PreparedSplitTransactionInput> {
+    if (dto.kind !== TransactionKind.EXPENSE) {
+      throw new BadRequestException(
+        'Split funding is only supported for expense transactions.',
+      );
+    }
+
+    if (dto.accountId || dto.sourceAccountId || dto.destinationAccountId) {
+      throw new BadRequestException(
+        'Split-funded expenses must omit accountId, sourceAccountId, and destinationAccountId.',
+      );
+    }
+
+    if (dto.direction && dto.direction !== TransactionDirection.OUTFLOW) {
+      throw new BadRequestException(
+        'Split-funded expenses must use the OUTFLOW direction.',
+      );
+    }
+
+    const fundingLegs = dto.fundingLegs ?? [];
+    if (fundingLegs.length < 2) {
+      throw new BadRequestException(
+        'Split-funded expenses require at least two funding legs.',
+      );
+    }
+
+    const normalizedLegs = fundingLegs.map((leg) => ({
+      accountId: leg.accountId.trim(),
+      amount: this.toDecimal(leg.amount),
+    }));
+
+    if (normalizedLegs.some((leg) => !leg.accountId)) {
+      throw new BadRequestException(
+        'Each funding leg requires an accountId.',
+      );
+    }
+
+    if (
+      new Set(normalizedLegs.map((leg) => leg.accountId)).size !==
+      normalizedLegs.length
+    ) {
+      throw new BadRequestException(
+        'Split-funded expenses cannot repeat the same account.',
+      );
+    }
+
+    let categoryId: string | null = null;
+    if (dto.categoryId) {
+      const category = await this.categoriesService.getAssignableCategory(
+        ownerId,
+        dto.categoryId,
+        dto.kind,
+        current?.categoryId,
+      );
+      categoryId = category.id;
+    } else {
+      const matchedCategory =
+        await this.categoriesService.findMatchingExpenseSecondaryCategory(
+          ownerId,
+          dto.description
+            ? normalizeExpenseValidationEntry(dto.description)
+            : '',
+        );
+      categoryId = matchedCategory?.id ?? null;
+    }
+
+    if (!categoryId) {
+      throw new BadRequestException(
+        'Expense transactions require a category.',
+      );
+    }
+
+    const totalAmount = this.toDecimal(dto.amount);
+    const sumOfLegAmounts = normalizedLegs.reduce(
+      (sum, leg) => sum.add(leg.amount),
+      new Prisma.Decimal('0'),
+    );
+
+    if (!sumOfLegAmounts.eq(totalAmount)) {
+      throw new BadRequestException(
+        'The total amount must equal the sum of all funding legs.',
+      );
+    }
+
+    const accounts = await Promise.all(
+      normalizedLegs.map((leg) =>
+        this.accountsService.getAssignableAccount(
+          ownerId,
+          leg.accountId,
+          current?.fundingAccountIds?.includes(leg.accountId)
+            ? leg.accountId
+            : undefined,
+        ),
+      ),
+    );
+
+    const currency = accounts[0]?.currency;
+    if (!currency) {
+      throw new BadRequestException('Split funding requires valid accounts.');
+    }
+
+    if (accounts.some((account) => account.currency !== currency)) {
+      throw new BadRequestException(
+        'Split-funded expenses require accounts with the same currency.',
+      );
+    }
+
+    const postedAt = this.parsePostedAt(dto.postedAt);
+    for (const account of accounts) {
+      this.assertPostedAtAllowedForAccount(account, postedAt);
+    }
+
+    return {
+      postedAt,
+      amount: totalAmount,
+      currency,
+      categoryId,
+      description: this.requireText(
+        dto.description,
+        'Description is required.',
+      ),
+      notes: this.optionalText(dto.notes),
+      counterparty: this.optionalText(dto.counterparty),
+      fundingLegs: normalizedLegs,
+    };
+  }
+
   private async prepareTransferTransaction(
     ownerId: string,
     dto: CreateTransactionDto | UpdateTransactionDto,
@@ -996,6 +1526,12 @@ export class TransactionsService {
     if (dto.kind !== TransactionKind.TRANSFER) {
       throw new BadRequestException(
         'Only transfer transactions may use source and destination accounts.',
+      );
+    }
+
+    if (dto.fundingLegs && dto.fundingLegs.length > 0) {
+      throw new BadRequestException(
+        'Transfers cannot be split across multiple accounts.',
       );
     }
 
@@ -1103,9 +1639,48 @@ export class TransactionsService {
     return this.toTransferEntry(transferGroupId, rows);
   }
 
+  private async findSplitEntry(
+    ownerId: string,
+    splitGroupId: string,
+    client: TransactionWriteClient = this.prisma,
+  ): Promise<LogicalTransactionEntry> {
+    const rows = await client.transaction.findMany({
+      where: {
+        userId: ownerId,
+        splitGroupId,
+      },
+      include: {
+        account: true,
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
+    });
+
+    if (rows.length === 0) {
+      throw new NotFoundException(
+        `Transaction ${splitGroupId} was not found.`,
+      );
+    }
+
+    return this.toSplitEntry(splitGroupId, rows);
+  }
+
   private assertEntryIsMutable(entry: LogicalTransactionEntry): void {
     if (entry.entryType === 'STANDARD') {
       if (entry.row.recurringRuleId) {
+        throw new ConflictException(
+          'Generated recurring transactions cannot be edited or deleted. Update the recurring rule instead.',
+        );
+      }
+
+      return;
+    }
+
+    if (entry.entryType === 'SPLIT') {
+      if (entry.rows.some((row) => row.recurringRuleId)) {
         throw new ConflictException(
           'Generated recurring transactions cannot be edited or deleted. Update the recurring rule instead.',
         );
@@ -1126,12 +1701,20 @@ export class TransactionsService {
   ): LogicalTransactionEntry[] {
     const entries: LogicalTransactionEntry[] = [];
     const transferGroups = new Map<string, TransactionRecord[]>();
+    const splitGroups = new Map<string, TransactionRecord[]>();
 
     for (const row of rows) {
       if (row.kind === TransactionKind.TRANSFER && row.transferGroupId) {
         const group = transferGroups.get(row.transferGroupId) ?? [];
         group.push(row);
         transferGroups.set(row.transferGroupId, group);
+        continue;
+      }
+
+      if (row.splitGroupId) {
+        const group = splitGroups.get(row.splitGroupId) ?? [];
+        group.push(row);
+        splitGroups.set(row.splitGroupId, group);
         continue;
       }
 
@@ -1143,6 +1726,10 @@ export class TransactionsService {
 
     for (const [transferGroupId, groupRows] of transferGroups.entries()) {
       entries.push(this.toTransferEntry(transferGroupId, groupRows));
+    }
+
+    for (const [splitGroupId, groupRows] of splitGroups.entries()) {
+      entries.push(this.toSplitEntry(splitGroupId, groupRows));
     }
 
     return entries;
@@ -1179,6 +1766,53 @@ export class TransactionsService {
     };
   }
 
+  private toSplitEntry(
+    splitGroupId: string,
+    rows: TransactionRecord[],
+  ): LogicalTransactionEntry {
+    if (rows.length < 2) {
+      throw new ConflictException(
+        `Split expense ${splitGroupId} is incomplete and cannot be represented.`,
+      );
+    }
+
+    const [firstRow] = rows;
+    const firstOccurrenceMonthTime =
+      firstRow.recurringOccurrenceMonth?.getTime() ?? null;
+    const isConsistent = rows.every(
+      (row) =>
+        row.kind === TransactionKind.EXPENSE &&
+        row.direction === TransactionDirection.OUTFLOW &&
+        row.currency === firstRow.currency &&
+        row.categoryId === firstRow.categoryId &&
+        row.postedAt.getTime() === firstRow.postedAt.getTime() &&
+        row.description === firstRow.description &&
+        row.notes === firstRow.notes &&
+        row.counterparty === firstRow.counterparty &&
+        row.recurringRuleId === firstRow.recurringRuleId &&
+        (row.recurringOccurrenceMonth?.getTime() ?? null) ===
+          firstOccurrenceMonthTime,
+    );
+
+    if (!isConsistent) {
+      throw new ConflictException(
+        `Split expense ${splitGroupId} is inconsistent and cannot be represented.`,
+      );
+    }
+
+    return {
+      entryType: 'SPLIT',
+      splitGroupId,
+      rows: rows
+        .slice()
+        .sort(
+          (left, right) =>
+            left.createdAt.getTime() - right.createdAt.getTime() ||
+            left.id.localeCompare(right.id),
+        ),
+    };
+  }
+
   private matchesFilters(
     entry: LogicalTransactionEntry,
     filters: TransactionFilters,
@@ -1203,26 +1837,26 @@ export class TransactionsService {
 
     if (filters.categoryId) {
       return (
-        entry.entryType === 'STANDARD' &&
-        entry.row.categoryId === filters.categoryId
+        entry.entryType !== 'TRANSFER' &&
+        this.getEntryCategoryId(entry) === filters.categoryId
       );
     }
 
     if (
       filters.secondaryCategoryId &&
-      (entry.entryType !== 'STANDARD' ||
-        entry.row.categoryId !== filters.secondaryCategoryId)
+      (entry.entryType === 'TRANSFER' ||
+        this.getEntryCategoryId(entry) !== filters.secondaryCategoryId)
     ) {
       return false;
     }
 
     if (filters.primaryCategoryId) {
-      if (entry.entryType !== 'STANDARD') {
+      if (entry.entryType === 'TRANSFER') {
         return false;
       }
 
       const categoryHierarchy = getCategoryHierarchyMetadata(
-        entry.row.category,
+        this.getEntryCategory(entry),
       );
       return categoryHierarchy.primaryCategoryId === filters.primaryCategoryId;
     }
@@ -1436,6 +2070,10 @@ export class TransactionsService {
       return entry.row.account.archivedAt !== null;
     }
 
+    if (entry.entryType === 'SPLIT') {
+      return entry.rows.some((row) => row.account.archivedAt !== null);
+    }
+
     return (
       entry.outflow.account.archivedAt !== null ||
       entry.inflow.account.archivedAt !== null
@@ -1450,6 +2088,10 @@ export class TransactionsService {
       return entry.row.accountId === accountId;
     }
 
+    if (entry.entryType === 'SPLIT') {
+      return entry.rows.some((row) => row.accountId === accountId);
+    }
+
     return (
       entry.outflow.accountId === accountId ||
       entry.inflow.accountId === accountId
@@ -1457,9 +2099,15 @@ export class TransactionsService {
   }
 
   private getEntryKind(entry: LogicalTransactionEntry): TransactionKind {
-    return entry.entryType === 'STANDARD'
-      ? entry.row.kind
-      : TransactionKind.TRANSFER;
+    if (entry.entryType === 'STANDARD') {
+      return entry.row.kind;
+    }
+
+    if (entry.entryType === 'SPLIT') {
+      return entry.rows[0].kind;
+    }
+
+    return TransactionKind.TRANSFER;
   }
 
   private compareEntriesDesc(
@@ -1486,14 +2134,28 @@ export class TransactionsService {
   }
 
   private getEntryPostedAt(entry: LogicalTransactionEntry): Date {
-    return entry.entryType === 'STANDARD'
-      ? entry.row.postedAt
-      : entry.outflow.postedAt;
+    if (entry.entryType === 'STANDARD') {
+      return entry.row.postedAt;
+    }
+
+    if (entry.entryType === 'SPLIT') {
+      return entry.rows[0].postedAt;
+    }
+
+    return entry.outflow.postedAt;
   }
 
   private getEntryUpdatedAt(entry: LogicalTransactionEntry): Date {
     if (entry.entryType === 'STANDARD') {
       return entry.row.updatedAt;
+    }
+
+    if (entry.entryType === 'SPLIT') {
+      return entry.rows.reduce(
+        (latest, row) =>
+          row.updatedAt.getTime() > latest.getTime() ? row.updatedAt : latest,
+        entry.rows[0].updatedAt,
+      );
     }
 
     return entry.outflow.updatedAt.getTime() >= entry.inflow.updatedAt.getTime()
@@ -1502,9 +2164,39 @@ export class TransactionsService {
   }
 
   private getEntryId(entry: LogicalTransactionEntry): string {
-    return entry.entryType === 'STANDARD'
-      ? entry.row.id
-      : entry.transferGroupId;
+    if (entry.entryType === 'STANDARD') {
+      return entry.row.id;
+    }
+
+    if (entry.entryType === 'SPLIT') {
+      return entry.splitGroupId;
+    }
+
+    return entry.transferGroupId;
+  }
+
+  private getEntryCategoryId(entry: LogicalTransactionEntry): string | null {
+    if (entry.entryType === 'STANDARD') {
+      return entry.row.categoryId;
+    }
+
+    if (entry.entryType === 'SPLIT') {
+      return entry.rows[0].categoryId;
+    }
+
+    return null;
+  }
+
+  private getEntryCategory(entry: LogicalTransactionEntry) {
+    if (entry.entryType === 'STANDARD') {
+      return entry.row.category;
+    }
+
+    if (entry.entryType === 'SPLIT') {
+      return entry.rows[0].category;
+    }
+
+    return null;
   }
 
   private buildMonthlyCashflow(

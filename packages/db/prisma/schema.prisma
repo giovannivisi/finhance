@@ -294,6 +294,7 @@ model Transaction {
   notes                    String?
   counterparty             String?
   transferGroupId          String?
+  splitGroupId             String?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   recurringRuleId          String?
@@ -312,6 +313,7 @@ model Transaction {
   @@index([userId, accountId, postedAt])
   @@index([userId, categoryId, postedAt])
   @@index([userId, transferGroupId])
+  @@index([userId, splitGroupId])
   @@index([userId, recurringRuleId, recurringOccurrenceMonth])
 }
 

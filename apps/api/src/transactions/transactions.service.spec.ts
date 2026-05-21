@@ -83,6 +83,7 @@ function createTransactionRow(
     notes: null,
     counterparty: 'Employer',
     transferGroupId: null,
+    splitGroupId: null,
     createdAt: now,
     updatedAt: now,
     account: createAccount(),
@@ -284,6 +285,77 @@ describe('TransactionsService', () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
+  it('creates split-funded expenses and returns one logical entry', async () => {
+    accounts.getAssignableAccount
+      .mockResolvedValueOnce(createAccount({ id: 'voucher', currency: 'EUR' }))
+      .mockResolvedValueOnce(createAccount({ id: 'cash', currency: 'EUR' }));
+    categories.getAssignableCategory.mockResolvedValue(
+      createCategory({
+        id: 'category-food',
+        name: 'Food',
+        type: CategoryType.EXPENSE,
+      }),
+    );
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransactionRow({
+        id: 'split-row-1',
+        accountId: 'voucher',
+        amount: new Prisma.Decimal('7'),
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        categoryId: 'category-food',
+        category: createCategory({
+          id: 'category-food',
+          name: 'Food',
+          type: CategoryType.EXPENSE,
+        }),
+        description: 'Lunch',
+        counterparty: 'Cafe',
+        splitGroupId: 'split_group',
+      }),
+      createTransactionRow({
+        id: 'split-row-2',
+        accountId: 'cash',
+        amount: new Prisma.Decimal('5'),
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        categoryId: 'category-food',
+        category: createCategory({
+          id: 'category-food',
+          name: 'Food',
+          type: CategoryType.EXPENSE,
+        }),
+        description: 'Lunch',
+        counterparty: 'Cafe',
+        splitGroupId: 'split_group',
+      }),
+    ]);
+
+    const result = await service.create(OWNER_ID, {
+      postedAt: '2026-04-17T09:00:00.000Z',
+      kind: TransactionKind.EXPENSE,
+      amount: 12,
+      description: 'Lunch',
+      categoryId: 'category-food',
+      counterparty: 'Cafe',
+      fundingLegs: [
+        { accountId: 'voucher', amount: 7 },
+        { accountId: 'cash', amount: 5 },
+      ],
+    });
+
+    expect(result.entryType).toBe('SPLIT');
+    expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
+    expect(
+      nthCallArg<TransactionCreateCall>(prisma.transaction.create, 0).data,
+    ).toMatchObject({
+      accountId: 'voucher',
+      categoryId: 'category-food',
+      description: 'Lunch',
+      counterparty: 'Cafe',
+    });
+  });
+
   it('enforces same-currency transfers', async () => {
     accounts.getAssignableAccount
       .mockResolvedValueOnce(createAccount({ id: 'source', currency: 'EUR' }))
@@ -452,6 +524,106 @@ describe('TransactionsService', () => {
     expect(withArchived).toHaveLength(2);
   });
 
+  it('collapses split-funded expense rows into one logical entry', async () => {
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransactionRow({
+        id: 'split-row-1',
+        accountId: 'voucher',
+        amount: new Prisma.Decimal('7'),
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        categoryId: 'category-food',
+        category: createCategory({
+          id: 'category-food',
+          name: 'Food',
+          type: CategoryType.EXPENSE,
+        }),
+        description: 'Lunch',
+        counterparty: 'Cafe',
+        splitGroupId: 'split-1',
+      }),
+      createTransactionRow({
+        id: 'split-row-2',
+        accountId: 'cash',
+        account: createAccount({ id: 'cash' }),
+        amount: new Prisma.Decimal('5'),
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        categoryId: 'category-food',
+        category: createCategory({
+          id: 'category-food',
+          name: 'Food',
+          type: CategoryType.EXPENSE,
+        }),
+        description: 'Lunch',
+        counterparty: 'Cafe',
+        splitGroupId: 'split-1',
+      }),
+    ]);
+
+    const result = await service.findAll(OWNER_ID, {});
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.entryType).toBe('SPLIT');
+  });
+
+  it('resolves a split-funded expense when asked for one child row id', async () => {
+    prisma.transaction.findFirst.mockResolvedValue(
+      createTransactionRow({
+        id: 'split-row-1',
+        accountId: 'voucher',
+        amount: new Prisma.Decimal('7'),
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        categoryId: 'category-food',
+        category: createCategory({
+          id: 'category-food',
+          name: 'Food',
+          type: CategoryType.EXPENSE,
+        }),
+        description: 'Lunch',
+        splitGroupId: 'split-1',
+      }),
+    );
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransactionRow({
+        id: 'split-row-1',
+        accountId: 'voucher',
+        amount: new Prisma.Decimal('7'),
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        categoryId: 'category-food',
+        category: createCategory({
+          id: 'category-food',
+          name: 'Food',
+          type: CategoryType.EXPENSE,
+        }),
+        description: 'Lunch',
+        splitGroupId: 'split-1',
+      }),
+      createTransactionRow({
+        id: 'split-row-2',
+        accountId: 'cash',
+        account: createAccount({ id: 'cash' }),
+        amount: new Prisma.Decimal('5'),
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        categoryId: 'category-food',
+        category: createCategory({
+          id: 'category-food',
+          name: 'Food',
+          type: CategoryType.EXPENSE,
+        }),
+        description: 'Lunch',
+        splitGroupId: 'split-1',
+      }),
+    ]);
+
+    const result = await service.findOne(OWNER_ID, 'split-row-1');
+
+    expect(result.entryType).toBe('SPLIT');
+  });
+
   it('returns the full history when pagination is not requested', async () => {
     prisma.transaction.findMany.mockResolvedValue(
       Array.from({ length: 205 }, (_, index) =>
@@ -537,12 +709,83 @@ describe('TransactionsService', () => {
       ).where,
     ).toMatchObject({
       userId: OWNER_ID,
-      transferGroupId: {
-        in: ['transfer-1'],
-      },
-      accountId: {
-        not: 'account-1',
-      },
+      OR: [
+        {
+          transferGroupId: {
+            in: ['transfer-1'],
+          },
+          accountId: {
+            not: 'account-1',
+          },
+        },
+      ],
+    });
+  });
+
+  it('hydrates split-funded expense counterparts in recent account history', async () => {
+    prisma.transaction.findMany
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'split-row-1',
+          postedAt: new Date('2026-04-18T09:00:00.000Z'),
+          accountId: 'account-1',
+          amount: new Prisma.Decimal('7'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          categoryId: 'category-food',
+          category: createCategory({
+            id: 'category-food',
+            name: 'Food',
+            type: CategoryType.EXPENSE,
+          }),
+          description: 'Lunch',
+          splitGroupId: 'split-1',
+        }),
+      ])
+      .mockResolvedValueOnce([
+        createTransactionRow({
+          id: 'split-row-2',
+          postedAt: new Date('2026-04-18T09:00:00.000Z'),
+          accountId: 'account-2',
+          account: createAccount({ id: 'account-2' }),
+          amount: new Prisma.Decimal('5'),
+          kind: TransactionKind.EXPENSE,
+          direction: TransactionDirection.OUTFLOW,
+          categoryId: 'category-food',
+          category: createCategory({
+            id: 'category-food',
+            name: 'Food',
+            type: CategoryType.EXPENSE,
+          }),
+          description: 'Lunch',
+          splitGroupId: 'split-1',
+        }),
+      ]);
+
+    const result = await service.findRecentByAccount(OWNER_ID, 'account-1', {
+      includeArchivedAccounts: true,
+      limit: 1,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.entryType).toBe('SPLIT');
+    expect(
+      nthCallArg<{ where: Record<string, unknown> }>(
+        prisma.transaction.findMany,
+        1,
+      ).where,
+    ).toMatchObject({
+      userId: OWNER_ID,
+      OR: [
+        {
+          splitGroupId: {
+            in: ['split-1'],
+          },
+          accountId: {
+            not: 'account-1',
+          },
+        },
+      ],
     });
   });
 

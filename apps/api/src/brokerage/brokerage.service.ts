@@ -1133,6 +1133,10 @@ export class BrokerageService {
       return false;
     }
 
+    if (entry.entryType === 'SPLIT') {
+      return entry.rows.some((row) => mirroredTransactionIds.has(row.id));
+    }
+
     return mirroredTransactionIds.has(entry.row.id);
   }
 
