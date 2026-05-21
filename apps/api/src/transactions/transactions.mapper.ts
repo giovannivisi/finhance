@@ -103,7 +103,10 @@ export function toTransactionResponse(
   return {
     id: entry.splitGroupId,
     postedAt: firstRow.postedAt.toISOString(),
-    amount: entry.rows.reduce((sum, row) => sum + decimalToNumber(row.amount), 0),
+    amount: entry.rows.reduce(
+      (sum, row) => sum + decimalToNumber(row.amount),
+      0,
+    ),
     currency: firstRow.currency,
     kind: firstRow.kind,
     accountId: null,

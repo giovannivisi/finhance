@@ -233,11 +233,17 @@ describe("TransactionForm", () => {
     });
 
     await user.selectOptions(screen.getByLabelText("Funding"), "SPLIT");
-    await user.selectOptions(screen.getByLabelText("Account 1"), "account-bank");
+    await user.selectOptions(
+      screen.getByLabelText("Account 1"),
+      "account-bank",
+    );
     const legAmountInputs = screen.getAllByLabelText("Leg amount");
     await user.clear(legAmountInputs[0]!);
     await user.type(legAmountInputs[0]!, "7");
-    await user.selectOptions(screen.getByLabelText("Account 2"), "account-savings");
+    await user.selectOptions(
+      screen.getByLabelText("Account 2"),
+      "account-savings",
+    );
     await user.clear(legAmountInputs[1]!);
     await user.type(legAmountInputs[1]!, "8");
     await user.click(
@@ -262,6 +268,95 @@ describe("TransactionForm", () => {
         }),
       });
     });
+  });
+
+  it("submits edits for an existing split-funded expense", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue(undefined);
+
+    renderForm({
+      mode: "edit",
+      transactionId: "split-1",
+      initialValues: {
+        postedAt: "2026-05-20T10:30",
+        kind: "EXPENSE",
+        amount: "15",
+        description: "Lunch",
+        notes: "",
+        accountId: "",
+        direction: "OUTFLOW",
+        categoryId: "category-cafes",
+        counterparty: "Cafe",
+        sourceAccountId: "",
+        destinationAccountId: "",
+        fundingMode: "SPLIT",
+        fundingLegs: [
+          { accountId: "account-bank", amount: "7" },
+          { accountId: "account-savings", amount: "8" },
+        ],
+      },
+    });
+
+    const legAmountInputs = screen.getAllByLabelText("Leg amount");
+    await user.clear(legAmountInputs[0]!);
+    await user.type(legAmountInputs[0]!, "6");
+    await user.clear(legAmountInputs[1]!);
+    await user.type(legAmountInputs[1]!, "9");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/transactions/split-1", {
+        method: "PUT",
+        body: JSON.stringify({
+          postedAt: new Date("2026-05-20T10:30").toISOString(),
+          kind: "EXPENSE",
+          amount: 15,
+          description: "Lunch",
+          notes: null,
+          categoryId: "category-cafes",
+          counterparty: "Cafe",
+          fundingLegs: [
+            { accountId: "account-bank", amount: 6 },
+            { accountId: "account-savings", amount: 9 },
+          ],
+        }),
+      });
+    });
+  });
+
+  it("shows a validation error when split funding reuses the same account", async () => {
+    const user = userEvent.setup();
+
+    renderForm({
+      initialValues: {
+        ...buildCreateValues(),
+        description: "Lunch",
+        categoryId: "category-cafes",
+      },
+    });
+
+    await user.selectOptions(screen.getByLabelText("Funding"), "SPLIT");
+    await user.selectOptions(
+      screen.getByLabelText("Account 1"),
+      "account-bank",
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Account 2"),
+      "account-bank",
+    );
+    const legAmountInputs = screen.getAllByLabelText("Leg amount");
+    await user.clear(legAmountInputs[0]!);
+    await user.type(legAmountInputs[0]!, "7");
+    await user.clear(legAmountInputs[1]!);
+    await user.type(legAmountInputs[1]!, "8");
+    await user.click(
+      screen.getByRole("button", { name: /create transaction/i }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Split funding cannot reuse the same account twice.",
+    );
+    expect(mockedApiMutation).not.toHaveBeenCalled();
   });
 
   it("routes cash-account submit errors to the account field only", async () => {

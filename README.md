@@ -227,6 +227,17 @@ Only run migrations when you are intentionally changing the schema:
 pnpm --filter @finhance/db run prisma:migrate:dev
 ```
 
+If you pull code that includes new Prisma migrations, apply them before
+starting or exercising the API:
+
+```bash
+pnpm db:migrate:deploy
+```
+
+For normal local development, `pnpm db:migrate:dev` is also acceptable. If you
+skip this step, Prisma will fail with missing-column errors such as
+`Transaction.splitGroupId`.
+
 If you need more API detail, inspect [apps/api/package.json](/Users/giovannivisi/Code/finhance/apps/api/package.json) and the shared Prisma schema at [packages/db/prisma/schema.prisma](/Users/giovannivisi/Code/finhance/packages/db/prisma/schema.prisma).
 
 ### Web

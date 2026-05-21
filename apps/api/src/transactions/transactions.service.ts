@@ -611,10 +611,14 @@ export class TransactionsService {
       }
 
       if (dto.fundingLegs && dto.fundingLegs.length > 0) {
-        const prepared = await this.prepareSplitExpenseTransaction(ownerId, dto, {
-          fundingAccountIds: existing.rows.map((row) => row.accountId),
-          categoryId: existing.rows[0]?.categoryId,
-        });
+        const prepared = await this.prepareSplitExpenseTransaction(
+          ownerId,
+          dto,
+          {
+            fundingAccountIds: existing.rows.map((row) => row.accountId),
+            categoryId: existing.rows[0]?.categoryId,
+          },
+        );
 
         await this.prisma.$transaction(async (tx) => {
           for (const row of existing.rows) {
@@ -1420,9 +1424,7 @@ export class TransactionsService {
     }));
 
     if (normalizedLegs.some((leg) => !leg.accountId)) {
-      throw new BadRequestException(
-        'Each funding leg requires an accountId.',
-      );
+      throw new BadRequestException('Each funding leg requires an accountId.');
     }
 
     if (
@@ -1455,9 +1457,7 @@ export class TransactionsService {
     }
 
     if (!categoryId) {
-      throw new BadRequestException(
-        'Expense transactions require a category.',
-      );
+      throw new BadRequestException('Expense transactions require a category.');
     }
 
     const totalAmount = this.toDecimal(dto.amount);
@@ -1660,9 +1660,7 @@ export class TransactionsService {
     });
 
     if (rows.length === 0) {
-      throw new NotFoundException(
-        `Transaction ${splitGroupId} was not found.`,
-      );
+      throw new NotFoundException(`Transaction ${splitGroupId} was not found.`);
     }
 
     return this.toSplitEntry(splitGroupId, rows);

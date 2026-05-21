@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Prisma } from '@finhance/db';
 import {
+  isSchemaDriftError,
   isRetryableConnectionError,
   runWithTransientRetry,
 } from '@prisma/prisma.service';
@@ -56,6 +57,20 @@ function nonRetryableTransactionApiError() {
   );
 }
 
+function missingSplitGroupIdColumnError() {
+  return new Prisma.PrismaClientKnownRequestError(
+    'The column `Transaction.splitGroupId` does not exist in the current database.',
+    {
+      code: 'P2022',
+      clientVersion: 'test',
+      meta: {
+        modelName: 'Transaction',
+        column: 'Transaction.splitGroupId',
+      },
+    },
+  );
+}
+
 describe('PrismaService helpers', () => {
   it('recognizes retryable connection errors', () => {
     expect(isRetryableConnectionError(retryableConnectionError())).toBe(true);
@@ -74,6 +89,7 @@ describe('PrismaService helpers', () => {
     expect(isRetryableConnectionError(nonRetryableTransactionApiError())).toBe(
       false,
     );
+    expect(isSchemaDriftError(missingSplitGroupIdColumnError())).toBe(true);
   });
 
   it('reconnects and retries once after a transient connection error', async () => {
@@ -165,6 +181,31 @@ describe('PrismaService helpers', () => {
         reconnect,
       }),
     ).rejects.toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+
+    expect(reconnect).not.toHaveBeenCalled();
+    expect(operation).toHaveBeenCalledTimes(1);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('rethrows known schema drift with migration guidance', async () => {
+    const reconnect = createAsyncMock<void>().mockResolvedValue(undefined);
+    const operation = createAsyncMock<string>().mockRejectedValueOnce(
+      missingSplitGroupIdColumnError(),
+    );
+    const logger = {
+      warn: createWarnMock(),
+    };
+
+    await expect(
+      runWithTransientRetry({
+        logger,
+        operationLabel: 'transaction.findMany',
+        operation,
+        reconnect,
+      }),
+    ).rejects.toThrow(
+      'Run "pnpm db:migrate:deploy" (or "pnpm db:migrate:dev" for local development) and retry.',
+    );
 
     expect(reconnect).not.toHaveBeenCalled();
     expect(operation).toHaveBeenCalledTimes(1);

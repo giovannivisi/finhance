@@ -20,6 +20,18 @@ function errorMessageIncludes(
   return metaError?.includes(pattern) ?? false;
 }
 
+function errorMetaString(
+  value: Prisma.PrismaClientKnownRequestError['meta'],
+  key: string,
+): string | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value[key];
+  return typeof candidate === 'string' ? candidate : null;
+}
+
 export function isRetryableConnectionError(
   error: unknown,
 ): error is Prisma.PrismaClientKnownRequestError {
@@ -49,6 +61,32 @@ export function isRetryableClosedTransactionError(
   );
 }
 
+export function isSchemaDriftError(
+  error: unknown,
+): error is Prisma.PrismaClientKnownRequestError {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2022'
+  );
+}
+
+function toActionableSchemaDriftError(
+  error: Prisma.PrismaClientKnownRequestError,
+  operationLabel: string,
+): Error {
+  const column = errorMetaString(error.meta, 'column');
+  const modelName = errorMetaString(error.meta, 'modelName');
+
+  if (column === 'Transaction.splitGroupId' && modelName === 'Transaction') {
+    return new Error(
+      `Database schema is behind the current codebase: missing ${column} required by ${operationLabel}. Run "pnpm db:migrate:deploy" (or "pnpm db:migrate:dev" for local development) and retry.`,
+      { cause: error },
+    );
+  }
+
+  return error;
+}
+
 export async function runWithTransientRetry<T>({
   logger,
   operationLabel,
@@ -63,6 +101,10 @@ export async function runWithTransientRetry<T>({
   try {
     return await operation();
   } catch (error) {
+    if (isSchemaDriftError(error)) {
+      throw toActionableSchemaDriftError(error, operationLabel);
+    }
+
     if (!isRetryableConnectionError(error)) {
       throw error;
     }
