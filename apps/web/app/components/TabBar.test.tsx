@@ -6,7 +6,6 @@ import TabBar from "@components/TabBar";
 
 const pushMock = vi.fn();
 const usePathnameMock = vi.fn();
-const toggleThemeMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => usePathnameMock(),
@@ -46,14 +45,13 @@ vi.mock("framer-motion", () => ({
 vi.mock("@components/ThemeProvider", () => ({
   useTheme: () => ({
     theme: "dark",
-    toggleTheme: toggleThemeMock,
+    toggleTheme: vi.fn(),
   }),
 }));
 
 describe("TabBar", () => {
   beforeEach(() => {
     pushMock.mockReset();
-    toggleThemeMock.mockReset();
     usePathnameMock.mockReturnValue("/accounts");
   });
 
@@ -78,30 +76,18 @@ describe("TabBar", () => {
     });
   });
 
-  it("shows the privacy notice link in the More panel", async () => {
+  it("keeps the More panel focused on secondary navigation", async () => {
     const user = userEvent.setup();
     render(<TabBar />);
 
     await user.click(screen.getByRole("button", { name: /more navigation/i }));
-    await user.click(screen.getByRole("link", { name: "Privacy notice" }));
 
-    await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/privacy");
-    });
-  });
-
-  it("toggles theme from the More panel and closes it", async () => {
-    const user = userEvent.setup();
-    render(<TabBar />);
-
-    await user.click(screen.getByRole("button", { name: /more navigation/i }));
-    await user.click(
-      screen.getByRole("button", { name: /switch to light mode/i }),
-    );
-
-    expect(toggleThemeMock).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(screen.queryByText("Light mode")).not.toBeInTheDocument();
-    });
+    expect(screen.getByRole("link", { name: "Analytics" })).toBeInTheDocument();
+    expect(
+      screen.queryByText("Workspace"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Privacy notice" }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -16,7 +16,7 @@ import {
   useAnimation,
   useReducedMotion,
 } from "framer-motion";
-import { FileText, MoreHorizontal, Moon, Sun } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useTheme } from "@components/ThemeProvider";
@@ -36,7 +36,7 @@ const TAB_COUNT = PRIMARY_NAV_ITEMS.length + 1;
 export default function TabBar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { theme, toggleTheme } = useTheme();
+  useTheme();
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -423,57 +423,6 @@ export default function TabBar() {
                   </Link>
                 );
               })}
-
-              <div className="tab-more-divider" aria-hidden="true" />
-
-              <Link
-                href="/privacy"
-                prefetch={false}
-                onClick={(event) => {
-                  event.preventDefault();
-                  handleNavigate("/privacy");
-                }}
-                aria-current={
-                  isActivePath(currentPath, "/privacy") ? "page" : undefined
-                }
-                className="tab-menu-link group"
-              >
-                <FileText
-                  size={18}
-                  aria-hidden="true"
-                  className="tab-menu-icon"
-                />
-                <span className="tab-menu-label">Privacy notice</span>
-              </Link>
-
-              <div className="tab-more-divider" aria-hidden="true" />
-
-              <button
-                type="button"
-                onClick={() => {
-                  toggleTheme();
-                  setShowMore(false);
-                }}
-                aria-label={
-                  theme === "dark"
-                    ? "Switch to light mode"
-                    : "Switch to dark mode"
-                }
-                className="tab-menu-link group"
-              >
-                {theme === "dark" ? (
-                  <Sun size={18} aria-hidden="true" className="tab-menu-icon" />
-                ) : (
-                  <Moon
-                    size={18}
-                    aria-hidden="true"
-                    className="tab-menu-icon"
-                  />
-                )}
-                <span className="tab-menu-label">
-                  {theme === "dark" ? "Light mode" : "Dark mode"}
-                </span>
-              </button>
             </motion.div>
           ) : null}
         </AnimatePresence>

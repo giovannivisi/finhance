@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Sidebar from "@components/Sidebar";
 
 const usePathnameMock = vi.fn();
-const toggleThemeMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => usePathnameMock(),
@@ -22,24 +21,23 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("@components/ThemeProvider", () => ({
-  useTheme: () => ({
-    theme: "dark",
-    toggleTheme: toggleThemeMock,
-  }),
-}));
-
 describe("Sidebar", () => {
   beforeEach(() => {
     usePathnameMock.mockReturnValue("/accounts");
-    toggleThemeMock.mockReset();
   });
 
-  it("shows a global privacy notice link in shared navigation", () => {
+  it("keeps the desktop sidebar focused on primary navigation only", () => {
     render(<Sidebar />);
 
+    expect(screen.getByRole("link", { name: "Wallets" })).toHaveAttribute(
+      "href",
+      "/accounts",
+    );
     expect(
-      screen.getByRole("link", { name: "Privacy notice" }),
-    ).toHaveAttribute("href", "/privacy");
+      screen.queryByRole("link", { name: "Privacy notice" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /switch to light mode/i }),
+    ).not.toBeInTheDocument();
   });
 });
