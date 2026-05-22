@@ -109,6 +109,15 @@ Examples: `feat: add budget currency picker`, `fix: correct fx rate rounding`,
 Never write a commit message without one of these prefixes, even for tiny
 changes. If unsure which prefix fits, `chore` is the fallback.
 
+### Common mistakes
+
+- **`feat` is strictly for user-facing functionality.** Adding a README,
+  CONTRIBUTING.md, ADR, or any other documentation file is `docs:`, not `feat:`.
+- **Scopes (`feat(scope):`) are allowed but rarely needed.** Never use a scope
+  that just repeats the prefix (e.g. `docs(docs):` is redundant). Omit the
+  scope unless it meaningfully narrows the context (e.g. `fix(brokerage):`
+  when the fix is isolated to that module).
+
 ## Branch Naming Convention
 
 Branch names follow `<prefix>/<short-slug>` using the same prefixes as commits:
