@@ -18,6 +18,8 @@ import {
   type AssetFormValues,
 } from "@lib/asset-form";
 import { api, apiMutation } from "@lib/api";
+import SearchablePicker from "@components/SearchablePicker";
+import { getCurrencyPickerOptions } from "@lib/currency-ui";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 interface AssetFormProps {
@@ -48,8 +50,11 @@ export default function AssetForm({
   const kindOptions =
     form.type === "LIABILITY" ? LIABILITY_KIND_OPTIONS : ASSET_KIND_OPTIONS;
   const exchangeOptions = isAsset
-    ? getExchangeSuffixesForKind(form.kind as typeof ASSET_KIND_OPTIONS[number])
+    ? getExchangeSuffixesForKind(
+        form.kind as (typeof ASSET_KIND_OPTIONS)[number],
+      )
     : [];
+  const currencyOptions = getCurrencyPickerOptions();
   const isMarketKind =
     form.type === "ASSET" &&
     (form.kind === "STOCK" || form.kind === "BOND" || form.kind === "CRYPTO");
@@ -305,17 +310,14 @@ export default function AssetForm({
               <span>Exchange</span>
               <span>Optional</span>
             </label>
-            <select
+            <SearchablePicker
               id={`${fieldPrefix}-exchange`}
               value={form.exchange}
-              onChange={(event) => updateField("exchange", event.target.value)}
-            >
-              {exchangeOptions.map((exchange) => (
-                <option key={exchange.value} value={exchange.value}>
-                  {exchange.label}
-                </option>
-              ))}
-            </select>
+              onChange={(nextValue) => updateField("exchange", nextValue)}
+              options={exchangeOptions}
+              placeholder="Choose an exchange"
+              searchPlaceholder="Search exchanges…"
+            />
           </div>
         </div>
       ) : null}
@@ -326,10 +328,13 @@ export default function AssetForm({
             <span>Currency</span>
             <span>Optional</span>
           </label>
-          <input
+          <SearchablePicker
             id={`${fieldPrefix}-currency`}
             value={form.currency}
-            onChange={(event) => updateField("currency", event.target.value)}
+            onChange={(nextValue) => updateField("currency", nextValue)}
+            options={currencyOptions}
+            placeholder="Choose a currency"
+            searchPlaceholder="Search currencies…"
           />
         </div>
 

@@ -30,9 +30,7 @@ vi.mock("@lib/api", () => ({
 const mockedApiMutation = vi.mocked(apiMutation);
 const mockedFetchApiMutation = vi.mocked(fetchApiMutation);
 
-function buildCategory(
-  overrides: Partial<CategoryResponse>,
-): CategoryResponse {
+function buildCategory(overrides: Partial<CategoryResponse>): CategoryResponse {
   return {
     id: overrides.id ?? "category-1",
     name: overrides.name ?? "Category",
@@ -58,8 +56,7 @@ function buildRule(
     entry: overrides.entry ?? "Coffee",
     normalizedEntry: overrides.normalizedEntry ?? "coffee",
     secondaryCategoryId: overrides.secondaryCategoryId ?? "secondary-1",
-    secondaryCategoryName:
-      overrides.secondaryCategoryName ?? "Coffee shops",
+    secondaryCategoryName: overrides.secondaryCategoryName ?? "Coffee shops",
     primaryCategoryId: overrides.primaryCategoryId ?? "primary-1",
     primaryCategoryName: overrides.primaryCategoryName ?? "Food",
     createdAt: overrides.createdAt ?? "2026-05-14T10:00:00.000Z",
@@ -187,7 +184,9 @@ describe("ExpenseValidationPageClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Rule tools" }));
 
-    expect(screen.getByRole("menu", { name: "Rule tools" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menu", { name: "Rule tools" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Rules")).toBeInTheDocument();
     expect(screen.getByText("Hierarchy")).toBeInTheDocument();
     expect(

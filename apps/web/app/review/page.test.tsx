@@ -29,13 +29,9 @@ vi.mock("@components/Container", () => ({
 }));
 
 vi.mock("@components/MoneyValue", () => ({
-  default: ({
-    value,
-    currency,
-  }: {
-    value: number;
-    currency?: string;
-  }) => <span>{currency ? `${currency} ${value}` : `EUR ${value}`}</span>,
+  default: ({ value, currency }: { value: number; currency?: string }) => (
+    <span>{currency ? `${currency} ${value}` : `EUR ${value}`}</span>
+  ),
 }));
 
 vi.mock("@components/RecurringMaterializeButton", () => ({
@@ -232,7 +228,8 @@ function buildReviewResponse(): MonthlyReviewResponse {
             code: "BASELINE_POSSIBLY_STALE",
             severity: "WARNING",
             summary: "Recent balance edit detected",
-            likelyCause: "A transaction or asset was adjusted after the last snapshot.",
+            likelyCause:
+              "A transaction or asset was adjusted after the last snapshot.",
             recommendedAction: "Review and reset the baseline if required.",
           },
         ],
@@ -306,14 +303,15 @@ describe("ReviewPage", () => {
     expect(screen.getByText("Recurring highlights")).toBeInTheDocument();
     expect(screen.getByText("Cashflow highlights")).toBeInTheDocument();
     expect(screen.getByText("Reconciliation highlights")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sync recurring" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Sync recurring" }),
+    ).toBeInTheDocument();
     expect(
       screen.getAllByRole("link", { name: "Open budgets" })[0],
     ).toHaveAttribute("href", "/budgets?month=2026-04");
-    expect(screen.getByRole("link", { name: "Month picker 2026-04" })).toHaveAttribute(
-      "href",
-      "/review?month=2026-04",
-    );
+    expect(
+      screen.getByRole("link", { name: "Month picker 2026-04" }),
+    ).toHaveAttribute("href", "/review?month=2026-04");
     expect(
       screen.getByText("Recent balance edit detected"),
     ).toBeInTheDocument();
@@ -332,7 +330,9 @@ describe("ReviewPage", () => {
       expect(disclosure.hasAttribute("open")).toBe(false);
     });
 
-    const highlightsHeading = screen.getByRole("heading", { name: "Highlights" });
+    const highlightsHeading = screen.getByRole("heading", {
+      name: "Highlights",
+    });
     const workflowHeading = screen.getByText("Continue the workflow");
     expect(
       highlightsHeading.compareDocumentPosition(workflowHeading) &
@@ -375,10 +375,16 @@ describe("ReviewPage", () => {
       screen.getByText("No recurring rules or exceptions affected this month."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("No income or expense drivers were recorded in 2026-04."),
+      screen.getByText(
+        "No income or expense drivers were recorded in 2026-04.",
+      ),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Capture snapshot" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Sync recurring" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Capture snapshot" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Sync recurring" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows snapshot capture only for the current month when the closing snapshot is missing", async () => {

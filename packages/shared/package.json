@@ -15,7 +15,9 @@
     "./imports": "./src/imports.ts",
     "./snapshots": "./src/snapshots.ts",
     "./transactions": "./src/transactions.ts",
-    "./users": "./src/users.ts"
+    "./users": "./src/users.ts",
+    "./currencies": "./src/currencies.ts",
+    "./exchanges": "./src/exchanges.ts"
   },
   "license": "MIT",
   "author": "giovisi"

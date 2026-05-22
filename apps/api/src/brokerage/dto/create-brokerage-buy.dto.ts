@@ -12,6 +12,10 @@ import {
   MaxLength,
 } from 'class-validator';
 import { AssetKind as PrismaAssetKind } from '@finhance/db';
+import {
+  IsSupportedCurrencyCode,
+  IsSupportedExchangeValue,
+} from '@/common/catalog-validators';
 import type { AssetKind, CreateBrokerageBuyRequest } from '@finhance/shared';
 
 function trimOptionalStringValue({ value }: TransformFnParams): unknown {
@@ -29,7 +33,6 @@ const TICKER_MAX_LENGTH = 32;
 const EXCHANGE_MAX_LENGTH = 24;
 const NOTES_MAX_LENGTH = 2_000;
 const MARKET_SYMBOL_PATTERN = /^[A-Z0-9.=-]+$/;
-const EXCHANGE_PATTERN = /^[A-Z0-9.=-]+$/;
 
 export class CreateBrokerageBuyDto implements CreateBrokerageBuyRequest {
   @IsOptional()
@@ -59,12 +62,12 @@ export class CreateBrokerageBuyDto implements CreateBrokerageBuyRequest {
   @IsOptional()
   @IsString()
   @MaxLength(EXCHANGE_MAX_LENGTH)
-  @Matches(EXCHANGE_PATTERN)
+  @IsSupportedExchangeValue((input) => (input as CreateBrokerageBuyDto).kind)
   @Transform(uppercaseOptionalStringValue)
   exchange?: string | null;
 
   @IsString()
-  @Matches(/^[A-Z]{3}$/)
+  @IsSupportedCurrencyCode()
   @Transform(uppercaseOptionalStringValue)
   currency!: string;
 

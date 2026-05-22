@@ -52,8 +52,9 @@ function isMenuItemDisabled(element: HTMLElement): boolean {
 }
 
 function getEnabledMenuItems(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"]'))
-    .filter((element) => !isMenuItemDisabled(element));
+  return Array.from(
+    container.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ).filter((element) => !isMenuItemDisabled(element));
 }
 
 export function OverflowMenuDivider() {
@@ -162,7 +163,10 @@ export default function OverflowMenu({
         return;
       }
 
-      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) {
+      if (
+        triggerRef.current?.contains(target) ||
+        panelRef.current?.contains(target)
+      ) {
         return;
       }
 
@@ -198,10 +202,7 @@ export default function OverflowMenu({
         VIEWPORT_PADDING,
         window.innerWidth - VIEWPORT_PADDING - panelWidth,
       );
-      const left = Math.min(
-        Math.max(unclampedLeft, VIEWPORT_PADDING),
-        maxLeft,
-      );
+      const left = Math.min(Math.max(unclampedLeft, VIEWPORT_PADDING), maxLeft);
       const top = shouldOpenAbove
         ? Math.max(VIEWPORT_PADDING, triggerRect.top - panelHeight - PANEL_GAP)
         : Math.min(
@@ -294,11 +295,7 @@ export default function OverflowMenu({
 
     const direction = event.key === "ArrowDown" ? 1 : -1;
     const startingIndex =
-      activeIndex === -1
-        ? direction === 1
-          ? -1
-          : 0
-        : activeIndex;
+      activeIndex === -1 ? (direction === 1 ? -1 : 0) : activeIndex;
     const nextIndex =
       (startingIndex + direction + enabledItems.length) % enabledItems.length;
     enabledItems[nextIndex]?.focus();

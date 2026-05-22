@@ -1,4 +1,5 @@
 import type { AssetKind, LiabilityKind } from "@finhance/shared";
+import { getExchangePickerOptionsForKind } from "@lib/currency-ui";
 
 export interface KindConfig {
   showBalance: boolean;
@@ -18,23 +19,8 @@ export const COLORS = {
   OTHER: "#4B5563",
 } as const satisfies Record<AssetKind, string>;
 
-export const EXCHANGE_SUFFIXES = [
-  { label: "🇺🇸 United States", value: "" },
-  { label: "🇮🇹 Milan (BIT)", value: ".MI" },
-  { label: "🇬🇧 London (LSE)", value: ".L" },
-  { label: "🇩🇪 Xetra (DE)", value: ".DE" },
-  { label: "🇩🇪 Hamburg (HM)", value: ".HM" },
-  { label: "🇫🇷 Paris (EPA)", value: ".PA" },
-  { label: "🇪🇸 Madrid (BME)", value: ".MC" },
-  { label: "Crypto", value: "_CRYPTO_" },
-] as const;
-
 export function getExchangeSuffixesForKind(kind: AssetKind) {
-  if (kind === "CRYPTO") {
-    return EXCHANGE_SUFFIXES.filter((exchange) => exchange.value === "_CRYPTO_");
-  }
-
-  return EXCHANGE_SUFFIXES.filter((exchange) => exchange.value !== "_CRYPTO_");
+  return getExchangePickerOptionsForKind(kind);
 }
 
 export const ASSET_KIND_OPTIONS: AssetKind[] = [

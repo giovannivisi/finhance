@@ -4,11 +4,9 @@ import type {
   UpdateUserSettingsRequest,
   UserSettingsResponse,
 } from '@finhance/shared';
+import { isSupportedReportingCurrencyCode } from '@/common/catalogues';
 import { PrismaService } from '@prisma/prisma.service';
-import {
-  isUserStartPage,
-  normalizeUserSettings,
-} from '@/users/users.settings';
+import { isUserStartPage, normalizeUserSettings } from '@/users/users.settings';
 
 @Injectable()
 export class UsersService {
@@ -60,11 +58,12 @@ function toUserSettingsRecord(
       typeof candidate.showTransactionTimes === 'boolean'
         ? candidate.showTransactionTimes
         : undefined,
-    startPage:
-      isUserStartPage(candidate.startPage) ? candidate.startPage : undefined,
+    startPage: isUserStartPage(candidate.startPage)
+      ? candidate.startPage
+      : undefined,
     reportingCurrency:
       typeof candidate.reportingCurrency === 'string' &&
-      candidate.reportingCurrency.trim().length > 0
+      isSupportedReportingCurrencyCode(candidate.reportingCurrency)
         ? candidate.reportingCurrency.trim().toUpperCase()
         : undefined,
   };

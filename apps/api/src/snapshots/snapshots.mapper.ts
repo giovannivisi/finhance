@@ -18,7 +18,8 @@ export function toNetWorthSnapshotResponse(
   snapshot: NetWorthSnapshot,
 ): NetWorthSnapshotResponse {
   const canRecomputeForReportingCurrency =
-    snapshot.nativeAssetTotals !== null && snapshot.nativeLiabilityTotals !== null;
+    snapshot.nativeAssetTotals !== null &&
+    snapshot.nativeLiabilityTotals !== null;
   return {
     id: snapshot.id,
     snapshotDate: serializeSnapshotDate(snapshot.snapshotDate),

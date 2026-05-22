@@ -102,21 +102,26 @@ describe("AssetForm", () => {
     render(<AssetForm mode="create" initialValues={buildStockValues()} />);
 
     const exchange = await screen.findByLabelText(/Exchange/);
+    await user.click(exchange);
+    const listbox = screen.getByRole("listbox");
     expect(
-      within(exchange).getByRole("option", { name: "🇮🇹 Milan (BIT)" }),
+      within(listbox).getByRole("option", { name: /Milan/i }),
     ).toBeInTheDocument();
     expect(
-      within(exchange).queryByRole("option", { name: "Crypto" }),
+      within(listbox).queryByRole("option", { name: /Crypto/i }),
     ).not.toBeInTheDocument();
+    await user.click(exchange);
 
     await user.selectOptions(screen.getByLabelText("Kind"), "CRYPTO");
 
-    expect(exchange).toHaveValue("_CRYPTO_");
+    expect(exchange).toHaveTextContent("Crypto");
+    await user.click(exchange);
+    const cryptoListbox = screen.getByRole("listbox");
     expect(
-      within(exchange).getByRole("option", { name: "Crypto" }),
+      within(cryptoListbox).getByRole("option", { name: /Crypto/i }),
     ).toBeInTheDocument();
     expect(
-      within(exchange).queryByRole("option", { name: "🇮🇹 Milan (BIT)" }),
+      within(cryptoListbox).queryByRole("option", { name: /Milan/i }),
     ).not.toBeInTheDocument();
   });
 

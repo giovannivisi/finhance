@@ -83,9 +83,7 @@ describe("TabBar", () => {
     await user.click(screen.getByRole("button", { name: /more navigation/i }));
 
     expect(screen.getByRole("link", { name: "Analytics" })).toBeInTheDocument();
-    expect(
-      screen.queryByText("Workspace"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: "Privacy notice" }),
     ).not.toBeInTheDocument();

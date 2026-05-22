@@ -102,7 +102,8 @@ export function transactionToFormValues(
     sourceAccountId: transaction.sourceAccountId ?? "",
     destinationAccountId: transaction.destinationAccountId ?? "",
     nativeAmount:
-      transaction.nativeAmount === null || transaction.nativeAmount === undefined
+      transaction.nativeAmount === null ||
+      transaction.nativeAmount === undefined
         ? ""
         : formatNumber(transaction.nativeAmount),
     nativeCurrency: transaction.nativeCurrency ?? "",
@@ -112,7 +113,8 @@ export function transactionToFormValues(
         : formatNumber(transaction.fxRateUsed),
     fxRateSource: transaction.fxRateSource ?? "",
     sourceAmount:
-      transaction.sourceAmount === null || transaction.sourceAmount === undefined
+      transaction.sourceAmount === null ||
+      transaction.sourceAmount === undefined
         ? ""
         : formatNumber(transaction.sourceAmount),
     destinationAmount:
@@ -261,7 +263,9 @@ export function buildTransactionPayload(
       });
     }
 
-    if (new Set(parsedLegs.map((leg) => leg.accountId)).size !== parsedLegs.length) {
+    if (
+      new Set(parsedLegs.map((leg) => leg.accountId)).size !== parsedLegs.length
+    ) {
       return {
         error: "Split funding cannot reuse the same account twice.",
       };
@@ -294,23 +298,23 @@ export function buildTransactionPayload(
   }
 
   return {
-      payload: {
-        postedAt,
-        kind: values.kind,
-        amount,
-        description,
-        notes,
-        accountId,
-        direction,
-        categoryId,
-        counterparty: values.counterparty.trim() || null,
-        nativeAmount: parseNumber(nativeAmountInput) ?? undefined,
-        nativeCurrency: nativeCurrencyInput || undefined,
-        fxRateUsed: parseNumber(fxRateInput) ?? undefined,
-        fxRateSource: values.fxRateSource || undefined,
-      },
-    };
-  }
+    payload: {
+      postedAt,
+      kind: values.kind,
+      amount,
+      description,
+      notes,
+      accountId,
+      direction,
+      categoryId,
+      counterparty: values.counterparty.trim() || null,
+      nativeAmount: parseNumber(nativeAmountInput) ?? undefined,
+      nativeCurrency: nativeCurrencyInput || undefined,
+      fxRateUsed: parseNumber(fxRateInput) ?? undefined,
+      fxRateSource: values.fxRateSource || undefined,
+    },
+  };
+}
 
 export function createEmptyFundingLegs(): TransactionFundingLegFormValue[] {
   return [

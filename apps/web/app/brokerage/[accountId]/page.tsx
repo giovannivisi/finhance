@@ -1,7 +1,10 @@
 import Container from "@components/Container";
 import BrokeragePageClient from "@components/BrokeragePageClient";
 import { api } from "@lib/server-api";
-import type { BrokerageWorkspaceResponse, CategoryResponse } from "@finhance/shared";
+import type {
+  BrokerageWorkspaceResponse,
+  CategoryResponse,
+} from "@finhance/shared";
 
 export const dynamic = "force-dynamic";
 

@@ -76,9 +76,7 @@ vi.mock("@components/RecurringMaterializeButton", () => ({
   default: () => <button type="button">Sync due transactions</button>,
 }));
 
-function buildAccount(
-  overrides: Partial<AccountResponse>,
-): AccountResponse {
+function buildAccount(overrides: Partial<AccountResponse>): AccountResponse {
   return {
     id: overrides.id ?? "account-1",
     name: overrides.name ?? "Account",
@@ -97,9 +95,7 @@ function buildAccount(
   };
 }
 
-function buildCategory(
-  overrides: Partial<CategoryResponse>,
-): CategoryResponse {
+function buildCategory(overrides: Partial<CategoryResponse>): CategoryResponse {
   return {
     id: overrides.id ?? "category-1",
     name: overrides.name ?? "Category",
@@ -239,7 +235,9 @@ describe("TransactionsPageClient cashflow drill-down", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Food" })).toBeInTheDocument();
     expect(
-      screen.queryByText("Net cashflow for this account in the selected range."),
+      screen.queryByText(
+        "Net cashflow for this account in the selected range.",
+      ),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Open in Activity" }),
@@ -347,9 +345,7 @@ describe("TransactionsPageClient cashflow drill-down", () => {
     ]);
 
     expect(screen.getByText("Split")).toBeInTheDocument();
-    expect(
-      screen.getByText("Split across 2 accounts"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Split across 2 accounts")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Split across 2 accounts"));
 
@@ -358,32 +354,36 @@ describe("TransactionsPageClient cashflow drill-down", () => {
   });
 
   it("can hide transaction times while keeping the transaction date visible", () => {
-    renderPage(baseCashflow, [
-      {
-        id: "transaction-1",
-        postedAt: "2026-05-20T08:30:00.000Z",
-        amount: 25,
-        currency: "EUR",
-        kind: "EXPENSE",
-        accountId: "account-main",
-        direction: "OUTFLOW",
-        categoryId: "secondary-bars",
-        primaryCategoryId: "primary-food",
-        primaryCategoryName: "Food",
-        secondaryCategoryId: "secondary-bars",
-        secondaryCategoryName: "Bars",
-        description: "Coffee",
-        notes: null,
-        counterparty: null,
-        sourceAccountId: null,
-        destinationAccountId: null,
-        recurringRuleId: null,
-        recurringOccurrenceMonth: null,
-        isRecurringGenerated: false,
-        createdAt: "2026-05-20T08:30:00.000Z",
-        updatedAt: "2026-05-20T08:30:00.000Z",
-      },
-    ], false);
+    renderPage(
+      baseCashflow,
+      [
+        {
+          id: "transaction-1",
+          postedAt: "2026-05-20T08:30:00.000Z",
+          amount: 25,
+          currency: "EUR",
+          kind: "EXPENSE",
+          accountId: "account-main",
+          direction: "OUTFLOW",
+          categoryId: "secondary-bars",
+          primaryCategoryId: "primary-food",
+          primaryCategoryName: "Food",
+          secondaryCategoryId: "secondary-bars",
+          secondaryCategoryName: "Bars",
+          description: "Coffee",
+          notes: null,
+          counterparty: null,
+          sourceAccountId: null,
+          destinationAccountId: null,
+          recurringRuleId: null,
+          recurringOccurrenceMonth: null,
+          isRecurringGenerated: false,
+          createdAt: "2026-05-20T08:30:00.000Z",
+          updatedAt: "2026-05-20T08:30:00.000Z",
+        },
+      ],
+      false,
+    );
 
     expect(screen.getByText(/20 mag 2026/i)).toBeInTheDocument();
     expect(screen.queryByText(/10:30/)).not.toBeInTheDocument();

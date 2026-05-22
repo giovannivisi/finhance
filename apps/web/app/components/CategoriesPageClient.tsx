@@ -36,9 +36,9 @@ export default function CategoriesPageClient({
   const [pendingDeleteCategoryId, setPendingDeleteCategoryId] = useState<
     string | null
   >(null);
-  const [openExpensePrimaries, setOpenExpensePrimaries] = useState<
-    Set<string>
-  >(() => new Set());
+  const [openExpensePrimaries, setOpenExpensePrimaries] = useState<Set<string>>(
+    () => new Set(),
+  );
   const actions = useSingleFlightActions<string>();
 
   const editingCategory =

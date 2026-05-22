@@ -54,7 +54,9 @@ export default async function DashboardRouteContent() {
 
   if (dashboard) {
     try {
-      setup = await api<SetupStatusResponse>("/setup/status?includeWarnings=false");
+      setup = await api<SetupStatusResponse>(
+        "/setup/status?includeWarnings=false",
+      );
     } catch {
       setup = null;
     }
@@ -118,7 +120,9 @@ export default async function DashboardRouteContent() {
       : [];
   const brokerageAccountIds = new Set(
     (accounts ?? [])
-      .filter((account) => account.type === "BROKER" && account.archivedAt === null)
+      .filter(
+        (account) => account.type === "BROKER" && account.archivedAt === null,
+      )
       .map((account) => account.id),
   );
 
@@ -157,8 +161,12 @@ export default async function DashboardRouteContent() {
                 <p className="home-setup-next-label">Best next action</p>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="home-setup-next-title">{primaryAction.title}</p>
-                    <p className="home-setup-next-detail">{primaryAction.detail}</p>
+                    <p className="home-setup-next-title">
+                      {primaryAction.title}
+                    </p>
+                    <p className="home-setup-next-detail">
+                      {primaryAction.detail}
+                    </p>
                   </div>
                   <Link href={primaryAction.href} className="btn-primary">
                     {primaryAction.actionLabel}
@@ -186,8 +194,8 @@ export default async function DashboardRouteContent() {
             <div>
               <h3 className="home-budget-title">Budgets</h3>
               <p className="home-budget-copy">
-                Current-month budget coverage and the categories already breaking
-                plan.
+                Current-month budget coverage and the categories already
+                breaking plan.
               </p>
             </div>
             <Link
@@ -205,9 +213,14 @@ export default async function DashboardRouteContent() {
           ) : (
             <div className="home-budget-grid">
               {budgetView.currencies.map((currency) => (
-                <div key={currency.currency} className="glass-card home-budget-card">
+                <div
+                  key={currency.currency}
+                  className="glass-card home-budget-card"
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <h4 className="home-budget-currency">{currency.currency}</h4>
+                    <h4 className="home-budget-currency">
+                      {currency.currency}
+                    </h4>
                     <span className="home-budget-count">
                       {currency.budgetedCategoryCount} budgeted
                     </span>

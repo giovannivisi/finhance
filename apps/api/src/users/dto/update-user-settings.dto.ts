@@ -1,7 +1,11 @@
 import { Transform } from 'class-transformer';
 import type { TransformFnParams } from 'class-transformer';
-import { IsBoolean, IsIn, IsOptional, Matches } from 'class-validator';
-import type { UpdateUserSettingsRequest, UserStartPage } from '@finhance/shared';
+import { IsBoolean, IsIn, IsOptional } from 'class-validator';
+import type {
+  UpdateUserSettingsRequest,
+  UserStartPage,
+} from '@finhance/shared';
+import { IsSupportedReportingCurrencyCode } from '@/common/catalog-validators';
 import { USER_START_PAGE_VALUES } from '@/users/users.settings';
 
 function trimOptionalStringValue({ value }: TransformFnParams): unknown {
@@ -44,8 +48,6 @@ export class UpdateUserSettingsDto implements UpdateUserSettingsRequest {
 
   @IsOptional()
   @Transform(trimOptionalStringValue)
-  @Matches(/^[A-Za-z]{3}$/, {
-    message: 'reportingCurrency must be a 3-letter currency code',
-  })
+  @IsSupportedReportingCurrencyCode()
   reportingCurrency?: string;
 }

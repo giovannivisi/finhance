@@ -415,7 +415,6 @@ export default async function ReviewPage({
               })}
             </div>
           )}
-
         </section>
 
         <section className="page-section is-spacious section-stack-desktop-xl">
@@ -500,7 +499,9 @@ export default async function ReviewPage({
                           {item.diagnostics.length > 0 ? (
                             <ul className="mt-4 section-stack-tight text-xs text-[var(--text-secondary)]">
                               {item.diagnostics.map((diagnostic) => (
-                                <li key={`${item.accountId}:${diagnostic.code}`}>
+                                <li
+                                  key={`${item.accountId}:${diagnostic.code}`}
+                                >
                                   <span className="font-medium text-[var(--text-primary)]">
                                     {diagnostic.summary}
                                   </span>
@@ -783,7 +784,9 @@ export default async function ReviewPage({
                     Cashflow highlights
                   </span>
                   <span className="analytics-filter-summary-detail">
-                    {formatCashflowSummaryDetail(review.currencyInsights.length)}
+                    {formatCashflowSummaryDetail(
+                      review.currencyInsights.length,
+                    )}
                   </span>
                 </div>
                 <div className="analytics-filter-summary-meta">
@@ -810,7 +813,8 @@ export default async function ReviewPage({
 
                 {review.currencyInsights.length === 0 ? (
                   <div className="page-inline-notice surface-dashed">
-                    No income or expense drivers were recorded in {review.month}.
+                    No income or expense drivers were recorded in {review.month}
+                    .
                   </div>
                 ) : (
                   <div className="subcard-stack is-loose">

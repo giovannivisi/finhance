@@ -1428,7 +1428,10 @@ export class TransactionsService {
     let fxRateUsed: Prisma.Decimal | null = null;
     let fxRateSource: FxRateSource | null = null;
 
-    if (normalizedNativeCurrency && normalizedNativeCurrency !== account.currency) {
+    if (
+      normalizedNativeCurrency &&
+      normalizedNativeCurrency !== account.currency
+    ) {
       nativeCurrency = normalizedNativeCurrency;
       nativeAmount =
         dto.nativeAmount !== undefined && dto.nativeAmount !== null
@@ -1468,7 +1471,9 @@ export class TransactionsService {
       }
 
       const expectedSettledAmount = nativeAmount.mul(fxRateUsed);
-      if (!this.decimalsClose(expectedSettledAmount, this.toDecimal(dto.amount))) {
+      if (
+        !this.decimalsClose(expectedSettledAmount, this.toDecimal(dto.amount))
+      ) {
         throw new BadRequestException(
           'The settled amount must match the native amount multiplied by the FX rate.',
         );
@@ -1714,7 +1719,10 @@ export class TransactionsService {
       }
 
       const computedDestinationAmount = sourceAmount.mul(fxRateUsed);
-      if (dto.destinationAmount !== undefined && dto.destinationAmount !== null) {
+      if (
+        dto.destinationAmount !== undefined &&
+        dto.destinationAmount !== null
+      ) {
         if (!this.decimalsClose(computedDestinationAmount, destinationAmount)) {
           throw new BadRequestException(
             'The destination amount must match the source amount multiplied by the FX rate.',

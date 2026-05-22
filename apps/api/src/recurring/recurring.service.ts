@@ -1538,15 +1538,15 @@ export class RecurringService {
     if (!input.netWorthExplanation.isComparableInReportingCurrency) {
       for (const bucket of input.cashflow.filter(
         (cashflowBucket) =>
-          cashflowBucket.currency !== input.netWorthExplanation.reportingCurrency,
+          cashflowBucket.currency !==
+          input.netWorthExplanation.reportingCurrency,
       )) {
         warnings.push(
           this.createMonthlyReviewWarning({
             code: 'NON_REPORTING_CURRENCY_CASHFLOW_NOT_COMPARABLE',
             severity: 'INFO',
             title: `${bucket.currency} cashflow excluded from ${input.netWorthExplanation.reportingCurrency} explanation`,
-            detail:
-              `This month includes non-${input.netWorthExplanation.reportingCurrency} cashflow, so the net worth delta cannot be decomposed into one ${input.netWorthExplanation.reportingCurrency} story.`,
+            detail: `This month includes non-${input.netWorthExplanation.reportingCurrency} cashflow, so the net worth delta cannot be decomposed into one ${input.netWorthExplanation.reportingCurrency} story.`,
             amount: bucket.netCashflow,
             currency: bucket.currency,
           }),

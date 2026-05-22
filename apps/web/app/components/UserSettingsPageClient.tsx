@@ -7,6 +7,7 @@ import type {
   UserSettingsResponse,
 } from "@finhance/shared/users";
 import { apiMutation } from "@lib/api";
+import SearchablePicker from "@components/SearchablePicker";
 import {
   REPORTING_CURRENCY_OPTIONS,
   START_PAGE_OPTIONS,
@@ -43,10 +44,13 @@ export default function UserSettingsPageClient({
           startPage: form.startPage,
           reportingCurrency: form.reportingCurrency,
         };
-        const saved = await apiMutation<UserSettingsResponse>("/users/me/settings", {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        });
+        const saved = await apiMutation<UserSettingsResponse>(
+          "/users/me/settings",
+          {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          },
+        );
         setForm(saved);
         setNotice("User settings saved.");
         router.refresh();
@@ -86,7 +90,9 @@ export default function UserSettingsPageClient({
             className="app-form-toggle"
           >
             <span>
-              <span className="app-form-toggle-label">Show transaction times</span>
+              <span className="app-form-toggle-label">
+                Show transaction times
+              </span>
               <span className="app-form-toggle-copy">
                 Keep date and time visible in manual transaction forms and the
                 activity list.
@@ -116,14 +122,17 @@ export default function UserSettingsPageClient({
         </div>
 
         <div className="app-form-field">
-          <label htmlFor={`${fieldPrefix}-start-page`}>Open this page first</label>
+          <label htmlFor={`${fieldPrefix}-start-page`}>
+            Open this page first
+          </label>
           <select
             id={`${fieldPrefix}-start-page`}
             value={form.startPage}
             onChange={(event) =>
               setForm((current) => ({
                 ...current,
-                startPage: event.target.value as UserSettingsResponse["startPage"],
+                startPage: event.target
+                  .value as UserSettingsResponse["startPage"],
               }))
             }
           >
@@ -148,22 +157,19 @@ export default function UserSettingsPageClient({
           <label htmlFor={`${fieldPrefix}-reporting-currency`}>
             Show aggregated totals in
           </label>
-          <select
+          <SearchablePicker
             id={`${fieldPrefix}-reporting-currency`}
             value={form.reportingCurrency}
-            onChange={(event) =>
+            onChange={(nextValue) =>
               setForm((current) => ({
                 ...current,
-                reportingCurrency: event.target.value,
+                reportingCurrency: nextValue,
               }))
             }
-          >
-            {REPORTING_CURRENCY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            options={REPORTING_CURRENCY_OPTIONS}
+            placeholder="Choose a reporting currency"
+            searchPlaceholder="Search reporting currencies…"
+          />
         </div>
       </section>
 

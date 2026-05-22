@@ -11,10 +11,7 @@ import {
 import { useAppPreferences } from "@components/ThemeProvider";
 
 function deriveInitials(title: string): string {
-  const words = title
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const words = title.trim().split(/\s+/).filter(Boolean);
 
   if (words.length === 0) {
     return "F";
@@ -114,7 +111,10 @@ export default function ShellAccountMenu({
             <span className="shell-account-menu-avatar-copy">{initials}</span>
           </span>
           <span className="shell-account-menu-trigger-mark" aria-hidden="true">
-            <ChevronDown size={14} className="shell-account-menu-trigger-icon" />
+            <ChevronDown
+              size={14}
+              className="shell-account-menu-trigger-icon"
+            />
           </span>
         </button>
       )}
@@ -123,7 +123,10 @@ export default function ShellAccountMenu({
         <div className="shell-account-menu-content">
           <div className="shell-account-menu-identity">
             <div className="shell-account-menu-identity-row">
-              <span className="shell-account-menu-identity-avatar" aria-hidden="true">
+              <span
+                className="shell-account-menu-identity-avatar"
+                aria-hidden="true"
+              >
                 {initials}
               </span>
               <div className="shell-account-menu-identity-copy">
@@ -136,7 +139,9 @@ export default function ShellAccountMenu({
 
           {sections.map((section) => (
             <section key={section.key} className="shell-account-menu-section">
-              <p className="shell-account-menu-section-title">{section.title}</p>
+              <p className="shell-account-menu-section-title">
+                {section.title}
+              </p>
               <div className="shell-account-menu-section-items">
                 {section.items.map((action) => (
                   <AccountMenuActionItem

@@ -4,7 +4,6 @@ import {
   MaxLength,
   IsNumber,
   IsOptional,
-  Matches,
   IsString,
   IsPositive,
   ValidateIf,
@@ -16,6 +15,10 @@ import {
   AssetType as PrismaAssetType,
   LiabilityKind as PrismaLiabilityKind,
 } from '@finhance/db';
+import {
+  IsSupportedCurrencyCode,
+  IsSupportedExchangeValue,
+} from '@/common/catalog-validators';
 import type {
   AssetKind,
   AssetType,
@@ -82,7 +85,7 @@ export class CreateAssetDto implements UpsertAssetRequest {
 
   @IsOptional()
   @IsString()
-  @Matches(/^[A-Z]{3}$/)
+  @IsSupportedCurrencyCode()
   @Transform(uppercaseStringValue)
   currency?: string;
 
@@ -102,6 +105,11 @@ export class CreateAssetDto implements UpsertAssetRequest {
   )
   @IsString()
   @MaxLength(ASSET_EXCHANGE_MAX_LENGTH)
+  @IsSupportedExchangeValue((asset) =>
+    (asset as AssetKindProbe).type === 'ASSET'
+      ? ((asset as AssetKindProbe).kind ?? null)
+      : null,
+  )
   @Transform(uppercaseStringValue)
   exchange?: string | null;
 

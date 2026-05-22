@@ -56,7 +56,9 @@ describe("UserSettingsPage", () => {
 
     render(await UserSettingsPage());
 
-    expect(screen.getByText("The web app could not reach the API.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The web app could not reach the API."),
+    ).toBeInTheDocument();
     expect(screen.getByText("API down.")).toBeInTheDocument();
   });
 });

@@ -34,6 +34,7 @@ import type {
   RefreshAssetsResponse,
   ValuationSource,
 } from '@finhance/shared';
+import { isSupportedExchangeValue } from '@/common/catalogues';
 
 interface PreparedAssetInput {
   userId: string;
@@ -216,14 +217,14 @@ export class AssetsService {
         await Promise.all(
           Array.from(fxCurrencies).map(async (currency) => {
             fxResults.set(
+              currency,
+              await this.pricesService.getFxRate(
                 currency,
-                await this.pricesService.getFxRate(
-                  currency,
-                  DEFAULT_REPORTING_CURRENCY,
-                  {
+                DEFAULT_REPORTING_CURRENCY,
+                {
                   forceRefresh: true,
-                  },
-                ),
+                },
+              ),
             );
           }),
         );
@@ -681,6 +682,10 @@ export class AssetsService {
       );
     }
 
+    if (!isSupportedExchangeValue(normalized, kind)) {
+      throw new BadRequestException('Unsupported exchange.');
+    }
+
     return normalized;
   }
 
@@ -752,7 +757,12 @@ export class AssetsService {
     reportingCurrency: string,
     fxRates: Map<string, Prisma.Decimal | null>,
   ): DashboardAssetResponse {
-    const valuation = this.buildValuation(asset, now, reportingCurrency, fxRates);
+    const valuation = this.buildValuation(
+      asset,
+      now,
+      reportingCurrency,
+      fxRates,
+    );
 
     return {
       ...toAssetResponse(asset),
@@ -779,8 +789,7 @@ export class AssetsService {
     );
     const fxTimestamp = now;
     const fxStale =
-      asset.currency !== reportingCurrency &&
-      !fxRates.get(asset.currency);
+      asset.currency !== reportingCurrency && !fxRates.get(asset.currency);
 
     if (!this.isMarketAsset(asset)) {
       if (!referenceValue) {
@@ -793,13 +802,13 @@ export class AssetsService {
         };
       }
 
-        return {
-          currentValue: referenceValue,
-          referenceValue,
-          valuationSource: 'DIRECT_BALANCE',
-          valuationAsOf: asset.updatedAt,
-          isStale: fxStale,
-        };
+      return {
+        currentValue: referenceValue,
+        referenceValue,
+        valuationSource: 'DIRECT_BALANCE',
+        valuationAsOf: asset.updatedAt,
+        isStale: fxStale,
+      };
     }
 
     const quantity = this.toDecimal(asset.quantity);

@@ -58,7 +58,9 @@ describe("BrokeragePage", () => {
     expect(
       screen.getByRole("heading", { name: "Brokerage" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("No active broker accounts yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No active broker accounts yet."),
+    ).toBeInTheDocument();
   });
 
   it("renders the shared brokerage client directly when exactly one broker account exists", async () => {
@@ -90,7 +92,10 @@ describe("BrokeragePage", () => {
       .mockResolvedValueOnce({
         reportingCurrency: "EUR",
         baseCurrency: "EUR",
-        brokers: [buildBroker("broker-1", "IBKR"), buildBroker("broker-2", "Degiro")],
+        brokers: [
+          buildBroker("broker-1", "IBKR"),
+          buildBroker("broker-2", "Degiro"),
+        ],
         selectedBroker: buildBroker("broker-1", "IBKR"),
         cashReconciliation: null,
         positions: [],
@@ -110,11 +115,15 @@ describe("BrokeragePage", () => {
         buildBroker("broker-1", "IBKR"),
         buildBroker("broker-2", "Degiro"),
       ])
-      .mockRejectedValueOnce(new Error("Unsupported Yahoo symbol \"BAD/TICKER\"."));
+      .mockRejectedValueOnce(
+        new Error('Unsupported Yahoo symbol "BAD/TICKER".'),
+      );
 
     render(await BrokeragePage());
 
-    expect(screen.getByText("The web app could not reach the API.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The web app could not reach the API."),
+    ).toBeInTheDocument();
     expect(
       screen.getByText('Unsupported Yahoo symbol "BAD/TICKER".'),
     ).toBeInTheDocument();

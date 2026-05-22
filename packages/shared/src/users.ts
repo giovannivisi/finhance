@@ -1,3 +1,5 @@
+import { isSupportedReportingCurrencyCode } from "./currencies";
+
 export const USER_START_PAGE_VALUES = [
   "DASHBOARD",
   "ACTIVITY",
@@ -50,7 +52,7 @@ export function normalizeUserSettings(
       : DEFAULT_USER_SETTINGS.startPage,
     reportingCurrency:
       typeof value?.reportingCurrency === "string" &&
-      value.reportingCurrency.trim().length > 0
+      isSupportedReportingCurrencyCode(value.reportingCurrency)
         ? value.reportingCurrency.trim().toUpperCase()
         : DEFAULT_USER_SETTINGS.reportingCurrency,
   };

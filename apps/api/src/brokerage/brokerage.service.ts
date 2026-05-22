@@ -43,6 +43,10 @@ import type {
   PortfolioAllocationTargetsResponse,
   UpdatePortfolioAllocationTargetsRequest,
 } from '@finhance/shared';
+import {
+  isSupportedCurrencyCode,
+  isSupportedExchangeValue,
+} from '@/common/catalogues';
 
 const ZERO = new Prisma.Decimal(0);
 const HUNDRED = new Prisma.Decimal(100);
@@ -1266,11 +1270,20 @@ export class BrokerageService {
       );
     }
 
+    if (!isSupportedExchangeValue(normalized, kind)) {
+      throw new BadRequestException('Unsupported exchange.');
+    }
+
     return normalized;
   }
 
   private normalizeCurrency(currency: string): string {
-    return currency.trim().toUpperCase();
+    const normalized = currency.trim().toUpperCase();
+    if (!isSupportedCurrencyCode(normalized)) {
+      throw new BadRequestException(`Unsupported currency code "${currency}".`);
+    }
+
+    return normalized;
   }
 
   private parsePostedAt(value: string): Date {

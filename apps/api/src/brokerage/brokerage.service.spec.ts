@@ -160,20 +160,20 @@ describe('BrokerageService', () => {
           {
             kind: AssetKind.STOCK,
             ticker: 'aapl',
-            exchange: 'nasdaq',
+            exchange: '.l',
             targetPercent: 60,
           },
           {
             kind: AssetKind.STOCK,
             ticker: 'AAPL',
-            exchange: 'NASDAQ',
+            exchange: '.L',
             targetPercent: 40,
           },
         ],
       }),
     ).rejects.toThrow(
       new BadRequestException(
-        'Duplicate security targets are not allowed: STOCK:AAPL:NASDAQ.',
+        'Duplicate security targets are not allowed: STOCK:AAPL:.L.',
       ),
     );
 

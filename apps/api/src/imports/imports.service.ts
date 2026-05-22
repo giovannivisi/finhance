@@ -78,6 +78,7 @@ import type {
   RecurringRuleImportRow,
   TransactionImportRow,
 } from '@imports/imports.types';
+import { isSupportedExchangeValue } from '@/common/catalogues';
 type ImportDbClient = PrismaService | Prisma.TransactionClient;
 
 interface StoredPreviewPayload {
@@ -5280,6 +5281,10 @@ export class ImportsService {
       throw new BadRequestException(
         'Only crypto assets may use the crypto exchange sentinel.',
       );
+    }
+
+    if (!isSupportedExchangeValue(normalized, kind)) {
+      throw new BadRequestException('Unsupported exchange.');
     }
 
     return normalized;

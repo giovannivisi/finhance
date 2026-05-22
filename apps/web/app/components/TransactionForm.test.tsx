@@ -305,7 +305,8 @@ describe("TransactionForm", () => {
 
     await user.clear(screen.getByLabelText("Original amount"));
     await user.type(screen.getByLabelText("Original amount"), "20");
-    await user.type(screen.getByLabelText("Original currency"), "USD");
+    await user.click(screen.getByLabelText("Original currency"));
+    await user.click(screen.getByRole("option", { name: /US dollar/i }));
     await user.type(screen.getByLabelText("FX rate override"), "0.75");
     await user.click(
       screen.getByRole("button", { name: /create transaction/i }),

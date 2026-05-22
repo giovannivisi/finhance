@@ -833,8 +833,7 @@ describe('RecurringService', () => {
       isComparableInReportingCurrency: true,
       cashflowContribution: 1200,
       marketAndFxMovement: -900,
-      note:
-        'Market and FX movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
+      note: 'Market and FX movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
     });
     expect(review.reconciliationHighlights).toHaveLength(1);
     expect(review.reconciliationHighlights[0]?.accountName).toBe('Broker');

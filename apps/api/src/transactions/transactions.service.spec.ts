@@ -521,10 +521,13 @@ describe('TransactionsService', () => {
     expect(
       nthCallArg<TransactionCreateCall>(prisma.transaction.create, 0).data,
     ).toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       amount: expect.any(Prisma.Decimal),
       currency: 'EUR',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       nativeAmount: expect.any(Prisma.Decimal),
       nativeCurrency: 'USD',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       fxRateUsed: expect.any(Prisma.Decimal),
       fxRateSource: 'MANUAL',
     });
@@ -590,20 +593,28 @@ describe('TransactionsService', () => {
     expect(prices.getFxRateForDate).not.toHaveBeenCalled();
     expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
     expect(
-      nthCallArg<{ data: Record<string, unknown> }>(prisma.transaction.create, 0)
-        .data,
+      nthCallArg<{ data: Record<string, unknown> }>(
+        prisma.transaction.create,
+        0,
+      ).data,
     ).toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       amount: expect.any(Prisma.Decimal),
       currency: 'EUR',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       fxRateUsed: expect.any(Prisma.Decimal),
       fxRateSource: 'MANUAL',
     });
     expect(
-      nthCallArg<{ data: Record<string, unknown> }>(prisma.transaction.create, 1)
-        .data,
+      nthCallArg<{ data: Record<string, unknown> }>(
+        prisma.transaction.create,
+        1,
+      ).data,
     ).toMatchObject({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       amount: expect.any(Prisma.Decimal),
       currency: 'USD',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       fxRateUsed: expect.any(Prisma.Decimal),
       fxRateSource: 'MANUAL',
     });

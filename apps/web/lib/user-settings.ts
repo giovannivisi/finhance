@@ -2,6 +2,7 @@ import type {
   UserSettingsResponse,
   UserStartPage,
 } from "@finhance/shared/users";
+import { getReportingCurrencyPickerOptions } from "@lib/currency-ui";
 import {
   DEFAULT_USER_SETTINGS,
   normalizeUserSettings,
@@ -26,12 +27,7 @@ export const START_PAGE_OPTIONS = USER_START_PAGE_VALUES.map((value) => ({
   label: START_PAGE_META[value].label,
 })) satisfies Array<{ value: UserStartPage; label: string }>;
 
-export const REPORTING_CURRENCY_OPTIONS = [
-  { value: "EUR", label: "Euro (EUR)" },
-  { value: "USD", label: "US dollar (USD)" },
-  { value: "GBP", label: "Pound sterling (GBP)" },
-  { value: "CHF", label: "Swiss franc (CHF)" },
-] as const;
+export const REPORTING_CURRENCY_OPTIONS = getReportingCurrencyPickerOptions();
 
 export function getStartPageHref(startPage: UserStartPage): string {
   return START_PAGE_META[startPage].href;

@@ -179,8 +179,11 @@ export class SnapshotsService {
         asset.quantity !== null &&
         asset.lastPrice !== null
           ? asset.quantity * asset.lastPrice
-          : asset.balance ?? 0;
-      totals.set(asset.currency, (totals.get(asset.currency) ?? 0) + nativeValue);
+          : (asset.balance ?? 0);
+      totals.set(
+        asset.currency,
+        (totals.get(asset.currency) ?? 0) + nativeValue,
+      );
     }
 
     return Object.fromEntries(

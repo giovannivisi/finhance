@@ -15,7 +15,9 @@ describe('UpdateUserSettingsDto', () => {
 
     expect(collectMessages(validateSync(dto))).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('startPage must be one of the following values'),
+        expect.stringContaining(
+          'startPage must be one of the following values',
+        ),
       ]),
     );
   });

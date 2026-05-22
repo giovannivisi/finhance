@@ -43,10 +43,15 @@ describe("UserSettingsPageClient", () => {
     );
 
     expect(screen.getByRole("checkbox")).toBeChecked();
-    expect(screen.getByLabelText("Open this page first")).toHaveValue("DASHBOARD");
+    expect(screen.getByLabelText("Open this page first")).toHaveValue(
+      "DASHBOARD",
+    );
 
     await user.click(screen.getByRole("checkbox"));
-    await user.selectOptions(screen.getByLabelText("Open this page first"), "BROKERAGE");
+    await user.selectOptions(
+      screen.getByLabelText("Open this page first"),
+      "BROKERAGE",
+    );
     await user.click(
       screen.getByRole("button", { name: /save user settings/i }),
     );

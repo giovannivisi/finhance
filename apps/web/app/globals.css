@@ -4178,8 +4178,196 @@ html[data-theme="light"] .brokerage-account-switcher::after {
 }
 
 .app-form-field.has-error select,
-.app-form-field.has-error input {
+.app-form-field.has-error input,
+.app-form-field.has-error .searchable-picker-trigger {
   border-color: var(--color-expense);
+}
+
+.searchable-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 10px 18px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-control);
+  background: var(--bg-control);
+  color: var(--text-primary);
+  text-align: left;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.searchable-picker-trigger:hover {
+  background: var(--bg-control-hover);
+}
+
+.searchable-picker-trigger.is-disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.searchable-picker-placeholder {
+  color: var(--text-tertiary);
+}
+
+.searchable-picker-chevron {
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.searchable-picker-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+/* When the popover API is available the panel lives in the browser top layer.
+   The :not(:popover-open) rule keeps it hidden until showPopover() is called,
+   because our `display: flex` would otherwise override the UA `display: none`. */
+.searchable-picker-panel[popover]:not(:popover-open) {
+  display: none;
+}
+
+.searchable-picker-panel {
+  /* Override default popover UA styles */
+  margin: 0;
+  inset: unset;
+
+  /* Portal fallback (jsdom / older browsers) needs a z-index above modals */
+  z-index: 100000;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(420px, calc(100vh - 32px));
+  padding: 14px;
+  border-radius: 24px;
+  border: 1px solid var(--border-glass-strong);
+  background: var(--bg-popover-solid);
+  box-shadow: var(--shadow-glass);
+}
+
+.searchable-picker-panel[popover]::backdrop {
+  background: transparent;
+}
+
+.searchable-picker-search-row {
+  position: relative;
+}
+
+.searchable-picker-search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.searchable-picker-search {
+  padding-left: 42px;
+}
+
+.searchable-picker-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.searchable-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 18px;
+  color: var(--text-primary);
+  text-align: left;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.searchable-picker-option:hover,
+.searchable-picker-option:focus-visible {
+  background: var(--bg-card-hover);
+  outline: none;
+}
+
+.searchable-picker-option.is-clear {
+  color: var(--text-secondary);
+}
+
+.searchable-picker-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.searchable-picker-prefix,
+.searchable-picker-clear-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+}
+
+.searchable-picker-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0 10px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-card-muted);
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.searchable-picker-option-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.searchable-picker-option-label {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.searchable-picker-option-meta {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.searchable-picker-check {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.searchable-picker-empty {
+  padding: 14px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
 }
 
 .app-form-field-error {

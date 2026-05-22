@@ -14,6 +14,7 @@ describe('UsersService', () => {
     const service = new UsersService(prisma);
 
     await expect(service.getSettings('local-dev')).resolves.toEqual({
+      reportingCurrency: 'EUR',
       showTransactionTimes: true,
       startPage: 'DASHBOARD',
     });
@@ -41,14 +42,17 @@ describe('UsersService', () => {
     await expect(
       service.updateSettings('local-dev', { startPage: 'BROKERAGE' }),
     ).resolves.toEqual({
+      reportingCurrency: 'EUR',
       showTransactionTimes: false,
       startPage: 'BROKERAGE',
     });
 
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: 'local-dev' },
       data: {
         userSettings: {
+          reportingCurrency: 'EUR',
           showTransactionTimes: false,
           startPage: 'BROKERAGE',
         } as unknown as Prisma.InputJsonValue,

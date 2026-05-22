@@ -128,13 +128,17 @@ describe("OverflowMenu", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "First menu" }));
-    expect(screen.getByRole("menu", { name: "First menu" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menu", { name: "First menu" }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Second menu" }));
 
     await waitFor(() =>
       expect(screen.queryByRole("menu", { name: "First menu" })).toBeNull(),
     );
-    expect(screen.getByRole("menu", { name: "Second menu" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menu", { name: "Second menu" }),
+    ).toBeInTheDocument();
   });
 });

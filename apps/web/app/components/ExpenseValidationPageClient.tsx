@@ -74,7 +74,10 @@ export default function ExpenseValidationPageClient({
     null,
   );
   const editingRule = rules.find((rule) => rule.id === editingRuleId) ?? null;
-  const groupedRules = useMemo(() => groupExpenseValidationRules(rules), [rules]);
+  const groupedRules = useMemo(
+    () => groupExpenseValidationRules(rules),
+    [rules],
+  );
 
   const primaryCategories = useMemo(
     () => expensePrimaryCategories(categories, ruleForm.primaryCategoryId),
@@ -480,7 +483,9 @@ export default function ExpenseValidationPageClient({
                       type="button"
                       aria-expanded={isOpen}
                       aria-controls={sectionId}
-                      onClick={() => togglePrimaryGroup(group.primaryCategoryName)}
+                      onClick={() =>
+                        togglePrimaryGroup(group.primaryCategoryName)
+                      }
                       className="expense-validation-group-toggle"
                     >
                       <div className="expense-validation-group-heading">

@@ -42,11 +42,8 @@ vi.mock("@/components/CreateAssetModal", () => ({
 }));
 
 vi.mock("@components/EditAssetModal", () => ({
-  default: ({
-    open,
-  }: {
-    open: boolean;
-  }) => (open ? <div role="dialog" aria-label="Edit asset" /> : null),
+  default: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog" aria-label="Edit asset" /> : null,
 }));
 
 vi.mock("@components/CooldownNotice", () => ({
@@ -202,10 +199,14 @@ describe("DashboardClient", () => {
     const user = userEvent.setup();
     renderDashboard();
 
-    const actionButtons = screen.getAllByRole("button", { name: "Asset actions" });
+    const actionButtons = screen.getAllByRole("button", {
+      name: "Asset actions",
+    });
 
     await user.click(actionButtons[0] as HTMLButtonElement);
-    expect(screen.getByRole("menuitem", { name: "Brokerage" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Brokerage" }),
+    ).toBeInTheDocument();
 
     await user.click(actionButtons[1] as HTMLButtonElement);
     await waitFor(() =>
@@ -217,20 +218,26 @@ describe("DashboardClient", () => {
     const user = userEvent.setup();
     renderDashboard();
 
-    await user.click(screen.getAllByRole("button", { name: "Asset actions" })[0]!);
+    await user.click(
+      screen.getAllByRole("button", { name: "Asset actions" })[0]!,
+    );
     await user.click(screen.getByRole("menuitem", { name: "Edit" }));
 
     await waitFor(() =>
       expect(screen.queryByRole("menu", { name: "Asset actions" })).toBeNull(),
     );
-    expect(screen.getByRole("dialog", { name: "Edit asset" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Edit asset" }),
+    ).toBeInTheDocument();
   });
 
   it("opens the delete confirmation from the overflow menu", async () => {
     const user = userEvent.setup();
     renderDashboard();
 
-    await user.click(screen.getAllByRole("button", { name: "Asset actions" })[0]!);
+    await user.click(
+      screen.getAllByRole("button", { name: "Asset actions" })[0]!,
+    );
     await user.click(screen.getByRole("menuitem", { name: "Delete asset" }));
 
     expect(

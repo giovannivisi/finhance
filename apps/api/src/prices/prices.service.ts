@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AssetKind, FxRateSource, Prisma } from '@finhance/db';
+import { isSupportedCurrencyCode } from '@/common/catalogues';
 import { PrismaService } from '@prisma/prisma.service';
 
 interface CachedPrice {
@@ -40,7 +41,10 @@ export class PricesService {
   normalizeCurrency(currency?: string | null): string {
     const normalized = (currency ?? 'EUR').trim().toUpperCase();
 
-    if (!CURRENCY_PATTERN.test(normalized)) {
+    if (
+      !CURRENCY_PATTERN.test(normalized) ||
+      !isSupportedCurrencyCode(normalized)
+    ) {
       throw new Error(`Unsupported currency code "${currency ?? ''}".`);
     }
 

@@ -12,17 +12,14 @@ export default async function TopHeader() {
   const identity = session?.user
     ? {
         title:
-          session.user.name?.trim() ||
-          session.user.email?.trim() ||
-          "Account",
+          session.user.name?.trim() || session.user.email?.trim() || "Account",
         subtitle: session.user.email?.trim() || "Hosted workspace",
       }
     : {
         title: isHostedAuthMode() ? "Hosted workspace" : "Local workspace",
-        subtitle:
-          isHostedAuthMode()
-            ? "Account and app actions"
-            : "Private on this device",
+        subtitle: isHostedAuthMode()
+          ? "Account and app actions"
+          : "Private on this device",
       };
   const startPageHref = getStartPageHref(settings.startPage);
 

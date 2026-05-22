@@ -19,6 +19,7 @@ import {
   FxRateSource as PrismaFxRateSource,
   TransactionKind as PrismaTransactionKind,
 } from '@finhance/db';
+import { IsSupportedCurrencyCode } from '@/common/catalog-validators';
 import type {
   FxRateSource,
   TransactionDirection,
@@ -119,6 +120,7 @@ export class CreateTransactionDto {
 
   @IsOptional()
   @IsString()
+  @IsSupportedCurrencyCode()
   @Transform(trimOptionalStringValue)
   nativeCurrency?: string | null;
 
@@ -143,11 +145,13 @@ export class CreateTransactionDto {
 
   @IsOptional()
   @IsString()
+  @IsSupportedCurrencyCode()
   @Transform(trimOptionalStringValue)
   sourceCurrency?: string | null;
 
   @IsOptional()
   @IsString()
+  @IsSupportedCurrencyCode()
   @Transform(trimOptionalStringValue)
   destinationCurrency?: string | null;
 }

@@ -7,9 +7,11 @@ import { MoreHorizontal } from "lucide-react";
 import Modal from "@components/Modal";
 import MoneyValue from "@components/MoneyValue";
 import OverflowMenu from "@components/OverflowMenu";
+import SearchablePicker from "@components/SearchablePicker";
 import { useAppPreferences } from "@components/ThemeProvider";
 import { apiMutation } from "@lib/api";
 import { getExchangeSuffixesForKind } from "@lib/asset-ui";
+import { getCurrencyPickerOptions } from "@lib/currency-ui";
 import { formatSensitiveNumber } from "@lib/money";
 import type {
   AssetKind,
@@ -28,7 +30,10 @@ type OperationModalKind =
   | "TARGETS"
   | null;
 type TargetTab = "assetClasses" | "securities";
-type BrokerageActivitySourceFilter = "ALL" | "BROKERAGE_OPERATION" | "TRANSACTION";
+type BrokerageActivitySourceFilter =
+  | "ALL"
+  | "BROKERAGE_OPERATION"
+  | "TRANSACTION";
 type BrokerageActivityFilters = {
   month: string;
   kind: string;
@@ -88,11 +93,14 @@ const BROKERAGE_ACTIVITY_MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-const BROKERAGE_ACTIVITY_MONTH_KEY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Rome",
-  year: "numeric",
-  month: "2-digit",
-});
+const BROKERAGE_ACTIVITY_MONTH_KEY_FORMATTER = new Intl.DateTimeFormat(
+  "en-CA",
+  {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+  },
+);
 
 function createCurrentDateTimeValue() {
   return new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
@@ -253,14 +261,15 @@ export default function BrokeragePageClient({
   const [showTargetHelp, setShowTargetHelp] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activityFilters, setActivityFilters] = useState<BrokerageActivityFilters>({
-    month: "",
-    kind: "",
-    source: "ALL",
-  });
-  const [openActivityMonthKey, setOpenActivityMonthKey] = useState<string | null>(
-    null,
-  );
+  const [activityFilters, setActivityFilters] =
+    useState<BrokerageActivityFilters>({
+      month: "",
+      kind: "",
+      source: "ALL",
+    });
+  const [openActivityMonthKey, setOpenActivityMonthKey] = useState<
+    string | null
+  >(null);
 
   const dividendCategories = useMemo(
     () =>
@@ -297,6 +306,7 @@ export default function BrokeragePageClient({
   const buyFee = parseNumber(buyForm.feeAmount) ?? 0;
   const buyCashUsed = buyGross == null ? null : buyGross + buyFee;
   const buyExchangeOptions = getExchangeSuffixesForKind(buyForm.kind);
+  const currencyOptions = getCurrencyPickerOptions();
   const sellGross = useMemo(() => {
     const quantity = parseNumber(sellForm.quantity);
     const unitPrice = parseNumber(sellForm.unitPrice);
@@ -340,7 +350,8 @@ export default function BrokeragePageClient({
     [filteredActivity],
   );
   const availableActivityKinds = useMemo(
-    () => Array.from(new Set(workspace.activity.map((item) => item.kind))).sort(),
+    () =>
+      Array.from(new Set(workspace.activity.map((item) => item.kind))).sort(),
     [workspace.activity],
   );
   const activityFilterCount = [
@@ -648,8 +659,7 @@ export default function BrokeragePageClient({
             <p className="page-kicker">Investing</p>
             <h2 className="page-title is-compact">Brokerage</h2>
             <p className="page-description">
-              Cash, positions, trades, and allocation targets in one
-              workspace.
+              Cash, positions, trades, and allocation targets in one workspace.
             </p>
           </div>
 
@@ -843,8 +853,8 @@ export default function BrokeragePageClient({
               <div className="page-inline-notice surface-warning brokerage-reconciliation-alert">
                 <div>
                   <p className="font-medium">
-                    Cash reconciliation needs attention before you can trust this
-                    brokerage balance.
+                    Cash reconciliation needs attention before you can trust
+                    this brokerage balance.
                   </p>
                   <p className="mt-1 text-sm">
                     Resolve the mismatch from Accounts, where you can review the
@@ -1041,7 +1051,9 @@ export default function BrokeragePageClient({
             <details className="analytics-filter-shell brokerage-activity-shell">
               <summary className="analytics-filter-summary">
                 <div className="analytics-filter-summary-copy">
-                  <span className="analytics-filter-summary-title">Activity</span>
+                  <span className="analytics-filter-summary-title">
+                    Activity
+                  </span>
                   <span className="analytics-filter-summary-detail">
                     Trades plus non-duplicated cash activity for this brokerage
                     account.
@@ -1059,7 +1071,9 @@ export default function BrokeragePageClient({
                 <details className="analytics-filter-shell brokerage-activity-filter-shell">
                   <summary className="analytics-filter-summary">
                     <span className="analytics-filter-summary-copy">
-                      <span className="analytics-filter-summary-title">Filter</span>
+                      <span className="analytics-filter-summary-title">
+                        Filter
+                      </span>
                       <span className="analytics-filter-summary-detail">
                         Month, kind, and source for this brokerage ledger.
                       </span>
@@ -1076,7 +1090,9 @@ export default function BrokeragePageClient({
 
                   <div className="filter-grid brokerage-activity-filter-grid">
                     <div className="app-form-field">
-                      <label htmlFor="brokerage-activity-filter-month">Month</label>
+                      <label htmlFor="brokerage-activity-filter-month">
+                        Month
+                      </label>
                       <select
                         id="brokerage-activity-filter-month"
                         value={activityFilters.month}
@@ -1097,7 +1113,9 @@ export default function BrokeragePageClient({
                     </div>
 
                     <div className="app-form-field">
-                      <label htmlFor="brokerage-activity-filter-kind">Kind</label>
+                      <label htmlFor="brokerage-activity-filter-kind">
+                        Kind
+                      </label>
                       <select
                         id="brokerage-activity-filter-kind"
                         value={activityFilters.kind}
@@ -1118,14 +1136,17 @@ export default function BrokeragePageClient({
                     </div>
 
                     <div className="app-form-field">
-                      <label htmlFor="brokerage-activity-filter-source">Source</label>
+                      <label htmlFor="brokerage-activity-filter-source">
+                        Source
+                      </label>
                       <select
                         id="brokerage-activity-filter-source"
                         value={activityFilters.source}
                         onChange={(event) =>
                           setActivityFilters((current) => ({
                             ...current,
-                            source: event.target.value as BrokerageActivitySourceFilter,
+                            source: event.target
+                              .value as BrokerageActivitySourceFilter,
                           }))
                         }
                       >
@@ -1169,7 +1190,9 @@ export default function BrokeragePageClient({
                           className="activity-month-toggle"
                         >
                           <div className="activity-month-toggle-copy">
-                            <h4 className="activity-month-title">{group.label}</h4>
+                            <h4 className="activity-month-title">
+                              {group.label}
+                            </h4>
                             <p className="text-sm text-[var(--text-secondary)]">
                               {group.items.length}{" "}
                               {group.items.length === 1 ? "entry" : "entries"}
@@ -1280,214 +1303,214 @@ export default function BrokeragePageClient({
           const fieldPrefix = "brokerage-buy";
 
           return (
-        <div className="app-form-grid brokerage-form-grid">
-          <div className="app-form-field">
-            <label
-              htmlFor={`${fieldPrefix}-asset-id`}
-              className="is-optional"
-            >
-              <span>Existing holding</span>
-              <span>Optional</span>
-            </label>
-            <select
-              id={`${fieldPrefix}-asset-id`}
-              value={buyForm.assetId}
-              onChange={(event) =>
-                setBuyForm((current) => ({
-                  ...current,
-                  assetId: event.target.value,
-                }))
-              }
-            >
-              <option value="">Create new holding</option>
-              {workspace.positions.map((position) => (
-                <option key={position.assetId} value={position.assetId}>
-                  {position.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          {!buyForm.assetId ? (
-            <>
+            <div className="app-form-grid brokerage-form-grid">
               <div className="app-form-field">
-                <label htmlFor={`${fieldPrefix}-name`}>
-                  <span>Name</span>
+                <label
+                  htmlFor={`${fieldPrefix}-asset-id`}
+                  className="is-optional"
+                >
+                  <span>Existing holding</span>
+                  <span>Optional</span>
                 </label>
-                <input
-                  id={`${fieldPrefix}-name`}
-                  value={buyForm.name}
+                <select
+                  id={`${fieldPrefix}-asset-id`}
+                  value={buyForm.assetId}
                   onChange={(event) =>
                     setBuyForm((current) => ({
                       ...current,
-                      name: event.target.value,
+                      assetId: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Create new holding</option>
+                  {workspace.positions.map((position) => (
+                    <option key={position.assetId} value={position.assetId}>
+                      {position.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {!buyForm.assetId ? (
+                <>
+                  <div className="app-form-field">
+                    <label htmlFor={`${fieldPrefix}-name`}>
+                      <span>Name</span>
+                    </label>
+                    <input
+                      id={`${fieldPrefix}-name`}
+                      value={buyForm.name}
+                      onChange={(event) =>
+                        setBuyForm((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="app-form-field">
+                    <label htmlFor={`${fieldPrefix}-kind`}>
+                      <span>Kind</span>
+                    </label>
+                    <select
+                      id={`${fieldPrefix}-kind`}
+                      value={buyForm.kind}
+                      onChange={(event) =>
+                        setBuyForm((current) => ({
+                          ...current,
+                          kind: event.target.value as BuyFormState["kind"],
+                        }))
+                      }
+                    >
+                      <option value="STOCK">Stock</option>
+                      <option value="BOND">Bond</option>
+                      <option value="CRYPTO">Crypto</option>
+                    </select>
+                  </div>
+                  <div className="app-form-field">
+                    <label htmlFor={`${fieldPrefix}-ticker`}>
+                      <span>Ticker</span>
+                    </label>
+                    <input
+                      id={`${fieldPrefix}-ticker`}
+                      value={buyForm.ticker}
+                      onChange={(event) =>
+                        setBuyForm((current) => ({
+                          ...current,
+                          ticker: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="app-form-field">
+                    <label
+                      htmlFor={`${fieldPrefix}-exchange`}
+                      className="is-optional"
+                    >
+                      <span>Exchange</span>
+                      <span>Optional</span>
+                    </label>
+                    <SearchablePicker
+                      id={`${fieldPrefix}-exchange`}
+                      value={buyForm.exchange}
+                      onChange={(nextValue) =>
+                        setBuyForm((current) => ({
+                          ...current,
+                          exchange: nextValue,
+                        }))
+                      }
+                      options={buyExchangeOptions}
+                      placeholder="Choose an exchange"
+                      searchPlaceholder="Search exchanges…"
+                    />
+                  </div>
+                  <div className="app-form-field">
+                    <label htmlFor={`${fieldPrefix}-currency`}>
+                      <span>Currency</span>
+                    </label>
+                    <SearchablePicker
+                      id={`${fieldPrefix}-currency`}
+                      value={buyForm.currency}
+                      onChange={(nextValue) =>
+                        setBuyForm((current) => ({
+                          ...current,
+                          currency: nextValue,
+                        }))
+                      }
+                      options={currencyOptions}
+                      placeholder="Choose a currency"
+                      searchPlaceholder="Search currencies…"
+                    />
+                  </div>
+                </>
+              ) : null}
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-quantity`}>
+                  <span>Quantity</span>
+                </label>
+                <input
+                  id={`${fieldPrefix}-quantity`}
+                  type="number"
+                  step="0.0001"
+                  value={buyForm.quantity}
+                  onChange={(event) =>
+                    setBuyForm((current) => ({
+                      ...current,
+                      quantity: event.target.value,
                     }))
                   }
                 />
               </div>
               <div className="app-form-field">
-                <label htmlFor={`${fieldPrefix}-kind`}>
-                  <span>Kind</span>
-                </label>
-                <select
-                  id={`${fieldPrefix}-kind`}
-                  value={buyForm.kind}
-                  onChange={(event) =>
-                    setBuyForm((current) => ({
-                      ...current,
-                      kind: event.target.value as BuyFormState["kind"],
-                    }))
-                  }
-                >
-                  <option value="STOCK">Stock</option>
-                  <option value="BOND">Bond</option>
-                  <option value="CRYPTO">Crypto</option>
-                </select>
-              </div>
-              <div className="app-form-field">
-                <label htmlFor={`${fieldPrefix}-ticker`}>
-                  <span>Ticker</span>
+                <label htmlFor={`${fieldPrefix}-unit-price`}>
+                  <span>Price per unit</span>
                 </label>
                 <input
-                  id={`${fieldPrefix}-ticker`}
-                  value={buyForm.ticker}
+                  id={`${fieldPrefix}-unit-price`}
+                  type="number"
+                  step="0.0001"
+                  value={buyForm.unitPrice}
                   onChange={(event) =>
                     setBuyForm((current) => ({
                       ...current,
-                      ticker: event.target.value,
+                      unitPrice: event.target.value,
                     }))
                   }
                 />
               </div>
               <div className="app-form-field">
                 <label
-                  htmlFor={`${fieldPrefix}-exchange`}
+                  htmlFor={`${fieldPrefix}-fee-amount`}
                   className="is-optional"
                 >
-                  <span>Exchange</span>
+                  <span>Fee</span>
                   <span>Optional</span>
                 </label>
-                <select
-                  id={`${fieldPrefix}-exchange`}
-                  value={buyForm.exchange}
-                  onChange={(event) =>
-                    setBuyForm((current) => ({
-                      ...current,
-                      exchange: event.target.value,
-                    }))
-                  }
-                >
-                  {buyExchangeOptions.map((exchange) => (
-                    <option key={exchange.value} value={exchange.value}>
-                      {exchange.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="app-form-field">
-                <label htmlFor={`${fieldPrefix}-currency`}>
-                  <span>Currency</span>
-                </label>
                 <input
-                  id={`${fieldPrefix}-currency`}
-                  value={buyForm.currency}
+                  id={`${fieldPrefix}-fee-amount`}
+                  type="number"
+                  step="0.01"
+                  value={buyForm.feeAmount}
                   onChange={(event) =>
                     setBuyForm((current) => ({
                       ...current,
-                      currency: event.target.value,
+                      feeAmount: event.target.value,
                     }))
                   }
                 />
               </div>
-            </>
-          ) : null}
-          <div className="app-form-field">
-            <label htmlFor={`${fieldPrefix}-quantity`}>
-              <span>Quantity</span>
-            </label>
-            <input
-              id={`${fieldPrefix}-quantity`}
-              type="number"
-              step="0.0001"
-              value={buyForm.quantity}
-              onChange={(event) =>
-                setBuyForm((current) => ({
-                  ...current,
-                  quantity: event.target.value,
-                }))
-              }
-            />
-          </div>
-          <div className="app-form-field">
-            <label htmlFor={`${fieldPrefix}-unit-price`}>
-              <span>Price per unit</span>
-            </label>
-            <input
-              id={`${fieldPrefix}-unit-price`}
-              type="number"
-              step="0.0001"
-              value={buyForm.unitPrice}
-              onChange={(event) =>
-                setBuyForm((current) => ({
-                  ...current,
-                  unitPrice: event.target.value,
-                }))
-              }
-            />
-          </div>
-          <div className="app-form-field">
-            <label
-              htmlFor={`${fieldPrefix}-fee-amount`}
-              className="is-optional"
-            >
-              <span>Fee</span>
-              <span>Optional</span>
-            </label>
-            <input
-              id={`${fieldPrefix}-fee-amount`}
-              type="number"
-              step="0.01"
-              value={buyForm.feeAmount}
-              onChange={(event) =>
-                setBuyForm((current) => ({
-                  ...current,
-                  feeAmount: event.target.value,
-                }))
-              }
-            />
-          </div>
-          <div className="app-form-field">
-            <label htmlFor={`${fieldPrefix}-posted-at`}>
-              <span>Posted at</span>
-            </label>
-            <input
-              id={`${fieldPrefix}-posted-at`}
-              type="datetime-local"
-              value={buyForm.postedAt}
-              onChange={(event) =>
-                setBuyForm((current) => ({
-                  ...current,
-                  postedAt: event.target.value,
-                }))
-              }
-            />
-          </div>
-          <div className="app-form-field app-form-field-span-2">
-            <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">
-              <span>Notes</span>
-              <span>Optional</span>
-            </label>
-            <textarea
-              id={`${fieldPrefix}-notes`}
-              value={buyForm.notes}
-              onChange={(event) =>
-                setBuyForm((current) => ({
-                  ...current,
-                  notes: event.target.value,
-                }))
-              }
-            />
-          </div>
-        </div>
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-posted-at`}>
+                  <span>Posted at</span>
+                </label>
+                <input
+                  id={`${fieldPrefix}-posted-at`}
+                  type="datetime-local"
+                  value={buyForm.postedAt}
+                  onChange={(event) =>
+                    setBuyForm((current) => ({
+                      ...current,
+                      postedAt: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div className="app-form-field app-form-field-span-2">
+                <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">
+                  <span>Notes</span>
+                  <span>Optional</span>
+                </label>
+                <textarea
+                  id={`${fieldPrefix}-notes`}
+                  value={buyForm.notes}
+                  onChange={(event) =>
+                    setBuyForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
           );
         })()}
 
