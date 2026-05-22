@@ -54,6 +54,26 @@ repos:
         pass_filenames: false
         files: '^(apps/web/|packages/shared/).*\.(ts|tsx|mts|cts|js|jsx|mjs|json)$'
 
+      - id: check-migration
+        name: migration safety check
+        entry: python3 scripts/check-migration.py
+        language: system
+        files: '^packages/db/prisma/migrations/.*\.sql$'
+
+      - id: no-raw-prisma
+        name: no $queryRaw (use typed Prisma methods)
+        language: pygrep
+        entry: '\$queryRaw'
+        files: '^apps/api/.*\.ts$'
+        exclude: '\.spec\.ts$'
+
+      - id: no-plain-error-in-services
+        name: no plain Error in services (use NestJS exceptions)
+        language: pygrep
+        entry: 'throw new Error\('
+        files: '^apps/api/src/.*\.service\.ts$'
+        exclude: '\.spec\.ts$'
+
       - id: commit-msg-prefix
         name: commit message prefix
         language: system

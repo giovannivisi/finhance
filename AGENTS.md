@@ -157,6 +157,12 @@ If the user asks for any of the following, run a migration safety check:
 - "is this migration safe"
 - equivalent wording requesting a review of a Prisma migration file
 
+### Automatic Trigger
+
+Whenever you create or modify any file inside `packages/db/prisma/migrations/`,
+automatically run the migration safety check on that file before considering
+the task complete — even if the user did not ask for it.
+
 ### Required Behavior
 
 1. Read [docs/instructions/migration-checklist.md](docs/instructions/migration-checklist.md) first.
