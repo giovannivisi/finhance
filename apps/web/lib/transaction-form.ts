@@ -1,4 +1,5 @@
 import type {
+  FxRateSource,
   SplitTransactionFundingLegRequest,
   TransactionDirection,
   TransactionKind,
@@ -41,6 +42,12 @@ export interface TransactionFormValues {
   counterparty: string;
   sourceAccountId: string;
   destinationAccountId: string;
+  nativeAmount?: string;
+  nativeCurrency?: string;
+  fxRateUsed?: string;
+  fxRateSource?: FxRateSource | "";
+  sourceAmount?: string;
+  destinationAmount?: string;
   fundingMode: "SINGLE" | "SPLIT";
   fundingLegs: TransactionFundingLegFormValue[];
 }
@@ -65,6 +72,12 @@ export function createEmptyTransactionFormValues(
     counterparty: "",
     sourceAccountId: "",
     destinationAccountId: "",
+    nativeAmount: "",
+    nativeCurrency: "",
+    fxRateUsed: "",
+    fxRateSource: "",
+    sourceAmount: "",
+    destinationAmount: "",
     fundingMode: "SINGLE",
     fundingLegs: createEmptyFundingLegs(),
   };
@@ -88,6 +101,25 @@ export function transactionToFormValues(
     counterparty: transaction.counterparty ?? "",
     sourceAccountId: transaction.sourceAccountId ?? "",
     destinationAccountId: transaction.destinationAccountId ?? "",
+    nativeAmount:
+      transaction.nativeAmount === null || transaction.nativeAmount === undefined
+        ? ""
+        : formatNumber(transaction.nativeAmount),
+    nativeCurrency: transaction.nativeCurrency ?? "",
+    fxRateUsed:
+      transaction.fxRateUsed === null || transaction.fxRateUsed === undefined
+        ? ""
+        : formatNumber(transaction.fxRateUsed),
+    fxRateSource: transaction.fxRateSource ?? "",
+    sourceAmount:
+      transaction.sourceAmount === null || transaction.sourceAmount === undefined
+        ? ""
+        : formatNumber(transaction.sourceAmount),
+    destinationAmount:
+      transaction.destinationAmount === null ||
+      transaction.destinationAmount === undefined
+        ? ""
+        : formatNumber(transaction.destinationAmount),
     fundingMode:
       transaction.kind === "EXPENSE" &&
       (transaction.fundingLegs?.length ?? 0) >= 2
@@ -115,6 +147,11 @@ export function buildTransactionPayload(
   payload?: UpsertTransactionRequest;
   error?: string;
 } {
+  const nativeAmountInput = values.nativeAmount ?? "";
+  const nativeCurrencyInput = values.nativeCurrency?.trim() ?? "";
+  const fxRateInput = values.fxRateUsed ?? "";
+  const sourceAmountInput = values.sourceAmount ?? "";
+  const destinationAmountInput = values.destinationAmount ?? "";
   const postedAt = parsePostedAt(values.postedAt, {
     showTransactionTimes: options?.showTransactionTimes ?? true,
     existingPostedAt: options?.existingPostedAt ?? null,
@@ -139,6 +176,8 @@ export function buildTransactionPayload(
   if (values.kind === "TRANSFER") {
     const sourceAccountId = values.sourceAccountId.trim();
     const destinationAccountId = values.destinationAccountId.trim();
+    const sourceAmount = parseNumber(sourceAmountInput) ?? amount;
+    const destinationAmount = parseNumber(destinationAmountInput);
 
     if (!sourceAccountId || !destinationAccountId) {
       return {
@@ -162,6 +201,12 @@ export function buildTransactionPayload(
         notes,
         sourceAccountId,
         destinationAccountId,
+        sourceAmount,
+        destinationAmount: destinationAmount ?? undefined,
+        sourceCurrency: null,
+        destinationCurrency: null,
+        fxRateUsed: parseNumber(fxRateInput) ?? undefined,
+        fxRateSource: values.fxRateSource || undefined,
       },
     };
   }
@@ -249,19 +294,23 @@ export function buildTransactionPayload(
   }
 
   return {
-    payload: {
-      postedAt,
-      kind: values.kind,
-      amount,
-      description,
-      notes,
-      accountId,
-      direction,
-      categoryId,
-      counterparty: values.counterparty.trim() || null,
-    },
-  };
-}
+      payload: {
+        postedAt,
+        kind: values.kind,
+        amount,
+        description,
+        notes,
+        accountId,
+        direction,
+        categoryId,
+        counterparty: values.counterparty.trim() || null,
+        nativeAmount: parseNumber(nativeAmountInput) ?? undefined,
+        nativeCurrency: nativeCurrencyInput || undefined,
+        fxRateUsed: parseNumber(fxRateInput) ?? undefined,
+        fxRateSource: values.fxRateSource || undefined,
+      },
+    };
+  }
 
 export function createEmptyFundingLegs(): TransactionFundingLegFormValue[] {
   return [

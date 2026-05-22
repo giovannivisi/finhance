@@ -1136,47 +1136,55 @@ export class RecurringService {
     openingSnapshot: NetWorthSnapshot | null,
     closingSnapshot: NetWorthSnapshot | null,
   ): MonthlyReviewNetWorthExplanationResponse {
+    const reportingCurrency =
+      closingSnapshot?.baseCurrency ?? openingSnapshot?.baseCurrency ?? 'EUR';
+
     if (!openingSnapshot || !closingSnapshot) {
       return {
-        isComparableInEur: false,
-        cashflowContributionEur: null,
-        valuationMovementEur: null,
-        note: 'Add both opening and closing snapshot boundaries to explain the month in EUR.',
+        reportingCurrency,
+        isComparableInReportingCurrency: false,
+        cashflowContribution: null,
+        marketAndFxMovement: null,
+        note: `Add both opening and closing snapshot boundaries to explain the month in ${reportingCurrency}.`,
       };
     }
 
     if (openingSnapshot.isPartial || closingSnapshot.isPartial) {
       return {
-        isComparableInEur: false,
-        cashflowContributionEur: null,
-        valuationMovementEur: null,
-        note: 'Snapshot boundaries are partial, so the EUR net worth delta cannot be decomposed safely.',
+        reportingCurrency,
+        isComparableInReportingCurrency: false,
+        cashflowContribution: null,
+        marketAndFxMovement: null,
+        note: `Snapshot boundaries are partial, so the ${reportingCurrency} net worth delta cannot be decomposed safely.`,
       };
     }
 
-    const nonEurBuckets = cashflow.filter(
-      (bucket) => bucket.currency !== 'EUR',
+    const nonReportingBuckets = cashflow.filter(
+      (bucket) => bucket.currency !== reportingCurrency,
     );
-    if (nonEurBuckets.length > 0) {
+    if (nonReportingBuckets.length > 0) {
       return {
-        isComparableInEur: false,
-        cashflowContributionEur: null,
-        valuationMovementEur: null,
-        note: 'Cashflow includes non-EUR currencies, so the EUR net worth delta cannot be decomposed safely.',
+        reportingCurrency,
+        isComparableInReportingCurrency: false,
+        cashflowContribution: null,
+        marketAndFxMovement: null,
+        note: `Cashflow includes non-${reportingCurrency} currencies, so the ${reportingCurrency} net worth delta cannot be decomposed safely.`,
       };
     }
 
     const openingNetWorth = openingSnapshot.netWorthTotal.toNumber();
     const closingNetWorth = closingSnapshot.netWorthTotal.toNumber();
-    const cashflowContributionEur =
-      cashflow.find((bucket) => bucket.currency === 'EUR')?.netCashflow ?? 0;
+    const cashflowContribution =
+      cashflow.find((bucket) => bucket.currency === reportingCurrency)
+        ?.netCashflow ?? 0;
 
     return {
-      isComparableInEur: true,
-      cashflowContributionEur,
-      valuationMovementEur:
-        closingNetWorth - openingNetWorth - cashflowContributionEur,
-      note: 'Valuation movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
+      reportingCurrency,
+      isComparableInReportingCurrency: true,
+      cashflowContribution,
+      marketAndFxMovement:
+        closingNetWorth - openingNetWorth - cashflowContribution,
+      note: `Market and FX movement is the portion of the ${reportingCurrency} net worth delta not explained by ${reportingCurrency} cashflow.`,
     };
   }
 
@@ -1527,17 +1535,18 @@ export class RecurringService {
       }
     }
 
-    if (!input.netWorthExplanation.isComparableInEur) {
+    if (!input.netWorthExplanation.isComparableInReportingCurrency) {
       for (const bucket of input.cashflow.filter(
-        (cashflowBucket) => cashflowBucket.currency !== 'EUR',
+        (cashflowBucket) =>
+          cashflowBucket.currency !== input.netWorthExplanation.reportingCurrency,
       )) {
         warnings.push(
           this.createMonthlyReviewWarning({
-            code: 'NON_EUR_CASHFLOW_NOT_COMPARABLE',
+            code: 'NON_REPORTING_CURRENCY_CASHFLOW_NOT_COMPARABLE',
             severity: 'INFO',
-            title: `${bucket.currency} cashflow excluded from EUR explanation`,
+            title: `${bucket.currency} cashflow excluded from ${input.netWorthExplanation.reportingCurrency} explanation`,
             detail:
-              'This month includes non-EUR cashflow, so the net worth delta cannot be decomposed into one EUR story.',
+              `This month includes non-${input.netWorthExplanation.reportingCurrency} cashflow, so the net worth delta cannot be decomposed into one ${input.netWorthExplanation.reportingCurrency} story.`,
             amount: bucket.netCashflow,
             currency: bucket.currency,
           }),

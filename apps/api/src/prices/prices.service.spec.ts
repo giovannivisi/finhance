@@ -5,7 +5,12 @@ describe('PricesService', () => {
   let service: PricesService;
 
   beforeEach(() => {
-    service = new PricesService();
+    service = new PricesService({
+      fxRate: {
+        findUnique: jest.fn(),
+        upsert: jest.fn(),
+      },
+    } as never);
   });
 
   it('normalizes crypto symbols to a Yahoo pair', () => {

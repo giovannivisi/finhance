@@ -752,7 +752,7 @@ export default function BrokeragePageClient({
                 <p className="brokerage-summary-total-value">
                   <MoneyValue
                     value={workspace.selectedBroker.totalValue}
-                    currency={workspace.baseCurrency}
+                    currency={workspace.reportingCurrency}
                   />
                 </p>
               </div>
@@ -764,7 +764,7 @@ export default function BrokeragePageClient({
                 <p className="detail-metric-value">
                   <MoneyValue
                     value={workspace.selectedBroker.cashAvailable}
-                    currency={workspace.baseCurrency}
+                    currency={workspace.reportingCurrency}
                   />
                 </p>
               </div>
@@ -773,7 +773,7 @@ export default function BrokeragePageClient({
                 <p className="detail-metric-value">
                   <MoneyValue
                     value={workspace.selectedBroker.investedValue}
-                    currency={workspace.baseCurrency}
+                    currency={workspace.reportingCurrency}
                   />
                 </p>
               </div>
@@ -791,7 +791,7 @@ export default function BrokeragePageClient({
                 >
                   <MoneyValue
                     value={workspace.selectedBroker.unrealisedGainLoss}
-                    currency={workspace.baseCurrency}
+                    currency={workspace.reportingCurrency}
                     className={unrealisedGainLossTone}
                     style={
                       unrealisedGainLossColor
@@ -886,7 +886,7 @@ export default function BrokeragePageClient({
                           <p className="brokerage-position-value-amount">
                             <MoneyValue
                               value={position.currentValue}
-                              currency={workspace.baseCurrency}
+                              currency={workspace.reportingCurrency}
                             />
                           </p>
                           <p
@@ -895,7 +895,7 @@ export default function BrokeragePageClient({
                             P/L{" "}
                             <MoneyValue
                               value={position.unrealisedGainLoss}
-                              currency={workspace.baseCurrency}
+                              currency={workspace.reportingCurrency}
                               className={`brokerage-position-money is-${gainLossTone}`}
                             />
                           </p>
@@ -1469,7 +1469,7 @@ export default function BrokeragePageClient({
             Cash used:{" "}
             <MoneyValue
               value={buyCashUsed}
-              currency={buyForm.currency || workspace.baseCurrency}
+              currency={buyForm.currency || workspace.reportingCurrency}
             />
           </p>
         </div>
@@ -1598,7 +1598,7 @@ export default function BrokeragePageClient({
             <MoneyValue
               value={sellNetCash}
               currency={
-                selectedSellPosition?.currency ?? workspace.baseCurrency
+                selectedSellPosition?.currency ?? workspace.reportingCurrency
               }
             />
           </p>

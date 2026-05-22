@@ -127,7 +127,7 @@ export type MonthlyReviewWarningCode =
   | "MISSING_CLOSING_SNAPSHOT"
   | "PARTIAL_OPENING_SNAPSHOT"
   | "PARTIAL_CLOSING_SNAPSHOT"
-  | "NON_EUR_CASHFLOW_NOT_COMPARABLE"
+  | "NON_REPORTING_CURRENCY_CASHFLOW_NOT_COMPARABLE"
   | "UNCATEGORIZED_EXPENSES"
   | "UNCATEGORIZED_INCOME"
   | "OVER_BUDGET_CATEGORIES"
@@ -148,9 +148,10 @@ export interface MonthlyReviewWarningResponse {
 }
 
 export interface MonthlyReviewNetWorthExplanationResponse {
-  isComparableInEur: boolean;
-  cashflowContributionEur: number | null;
-  valuationMovementEur: number | null;
+  reportingCurrency: string;
+  isComparableInReportingCurrency: boolean;
+  cashflowContribution: number | null;
+  marketAndFxMovement: number | null;
   note: string | null;
 }
 
@@ -197,6 +198,7 @@ export interface MonthlyReviewCurrencyInsightResponse {
 
 export interface MonthlyReviewResponse {
   month: string;
+  reportingCurrency: string;
   cashflow: CashflowSummaryResponse;
   openingNetWorth: number | null;
   closingNetWorth: number | null;

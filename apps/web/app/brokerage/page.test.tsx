@@ -65,6 +65,7 @@ describe("BrokeragePage", () => {
     apiMock
       .mockResolvedValueOnce([buildBroker("broker-1", "IBKR")])
       .mockResolvedValueOnce({
+        reportingCurrency: "EUR",
         baseCurrency: "EUR",
         brokers: [buildBroker("broker-1", "IBKR")],
         selectedBroker: buildBroker("broker-1", "IBKR"),
@@ -87,6 +88,7 @@ describe("BrokeragePage", () => {
         buildBroker("broker-2", "Degiro"),
       ])
       .mockResolvedValueOnce({
+        reportingCurrency: "EUR",
         baseCurrency: "EUR",
         brokers: [buildBroker("broker-1", "IBKR"), buildBroker("broker-2", "Degiro")],
         selectedBroker: buildBroker("broker-1", "IBKR"),

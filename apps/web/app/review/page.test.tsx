@@ -91,6 +91,7 @@ function buildReviewResponse(): MonthlyReviewResponse {
     openingNetWorth: 10000,
     closingNetWorth: 11200,
     netWorthDelta: 1200,
+    reportingCurrency: "EUR",
     openingSnapshotDate: "2026-04-01",
     closingSnapshotDate: null,
     warnings: [
@@ -114,9 +115,10 @@ function buildReviewResponse(): MonthlyReviewResponse {
       },
     ],
     netWorthExplanation: {
-      isComparableInEur: false,
-      cashflowContributionEur: 900,
-      valuationMovementEur: 300,
+      reportingCurrency: "EUR",
+      isComparableInReportingCurrency: false,
+      cashflowContribution: 900,
+      marketAndFxMovement: 300,
       note: "One non-EUR account still limits direct comparison.",
     },
     recurringComparison: [

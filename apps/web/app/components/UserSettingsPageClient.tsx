@@ -7,7 +7,10 @@ import type {
   UserSettingsResponse,
 } from "@finhance/shared/users";
 import { apiMutation } from "@lib/api";
-import { START_PAGE_OPTIONS } from "@lib/user-settings";
+import {
+  REPORTING_CURRENCY_OPTIONS,
+  START_PAGE_OPTIONS,
+} from "@lib/user-settings";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function UserSettingsPageClient({
@@ -38,6 +41,7 @@ export default function UserSettingsPageClient({
         const payload: UpdateUserSettingsRequest = {
           showTransactionTimes: form.showTransactionTimes,
           startPage: form.startPage,
+          reportingCurrency: form.reportingCurrency,
         };
         const saved = await apiMutation<UserSettingsResponse>("/users/me/settings", {
           method: "PATCH",
@@ -124,6 +128,37 @@ export default function UserSettingsPageClient({
             }
           >
             {START_PAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
+
+      <section className="glass-card page-section">
+        <div className="page-section-heading">
+          <div>
+            <p className="section-kicker">Reporting</p>
+            <h2 className="section-title">Reporting currency</h2>
+          </div>
+        </div>
+
+        <div className="app-form-field">
+          <label htmlFor={`${fieldPrefix}-reporting-currency`}>
+            Show aggregated totals in
+          </label>
+          <select
+            id={`${fieldPrefix}-reporting-currency`}
+            value={form.reportingCurrency}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                reportingCurrency: event.target.value,
+              }))
+            }
+          >
+            {REPORTING_CURRENCY_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { AccountsService } from '@accounts/accounts.service';
+import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { CategoriesService } from '@transactions/categories.service';
 import { CreateTransactionDto } from '@transactions/dto/create-transaction.dto';
@@ -25,6 +26,7 @@ import {
   AssetKind,
   AssetType,
   CategoryType,
+  FxRateSource,
   LiabilityKind,
   Prisma,
   TransactionDirection,
@@ -78,6 +80,10 @@ interface PreparedStandardTransactionInput {
   postedAt: Date;
   amount: Prisma.Decimal;
   currency: string;
+  nativeAmount: Prisma.Decimal | null;
+  nativeCurrency: string | null;
+  fxRateUsed: Prisma.Decimal | null;
+  fxRateSource: FxRateSource | null;
   kind: 'EXPENSE' | 'INCOME' | 'ADJUSTMENT';
   direction: TransactionDirection;
   accountId: string;
@@ -89,8 +95,12 @@ interface PreparedStandardTransactionInput {
 
 interface PreparedTransferTransactionInput {
   postedAt: Date;
-  amount: Prisma.Decimal;
-  currency: string;
+  sourceAmount: Prisma.Decimal;
+  destinationAmount: Prisma.Decimal;
+  sourceCurrency: string;
+  destinationCurrency: string;
+  fxRateUsed: Prisma.Decimal | null;
+  fxRateSource: FxRateSource | null;
   description: string;
   notes: string | null;
   sourceAccountId: string;
@@ -132,6 +142,7 @@ export class TransactionsService {
     @Inject(forwardRef(() => AccountsService))
     private readonly accountsService: AccountsService,
     private readonly categoriesService: CategoriesService,
+    private readonly pricesService: PricesService,
   ) {}
 
   async findAll(
@@ -410,6 +421,10 @@ export class TransactionsService {
           categoryId: prepared.categoryId,
           amount: prepared.amount,
           currency: prepared.currency,
+          nativeAmount: prepared.nativeAmount,
+          nativeCurrency: prepared.nativeCurrency,
+          fxRateUsed: prepared.fxRateUsed,
+          fxRateSource: prepared.fxRateSource,
           direction: prepared.direction,
           kind: prepared.kind,
           description: prepared.description,
@@ -544,7 +559,7 @@ export class TransactionsService {
         await this.validateAccountCashBalance(
           ownerId,
           prepared.sourceAccountId,
-          prepared.amount,
+          prepared.sourceAmount,
           TransactionDirection.OUTFLOW,
           tx,
         );
@@ -554,8 +569,12 @@ export class TransactionsService {
           data: {
             postedAt: prepared.postedAt,
             accountId: prepared.sourceAccountId,
-            amount: prepared.amount,
-            currency: prepared.currency,
+            amount: prepared.sourceAmount,
+            currency: prepared.sourceCurrency,
+            nativeAmount: null,
+            nativeCurrency: null,
+            fxRateUsed: prepared.fxRateUsed,
+            fxRateSource: prepared.fxRateSource,
             direction: TransactionDirection.OUTFLOW,
             kind: TransactionKind.TRANSFER,
             categoryId: null,
@@ -570,8 +589,12 @@ export class TransactionsService {
           data: {
             postedAt: prepared.postedAt,
             accountId: prepared.destinationAccountId,
-            amount: prepared.amount,
-            currency: prepared.currency,
+            amount: prepared.destinationAmount,
+            currency: prepared.destinationCurrency,
+            nativeAmount: null,
+            nativeCurrency: null,
+            fxRateUsed: prepared.fxRateUsed,
+            fxRateSource: prepared.fxRateSource,
             direction: TransactionDirection.INFLOW,
             kind: TransactionKind.TRANSFER,
             categoryId: null,
@@ -586,14 +609,14 @@ export class TransactionsService {
         await this.adjustAccountCashBalance(
           ownerId,
           prepared.sourceAccountId,
-          prepared.amount,
+          prepared.sourceAmount,
           TransactionDirection.OUTFLOW,
           tx,
         );
         await this.adjustAccountCashBalance(
           ownerId,
           prepared.destinationAccountId,
-          prepared.amount,
+          prepared.destinationAmount,
           TransactionDirection.INFLOW,
           tx,
           { skipValidation: true },
@@ -658,6 +681,10 @@ export class TransactionsService {
                 categoryId: prepared.categoryId,
                 amount: leg.amount,
                 currency: prepared.currency,
+                nativeAmount: null,
+                nativeCurrency: null,
+                fxRateUsed: null,
+                fxRateSource: null,
                 direction: TransactionDirection.OUTFLOW,
                 kind: TransactionKind.EXPENSE,
                 description: prepared.description,
@@ -725,6 +752,10 @@ export class TransactionsService {
             categoryId: prepared.categoryId,
             amount: prepared.amount,
             currency: prepared.currency,
+            nativeAmount: prepared.nativeAmount,
+            nativeCurrency: prepared.nativeCurrency,
+            fxRateUsed: prepared.fxRateUsed,
+            fxRateSource: prepared.fxRateSource,
             direction: prepared.direction,
             kind: prepared.kind,
             description: prepared.description,
@@ -814,6 +845,10 @@ export class TransactionsService {
               categoryId: prepared.categoryId,
               amount: leg.amount,
               currency: prepared.currency,
+              nativeAmount: null,
+              nativeCurrency: null,
+              fxRateUsed: null,
+              fxRateSource: null,
               direction: TransactionDirection.OUTFLOW,
               kind: TransactionKind.EXPENSE,
               description: prepared.description,
@@ -886,6 +921,10 @@ export class TransactionsService {
           categoryId: prepared.categoryId,
           amount: prepared.amount,
           currency: prepared.currency,
+          nativeAmount: prepared.nativeAmount,
+          nativeCurrency: prepared.nativeCurrency,
+          fxRateUsed: prepared.fxRateUsed,
+          fxRateSource: prepared.fxRateSource,
           direction: prepared.direction,
           description: prepared.description,
           notes: prepared.notes,
@@ -1126,6 +1165,7 @@ export class TransactionsService {
       from: range.from,
       to: range.to,
       focusMonth: range.to,
+      reportingOverview: null,
       currencies: monthlyCashflow.map((bucket) =>
         this.toCashflowAnalyticsCurrency(bucket, range.to),
       ),
@@ -1146,7 +1186,7 @@ export class TransactionsService {
       await this.validateAccountCashBalance(
         ownerId,
         prepared.sourceAccountId,
-        prepared.amount,
+        prepared.sourceAmount,
         TransactionDirection.OUTFLOW,
         tx,
       );
@@ -1157,8 +1197,12 @@ export class TransactionsService {
           postedAt: prepared.postedAt,
           accountId: prepared.sourceAccountId,
           categoryId: null,
-          amount: prepared.amount,
-          currency: prepared.currency,
+          amount: prepared.sourceAmount,
+          currency: prepared.sourceCurrency,
+          nativeAmount: null,
+          nativeCurrency: null,
+          fxRateUsed: prepared.fxRateUsed,
+          fxRateSource: prepared.fxRateSource,
           direction: TransactionDirection.OUTFLOW,
           kind: TransactionKind.TRANSFER,
           description: prepared.description,
@@ -1174,8 +1218,12 @@ export class TransactionsService {
           postedAt: prepared.postedAt,
           accountId: prepared.destinationAccountId,
           categoryId: null,
-          amount: prepared.amount,
-          currency: prepared.currency,
+          amount: prepared.destinationAmount,
+          currency: prepared.destinationCurrency,
+          nativeAmount: null,
+          nativeCurrency: null,
+          fxRateUsed: prepared.fxRateUsed,
+          fxRateSource: prepared.fxRateSource,
           direction: TransactionDirection.INFLOW,
           kind: TransactionKind.TRANSFER,
           description: prepared.description,
@@ -1188,14 +1236,14 @@ export class TransactionsService {
       await this.adjustAccountCashBalance(
         ownerId,
         prepared.sourceAccountId,
-        prepared.amount,
+        prepared.sourceAmount,
         TransactionDirection.OUTFLOW,
         tx,
       );
       await this.adjustAccountCashBalance(
         ownerId,
         prepared.destinationAccountId,
-        prepared.amount,
+        prepared.destinationAmount,
         TransactionDirection.INFLOW,
         tx,
       );
@@ -1240,6 +1288,10 @@ export class TransactionsService {
             categoryId: prepared.categoryId,
             amount: leg.amount,
             currency: prepared.currency,
+            nativeAmount: null,
+            nativeCurrency: null,
+            fxRateUsed: null,
+            fxRateSource: null,
             direction: TransactionDirection.OUTFLOW,
             kind: TransactionKind.EXPENSE,
             description: prepared.description,
@@ -1368,10 +1420,69 @@ export class TransactionsService {
     const postedAt = this.parsePostedAt(dto.postedAt);
     this.assertPostedAtAllowedForAccount(account, postedAt);
 
+    const normalizedNativeCurrency = dto.nativeCurrency
+      ? dto.nativeCurrency.trim().toUpperCase()
+      : null;
+    let nativeAmount: Prisma.Decimal | null = null;
+    let nativeCurrency: string | null = null;
+    let fxRateUsed: Prisma.Decimal | null = null;
+    let fxRateSource: FxRateSource | null = null;
+
+    if (normalizedNativeCurrency && normalizedNativeCurrency !== account.currency) {
+      nativeCurrency = normalizedNativeCurrency;
+      nativeAmount =
+        dto.nativeAmount !== undefined && dto.nativeAmount !== null
+          ? this.toDecimal(dto.nativeAmount)
+          : null;
+
+      if (!nativeAmount) {
+        throw new BadRequestException(
+          'nativeAmount is required when nativeCurrency differs from the account currency.',
+        );
+      }
+
+      if (dto.fxRateUsed !== undefined && dto.fxRateUsed !== null) {
+        fxRateUsed = this.toDecimal(dto.fxRateUsed);
+        fxRateSource = dto.fxRateSource ?? FxRateSource.MANUAL;
+        await this.pricesService.saveManualFxRate(
+          ownerId,
+          postedAt,
+          nativeCurrency,
+          account.currency,
+          fxRateUsed,
+        );
+      } else {
+        fxRateUsed = await this.pricesService.getFxRateForDate(
+          ownerId,
+          postedAt,
+          nativeCurrency,
+          account.currency,
+        );
+        fxRateSource = fxRateUsed ? FxRateSource.LIVE : null;
+      }
+
+      if (!fxRateUsed) {
+        throw new BadRequestException(
+          `No FX rate is available for ${nativeCurrency} to ${account.currency}.`,
+        );
+      }
+
+      const expectedSettledAmount = nativeAmount.mul(fxRateUsed);
+      if (!this.decimalsClose(expectedSettledAmount, this.toDecimal(dto.amount))) {
+        throw new BadRequestException(
+          'The settled amount must match the native amount multiplied by the FX rate.',
+        );
+      }
+    }
+
     return {
       postedAt,
       amount: this.toDecimal(dto.amount),
       currency: account.currency,
+      nativeAmount,
+      nativeCurrency,
+      fxRateUsed,
+      fxRateSource,
       kind: dto.kind,
       direction: dto.direction,
       accountId: account.id,
@@ -1564,20 +1675,68 @@ export class TransactionsService {
       current?.destinationAccountId,
     );
 
-    if (sourceAccount.currency !== destinationAccount.currency) {
-      throw new BadRequestException(
-        'Transfers require source and destination accounts with the same currency.',
-      );
-    }
-
     const postedAt = this.parsePostedAt(dto.postedAt);
     this.assertPostedAtAllowedForAccount(sourceAccount, postedAt);
     this.assertPostedAtAllowedForAccount(destinationAccount, postedAt);
 
+    const sourceAmount = this.toDecimal(dto.sourceAmount ?? dto.amount);
+    let destinationAmount = this.toDecimal(dto.destinationAmount ?? dto.amount);
+    const sourceCurrency = sourceAccount.currency;
+    const destinationCurrency = destinationAccount.currency;
+    let fxRateUsed: Prisma.Decimal | null = null;
+    let fxRateSource: FxRateSource | null = null;
+
+    if (sourceCurrency !== destinationCurrency) {
+      if (dto.fxRateUsed !== undefined && dto.fxRateUsed !== null) {
+        fxRateUsed = this.toDecimal(dto.fxRateUsed);
+        fxRateSource = dto.fxRateSource ?? FxRateSource.MANUAL;
+        await this.pricesService.saveManualFxRate(
+          ownerId,
+          postedAt,
+          sourceCurrency,
+          destinationCurrency,
+          fxRateUsed,
+        );
+      } else {
+        fxRateUsed = await this.pricesService.getFxRateForDate(
+          ownerId,
+          postedAt,
+          sourceCurrency,
+          destinationCurrency,
+        );
+        fxRateSource = fxRateUsed ? FxRateSource.LIVE : null;
+      }
+
+      if (!fxRateUsed) {
+        throw new BadRequestException(
+          `No FX rate is available for ${sourceCurrency} to ${destinationCurrency}.`,
+        );
+      }
+
+      const computedDestinationAmount = sourceAmount.mul(fxRateUsed);
+      if (dto.destinationAmount !== undefined && dto.destinationAmount !== null) {
+        if (!this.decimalsClose(computedDestinationAmount, destinationAmount)) {
+          throw new BadRequestException(
+            'The destination amount must match the source amount multiplied by the FX rate.',
+          );
+        }
+      } else {
+        destinationAmount = computedDestinationAmount;
+      }
+    } else {
+      fxRateUsed = new Prisma.Decimal(1);
+      fxRateSource = dto.fxRateSource ?? null;
+      destinationAmount = sourceAmount;
+    }
+
     return {
       postedAt,
-      amount: this.toDecimal(dto.amount),
-      currency: sourceAccount.currency,
+      sourceAmount,
+      destinationAmount,
+      sourceCurrency,
+      destinationCurrency,
+      fxRateUsed,
+      fxRateSource,
       description: this.requireText(
         dto.description,
         'Description is required.',
@@ -2950,6 +3109,14 @@ export class TransactionsService {
 
   private toDecimal(value: number): Prisma.Decimal {
     return new Prisma.Decimal(value.toString());
+  }
+
+  private decimalsClose(
+    left: Prisma.Decimal,
+    right: Prisma.Decimal,
+    tolerance = new Prisma.Decimal('0.000001'),
+  ): boolean {
+    return left.sub(right).abs().lte(tolerance);
   }
 
   /**

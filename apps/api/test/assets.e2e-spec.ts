@@ -84,6 +84,8 @@ function createSnapshot(
     assetsTotal: new Prisma.Decimal('72'),
     liabilitiesTotal: new Prisma.Decimal('0'),
     netWorthTotal: new Prisma.Decimal('72'),
+    nativeAssetTotals: null,
+    nativeLiabilityTotals: null,
     unavailableCount: 0,
     isPartial: false,
     createdAt: now,

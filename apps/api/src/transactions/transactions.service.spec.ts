@@ -139,6 +139,10 @@ describe('TransactionsService', () => {
     getAssignableCategory: jest.Mock;
     findMatchingExpenseSecondaryCategory: jest.Mock;
   };
+  let prices: {
+    getFxRateForDate: jest.Mock;
+    saveManualFxRate: jest.Mock;
+  };
 
   beforeEach(() => {
     prisma = {
@@ -192,10 +196,16 @@ describe('TransactionsService', () => {
       findMatchingExpenseSecondaryCategory: jest.fn().mockResolvedValue(null),
     };
 
+    prices = {
+      getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
+      saveManualFxRate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
+    };
+
     service = new TransactionsService(
       prisma as never,
       accounts as unknown as AccountsService,
       categories as unknown as CategoriesService,
+      prices as never,
     );
   });
 
@@ -402,23 +412,60 @@ describe('TransactionsService', () => {
     ).rejects.toThrow('same currency');
   });
 
-  it('enforces same-currency transfers', async () => {
+  it('creates cross-currency transfers with live FX by default', async () => {
     accounts.getAssignableAccount
       .mockResolvedValueOnce(createAccount({ id: 'source', currency: 'EUR' }))
       .mockResolvedValueOnce(
         createAccount({ id: 'destination', currency: 'USD' }),
       );
-
-    await expect(
-      service.create(OWNER_ID, {
-        postedAt: '2026-04-17T09:00:00.000Z',
+    prices.getFxRateForDate.mockResolvedValueOnce(new Prisma.Decimal('1.2'));
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransactionRow({
+        id: 'row-1',
+        accountId: 'source',
+        amount: new Prisma.Decimal('25'),
+        currency: 'EUR',
+        categoryId: null,
+        direction: TransactionDirection.OUTFLOW,
         kind: TransactionKind.TRANSFER,
-        amount: 25,
         description: 'Transfer',
-        sourceAccountId: 'source',
-        destinationAccountId: 'destination',
+        counterparty: null,
+        transferGroupId: 'transfer_group',
+        fxRateUsed: new Prisma.Decimal('1.2'),
+        fxRateSource: 'LIVE',
       }),
-    ).rejects.toThrow('same currency');
+      createTransactionRow({
+        id: 'row-2',
+        accountId: 'destination',
+        amount: new Prisma.Decimal('30'),
+        currency: 'USD',
+        categoryId: null,
+        direction: TransactionDirection.INFLOW,
+        kind: TransactionKind.TRANSFER,
+        description: 'Transfer',
+        counterparty: null,
+        transferGroupId: 'transfer_group',
+        fxRateUsed: new Prisma.Decimal('1.2'),
+        fxRateSource: 'LIVE',
+      }),
+    ]);
+
+    const result = await service.create(OWNER_ID, {
+      postedAt: '2026-04-17T09:00:00.000Z',
+      kind: TransactionKind.TRANSFER,
+      amount: 25,
+      description: 'Transfer',
+      sourceAccountId: 'source',
+      destinationAccountId: 'destination',
+    });
+
+    expect(result.entryType).toBe('TRANSFER');
+    expect(prices.getFxRateForDate).toHaveBeenCalledWith(
+      OWNER_ID,
+      new Date('2026-04-17T09:00:00.000Z'),
+      'EUR',
+      'USD',
+    );
   });
 
   it('rejects non-transfer transactions before the account opening-balance date', async () => {
@@ -1639,6 +1686,7 @@ describe('TransactionsService', () => {
       from: '2026-04',
       to: '2026-05',
       focusMonth: '2026-05',
+      reportingOverview: null,
       currencies: [
         {
           currency: 'EUR',

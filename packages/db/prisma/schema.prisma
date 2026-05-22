@@ -37,6 +37,7 @@ model User {
   brokerageOperations             BrokerageOperation[]
   portfolioAssetKindTargets       PortfolioAssetKindTarget[]
   portfolioSecurityTargets        PortfolioSecurityTarget[]
+  fxRates                         FxRate[]
 
   @@map("users")
 }
@@ -269,6 +270,8 @@ model NetWorthSnapshot {
   assetsTotal      Decimal  @db.Decimal(20, 10)
   liabilitiesTotal Decimal  @db.Decimal(20, 10)
   netWorthTotal    Decimal  @db.Decimal(20, 10)
+  nativeAssetTotals Json?
+  nativeLiabilityTotals Json?
   unavailableCount Int      @default(0)
   isPartial        Boolean  @default(false)
   createdAt        DateTime @default(now())
@@ -289,6 +292,10 @@ model Transaction {
   categoryId               String?
   amount                   Decimal                   @db.Decimal(20, 10)
   currency                 String
+  nativeAmount             Decimal?                  @db.Decimal(20, 10)
+  nativeCurrency           String?
+  fxRateUsed               Decimal?                  @db.Decimal(20, 10)
+  fxRateSource             FxRateSource?
   direction                TransactionDirection
   kind                     TransactionKind
   description              String
@@ -316,6 +323,22 @@ model Transaction {
   @@index([userId, transferGroupId])
   @@index([userId, splitGroupId])
   @@index([userId, recurringRuleId, recurringOccurrenceMonth])
+}
+
+model FxRate {
+  id           String   @id @default(cuid())
+  userId       String
+  rateDate     DateTime @db.Date
+  fromCurrency String
+  toCurrency   String
+  rate         Decimal  @db.Decimal(20, 10)
+  source       FxRateSource
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, rateDate, fromCurrency, toCurrency])
+  @@index([userId, fromCurrency, toCurrency, rateDate])
 }
 
 model BrokerageOperation {
@@ -509,6 +532,11 @@ enum BrokerageOperationKind {
 enum TransactionDirection {
   INFLOW
   OUTFLOW
+}
+
+enum FxRateSource {
+  LIVE
+  MANUAL
 }
 
 enum RecurringOccurrenceStatus {

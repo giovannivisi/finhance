@@ -3,7 +3,17 @@ import type { TransactionResponse } from '@finhance/shared';
 import { getCategoryHierarchyMetadata } from '@transactions/category-hierarchy';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
 
-function decimalToNumber(value: Prisma.Decimal): number {
+function decimalToRequiredNumber(value: Prisma.Decimal): number {
+  return value.toNumber();
+}
+
+function decimalToOptionalNumber(
+  value: Prisma.Decimal | null | undefined,
+): number | null {
+  if (value == null) {
+    return null;
+  }
+
   return value.toNumber();
 }
 
@@ -17,7 +27,7 @@ export function toTransactionResponse(
     return {
       id: row.id,
       postedAt: row.postedAt.toISOString(),
-      amount: decimalToNumber(row.amount),
+      amount: decimalToRequiredNumber(row.amount),
       currency: row.currency,
       kind: row.kind,
       accountId: row.accountId,
@@ -32,6 +42,14 @@ export function toTransactionResponse(
       counterparty: row.counterparty,
       sourceAccountId: null,
       destinationAccountId: null,
+      nativeAmount: decimalToOptionalNumber(row.nativeAmount),
+      nativeCurrency: row.nativeCurrency,
+      fxRateUsed: decimalToOptionalNumber(row.fxRateUsed),
+      fxRateSource: row.fxRateSource,
+      sourceAmount: null,
+      destinationAmount: null,
+      sourceCurrency: null,
+      destinationCurrency: null,
       splitGroupId: null,
       fundingLegs: null,
       recurringRuleId: row.recurringRuleId ?? null,
@@ -56,7 +74,7 @@ export function toTransactionResponse(
     return {
       id: entry.transferGroupId,
       postedAt: entry.outflow.postedAt.toISOString(),
-      amount: decimalToNumber(entry.outflow.amount),
+      amount: decimalToRequiredNumber(entry.outflow.amount),
       currency: entry.outflow.currency,
       kind: 'TRANSFER',
       accountId: null,
@@ -71,6 +89,16 @@ export function toTransactionResponse(
       counterparty: null,
       sourceAccountId: entry.outflow.accountId,
       destinationAccountId: entry.inflow.accountId,
+      nativeAmount: null,
+      nativeCurrency: null,
+      fxRateUsed: decimalToOptionalNumber(
+        entry.outflow.fxRateUsed ?? entry.inflow.fxRateUsed,
+      ),
+      fxRateSource: entry.outflow.fxRateSource ?? entry.inflow.fxRateSource,
+      sourceAmount: decimalToRequiredNumber(entry.outflow.amount),
+      destinationAmount: decimalToRequiredNumber(entry.inflow.amount),
+      sourceCurrency: entry.outflow.currency,
+      destinationCurrency: entry.inflow.currency,
       splitGroupId: null,
       fundingLegs: null,
       recurringRuleId: entry.outflow.recurringRuleId ?? null,
@@ -104,7 +132,7 @@ export function toTransactionResponse(
     id: entry.splitGroupId,
     postedAt: firstRow.postedAt.toISOString(),
     amount: entry.rows.reduce(
-      (sum, row) => sum + decimalToNumber(row.amount),
+      (sum, row) => sum + decimalToRequiredNumber(row.amount),
       0,
     ),
     currency: firstRow.currency,
@@ -121,10 +149,18 @@ export function toTransactionResponse(
     counterparty: firstRow.counterparty,
     sourceAccountId: null,
     destinationAccountId: null,
+    nativeAmount: null,
+    nativeCurrency: null,
+    fxRateUsed: null,
+    fxRateSource: null,
+    sourceAmount: null,
+    destinationAmount: null,
+    sourceCurrency: null,
+    destinationCurrency: null,
     splitGroupId: entry.splitGroupId,
     fundingLegs: entry.rows.map((row) => ({
       accountId: row.accountId,
-      amount: decimalToNumber(row.amount),
+      amount: decimalToRequiredNumber(row.amount),
       currency: row.currency,
     })),
     recurringRuleId: firstRow.recurringRuleId ?? null,

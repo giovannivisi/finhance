@@ -256,13 +256,13 @@ export default async function ReviewPage({
             </div>
             <span
               className={`status-chip ${
-                review.netWorthExplanation.isComparableInEur
+                review.netWorthExplanation.isComparableInReportingCurrency
                   ? "is-success"
                   : "is-warning"
               }`}
             >
-              {review.netWorthExplanation.isComparableInEur
-                ? "Comparable in EUR"
+              {review.netWorthExplanation.isComparableInReportingCurrency
+                ? `Comparable in ${review.netWorthExplanation.reportingCurrency}`
                 : "Limited explanation"}
             </span>
           </div>
@@ -305,7 +305,7 @@ export default async function ReviewPage({
             <div className="summary-card">
               <p className="summary-card-label">Comparability</p>
               <p className="summary-card-value">
-                {review.netWorthExplanation.isComparableInEur
+                {review.netWorthExplanation.isComparableInReportingCurrency
                   ? "Comparable"
                   : "Limited"}
               </p>
@@ -317,10 +317,11 @@ export default async function ReviewPage({
             <div className="summary-card">
               <p className="summary-card-label">Cashflow contribution</p>
               <p className="summary-card-value">
-                {review.netWorthExplanation.cashflowContributionEur === null
+                {review.netWorthExplanation.cashflowContribution === null
                   ? "Unavailable"
                   : formatCurrency(
-                      review.netWorthExplanation.cashflowContributionEur,
+                      review.netWorthExplanation.cashflowContribution,
+                      review.netWorthExplanation.reportingCurrency,
                     )}
               </p>
               <p className="summary-card-note">
@@ -328,12 +329,13 @@ export default async function ReviewPage({
               </p>
             </div>
             <div className="summary-card">
-              <p className="summary-card-label">Valuation movement</p>
+              <p className="summary-card-label">Market and FX movement</p>
               <p className="summary-card-value">
-                {review.netWorthExplanation.valuationMovementEur === null
+                {review.netWorthExplanation.marketAndFxMovement === null
                   ? "Unavailable"
                   : formatCurrency(
-                      review.netWorthExplanation.valuationMovementEur,
+                      review.netWorthExplanation.marketAndFxMovement,
+                      review.netWorthExplanation.reportingCurrency,
                     )}
               </p>
               <p className="summary-card-note">

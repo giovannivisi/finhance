@@ -169,7 +169,7 @@ export class BrokerageService {
     const totalBrokerageValue = this.sumEffectiveValues(selectedAssets);
     const allocation = this.buildAllocationSnapshot({
       assets: allAssets,
-      baseCurrency: dashboard.baseCurrency,
+      reportingCurrency: dashboard.reportingCurrency,
       portfolioTotal,
       assetKindTargets,
       securityTargets,
@@ -180,7 +180,7 @@ export class BrokerageService {
         totalBrokerageValue,
         portfolioTotal,
         securityTargets,
-        baseCurrency: dashboard.baseCurrency,
+        reportingCurrency: dashboard.reportingCurrency,
       }),
     );
     const mirroredTransactionIds = new Set(
@@ -207,7 +207,7 @@ export class BrokerageService {
     );
 
     return {
-      baseCurrency: dashboard.baseCurrency,
+      reportingCurrency: dashboard.reportingCurrency,
       brokers: summaries,
       selectedBroker,
       cashReconciliation: cashReconciliation
@@ -656,7 +656,7 @@ export class BrokerageService {
 
   private buildAllocationSnapshot(input: {
     assets: DashboardAssetView[];
-    baseCurrency: string;
+    reportingCurrency: string;
     portfolioTotal: number;
     assetKindTargets: { kind: AssetKind; targetPercent: Prisma.Decimal }[];
     securityTargets: SecurityTargetModel[];
@@ -854,7 +854,7 @@ export class BrokerageService {
     totalBrokerageValue: number;
     portfolioTotal: number;
     securityTargets: SecurityTargetModel[];
-    baseCurrency: string;
+    reportingCurrency: string;
   }): BrokeragePositionResponse {
     const asset = input.asset;
     const currentValue = asset.currentValue ?? asset.referenceValue ?? null;

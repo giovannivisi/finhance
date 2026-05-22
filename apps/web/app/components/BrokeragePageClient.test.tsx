@@ -59,6 +59,7 @@ vi.mock("@components/Modal", () => ({
 
 function buildWorkspace() {
   return {
+    reportingCurrency: "EUR",
     baseCurrency: "EUR",
     brokers: [
       {

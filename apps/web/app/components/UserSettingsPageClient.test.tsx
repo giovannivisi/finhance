@@ -29,6 +29,7 @@ describe("UserSettingsPageClient", () => {
     mockedApiMutation.mockResolvedValue({
       showTransactionTimes: false,
       startPage: "BROKERAGE",
+      reportingCurrency: "USD",
     });
 
     render(
@@ -36,6 +37,7 @@ describe("UserSettingsPageClient", () => {
         initialSettings={{
           showTransactionTimes: true,
           startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
         }}
       />,
     );
@@ -55,6 +57,7 @@ describe("UserSettingsPageClient", () => {
         body: JSON.stringify({
           showTransactionTimes: false,
           startPage: "BROKERAGE",
+          reportingCurrency: "EUR",
         }),
       });
     });

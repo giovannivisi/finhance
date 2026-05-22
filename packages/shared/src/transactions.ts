@@ -26,6 +26,7 @@ export interface CategoryResponse {
 export type TransactionKind = "EXPENSE" | "INCOME" | "TRANSFER" | "ADJUSTMENT";
 
 export type TransactionDirection = "INFLOW" | "OUTFLOW";
+export type FxRateSource = "LIVE" | "MANUAL";
 
 interface BaseUpsertTransactionRequest {
   postedAt: string;
@@ -47,6 +48,10 @@ export interface UpsertStandardTransactionRequest
   direction: TransactionDirection;
   categoryId?: string | null;
   counterparty?: string | null;
+  nativeAmount?: number | null;
+  nativeCurrency?: string | null;
+  fxRateUsed?: number | null;
+  fxRateSource?: FxRateSource | null;
 }
 
 export interface UpsertSplitExpenseTransactionRequest
@@ -62,6 +67,12 @@ export interface UpsertTransferTransactionRequest
   kind: "TRANSFER";
   sourceAccountId: string;
   destinationAccountId: string;
+  sourceAmount?: number | null;
+  destinationAmount?: number | null;
+  sourceCurrency?: string | null;
+  destinationCurrency?: string | null;
+  fxRateUsed?: number | null;
+  fxRateSource?: FxRateSource | null;
 }
 
 export type UpsertTransactionRequest =
@@ -93,6 +104,14 @@ export interface TransactionResponse {
   counterparty: string | null;
   sourceAccountId: string | null;
   destinationAccountId: string | null;
+  nativeAmount?: number | null;
+  nativeCurrency?: string | null;
+  fxRateUsed?: number | null;
+  fxRateSource?: FxRateSource | null;
+  sourceAmount?: number | null;
+  destinationAmount?: number | null;
+  sourceCurrency?: string | null;
+  destinationCurrency?: string | null;
   splitGroupId?: string | null;
   fundingLegs?: TransactionFundingLegResponse[] | null;
   recurringRuleId: string | null;
@@ -206,10 +225,21 @@ export interface CashflowAnalyticsCurrencyResponse {
   incomeMonthOverMonthChanges: CashflowAnalyticsMonthOverMonthChangeResponse[];
 }
 
+export interface CashflowAnalyticsReportingOverviewResponse {
+  reportingCurrency: string;
+  averageMonthlyExpense: number;
+  averageMonthlyIncome: number;
+  focusMonthIncomeTotal: number;
+  focusMonthExpenseTotal: number;
+  focusMonthNetCashflow: number;
+  monthlySeries: CashflowAnalyticsMonthPointResponse[];
+}
+
 export interface CashflowAnalyticsResponse {
   from: string;
   to: string;
   focusMonth: string;
+  reportingOverview?: CashflowAnalyticsReportingOverviewResponse | null;
   currencies: CashflowAnalyticsCurrencyResponse[];
 }
 

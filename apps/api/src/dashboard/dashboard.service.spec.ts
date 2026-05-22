@@ -8,6 +8,7 @@ function createDashboard(
   overrides: Partial<DashboardResponse> = {},
 ): DashboardResponse {
   return {
+    reportingCurrency: 'EUR',
     baseCurrency: 'EUR',
     assets: [
       {
@@ -63,6 +64,8 @@ function createSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     assetsTotal: new Prisma.Decimal('100'),
     liabilitiesTotal: new Prisma.Decimal('25'),
     netWorthTotal: new Prisma.Decimal('75'),
+    nativeAssetTotals: null,
+    nativeLiabilityTotals: null,
     unavailableCount: 0,
     isPartial: false,
     createdAt: now,

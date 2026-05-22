@@ -13,6 +13,7 @@ export type UserStartPage = (typeof USER_START_PAGE_VALUES)[number];
 export interface UserSettings {
   showTransactionTimes: boolean;
   startPage: UserStartPage;
+  reportingCurrency: string;
 }
 
 export interface UserSettingsResponse extends UserSettings {}
@@ -20,11 +21,13 @@ export interface UserSettingsResponse extends UserSettings {}
 export interface UpdateUserSettingsRequest {
   showTransactionTimes?: boolean;
   startPage?: UserStartPage;
+  reportingCurrency?: string;
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   showTransactionTimes: true,
   startPage: "DASHBOARD",
+  reportingCurrency: "EUR",
 };
 
 export function isUserStartPage(value: unknown): value is UserStartPage {
@@ -45,5 +48,10 @@ export function normalizeUserSettings(
     startPage: isUserStartPage(value?.startPage)
       ? value.startPage
       : DEFAULT_USER_SETTINGS.startPage,
+    reportingCurrency:
+      typeof value?.reportingCurrency === "string" &&
+      value.reportingCurrency.trim().length > 0
+        ? value.reportingCurrency.trim().toUpperCase()
+        : DEFAULT_USER_SETTINGS.reportingCurrency,
   };
 }

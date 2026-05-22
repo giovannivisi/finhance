@@ -97,8 +97,19 @@ export interface MonthlyBudgetCurrencySummaryResponse {
   unbudgetedCategories: MonthlyBudgetUnbudgetedCategoryResponse[];
 }
 
+export interface MonthlyBudgetReportingOverviewResponse {
+  reportingCurrency: string;
+  budgetTotal: number;
+  spentTotal: number;
+  remainingTotal: number;
+  overBudgetTotal: number;
+  unbudgetedExpenseTotal: number;
+  uncategorizedExpenseTotal: number;
+}
+
 export interface MonthlyBudgetResponse {
   month: string;
   includeArchivedCategories: boolean;
+  reportingOverview?: MonthlyBudgetReportingOverviewResponse | null;
   currencies: MonthlyBudgetCurrencySummaryResponse[];
 }

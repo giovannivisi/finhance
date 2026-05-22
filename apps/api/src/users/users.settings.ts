@@ -13,6 +13,7 @@ export const USER_START_PAGE_VALUES = [
 export const DEFAULT_USER_SETTINGS: UserSettingsResponse = {
   showTransactionTimes: true,
   startPage: 'DASHBOARD',
+  reportingCurrency: 'EUR',
 };
 
 export function isUserStartPage(value: unknown): value is UserStartPage {
@@ -33,5 +34,10 @@ export function normalizeUserSettings(
     startPage: isUserStartPage(value?.startPage)
       ? value.startPage
       : DEFAULT_USER_SETTINGS.startPage,
+    reportingCurrency:
+      typeof value?.reportingCurrency === 'string' &&
+      value.reportingCurrency.trim().length > 0
+        ? value.reportingCurrency.trim().toUpperCase()
+        : DEFAULT_USER_SETTINGS.reportingCurrency,
   };
 }

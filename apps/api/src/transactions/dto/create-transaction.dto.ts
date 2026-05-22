@@ -16,9 +16,14 @@ import {
 } from 'class-validator';
 import {
   TransactionDirection as PrismaTransactionDirection,
+  FxRateSource as PrismaFxRateSource,
   TransactionKind as PrismaTransactionKind,
 } from '@finhance/db';
-import type { TransactionDirection, TransactionKind } from '@finhance/shared';
+import type {
+  FxRateSource,
+  TransactionDirection,
+  TransactionKind,
+} from '@finhance/shared';
 
 function trimStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() : value;
@@ -106,4 +111,43 @@ export class CreateTransactionDto {
   @ValidateNested({ each: true })
   @Type(() => SplitTransactionFundingLegDto)
   fundingLegs?: SplitTransactionFundingLegDto[] | null;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  nativeAmount?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @Transform(trimOptionalStringValue)
+  nativeCurrency?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  fxRateUsed?: number | null;
+
+  @IsOptional()
+  @IsEnum(PrismaFxRateSource)
+  fxRateSource?: FxRateSource | null;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  sourceAmount?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  destinationAmount?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @Transform(trimOptionalStringValue)
+  sourceCurrency?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Transform(trimOptionalStringValue)
+  destinationCurrency?: string | null;
 }

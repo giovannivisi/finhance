@@ -33,6 +33,10 @@ test("buildTransactionPayload creates income payloads", () => {
     direction: "INFLOW",
     categoryId: "category-1",
     counterparty: "Employer",
+    nativeAmount: undefined,
+    nativeCurrency: undefined,
+    fxRateUsed: undefined,
+    fxRateSource: undefined,
   });
 });
 
@@ -64,6 +68,12 @@ test("buildTransactionPayload creates transfer payloads", () => {
     notes: null,
     sourceAccountId: "account-a",
     destinationAccountId: "account-b",
+    sourceAmount: 25,
+    destinationAmount: undefined,
+    sourceCurrency: null,
+    destinationCurrency: null,
+    fxRateUsed: undefined,
+    fxRateSource: undefined,
   });
 });
 

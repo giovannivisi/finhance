@@ -72,7 +72,8 @@ export interface DashboardSummary {
 }
 
 export interface DashboardResponse {
-  baseCurrency: string;
+  reportingCurrency: string;
+  baseCurrency?: string;
   assets: DashboardAssetResponse[];
   summary: DashboardSummary;
   assetKindOrder: string[];

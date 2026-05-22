@@ -62,5 +62,10 @@ function toUserSettingsRecord(
         : undefined,
     startPage:
       isUserStartPage(candidate.startPage) ? candidate.startPage : undefined,
+    reportingCurrency:
+      typeof candidate.reportingCurrency === 'string' &&
+      candidate.reportingCurrency.trim().length > 0
+        ? candidate.reportingCurrency.trim().toUpperCase()
+        : undefined,
   };
 }

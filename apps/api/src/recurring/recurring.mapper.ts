@@ -160,6 +160,7 @@ export function toMonthlyReviewResponse(input: {
 
   return {
     month: input.month,
+    reportingCurrency: input.netWorthExplanation.reportingCurrency,
     cashflow: input.cashflow,
     openingNetWorth,
     closingNetWorth,

@@ -16,8 +16,11 @@ export class DashboardService {
   async getDashboard(ownerId: string): Promise<DashboardResponse> {
     const dashboard = await this.assetsService.getDashboard(ownerId);
     const [latestSnapshot, hasTodaySnapshot] = await Promise.all([
-      this.snapshotsService.findLatest(ownerId, dashboard.baseCurrency),
-      this.snapshotsService.hasSnapshotForDate(ownerId, dashboard.baseCurrency),
+      this.snapshotsService.findLatest(ownerId, dashboard.reportingCurrency),
+      this.snapshotsService.hasSnapshotForDate(
+        ownerId,
+        dashboard.reportingCurrency,
+      ),
     ]);
 
     if (!hasTodaySnapshot) {

@@ -75,7 +75,8 @@ export interface PortfolioAllocationSnapshotResponse {
 }
 
 export interface BrokerageWorkspaceResponse {
-  baseCurrency: string;
+  reportingCurrency: string;
+  baseCurrency?: string;
   brokers: BrokerageAccountSummaryResponse[];
   selectedBroker: BrokerageAccountSummaryResponse;
   cashReconciliation: AccountReconciliationResponse | null;

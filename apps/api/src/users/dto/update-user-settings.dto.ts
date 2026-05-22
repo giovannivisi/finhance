@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
 import type { TransformFnParams } from 'class-transformer';
-import { IsBoolean, IsIn, IsOptional } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, Matches } from 'class-validator';
 import type { UpdateUserSettingsRequest, UserStartPage } from '@finhance/shared';
 import { USER_START_PAGE_VALUES } from '@/users/users.settings';
 
@@ -41,4 +41,11 @@ export class UpdateUserSettingsDto implements UpdateUserSettingsRequest {
   @Transform(trimOptionalStringValue)
   @IsIn(USER_START_PAGE_VALUES)
   startPage?: UserStartPage;
+
+  @IsOptional()
+  @Transform(trimOptionalStringValue)
+  @Matches(/^[A-Za-z]{3}$/, {
+    message: 'reportingCurrency must be a 3-letter currency code',
+  })
+  reportingCurrency?: string;
 }

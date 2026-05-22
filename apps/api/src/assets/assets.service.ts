@@ -19,7 +19,7 @@ import {
 } from '@finhance/db';
 import { toAssetResponse } from '@assets/assets.mapper';
 import {
-  BASE_CURRENCY,
+  DEFAULT_REPORTING_CURRENCY,
   MARKET_KINDS,
   REFRESH_COOLDOWN_MS,
   VALUATION_STALE_MS,
@@ -97,15 +97,39 @@ export class AssetsService {
       }),
       this.prisma.user.findUnique({
         where: { id: ownerId },
-        select: { assetKindOrder: true },
+        select: { assetKindOrder: true, userSettings: true },
       }),
     ]);
     const now = new Date();
-    const views = assets.map((asset) => this.toDashboardAsset(asset, now));
+    const reportingCurrency = this.resolveReportingCurrency(user?.userSettings);
+    const fxCurrencies = [
+      ...new Set(
+        assets
+          .map((asset) => asset.currency)
+          .filter((currency) => currency !== reportingCurrency),
+      ),
+    ];
+    const fxRates = new Map<string, Prisma.Decimal | null>();
+    await Promise.all(
+      fxCurrencies.map(async (currency) => {
+        fxRates.set(
+          currency,
+          await this.pricesService.getFxRateForDate(
+            ownerId,
+            now,
+            currency,
+            reportingCurrency,
+          ),
+        );
+      }),
+    );
+    const views = assets.map((asset) =>
+      this.toDashboardAsset(asset, now, reportingCurrency, fxRates),
+    );
     const summary = this.buildSummary(views);
 
     return {
-      baseCurrency: BASE_CURRENCY,
+      reportingCurrency,
       assets: views,
       summary,
       assetKindOrder: Array.isArray(user?.assetKindOrder)
@@ -157,7 +181,7 @@ export class AssetsService {
             }
           }
 
-          if (asset.currency !== BASE_CURRENCY) {
+          if (asset.currency !== DEFAULT_REPORTING_CURRENCY) {
             fxCurrencies.add(asset.currency);
           }
         }
@@ -191,10 +215,14 @@ export class AssetsService {
         await Promise.all(
           Array.from(fxCurrencies).map(async (currency) => {
             fxResults.set(
-              currency,
-              await this.pricesService.getFxRate(currency, BASE_CURRENCY, {
-                forceRefresh: true,
-              }),
+                currency,
+                await this.pricesService.getFxRate(
+                  currency,
+                  DEFAULT_REPORTING_CURRENCY,
+                  {
+                  forceRefresh: true,
+                  },
+                ),
             );
           }),
         );
@@ -230,7 +258,7 @@ export class AssetsService {
             shouldUpdate = true;
           }
 
-          if (asset.currency === BASE_CURRENCY) {
+          if (asset.currency === DEFAULT_REPORTING_CURRENCY) {
             if (asset.lastFxRate !== null || asset.lastFxRateAt !== null) {
               data.lastFxRate = null;
               data.lastFxRateAt = null;
@@ -352,7 +380,7 @@ export class AssetsService {
               lastPriceAt: null,
             }
           : {}),
-        ...(shouldClearFx || prepared.currency === BASE_CURRENCY
+        ...(shouldClearFx || prepared.currency === DEFAULT_REPORTING_CURRENCY
           ? {
               lastFxRate: null,
               lastFxRateAt: null,
@@ -483,7 +511,7 @@ export class AssetsService {
     dto: CreateAssetDto | UpdateAssetDto,
   ): PreparedAssetInput {
     const currency = this.pricesService.normalizeCurrency(
-      dto.currency ?? BASE_CURRENCY,
+      dto.currency ?? DEFAULT_REPORTING_CURRENCY,
     );
     const name = dto.name.trim();
     const order = dto.order ?? 0;
@@ -690,8 +718,10 @@ export class AssetsService {
   private toDashboardAsset(
     asset: Asset & { account?: { name: string } | null },
     now: Date,
+    reportingCurrency: string,
+    fxRates: Map<string, Prisma.Decimal | null>,
   ): DashboardAssetResponse {
-    const valuation = this.buildValuation(asset, now);
+    const valuation = this.buildValuation(asset, now, reportingCurrency, fxRates);
 
     return {
       ...toAssetResponse(asset),
@@ -704,14 +734,22 @@ export class AssetsService {
     };
   }
 
-  private buildValuation(asset: Asset, now: Date): ValuationModel {
-    const referenceValue = this.convertToBaseCurrency(asset.balance, asset);
-    const fxTimestamp =
-      asset.currency === BASE_CURRENCY ? now : asset.lastFxRateAt;
+  private buildValuation(
+    asset: Asset,
+    now: Date,
+    reportingCurrency: string,
+    fxRates: Map<string, Prisma.Decimal | null>,
+  ): ValuationModel {
+    const referenceValue = this.convertToReportingCurrency(
+      asset.balance,
+      asset.currency,
+      reportingCurrency,
+      fxRates,
+    );
+    const fxTimestamp = now;
     const fxStale =
-      asset.currency !== BASE_CURRENCY &&
-      (!fxTimestamp ||
-        now.getTime() - fxTimestamp.getTime() > VALUATION_STALE_MS);
+      asset.currency !== reportingCurrency &&
+      !fxRates.get(asset.currency);
 
     if (!this.isMarketAsset(asset)) {
       if (!referenceValue) {
@@ -724,16 +762,13 @@ export class AssetsService {
         };
       }
 
-      return {
-        currentValue: referenceValue,
-        referenceValue,
-        valuationSource: 'DIRECT_BALANCE',
-        valuationAsOf:
-          asset.currency === BASE_CURRENCY
-            ? asset.updatedAt
-            : asset.lastFxRateAt,
-        isStale: fxStale,
-      };
+        return {
+          currentValue: referenceValue,
+          referenceValue,
+          valuationSource: 'DIRECT_BALANCE',
+          valuationAsOf: asset.updatedAt,
+          isStale: fxStale,
+        };
     }
 
     const quantity = this.toDecimal(asset.quantity);
@@ -743,7 +778,12 @@ export class AssetsService {
         ? quantity.mul(this.toDecimal(asset.lastPrice))
         : null;
     const currentValue = quoteValue
-      ? this.convertToBaseCurrency(quoteValue, asset)
+      ? this.convertToReportingCurrency(
+          quoteValue,
+          asset.currency,
+          reportingCurrency,
+          fxRates,
+        )
       : null;
     const quoteTimestamp = this.minDate([asset.lastPriceAt, fxTimestamp]);
     const quoteStale =
@@ -805,23 +845,39 @@ export class AssetsService {
     };
   }
 
-  private convertToBaseCurrency(
+  private convertToReportingCurrency(
     value: Prisma.Decimal | null,
-    asset: Asset,
+    fromCurrency: string,
+    reportingCurrency: string,
+    fxRates: Map<string, Prisma.Decimal | null>,
   ): Prisma.Decimal | null {
     if (!value) {
       return null;
     }
 
-    if (asset.currency === BASE_CURRENCY) {
+    if (fromCurrency === reportingCurrency) {
       return value;
     }
 
-    if (!asset.lastFxRate) {
+    const rate = fxRates.get(fromCurrency) ?? null;
+    if (!rate) {
       return null;
     }
 
-    return value.mul(this.toDecimal(asset.lastFxRate));
+    return value.mul(this.toDecimal(rate));
+  }
+
+  private resolveReportingCurrency(
+    value: Prisma.JsonValue | null | undefined,
+  ): string {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const candidate = (value as Record<string, unknown>).reportingCurrency;
+      if (typeof candidate === 'string' && candidate.trim().length > 0) {
+        return candidate.trim().toUpperCase();
+      }
+    }
+
+    return DEFAULT_REPORTING_CURRENCY;
   }
 
   private isMarketAsset(

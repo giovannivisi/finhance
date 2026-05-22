@@ -104,6 +104,8 @@ function createSnapshot(
     assetsTotal: new Prisma.Decimal('1200'),
     liabilitiesTotal: new Prisma.Decimal('200'),
     netWorthTotal: new Prisma.Decimal('1000'),
+    nativeAssetTotals: null,
+    nativeLiabilityTotals: null,
     unavailableCount: 0,
     isPartial: false,
     createdAt: now,
@@ -827,10 +829,12 @@ describe('RecurringService', () => {
     expect(review.closingNetWorth).toBe(1300);
     expect(review.netWorthDelta).toBe(300);
     expect(review.netWorthExplanation).toEqual({
-      isComparableInEur: true,
-      cashflowContributionEur: 1200,
-      valuationMovementEur: -900,
-      note: 'Valuation movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
+      reportingCurrency: 'EUR',
+      isComparableInReportingCurrency: true,
+      cashflowContribution: 1200,
+      marketAndFxMovement: -900,
+      note:
+        'Market and FX movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
     });
     expect(review.reconciliationHighlights).toHaveLength(1);
     expect(review.reconciliationHighlights[0]?.accountName).toBe('Broker');
@@ -991,9 +995,10 @@ describe('RecurringService', () => {
     const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
 
     expect(review.netWorthExplanation).toEqual({
-      isComparableInEur: false,
-      cashflowContributionEur: null,
-      valuationMovementEur: null,
+      reportingCurrency: 'EUR',
+      isComparableInReportingCurrency: false,
+      cashflowContribution: null,
+      marketAndFxMovement: null,
       note: 'Add both opening and closing snapshot boundaries to explain the month in EUR.',
     });
     expect(review.currencyInsights).toEqual([
@@ -1067,7 +1072,7 @@ describe('RecurringService', () => {
         currency: null,
       },
       {
-        code: 'NON_EUR_CASHFLOW_NOT_COMPARABLE',
+        code: 'NON_REPORTING_CURRENCY_CASHFLOW_NOT_COMPARABLE',
         severity: 'INFO',
         title: 'USD cashflow excluded from EUR explanation',
         detail:
@@ -1148,9 +1153,10 @@ describe('RecurringService', () => {
     const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
 
     expect(review.netWorthExplanation).toEqual({
-      isComparableInEur: false,
-      cashflowContributionEur: null,
-      valuationMovementEur: null,
+      reportingCurrency: 'EUR',
+      isComparableInReportingCurrency: false,
+      cashflowContribution: null,
+      marketAndFxMovement: null,
       note: 'Snapshot boundaries are partial, so the EUR net worth delta cannot be decomposed safely.',
     });
     expect(review.budgetSummary).toEqual([]);

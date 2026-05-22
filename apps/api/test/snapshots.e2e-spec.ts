@@ -37,6 +37,7 @@ function nthCallArg<T>(mockFn: jest.Mock, index: number): T {
 
 function createDashboard(): DashboardResponse {
   return {
+    reportingCurrency: 'EUR',
     baseCurrency: 'EUR',
     assets: [
       {
@@ -91,6 +92,8 @@ function createSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     assetsTotal: new Prisma.Decimal('100'),
     liabilitiesTotal: new Prisma.Decimal('0'),
     netWorthTotal: new Prisma.Decimal('100'),
+    nativeAssetTotals: null,
+    nativeLiabilityTotals: null,
     unavailableCount: 0,
     isPartial: false,
     createdAt: now,
@@ -107,12 +110,15 @@ function expectSnapshotResponseDto(
     id: snapshot.id,
     snapshotDate: snapshot.snapshotDate.toISOString().slice(0, 10),
     capturedAt: snapshot.capturedAt.toISOString(),
+    reportingCurrency: snapshot.baseCurrency,
     baseCurrency: snapshot.baseCurrency,
+    storedReportingCurrency: snapshot.baseCurrency,
     assetsTotal: snapshot.assetsTotal.toNumber(),
     liabilitiesTotal: snapshot.liabilitiesTotal.toNumber(),
     netWorthTotal: snapshot.netWorthTotal.toNumber(),
     unavailableCount: snapshot.unavailableCount,
     isPartial: snapshot.isPartial,
+    canRecomputeForReportingCurrency: false,
     createdAt: snapshot.createdAt.toISOString(),
     updatedAt: snapshot.updatedAt.toISOString(),
   });

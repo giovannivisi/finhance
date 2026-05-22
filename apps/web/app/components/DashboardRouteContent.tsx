@@ -173,7 +173,7 @@ export default async function DashboardRouteContent() {
       <DashboardClient
         grouped={grouped}
         kindTotalsArray={kindTotalsArray}
-        baseCurrency={dashboard.baseCurrency}
+        baseCurrency={dashboard.reportingCurrency}
         lastRefreshAt={dashboard.lastRefreshAt}
         summary={dashboard.summary}
         assetKindOrder={dashboard.assetKindOrder}

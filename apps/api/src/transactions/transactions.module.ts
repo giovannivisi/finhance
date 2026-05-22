@@ -1,5 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { AccountsModule } from '@accounts/accounts.module';
+import { PricesModule } from '@prices/prices.module';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { CashflowController } from '@transactions/cashflow.controller';
 import { CategoriesController } from '@transactions/categories.controller';
@@ -10,7 +11,7 @@ import { TransactionsController } from '@transactions/transactions.controller';
 import { TransactionsService } from '@transactions/transactions.service';
 
 @Module({
-  imports: [forwardRef(() => AccountsModule)],
+  imports: [forwardRef(() => AccountsModule), PricesModule],
   controllers: [
     CashflowController,
     CategoriesController,

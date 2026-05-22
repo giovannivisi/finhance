@@ -26,6 +26,13 @@ export const START_PAGE_OPTIONS = USER_START_PAGE_VALUES.map((value) => ({
   label: START_PAGE_META[value].label,
 })) satisfies Array<{ value: UserStartPage; label: string }>;
 
+export const REPORTING_CURRENCY_OPTIONS = [
+  { value: "EUR", label: "Euro (EUR)" },
+  { value: "USD", label: "US dollar (USD)" },
+  { value: "GBP", label: "Pound sterling (GBP)" },
+  { value: "CHF", label: "Swiss franc (CHF)" },
+] as const;
+
 export function getStartPageHref(startPage: UserStartPage): string {
   return START_PAGE_META[startPage].href;
 }

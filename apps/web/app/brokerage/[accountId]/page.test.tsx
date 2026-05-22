@@ -27,6 +27,7 @@ describe("BrokerageAccountPage", () => {
   it("loads the selected brokerage workspace and categories", async () => {
     apiMock
       .mockResolvedValueOnce({
+        reportingCurrency: "EUR",
         baseCurrency: "EUR",
         brokers: [],
         selectedBroker: {
