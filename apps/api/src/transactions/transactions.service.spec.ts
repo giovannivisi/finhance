@@ -468,6 +468,147 @@ describe('TransactionsService', () => {
     );
   });
 
+  it('creates dual-currency standard transactions with a manual FX override', async () => {
+    categories.getAssignableCategory.mockResolvedValue(
+      createCategory({
+        id: 'category-food',
+        name: 'Food',
+        type: CategoryType.EXPENSE,
+      }),
+    );
+    prisma.transaction.create.mockResolvedValue(
+      createTransactionRow({
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        amount: new Prisma.Decimal('9'),
+        currency: 'EUR',
+        categoryId: 'category-food',
+        category: createCategory({
+          id: 'category-food',
+          name: 'Food',
+          type: CategoryType.EXPENSE,
+        }),
+        description: 'Lunch',
+        nativeAmount: new Prisma.Decimal('10'),
+        nativeCurrency: 'USD',
+        fxRateUsed: new Prisma.Decimal('0.9'),
+        fxRateSource: 'MANUAL',
+      }),
+    );
+
+    const result = await service.create(OWNER_ID, {
+      postedAt: '2026-04-17T09:00:00.000Z',
+      kind: TransactionKind.EXPENSE,
+      amount: 9,
+      description: 'Lunch',
+      accountId: 'account-1',
+      direction: TransactionDirection.OUTFLOW,
+      categoryId: 'category-food',
+      nativeAmount: 10,
+      nativeCurrency: 'USD',
+      fxRateUsed: 0.9,
+    });
+
+    expect(result.entryType).toBe('STANDARD');
+    expect(prices.saveManualFxRate).toHaveBeenCalledWith(
+      OWNER_ID,
+      new Date('2026-04-17T09:00:00.000Z'),
+      'USD',
+      'EUR',
+      expect.any(Prisma.Decimal),
+    );
+    expect(prices.getFxRateForDate).not.toHaveBeenCalled();
+    expect(
+      nthCallArg<TransactionCreateCall>(prisma.transaction.create, 0).data,
+    ).toMatchObject({
+      amount: expect.any(Prisma.Decimal),
+      currency: 'EUR',
+      nativeAmount: expect.any(Prisma.Decimal),
+      nativeCurrency: 'USD',
+      fxRateUsed: expect.any(Prisma.Decimal),
+      fxRateSource: 'MANUAL',
+    });
+  });
+
+  it('creates cross-currency transfers with a manual FX override', async () => {
+    accounts.getAssignableAccount
+      .mockResolvedValueOnce(createAccount({ id: 'source', currency: 'EUR' }))
+      .mockResolvedValueOnce(
+        createAccount({ id: 'destination', currency: 'USD' }),
+      );
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransactionRow({
+        id: 'row-1',
+        accountId: 'source',
+        amount: new Prisma.Decimal('25'),
+        currency: 'EUR',
+        categoryId: null,
+        direction: TransactionDirection.OUTFLOW,
+        kind: TransactionKind.TRANSFER,
+        description: 'Transfer',
+        counterparty: null,
+        transferGroupId: 'transfer_group',
+        fxRateUsed: new Prisma.Decimal('1.1'),
+        fxRateSource: 'MANUAL',
+      }),
+      createTransactionRow({
+        id: 'row-2',
+        accountId: 'destination',
+        amount: new Prisma.Decimal('27.5'),
+        currency: 'USD',
+        categoryId: null,
+        direction: TransactionDirection.INFLOW,
+        kind: TransactionKind.TRANSFER,
+        description: 'Transfer',
+        counterparty: null,
+        transferGroupId: 'transfer_group',
+        fxRateUsed: new Prisma.Decimal('1.1'),
+        fxRateSource: 'MANUAL',
+      }),
+    ]);
+
+    const result = await service.create(OWNER_ID, {
+      postedAt: '2026-04-17T09:00:00.000Z',
+      kind: TransactionKind.TRANSFER,
+      amount: 25,
+      description: 'Transfer',
+      sourceAccountId: 'source',
+      destinationAccountId: 'destination',
+      sourceAmount: 25,
+      destinationAmount: 27.5,
+      fxRateUsed: 1.1,
+    });
+
+    expect(result.entryType).toBe('TRANSFER');
+    expect(prices.saveManualFxRate).toHaveBeenCalledWith(
+      OWNER_ID,
+      new Date('2026-04-17T09:00:00.000Z'),
+      'EUR',
+      'USD',
+      expect.any(Prisma.Decimal),
+    );
+    expect(prices.getFxRateForDate).not.toHaveBeenCalled();
+    expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
+    expect(
+      nthCallArg<{ data: Record<string, unknown> }>(prisma.transaction.create, 0)
+        .data,
+    ).toMatchObject({
+      amount: expect.any(Prisma.Decimal),
+      currency: 'EUR',
+      fxRateUsed: expect.any(Prisma.Decimal),
+      fxRateSource: 'MANUAL',
+    });
+    expect(
+      nthCallArg<{ data: Record<string, unknown> }>(prisma.transaction.create, 1)
+        .data,
+    ).toMatchObject({
+      amount: expect.any(Prisma.Decimal),
+      currency: 'USD',
+      fxRateUsed: expect.any(Prisma.Decimal),
+      fxRateSource: 'MANUAL',
+    });
+  });
+
   it('rejects non-transfer transactions before the account opening-balance date', async () => {
     accounts.getAssignableAccount.mockResolvedValue(
       createAccount({

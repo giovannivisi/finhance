@@ -24,6 +24,7 @@ describe('Setup routes (e2e)', () => {
     categoryBudget: { count: jest.Mock };
     importBatch: { count: jest.Mock };
     netWorthSnapshot: { findFirst: jest.Mock };
+    user: { findUnique: jest.Mock };
   };
   let accounts: {
     findReconciliation: jest.Mock;
@@ -41,6 +42,7 @@ describe('Setup routes (e2e)', () => {
       categoryBudget: { count: jest.fn().mockResolvedValue(0) },
       importBatch: { count: jest.fn().mockResolvedValue(0) },
       netWorthSnapshot: { findFirst: jest.fn().mockResolvedValue(null) },
+      user: { findUnique: jest.fn().mockResolvedValue(null) },
     };
 
     accounts = {
@@ -82,6 +84,9 @@ describe('Setup routes (e2e)', () => {
     prisma.categoryBudget.count.mockResolvedValue(1);
     prisma.importBatch.count.mockResolvedValue(1);
     prisma.netWorthSnapshot.findFirst.mockResolvedValue({ id: 'snapshot-1' });
+    prisma.user.findUnique.mockResolvedValue({
+      userSettings: { reportingCurrency: 'USD' },
+    });
 
     await request(httpServer())
       .get('/setup/status')
@@ -94,6 +99,7 @@ describe('Setup routes (e2e)', () => {
           handoff: Array<{ code: string }>;
           hasAppliedImportBatch: boolean;
           hasSnapshot: boolean;
+          hasReportingCurrencyConfigured: boolean;
         }>(response);
 
         expect(body.isComplete).toBe(true);
@@ -101,6 +107,7 @@ describe('Setup routes (e2e)', () => {
           body.requiredSteps.map((step) => [step.code, step.status]),
         ).toEqual([
           ['ACCOUNTS', 'COMPLETE'],
+          ['REPORTING_CURRENCY', 'COMPLETE'],
           ['CATEGORIES', 'COMPLETE'],
         ]);
         expect(
@@ -117,6 +124,7 @@ describe('Setup routes (e2e)', () => {
         ]);
         expect(body.hasAppliedImportBatch).toBe(true);
         expect(body.hasSnapshot).toBe(true);
+        expect(body.hasReportingCurrencyConfigured).toBe(true);
       });
   });
 
@@ -139,6 +147,43 @@ describe('Setup routes (e2e)', () => {
           'NO_SNAPSHOT_YET',
         ]);
         expect(accounts.findReconciliation).not.toHaveBeenCalled();
+      });
+  });
+
+  it('surfaces reporting currency as an incomplete required step until it is configured', async () => {
+    prisma.account.count.mockResolvedValue(1);
+    prisma.category.findMany.mockResolvedValue([
+      { type: 'INCOME' },
+      { type: 'EXPENSE' },
+    ]);
+    prisma.user.findUnique.mockResolvedValue({
+      userSettings: {},
+    });
+
+    await request(httpServer())
+      .get('/setup/status')
+      .expect(200)
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<{
+          isComplete: boolean;
+          hasReportingCurrencyConfigured: boolean;
+          requiredSteps: Array<{
+            code: string;
+            status: string;
+            href: string;
+            actionLabel: string;
+          }>;
+        }>(response);
+
+        expect(body.isComplete).toBe(false);
+        expect(body.hasReportingCurrencyConfigured).toBe(false);
+        expect(
+          body.requiredSteps.find((step) => step.code === 'REPORTING_CURRENCY'),
+        ).toMatchObject({
+          status: 'INCOMPLETE',
+          href: '/settings/user',
+          actionLabel: 'Choose reporting currency',
+        });
       });
   });
 });

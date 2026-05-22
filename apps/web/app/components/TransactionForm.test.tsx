@@ -62,6 +62,22 @@ const accounts: AccountResponse[] = [
     createdAt: "2026-05-20T10:00:00.000Z",
     updatedAt: "2026-05-20T10:00:00.000Z",
   },
+  {
+    id: "account-usd",
+    name: "USD wallet",
+    type: "BANK",
+    currency: "USD",
+    institution: null,
+    notes: null,
+    order: 2,
+    openingBalance: 0,
+    openingBalanceDate: null,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-05-20T10:00:00.000Z",
+    updatedAt: "2026-05-20T10:00:00.000Z",
+  },
 ];
 
 const categories: CategoryResponse[] = [
@@ -216,6 +232,9 @@ describe("TransactionForm", () => {
           notes: null,
           sourceAccountId: "account-bank",
           destinationAccountId: "account-savings",
+          sourceAmount: 15,
+          sourceCurrency: null,
+          destinationCurrency: null,
         }),
       });
     });
@@ -271,6 +290,48 @@ describe("TransactionForm", () => {
     });
   });
 
+  it("submits dual-currency standard transactions with a manual FX override", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue(undefined);
+
+    renderForm({
+      initialValues: {
+        ...buildCreateValues(),
+        kind: "EXPENSE",
+        description: "Lunch",
+        categoryId: "category-cafes",
+      },
+    });
+
+    await user.clear(screen.getByLabelText("Original amount"));
+    await user.type(screen.getByLabelText("Original amount"), "20");
+    await user.type(screen.getByLabelText("Original currency"), "USD");
+    await user.type(screen.getByLabelText("FX rate override"), "0.75");
+    await user.click(
+      screen.getByRole("button", { name: /create transaction/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          postedAt: new Date("2026-05-20T10:30").toISOString(),
+          kind: "EXPENSE",
+          amount: 15,
+          description: "Lunch",
+          notes: null,
+          accountId: "account-bank",
+          direction: "OUTFLOW",
+          categoryId: "category-cafes",
+          counterparty: null,
+          nativeAmount: 20,
+          nativeCurrency: "USD",
+          fxRateUsed: 0.75,
+        }),
+      });
+    });
+  });
+
   it("submits edits for an existing split-funded expense", async () => {
     const user = userEvent.setup();
     mockedApiMutation.mockResolvedValue(undefined);
@@ -320,6 +381,52 @@ describe("TransactionForm", () => {
             { accountId: "account-bank", amount: 6 },
             { accountId: "account-savings", amount: 9 },
           ],
+        }),
+      });
+    });
+  });
+
+  it("submits cross-currency transfers with explicit destination amount and FX override", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue(undefined);
+
+    renderForm();
+
+    await user.selectOptions(screen.getByLabelText("Kind"), "TRANSFER");
+    await user.selectOptions(
+      screen.getByLabelText("Source account"),
+      "account-bank",
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Destination account"),
+      "account-usd",
+    );
+    await user.clear(screen.getByLabelText("Description"));
+    await user.type(screen.getByLabelText("Description"), "FX transfer");
+    await user.clear(screen.getByLabelText("Source amount"));
+    await user.type(screen.getByLabelText("Source amount"), "25");
+    await user.type(screen.getByLabelText("Destination amount"), "27.5");
+    await user.type(screen.getByLabelText("FX rate override"), "1.1");
+    await user.click(
+      screen.getByRole("button", { name: /create transaction/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          postedAt: new Date("2026-05-20T10:30").toISOString(),
+          kind: "TRANSFER",
+          amount: 15,
+          description: "FX transfer",
+          notes: null,
+          sourceAccountId: "account-bank",
+          destinationAccountId: "account-usd",
+          sourceAmount: 25,
+          destinationAmount: 27.5,
+          sourceCurrency: null,
+          destinationCurrency: null,
+          fxRateUsed: 1.1,
         }),
       });
     });

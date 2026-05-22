@@ -19,11 +19,15 @@ vi.mock("@components/UserSettingsPageClient", () => ({
   default: ({
     initialSettings,
   }: {
-    initialSettings: { showTransactionTimes: boolean; startPage: string };
+    initialSettings: {
+      showTransactionTimes: boolean;
+      startPage: string;
+      reportingCurrency: string;
+    };
   }) => (
     <div>
       User settings client {String(initialSettings.showTransactionTimes)}{" "}
-      {initialSettings.startPage}
+      {initialSettings.startPage} {initialSettings.reportingCurrency}
     </div>
   ),
 }));
@@ -37,11 +41,14 @@ describe("UserSettingsPage", () => {
     apiMock.mockResolvedValue({
       showTransactionTimes: true,
       startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
     });
 
     render(await UserSettingsPage());
 
-    expect(screen.getByText("User settings client true DASHBOARD")).toBeInTheDocument();
+    expect(
+      screen.getByText("User settings client true DASHBOARD EUR"),
+    ).toBeInTheDocument();
   });
 
   it("renders an inline error when settings cannot be loaded", async () => {
