@@ -10,6 +10,7 @@ import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
 import { PricesService } from '@prices/prices.service';
 import {
+  AccountType,
   Asset,
   AssetKind,
   AssetType,
@@ -314,6 +315,7 @@ export class AssetsService {
       });
     }
 
+    await this.assertMarketAssetBrokerAccount(ownerId, prepared.accountId);
     return this.mergeOrCreateMarketAsset(prepared);
   }
 
@@ -343,6 +345,11 @@ export class AssetsService {
     );
 
     if (prepared.type === AssetType.ASSET && this.isMarketKind(prepared.kind)) {
+      await this.assertMarketAssetBrokerAccount(
+        ownerId,
+        prepared.accountId,
+        existing.accountId,
+      );
       const duplicate = await this.prisma.asset.findFirst({
         where: {
           userId: ownerId,
@@ -447,7 +454,7 @@ export class AssetsService {
           });
 
           if (!existing) {
-            await this.accountsService.assertAccountAssignmentAllowed(
+            await this.assertMarketAssetBrokerAccount(
               prepared.userId,
               prepared.accountId,
             );
@@ -460,7 +467,7 @@ export class AssetsService {
             existing,
             prepared,
           );
-          await this.accountsService.assertAccountAssignmentAllowed(
+          await this.assertMarketAssetBrokerAccount(
             prepared.userId,
             mergedAccountId,
             existing.accountId,
@@ -603,6 +610,30 @@ export class AssetsService {
       notes,
       order,
     };
+  }
+
+  private async assertMarketAssetBrokerAccount(
+    ownerId: string,
+    accountId: string | null,
+    currentAccountId?: string | null,
+  ): Promise<void> {
+    if (!accountId) {
+      throw new BadRequestException(
+        'Market assets must belong to a BROKER account.',
+      );
+    }
+
+    const account = await this.accountsService.getAssignableAccount(
+      ownerId,
+      accountId,
+      currentAccountId,
+    );
+
+    if (account.type !== AccountType.BROKER) {
+      throw new BadRequestException(
+        'Market assets must belong to a BROKER account.',
+      );
+    }
   }
 
   private normalizeTicker(

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountResponse } from "@finhance/shared";
@@ -34,6 +34,22 @@ const accounts: AccountResponse[] = [
     institution: null,
     notes: null,
     order: 0,
+    openingBalance: 0,
+    openingBalanceDate: null,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-05-20T10:00:00.000Z",
+    updatedAt: "2026-05-20T10:00:00.000Z",
+  },
+  {
+    id: "account-2",
+    name: "Main bank",
+    type: "BANK",
+    currency: "EUR",
+    institution: null,
+    notes: null,
+    order: 1,
     openingBalance: 0,
     openingBalanceDate: null,
     archivedAt: null,
@@ -79,6 +95,48 @@ describe("AssetForm", () => {
     expect(screen.queryByLabelText("Quantity")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Unit Price")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Amount")).toBeInTheDocument();
+  });
+
+  it("filters exchange options by asset kind", async () => {
+    const user = userEvent.setup();
+    render(<AssetForm mode="create" initialValues={buildStockValues()} />);
+
+    const exchange = await screen.findByLabelText(/Exchange/);
+    expect(
+      within(exchange).getByRole("option", { name: "🇮🇹 Milan (BIT)" }),
+    ).toBeInTheDocument();
+    expect(
+      within(exchange).queryByRole("option", { name: "Crypto" }),
+    ).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Kind"), "CRYPTO");
+
+    expect(exchange).toHaveValue("_CRYPTO_");
+    expect(
+      within(exchange).getByRole("option", { name: "Crypto" }),
+    ).toBeInTheDocument();
+    expect(
+      within(exchange).queryByRole("option", { name: "🇮🇹 Milan (BIT)" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("only offers broker accounts for market assets", async () => {
+    const user = userEvent.setup();
+    render(<AssetForm mode="create" initialValues={buildStockValues()} />);
+
+    const account = await screen.findByLabelText(/Account/);
+    expect(
+      within(account).getByRole("option", { name: "Broker (Broker)" }),
+    ).toBeInTheDocument();
+    expect(
+      within(account).queryByRole("option", { name: "Main bank (Bank)" }),
+    ).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Kind"), "CASH");
+
+    expect(
+      within(account).getByRole("option", { name: "Main bank (Bank)" }),
+    ).toBeInTheDocument();
   });
 
   it("shows an inline account-loading error", async () => {

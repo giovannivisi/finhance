@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import type { AccountResponse } from "@finhance/shared";
 import {
   ASSET_KIND_OPTIONS,
-  EXCHANGE_SUFFIXES,
   LIABILITY_KIND_OPTIONS,
   formatKindLabel,
+  getExchangeSuffixesForKind,
 } from "@lib/asset-ui";
 import { formatAccountOptionLabel } from "@lib/accounts";
 import {
@@ -47,6 +47,18 @@ export default function AssetForm({
   const isCreateMode = mode === "create";
   const kindOptions =
     form.type === "LIABILITY" ? LIABILITY_KIND_OPTIONS : ASSET_KIND_OPTIONS;
+  const exchangeOptions = isAsset
+    ? getExchangeSuffixesForKind(form.kind as typeof ASSET_KIND_OPTIONS[number])
+    : [];
+  const isMarketKind =
+    form.type === "ASSET" &&
+    (form.kind === "STOCK" || form.kind === "BOND" || form.kind === "CRYPTO");
+  const selectableAccounts = accounts.filter(
+    (account) =>
+      !isMarketKind ||
+      account.type === "BROKER" ||
+      account.id === form.accountId.trim(),
+  );
 
   useEffect(() => {
     setForm(initialValues);
@@ -298,7 +310,7 @@ export default function AssetForm({
               value={form.exchange}
               onChange={(event) => updateField("exchange", event.target.value)}
             >
-              {EXCHANGE_SUFFIXES.map((exchange) => (
+              {exchangeOptions.map((exchange) => (
                 <option key={exchange.value} value={exchange.value}>
                   {exchange.label}
                 </option>
@@ -332,7 +344,7 @@ export default function AssetForm({
             onChange={(event) => updateField("accountId", event.target.value)}
           >
             <option value="">No account</option>
-            {accounts.map((account) => (
+            {selectableAccounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {formatAccountOptionLabel(account)}
               </option>

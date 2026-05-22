@@ -607,6 +607,28 @@ describe('ImportsService', () => {
     expect(calls[1]?.[0].data.importKey).toBe('xfer-1');
   });
 
+  it('rejects market assets assigned to non-broker accounts during preview', async () => {
+    const result = await service.previewCsv(OWNER_ID, {
+      accounts: {
+        originalName: 'accounts.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,currency,institution,notes,order,archived\nchecking,Checking,BANK,EUR,,,0,false\n',
+        ),
+      },
+      assets: {
+        originalName: 'assets.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,kind,liabilityKind,currency,balance,accountImportKey,ticker,exchange,quantity,unitPrice,notes,order\nvwce,VWCE,ASSET,STOCK,,EUR,,checking,VWCE,.MI,2,100,,0\n',
+        ),
+      },
+    });
+
+    expect(result.canApply).toBe(false);
+    expect(result.issues[0]?.message).toContain(
+      'Market assets must belong to a BROKER account.',
+    );
+  });
+
   it('exports a zip with the four template files and backfills manual keys', async () => {
     const manualAccount = createImportedAccount({
       id: 'account-manual',

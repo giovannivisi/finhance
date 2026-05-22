@@ -29,6 +29,14 @@ export const EXCHANGE_SUFFIXES = [
   { label: "Crypto", value: "_CRYPTO_" },
 ] as const;
 
+export function getExchangeSuffixesForKind(kind: AssetKind) {
+  if (kind === "CRYPTO") {
+    return EXCHANGE_SUFFIXES.filter((exchange) => exchange.value === "_CRYPTO_");
+  }
+
+  return EXCHANGE_SUFFIXES.filter((exchange) => exchange.value !== "_CRYPTO_");
+}
+
 export const ASSET_KIND_OPTIONS: AssetKind[] = [
   "CASH",
   "STOCK",

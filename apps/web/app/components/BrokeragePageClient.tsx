@@ -9,6 +9,7 @@ import MoneyValue from "@components/MoneyValue";
 import OverflowMenu from "@components/OverflowMenu";
 import { useAppPreferences } from "@components/ThemeProvider";
 import { apiMutation } from "@lib/api";
+import { getExchangeSuffixesForKind } from "@lib/asset-ui";
 import { formatSensitiveNumber } from "@lib/money";
 import type {
   AssetKind,
@@ -295,6 +296,7 @@ export default function BrokeragePageClient({
   }, [buyForm.quantity, buyForm.unitPrice]);
   const buyFee = parseNumber(buyForm.feeAmount) ?? 0;
   const buyCashUsed = buyGross == null ? null : buyGross + buyFee;
+  const buyExchangeOptions = getExchangeSuffixesForKind(buyForm.kind);
   const sellGross = useMemo(() => {
     const quantity = parseNumber(sellForm.quantity);
     const unitPrice = parseNumber(sellForm.unitPrice);
@@ -369,6 +371,26 @@ export default function BrokeragePageClient({
       : workspace.selectedBroker.unrealisedGainLoss < 0
         ? "var(--color-expense)"
         : undefined;
+
+  useEffect(() => {
+    setBuyForm((current) => {
+      const nextExchange =
+        current.kind === "CRYPTO"
+          ? "_CRYPTO_"
+          : current.exchange === "_CRYPTO_"
+            ? ""
+            : current.exchange;
+
+      if (nextExchange === current.exchange) {
+        return current;
+      }
+
+      return {
+        ...current,
+        exchange: nextExchange,
+      };
+    });
+  }, [buyForm.kind]);
 
   useEffect(() => {
     for (const broker of workspace.brokers) {
@@ -1344,7 +1366,7 @@ export default function BrokeragePageClient({
                   <span>Exchange</span>
                   <span>Optional</span>
                 </label>
-                <input
+                <select
                   id={`${fieldPrefix}-exchange`}
                   value={buyForm.exchange}
                   onChange={(event) =>
@@ -1353,7 +1375,13 @@ export default function BrokeragePageClient({
                       exchange: event.target.value,
                     }))
                   }
-                />
+                >
+                  {buyExchangeOptions.map((exchange) => (
+                    <option key={exchange.value} value={exchange.value}>
+                      {exchange.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="app-form-field">
                 <label htmlFor={`${fieldPrefix}-currency`}>

@@ -21,6 +21,8 @@ The current app includes:
 - account and category management, including archive and safe delete flows
 - transactions and transfers
 - assets and liabilities with quote-aware valuation support
+- multi-currency reporting with native-currency storage and per-user reporting
+  currency
 - dedicated brokerage workspaces for broker accounts, including positions,
   operations, activity, and allocation targets
 - recurring transaction rules, month overrides, and manual materialization
@@ -129,6 +131,11 @@ Practical guidance:
 - dividends and brokerage fees should be recorded from the brokerage workspace,
   not as ordinary ad hoc manual transactions, so the investment history stays
   coherent
+- if a purchase was settled in one currency but charged to an account in
+  another, keep the account-side settled amount as the real transaction amount
+  and use the optional original-currency fields for the merchant-side amount
+- if money moved between two of your own accounts with different currencies,
+  use a cross-currency `TRANSFER` instead of faking it as two unrelated rows
 
 ### Budgets and recurring rules
 
@@ -149,6 +156,73 @@ Practical guidance:
 - credit card balance: use a `CARD` account plus a liability, usually `DEBT`
 - mortgage balance: use a `LOAN` account plus a liability, usually `DEBT`
 - taxes owed but not yet paid: create a liability with kind `TAX`
+
+## Multi-currency model
+
+`finhance` now treats currency in two layers:
+
+- `native currency` is the real currency of the account, asset, liability, or
+  transaction
+- `reporting currency` is the currency used for aggregate totals such as net
+  worth and portfolio-level summaries
+
+Important rules:
+
+- never use reporting currency to overwrite native truth
+- row-level records stay in their native currency
+- converted totals are a reporting layer on top, not a replacement for source
+  data
+
+### Currently supported currencies
+
+There are two answers here:
+
+- at the product/settings level, the current reporting-currency selector offers:
+  `EUR`, `USD`, `GBP`, and `CHF`
+- at the API/data-validation level, the system accepts any valid 3-letter
+  uppercase currency code
+
+That means:
+
+- accounts, assets, liabilities, imports, and transactions can technically use
+  currencies beyond the four reporting presets, as long as they are valid
+  3-letter codes
+- the user-facing reporting-currency choice is currently limited to the four
+  curated options above
+
+### FX source
+
+- FX conversion uses Yahoo Finance, through the same quote service family used
+  for market prices
+- live FX can be used by default
+- manual FX overrides can be saved for manual transactions and cross-currency
+  transfers
+- dated FX records are persisted so historical reporting does not blindly reuse
+  today's rates
+
+### How multi-currency shows up in the app
+
+- `Dashboard`: summary totals are shown in reporting currency, while asset and
+  liability rows stay native
+- `Brokerage`: workspace-level totals use reporting currency, while positions,
+  cash, and activity remain native/account-currency first
+- `History`: snapshots store reporting metadata plus native per-currency totals
+  for newer captures
+- `Monthly close`: top-level explanation uses reporting-currency language, but
+  diagnostics and warnings still reflect native-currency reality
+- `Transactions` and `Activity`: the canonical booked amount remains the
+  settled account-side amount; optional native/original-currency fields add
+  merchant-side context
+- `Budgets` and `Analytics`: per-currency sections remain authoritative; the
+  reporting-currency overview layer is only partially implemented at the moment
+
+### Current limitations
+
+- historical snapshots captured before the new native-currency snapshot format
+  cannot be recomputed perfectly for arbitrary reporting-currency changes
+- reporting-currency overview strips are not yet fully realised across all
+  budgets and analytics surfaces
+- split-funded expenses remain same-currency settlement only for now
 
 ## Monorepo layout
 
