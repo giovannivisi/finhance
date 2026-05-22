@@ -53,3 +53,15 @@ repos:
         language: system
         pass_filenames: false
         files: '^(apps/web/|packages/shared/).*\.(ts|tsx|mts|cts|js|jsx|mjs|json)$'
+
+      - id: commit-msg-prefix
+        name: commit message prefix
+        language: system
+        entry: >-
+          bash -c 'msg=$(cat "$1");
+          echo "$msg" | grep -qE "^(feat|fix|perf|refactor|chore|docs|test|ci|style)(\(.+\))?: .+"
+          || { echo "❌  Commit message must start with a prefix:";
+               echo "    feat|fix|perf|refactor|chore|docs|test|ci|style";
+               echo "    Example: fix: correct fx rate rounding";
+               exit 1; }' --
+        stages: [commit-msg]
