@@ -86,6 +86,7 @@
       "^@snapshots/(.*)$": "<rootDir>/snapshots/$1",
       "^@transactions/(.*)$": "<rootDir>/transactions/$1",
       "^@prices/(.*)$": "<rootDir>/prices/$1",
+      "^@users/(.*)$": "<rootDir>/users/$1",
       "^@prisma/(prisma\\..*)$": "<rootDir>/prisma/$1"
     },
     "collectCoverageFrom": [

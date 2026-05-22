@@ -210,6 +210,7 @@ const baseCashflow: CashflowSummaryResponse = [
 function renderPage(
   cashflow = baseCashflow,
   entries: TransactionResponse[] = transactions,
+  showTransactionTimes = true,
 ) {
   return render(
     <TransactionsPageClient
@@ -220,6 +221,7 @@ function renderPage(
       expenseValidationRules={rules}
       initialFilters={initialFilters}
       hasPendingSync={false}
+      showTransactionTimes={showTransactionTimes}
     />,
   );
 }
@@ -353,5 +355,37 @@ describe("TransactionsPageClient cashflow drill-down", () => {
 
     expect(screen.getByText(/Main account: .*7,00/)).toBeInTheDocument();
     expect(screen.getByText(/Savings: .*5,00/)).toBeInTheDocument();
+  });
+
+  it("can hide transaction times while keeping the transaction date visible", () => {
+    renderPage(baseCashflow, [
+      {
+        id: "transaction-1",
+        postedAt: "2026-05-20T08:30:00.000Z",
+        amount: 25,
+        currency: "EUR",
+        kind: "EXPENSE",
+        accountId: "account-main",
+        direction: "OUTFLOW",
+        categoryId: "secondary-bars",
+        primaryCategoryId: "primary-food",
+        primaryCategoryName: "Food",
+        secondaryCategoryId: "secondary-bars",
+        secondaryCategoryName: "Bars",
+        description: "Coffee",
+        notes: null,
+        counterparty: null,
+        sourceAccountId: null,
+        destinationAccountId: null,
+        recurringRuleId: null,
+        recurringOccurrenceMonth: null,
+        isRecurringGenerated: false,
+        createdAt: "2026-05-20T08:30:00.000Z",
+        updatedAt: "2026-05-20T08:30:00.000Z",
+      },
+    ], false);
+
+    expect(screen.getByText(/20 mag 2026/i)).toBeInTheDocument();
+    expect(screen.queryByText(/10:30/)).not.toBeInTheDocument();
   });
 });

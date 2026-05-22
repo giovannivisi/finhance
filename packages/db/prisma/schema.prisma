@@ -17,6 +17,7 @@ model User {
   createdAt                       DateTime                         @default(now()) @map("created_at")
   updatedAt                       DateTime                         @updatedAt @map("updated_at")
   assetKindOrder                  Json?                            @map("asset_kind_order")
+  userSettings                    Json?                            @map("user_settings")
   providerAccounts                AuthProviderAccount[]
   sessions                        AuthSession[]
   assets                          Asset[]

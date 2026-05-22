@@ -35,6 +35,7 @@ interface TransactionFormProps {
   transactionId?: string;
   initialValues: TransactionFormValues;
   mode: "create" | "edit";
+  showTransactionTimes?: boolean;
   accounts: AccountResponse[];
   categories: CategoryResponse[];
   expenseValidationRules: ExpenseValidationRuleResponse[];
@@ -56,6 +57,7 @@ export default function TransactionForm({
   transactionId,
   initialValues,
   mode,
+  showTransactionTimes = true,
   accounts,
   categories,
   expenseValidationRules,
@@ -259,7 +261,10 @@ export default function TransactionForm({
       setError(null);
       setAccountError(null);
 
-      const result = buildTransactionPayload(form);
+      const result = buildTransactionPayload(form, {
+        showTransactionTimes,
+        existingPostedAt: editingTransaction?.postedAt ?? null,
+      });
       if (!result.payload) {
         setError(result.error ?? "Unable to validate this transaction.");
         return;
@@ -319,7 +324,7 @@ export default function TransactionForm({
           <label htmlFor={`${fieldPrefix}-posted-at`}>Posted at</label>
           <input
             id={`${fieldPrefix}-posted-at`}
-            type="datetime-local"
+            type={showTransactionTimes ? "datetime-local" : "date"}
             value={form.postedAt}
             onChange={(event) => updateField("postedAt", event.target.value)}
             required

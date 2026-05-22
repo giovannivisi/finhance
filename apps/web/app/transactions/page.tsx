@@ -10,6 +10,7 @@ import Container from "@components/Container";
 import TransactionsPageClient from "@components/TransactionsPageClient";
 import { getDefaultActivityFilters, type ActivityFilters } from "@lib/activity";
 import { api } from "@lib/server-api";
+import { getUserSettingsOrDefaults } from "@lib/server-user-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +94,7 @@ export default async function TransactionsPage({
   const cashflowQueryString = buildFilterQueryString(filters, {
     includeKind: false,
   });
+  const settings = await getUserSettingsOrDefaults();
 
   let transactions: TransactionResponse[] | null = null;
   let cashflow: CashflowSummaryResponse | null = null;
@@ -162,6 +164,7 @@ export default async function TransactionsPage({
             expenseValidationRules={expenseValidationRules}
             initialFilters={filters}
             hasPendingSync={hasPendingSync}
+            showTransactionTimes={settings.showTransactionTimes}
           />
         )}
       </Container>

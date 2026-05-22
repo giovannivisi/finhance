@@ -36,7 +36,7 @@ describe("ShellAccountMenu", () => {
     toggleThemeMock.mockReset();
   });
 
-  it("renders local identity, links, and disabled future settings entries", async () => {
+  it("renders local identity, links, and the remaining future settings placeholder", async () => {
     const user = userEvent.setup();
 
     render(
@@ -56,13 +56,11 @@ describe("ShellAccountMenu", () => {
       screen.getByRole("menuitem", { name: "Privacy notice" }),
     ).toHaveAttribute("href", "/privacy");
     expect(
+      screen.getByRole("menuitem", { name: "User settings" }),
+    ).toHaveAttribute("href", "/settings/user");
+    expect(
       screen.getByRole("menuitem", { name: /switch to light mode/i }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("menuitem", {
-        name: /user settings will land in a later pass/i,
-      }),
-    ).toBeDisabled();
     expect(
       screen.getByRole("menuitem", {
         name: /app settings will land in a later pass/i,

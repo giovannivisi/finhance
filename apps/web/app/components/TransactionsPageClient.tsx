@@ -48,6 +48,9 @@ const DATETIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const DATE_FORMATTER = new Intl.DateTimeFormat("it-IT", {
+  dateStyle: "medium",
+});
 
 const ENTRY_MONTH_KEY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/Rome",
@@ -250,6 +253,7 @@ export default function TransactionsPageClient({
   expenseValidationRules,
   initialFilters,
   hasPendingSync,
+  showTransactionTimes,
 }: {
   transactions: TransactionResponse[];
   cashflow: CashflowSummaryResponse;
@@ -258,6 +262,7 @@ export default function TransactionsPageClient({
   expenseValidationRules: ExpenseValidationRuleResponse[];
   initialFilters: ActivityFilters;
   hasPendingSync: boolean;
+  showTransactionTimes: boolean;
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState<ActivityFilters>(initialFilters);
@@ -1216,9 +1221,10 @@ export default function TransactionsPageClient({
                                   className="text-[var(--text-secondary)]"
                                 >
                                   <td className="py-3 pr-4 text-[var(--text-primary)]">
-                                    {DATETIME_FORMATTER.format(
-                                      new Date(transaction.postedAt),
-                                    )}
+                                    {(showTransactionTimes
+                                      ? DATETIME_FORMATTER
+                                      : DATE_FORMATTER
+                                    ).format(new Date(transaction.postedAt))}
                                   </td>
                                   <td className="py-3 pr-4">
                                     <div className="flex flex-wrap items-center gap-2">
@@ -1418,7 +1424,8 @@ export default function TransactionsPageClient({
             accounts={accounts}
             categories={categories}
             expenseValidationRules={expenseValidationRules}
-            initialValues={createEmptyTransactionFormValues()}
+            showTransactionTimes={showTransactionTimes}
+            initialValues={createEmptyTransactionFormValues(showTransactionTimes)}
             onSuccess={() => setIsCreateModalOpen(false)}
             onCancel={() => setIsCreateModalOpen(false)}
           />
@@ -1448,7 +1455,11 @@ export default function TransactionsPageClient({
                 accounts={accounts}
                 categories={categories}
                 expenseValidationRules={expenseValidationRules}
-                initialValues={transactionToFormValues(editingTransaction)}
+                showTransactionTimes={showTransactionTimes}
+                initialValues={transactionToFormValues(
+                  editingTransaction,
+                  showTransactionTimes,
+                )}
                 onSuccess={() => setEditingTransactionId(null)}
                 onCancel={() => setEditingTransactionId(null)}
               />

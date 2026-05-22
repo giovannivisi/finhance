@@ -14,7 +14,8 @@
     "./budgets": "./src/budgets.ts",
     "./imports": "./src/imports.ts",
     "./snapshots": "./src/snapshots.ts",
-    "./transactions": "./src/transactions.ts"
+    "./transactions": "./src/transactions.ts",
+    "./users": "./src/users.ts"
   },
   "license": "MIT",
   "author": "giovisi"

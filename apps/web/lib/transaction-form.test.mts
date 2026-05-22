@@ -176,3 +176,62 @@ test("buildTransactionPayload rejects split-funding totals that do not match", (
     "The main amount must match the sum of the funding legs.",
   );
 });
+
+test("buildTransactionPayload combines a date-only value with the current Rome time", () => {
+  const result = buildTransactionPayload(
+    {
+      postedAt: "2026-05-21",
+      kind: "EXPENSE",
+      amount: "12",
+      description: "Lunch",
+      notes: "",
+      accountId: "account-1",
+      direction: "OUTFLOW",
+      categoryId: "category-food",
+      counterparty: "",
+      sourceAccountId: "",
+      destinationAccountId: "",
+      fundingMode: "SINGLE",
+      fundingLegs: [
+        { accountId: "", amount: "" },
+        { accountId: "", amount: "" },
+      ],
+    },
+    {
+      showTransactionTimes: false,
+      now: new Date("2026-05-20T08:30:45.000Z"),
+    },
+  );
+
+  assert.equal(result.payload?.postedAt, "2026-05-21T08:30:45.000Z");
+});
+
+test("buildTransactionPayload preserves the hidden Rome time while editing", () => {
+  const result = buildTransactionPayload(
+    {
+      postedAt: "2026-05-22",
+      kind: "EXPENSE",
+      amount: "12",
+      description: "Lunch",
+      notes: "",
+      accountId: "account-1",
+      direction: "OUTFLOW",
+      categoryId: "category-food",
+      counterparty: "",
+      sourceAccountId: "",
+      destinationAccountId: "",
+      fundingMode: "SINGLE",
+      fundingLegs: [
+        { accountId: "", amount: "" },
+        { accountId: "", amount: "" },
+      ],
+    },
+    {
+      showTransactionTimes: false,
+      existingPostedAt: "2026-05-20T08:30:45.000Z",
+      now: new Date("2026-05-20T18:00:00.000Z"),
+    },
+  );
+
+  assert.equal(result.payload?.postedAt, "2026-05-22T08:30:45.000Z");
+});

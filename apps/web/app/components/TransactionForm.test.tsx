@@ -155,6 +155,7 @@ describe("TransactionForm", () => {
   beforeEach(() => {
     refreshMock.mockReset();
     mockedApiMutation.mockReset();
+    vi.useRealTimers();
   });
 
   it("auto-categorises expense descriptions until the user overrides the category", async () => {
@@ -458,5 +459,19 @@ describe("TransactionForm", () => {
       screen.getByText(/this transaction keeps its transfer identity/i),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Kind")).toBeDisabled();
+  });
+
+  it("switches the posted-at field to date-only mode when times are hidden", () => {
+    renderForm({
+      showTransactionTimes: false,
+      initialValues: {
+        ...buildCreateValues(),
+        postedAt: "2026-05-21",
+        description: "Lunch",
+        categoryId: "category-cafes",
+      },
+    });
+
+    expect(screen.getByLabelText("Posted at")).toHaveAttribute("type", "date");
   });
 });

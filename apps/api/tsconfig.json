@@ -25,7 +25,8 @@
       "@imports/*": ["src/imports/*"],
       "@snapshots/*": ["src/snapshots/*"],
       "@transactions/*": ["src/transactions/*"],
-      "@prices/*": ["./src/prices/*"]
+      "@prices/*": ["./src/prices/*"],
+      "@users/*": ["src/users/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

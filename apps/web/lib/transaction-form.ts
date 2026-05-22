@@ -6,6 +6,24 @@ import type {
   UpsertTransactionRequest,
 } from "@finhance/shared";
 
+const ROME_TIME_ZONE = "Europe/Rome";
+const ROME_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: ROME_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const ROME_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: ROME_TIME_ZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
 export interface TransactionFundingLegFormValue {
   accountId: string;
   amount: string;
@@ -30,9 +48,13 @@ export interface TransactionFormValues {
 const DEFAULT_TRANSACTION_KIND: TransactionKind = "EXPENSE";
 const DEFAULT_TRANSACTION_DIRECTION: TransactionDirection = "OUTFLOW";
 
-export function createEmptyTransactionFormValues(): TransactionFormValues {
+export function createEmptyTransactionFormValues(
+  showTransactionTimes = true,
+): TransactionFormValues {
   return {
-    postedAt: toDateTimeLocalValue(new Date().toISOString()),
+    postedAt: showTransactionTimes
+      ? toDateTimeLocalValue(new Date().toISOString())
+      : toRomeDateInputValue(new Date().toISOString()),
     kind: DEFAULT_TRANSACTION_KIND,
     amount: "",
     description: "",
@@ -50,9 +72,12 @@ export function createEmptyTransactionFormValues(): TransactionFormValues {
 
 export function transactionToFormValues(
   transaction: TransactionResponse,
+  showTransactionTimes = true,
 ): TransactionFormValues {
   return {
-    postedAt: toDateTimeLocalValue(transaction.postedAt),
+    postedAt: showTransactionTimes
+      ? toDateTimeLocalValue(transaction.postedAt)
+      : toRomeDateInputValue(transaction.postedAt),
     kind: transaction.kind,
     amount: String(transaction.amount),
     description: transaction.description,
@@ -79,17 +104,28 @@ export function transactionToFormValues(
   };
 }
 
-export function buildTransactionPayload(values: TransactionFormValues): {
+export function buildTransactionPayload(
+  values: TransactionFormValues,
+  options?: {
+    showTransactionTimes?: boolean;
+    existingPostedAt?: string | null;
+    now?: Date;
+  },
+): {
   payload?: UpsertTransactionRequest;
   error?: string;
 } {
-  const postedAt = parsePostedAt(values.postedAt);
+  const postedAt = parsePostedAt(values.postedAt, {
+    showTransactionTimes: options?.showTransactionTimes ?? true,
+    existingPostedAt: options?.existingPostedAt ?? null,
+    now: options?.now ?? new Date(),
+  });
   const amount = parseNumber(values.amount);
   const description = values.description.trim();
   const notes = values.notes.trim() || null;
 
   if (!postedAt) {
-    return { error: "Please enter a valid posting date and time." };
+    return { error: "Please enter a valid posting date." };
   }
 
   if (amount === null || amount <= 0) {
@@ -242,6 +278,10 @@ export function toDateTimeLocalValue(isoString: string): string {
   return localDate.toISOString().slice(0, 16);
 }
 
+export function toRomeDateInputValue(isoString: string): string {
+  return ROME_DATE_FORMATTER.format(new Date(isoString));
+}
+
 function normalizeFundingLegs(
   legs: TransactionFundingLegFormValue[],
 ): TransactionFundingLegFormValue[] {
@@ -253,9 +293,20 @@ function normalizeFundingLegs(
     .filter((leg) => leg.accountId || leg.amount);
 }
 
-function parsePostedAt(value: string): string | null {
+function parsePostedAt(
+  value: string,
+  options: {
+    showTransactionTimes: boolean;
+    existingPostedAt?: string | null;
+    now: Date;
+  },
+): string | null {
   if (!value.trim()) {
     return null;
+  }
+
+  if (!options.showTransactionTimes) {
+    return parseRomeDateOnlyPostedAt(value, options);
   }
 
   const postedAt = new Date(value);
@@ -277,4 +328,107 @@ function parseNumber(value: string): number | null {
 
 function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toString();
+}
+
+function parseRomeDateOnlyPostedAt(
+  value: string,
+  options: {
+    existingPostedAt?: string | null;
+    now: Date;
+  },
+): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  const sourceDate = options.existingPostedAt
+    ? new Date(options.existingPostedAt)
+    : options.now;
+  const timeParts = getRomeDateTimeParts(sourceDate);
+  return romeDateTimeToUtc(
+    year,
+    month,
+    day,
+    timeParts.hour,
+    timeParts.minute,
+    timeParts.second,
+    timeParts.millisecond,
+  ).toISOString();
+}
+
+function getRomeDateTimeParts(date: Date) {
+  const parts = ROME_DATE_TIME_FORMATTER.formatToParts(date);
+  return {
+    hour: extractDateTimePart(parts, "hour"),
+    minute: extractDateTimePart(parts, "minute"),
+    second: extractDateTimePart(parts, "second"),
+    millisecond: date.getUTCMilliseconds(),
+  };
+}
+
+function extractDateTimePart(
+  parts: Intl.DateTimeFormatPart[],
+  type: Intl.DateTimeFormatPart["type"],
+): number {
+  const value = parts.find((part) => part.type === type)?.value;
+  if (!value) {
+    throw new Error(`Unable to extract ${type} for Europe/Rome conversion.`);
+  }
+
+  return Number(value);
+}
+
+function getRomeTimeZoneOffsetMs(date: Date): number {
+  const parts = ROME_DATE_TIME_FORMATTER.formatToParts(date);
+  const year = extractDateTimePart(parts, "year");
+  const month = extractDateTimePart(parts, "month");
+  const day = extractDateTimePart(parts, "day");
+  const hour = extractDateTimePart(parts, "hour");
+  const minute = extractDateTimePart(parts, "minute");
+  const second = extractDateTimePart(parts, "second");
+
+  return Date.UTC(year, month - 1, day, hour, minute, second) - date.getTime();
+}
+
+function romeDateTimeToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  millisecond = 0,
+): Date {
+  const targetUtc = Date.UTC(
+    year,
+    month - 1,
+    day,
+    hour,
+    minute,
+    second,
+    millisecond,
+  );
+  let current = targetUtc;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const offset = getRomeTimeZoneOffsetMs(new Date(current));
+    const next = targetUtc - offset;
+
+    if (next === current) {
+      break;
+    }
+
+    current = next;
+  }
+
+  return new Date(current);
 }

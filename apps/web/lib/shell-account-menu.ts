@@ -85,11 +85,11 @@ export function buildShellAccountMenuSections(input: {
       title: "Settings",
       items: [
         {
-          type: "placeholder",
+          type: "link",
           key: "user-settings",
-          label: "User settings (soon)",
+          label: "User settings",
+          href: "/settings/user",
           icon: Settings,
-          disabledReason: "User settings will land in a later pass.",
         },
         {
           type: "placeholder",
@@ -102,4 +102,3 @@ export function buildShellAccountMenuSections(input: {
     },
   ];
 }
-

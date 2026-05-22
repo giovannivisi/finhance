@@ -21,7 +21,7 @@ export type AppNavItem = {
 };
 
 export const PRIMARY_NAV_ITEMS: readonly AppNavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transactions", label: "Activity", icon: ArrowLeftRight },
   { href: "/accounts", label: "Wallets", icon: Wallet },
   { href: "/analytics", label: "Analytics", icon: TrendingUp },

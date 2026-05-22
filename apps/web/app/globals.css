@@ -4197,6 +4197,48 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   font-size: 0.875rem;
 }
 
+.app-form-success {
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--color-income) 22%, transparent);
+  background: color-mix(in srgb, var(--color-income) 10%, transparent);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.app-form-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 18px 20px;
+  border-radius: 20px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-card-muted);
+}
+
+.app-form-toggle input[type="checkbox"] {
+  inline-size: 20px;
+  block-size: 20px;
+  margin-top: 2px;
+  accent-color: var(--color-primary);
+}
+
+.app-form-toggle-label {
+  display: block;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.app-form-toggle-copy {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
 .app-form-actions {
   display: flex;
   flex-wrap: wrap;
