@@ -1,6 +1,5 @@
 import { AssetKind } from '@finhance/db';
 
-const DISPLAY_NAMES = new Intl.DisplayNames(['en'], { type: 'currency' });
 const FALLBACK_CURRENCY_CODES = ['EUR', 'USD', 'GBP', 'CHF'] as const;
 
 export const SUPPORTED_REPORTING_CURRENCY_CODES = [
@@ -69,7 +68,13 @@ const SUPPORTED_EXCHANGES: ReadonlyArray<{
   { value: '_CRYPTO_', allowedKinds: CRYPTO_ONLY },
 ];
 
+let cachedCurrencyCodes: string[] | null = null;
+
 function getRuntimeCurrencyCodes(): string[] {
+  if (cachedCurrencyCodes) {
+    return cachedCurrencyCodes;
+  }
+
   try {
     if (typeof Intl.supportedValuesOf === 'function') {
       const codes = Intl.supportedValuesOf('currency').filter((value) =>
@@ -77,6 +82,7 @@ function getRuntimeCurrencyCodes(): string[] {
       );
 
       if (codes.length > 0) {
+        cachedCurrencyCodes = codes;
         return codes;
       }
     }
@@ -84,7 +90,8 @@ function getRuntimeCurrencyCodes(): string[] {
     // Fall through to the safe fallback set below.
   }
 
-  return [...FALLBACK_CURRENCY_CODES];
+  cachedCurrencyCodes = [...FALLBACK_CURRENCY_CODES];
+  return cachedCurrencyCodes;
 }
 
 export function isSupportedCurrencyCode(
@@ -119,8 +126,4 @@ export function isSupportedExchangeValue(
       (!kind ||
         exchange.allowedKinds.some((allowedKind) => allowedKind === kind)),
   );
-}
-
-export function getCurrencyDisplayName(code: string): string {
-  return DISPLAY_NAMES.of(code) ?? code;
 }

@@ -1,4 +1,4 @@
-import { isSupportedReportingCurrencyCode } from "./currencies";
+import { isSupportedReportingCurrencyCode } from "#currencies";
 
 export const USER_START_PAGE_VALUES = [
   "DASHBOARD",

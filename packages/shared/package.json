@@ -6,6 +6,10 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "imports": {
+    "#currencies": "./src/currencies.ts",
+    "#exchanges": "./src/exchanges.ts"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./assets": "./src/assets.ts",
