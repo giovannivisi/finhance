@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import Modal from "@components/Modal";
 import MoneyValue from "@components/MoneyValue";
@@ -12,6 +12,10 @@ import { useAppPreferences } from "@components/ThemeProvider";
 import { apiMutation } from "@lib/api";
 import { getExchangeSuffixesForKind } from "@lib/asset-ui";
 import { getCurrencyPickerOptions } from "@lib/currency-ui";
+import {
+  getDashboardRefreshNotice,
+  requestDashboardRefresh,
+} from "@lib/dashboard-refresh";
 import { formatSensitiveNumber } from "@lib/money";
 import type {
   AssetKind,
@@ -238,6 +242,7 @@ export default function BrokeragePageClient({
   const router = useRouter();
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
+  const autoRefreshStartedRef = useRef(false);
   const [openModal, setOpenModal] = useState<OperationModalKind>(null);
   const [targetTab, setTargetTab] = useState<TargetTab>("assetClasses");
   const [buyForm, setBuyForm] = useState<BuyFormState>(() =>
@@ -260,6 +265,9 @@ export default function BrokeragePageClient({
   );
   const [showTargetHelp, setShowTargetHelp] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
+  const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activityFilters, setActivityFilters] =
     useState<BrokerageActivityFilters>({
@@ -382,6 +390,15 @@ export default function BrokeragePageClient({
       : workspace.selectedBroker.unrealisedGainLoss < 0
         ? "var(--color-expense)"
         : undefined;
+  const pricingStatusMessage =
+    workspace.pricingStatus.state === "PARTIAL"
+      ? "Latest stored prices are shown."
+      : workspace.pricingStatus.state === "STALE"
+        ? "Latest stored prices are shown while brokerage data refreshes in the background."
+        : "Price snapshot is current.";
+  const runAutoRefresh = useEffectEvent(() => {
+    void handleRefreshPrices();
+  });
 
   useEffect(() => {
     setBuyForm((current) => {
@@ -416,6 +433,44 @@ export default function BrokeragePageClient({
   useEffect(() => {
     setOpenActivityMonthKey(groupedActivity[0]?.key ?? null);
   }, [groupedActivity]);
+
+  useEffect(() => {
+    if (
+      !isHydrated ||
+      autoRefreshStartedRef.current ||
+      !workspace.pricingStatus.refreshSuggested
+    ) {
+      return;
+    }
+
+    autoRefreshStartedRef.current = true;
+    runAutoRefresh();
+  }, [isHydrated, workspace.pricingStatus.refreshSuggested]);
+
+  async function handleRefreshPrices() {
+    setRefreshError(null);
+    setRefreshNotice(null);
+    setIsRefreshingPrices(true);
+
+    try {
+      const result = await requestDashboardRefresh();
+
+      if (!result.ok) {
+        const notice = getDashboardRefreshNotice(result.status, result.error);
+        if (notice) {
+          setRefreshNotice(notice);
+          return;
+        }
+
+        setRefreshError(result.error);
+        return;
+      }
+
+      router.refresh();
+    } finally {
+      setIsRefreshingPrices(false);
+    }
+  }
 
   function resetOperationState(nextModal: OperationModalKind) {
     setFormError(null);
@@ -776,6 +831,20 @@ export default function BrokeragePageClient({
                 {workspace.selectedBroker.account.institution ? (
                   <p className="brokerage-summary-subtitle">
                     {workspace.selectedBroker.account.institution}
+                  </p>
+                ) : null}
+                {workspace.pricingStatus.state !== "FRESH" ||
+                isRefreshingPrices ||
+                refreshNotice ||
+                refreshError ? (
+                  <p className="brokerage-summary-subtitle">
+                    {isRefreshingPrices
+                      ? "Refreshing latest prices..."
+                      : refreshError
+                        ? refreshError
+                        : refreshNotice
+                          ? refreshNotice
+                          : pricingStatusMessage}
                   </p>
                 ) : null}
               </div>

@@ -7,10 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
 import { AccountsService } from '@accounts/accounts.service';
-import {
-  toAccountResponse,
-  toAccountReconciliationResponse,
-} from '@accounts/accounts.mapper';
+import { toAccountResponse } from '@accounts/accounts.mapper';
 import { AssetsService } from '@assets/assets.service';
 import { TransactionsService } from '@transactions/transactions.service';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
@@ -110,26 +107,16 @@ export class BrokerageService {
   ): Promise<BrokerageWorkspaceResponse> {
     const brokerAccountsPromise = this.listActiveBrokerAccounts(ownerId);
     const dashboardPromise = this.assetsService.getDashboard(ownerId);
-    const deletionStatesPromise = brokerAccountsPromise.then((brokerAccounts) =>
-      this.accountsService.getDeletionStates(
-        ownerId,
-        brokerAccounts.map((account) => account.id),
-      ),
-    );
 
     const [
       brokerAccounts,
       dashboard,
-      deletionStates,
-      reconciliations,
       operations,
       assetKindTargets,
       securityTargets,
     ] = await Promise.all([
       brokerAccountsPromise,
       dashboardPromise,
-      deletionStatesPromise,
-      this.accountsService.findReconciliation(ownerId),
       this.findBrokerageOperationsSafe(
         ownerId,
         accountId,
@@ -141,7 +128,7 @@ export class BrokerageService {
 
     const summaries = this.buildBrokerageSummariesFromDashboard(
       brokerAccounts,
-      deletionStates,
+      new Map(),
       dashboard,
     );
     const selectedBroker = summaries.find(
@@ -154,9 +141,6 @@ export class BrokerageService {
       );
     }
 
-    const cashReconciliation = reconciliations.find(
-      (entry) => entry.account.id === accountId,
-    );
     const allAssets = dashboard.assets.filter(
       (asset) => asset.type === 'ASSET',
     );
@@ -212,11 +196,10 @@ export class BrokerageService {
 
     return {
       reportingCurrency: dashboard.reportingCurrency,
+      pricingStatus: dashboard.pricingStatus,
       brokers: summaries,
       selectedBroker,
-      cashReconciliation: cashReconciliation
-        ? toAccountReconciliationResponse(cashReconciliation)
-        : null,
+      cashReconciliation: null,
       positions,
       activity: activity.slice(0, BROKERAGE_ACTIVITY_LIMIT),
       allocation,
@@ -599,17 +582,11 @@ export class BrokerageService {
     ownerId: string,
   ): Promise<BrokerageAccountSummaryResponse[]> {
     const brokerAccounts = await this.listActiveBrokerAccounts(ownerId);
-    const [deletionStates, dashboard] = await Promise.all([
-      this.accountsService.getDeletionStates(
-        ownerId,
-        brokerAccounts.map((account) => account.id),
-      ),
-      this.assetsService.getDashboard(ownerId),
-    ]);
+    const dashboard = await this.assetsService.getDashboard(ownerId);
 
     return this.buildBrokerageSummariesFromDashboard(
       brokerAccounts,
-      deletionStates,
+      new Map(),
       dashboard,
     );
   }

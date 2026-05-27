@@ -1,7 +1,6 @@
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_ROUTE_KEY } from '@/security/public-route';
 import { OwnerUserGuard } from '@/security/owner-user.guard';
-import { buildOwnerPlaceholderEmail } from '@/security/owner-user';
 import { createHttpExecutionContext } from '@/testing/http-execution-context.stub';
 
 type RequestLike = {
@@ -30,42 +29,18 @@ describe('OwnerUserGuard', () => {
     process.env.AUTH_MODE = originalAuthMode;
   });
 
-  it('creates the default local owner record outside hosted mode', async () => {
+  it('accepts the default local owner outside hosted mode without a database write', () => {
     delete process.env.AUTH_MODE;
-    const upsert = jest.fn().mockResolvedValue(undefined);
-    const guard = new OwnerUserGuard(
-      {
-        user: {
-          upsert,
-        },
-      } as never,
-      new Reflector(),
-    );
+    const guard = new OwnerUserGuard(new Reflector());
 
-    await expect(guard.canActivate(createContext({}))).resolves.toBe(true);
-    expect(upsert).toHaveBeenCalledWith({
-      where: { id: 'local-dev' },
-      update: {},
-      create: {
-        id: 'local-dev',
-        email: buildOwnerPlaceholderEmail('local-dev'),
-      },
-    });
+    expect(guard.canActivate(createContext({}))).toBe(true);
   });
 
-  it('upserts the authenticated hosted user record', async () => {
+  it('accepts the authenticated hosted user without a database write', () => {
     process.env.AUTH_MODE = 'hosted';
-    const upsert = jest.fn().mockResolvedValue(undefined);
-    const guard = new OwnerUserGuard(
-      {
-        user: {
-          upsert,
-        },
-      } as never,
-      new Reflector(),
-    );
+    const guard = new OwnerUserGuard(new Reflector());
 
-    await expect(
+    expect(
       guard.canActivate(
         createContext({
           authPrincipal: {
@@ -74,36 +49,15 @@ describe('OwnerUserGuard', () => {
           },
         }),
       ),
-    ).resolves.toBe(true);
-    expect(upsert).toHaveBeenCalledWith({
-      where: { id: 'user-123' },
-      update: {
-        email: 'person@example.com',
-      },
-      create: {
-        id: 'user-123',
-        email: 'person@example.com',
-      },
-    });
+    ).toBe(true);
   });
 
-  it('skips owner upserts for public routes', async () => {
+  it('skips owner resolution for public routes', () => {
     delete process.env.AUTH_MODE;
-    const upsert = jest.fn().mockResolvedValue(undefined);
     const handler = () => undefined;
     Reflect.defineMetadata(IS_PUBLIC_ROUTE_KEY, true, handler);
-    const guard = new OwnerUserGuard(
-      {
-        user: {
-          upsert,
-        },
-      } as never,
-      new Reflector(),
-    );
+    const guard = new OwnerUserGuard(new Reflector());
 
-    await expect(guard.canActivate(createContext({}, handler))).resolves.toBe(
-      true,
-    );
-    expect(upsert).not.toHaveBeenCalled();
+    expect(guard.canActivate(createContext({}, handler))).toBe(true);
   });
 });

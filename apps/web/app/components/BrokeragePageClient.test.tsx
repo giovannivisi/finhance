@@ -1,9 +1,10 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import BrokeragePageClient from "@components/BrokeragePageClient";
 import { apiMutation } from "@lib/api";
+import { requestDashboardRefresh } from "@lib/dashboard-refresh";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -40,6 +41,11 @@ vi.mock("@lib/api", () => ({
   apiMutation: vi.fn(),
 }));
 
+vi.mock("@lib/dashboard-refresh", () => ({
+  getDashboardRefreshNotice: vi.fn(),
+  requestDashboardRefresh: vi.fn(),
+}));
+
 vi.mock("@components/Modal", () => ({
   default: ({
     open,
@@ -61,6 +67,13 @@ function buildWorkspace() {
   return {
     reportingCurrency: "EUR",
     baseCurrency: "EUR",
+    pricingStatus: {
+      state: "FRESH" as "FRESH" | "STALE" | "PARTIAL",
+      refreshSuggested: false,
+      hasStaleQuotes: false,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    },
     brokers: [
       {
         account: {
@@ -328,6 +341,8 @@ describe("BrokeragePageClient", () => {
     refreshMock.mockReset();
     prefetchMock.mockReset();
     vi.mocked(apiMutation).mockReset();
+    vi.mocked(requestDashboardRefresh).mockReset();
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({ ok: true });
   });
 
   it("renders the brokerage workspace and routes account switching through the deep link", async () => {
@@ -584,5 +599,25 @@ describe("BrokeragePageClient", () => {
 
     expect(screen.getByText("Boundary dividend")).toBeInTheDocument();
     expect(screen.getByText("1 active")).toBeInTheDocument();
+  });
+
+  it("refreshes brokerage prices once after hydration when stored pricing is stale", async () => {
+    const workspace = buildWorkspace();
+    workspace.pricingStatus = {
+      state: "STALE",
+      refreshSuggested: true,
+      hasStaleQuotes: true,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    };
+
+    render(
+      <BrokeragePageClient workspace={workspace} categories={categories} />,
+    );
+
+    await waitFor(() => {
+      expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
+    });
+    expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 });

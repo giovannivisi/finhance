@@ -3,22 +3,12 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TopHeader from "@components/TopHeader";
 
-const { authMock, hostedModeMock, settingsMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
+const { hostedModeMock } = vi.hoisted(() => ({
   hostedModeMock: vi.fn(),
-  settingsMock: vi.fn(),
-}));
-
-vi.mock("@lib/auth", () => ({
-  auth: authMock,
 }));
 
 vi.mock("@lib/auth-mode", () => ({
   isHostedAuthMode: hostedModeMock,
-}));
-
-vi.mock("@lib/server-user-settings", () => ({
-  getUserSettingsOrDefaults: settingsMock,
 }));
 
 vi.mock("@components/ShellAccountMenu", () => ({
@@ -54,37 +44,25 @@ vi.mock("next/image", () => ({
 
 describe("TopHeader", () => {
   beforeEach(() => {
-    authMock.mockReset();
     hostedModeMock.mockReset();
-    settingsMock.mockReset();
     hostedModeMock.mockReturnValue(false);
-    settingsMock.mockResolvedValue({
-      showTransactionTimes: true,
-      startPage: "BROKERAGE",
-    });
   });
 
-  it("links the wordmark to the configured start page", async () => {
-    render(await TopHeader());
+  it("links the wordmark to home so the redirect can resolve the start page", () => {
+    render(<TopHeader />);
 
     expect(screen.getByRole("link", { name: /finhance/i })).toHaveAttribute(
       "href",
-      "/brokerage",
+      "/",
     );
   });
 
-  it("renders hosted identity when authentication is enabled", async () => {
+  it("renders hosted workspace identity when hosted authentication is enabled", () => {
     hostedModeMock.mockReturnValue(true);
-    authMock.mockResolvedValue({
-      user: {
-        name: "Giovanni Visi",
-        email: "giovanni@example.com",
-      },
-    });
 
-    render(await TopHeader());
+    render(<TopHeader />);
 
-    expect(screen.getByText("Giovanni Visi")).toBeInTheDocument();
-    expect(screen.getByText("giovanni@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Hosted workspace")).toBeInTheDocument();
+    expect(screen.getByText("Account and app actions")).toBeInTheDocument();
   });
 });

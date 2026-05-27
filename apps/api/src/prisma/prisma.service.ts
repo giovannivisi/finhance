@@ -34,7 +34,23 @@ function errorMetaString(
 
 export function isRetryableConnectionError(
   error: unknown,
-): error is Prisma.PrismaClientKnownRequestError {
+): error is
+  | Prisma.PrismaClientKnownRequestError
+  | Prisma.PrismaClientInitializationError
+  | Prisma.PrismaClientUnknownRequestError {
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    return (
+      error.message.includes("Can't reach database server at") ||
+      error.message.includes(
+        'Timed out fetching a new connection from the connection pool.',
+      )
+    );
+  }
+
+  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    return error.message.includes('Response from the Engine was empty');
+  }
+
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     (error.code === 'P1001' ||
@@ -117,6 +133,48 @@ export async function runWithTransientRetry<T>({
   }
 }
 
+type ConnectRetryLogger = Pick<Logger, 'warn'>;
+
+export async function connectWithTransientRetry({
+  logger,
+  operationLabel,
+  connect,
+  attempts = 3,
+  initialDelayMs = 250,
+  sleep = (delayMs: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, delayMs)),
+}: {
+  logger: ConnectRetryLogger;
+  operationLabel: string;
+  connect: () => Promise<void>;
+  attempts?: number;
+  initialDelayMs?: number;
+  sleep?: (delayMs: number) => Promise<void>;
+}): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await connect();
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableConnectionError(error) || attempt === attempts) {
+        throw error;
+      }
+
+      const delayMs = initialDelayMs * attempt;
+      logger.warn(
+        `Retrying Prisma connection after transient database connectivity failure: ${operationLabel} (attempt ${attempt + 1}/${attempts})`,
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError;
+}
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -127,6 +185,13 @@ export class PrismaService
 
     const logger = new Logger(PrismaService.name);
     let reconnectPromise: Promise<void> | null = null;
+    const connectWithRetry = async (operationLabel: string) => {
+      await connectWithTransientRetry({
+        logger,
+        operationLabel,
+        connect: () => extended.$connect(),
+      });
+    };
 
     const reconnect = async () => {
       if (reconnectPromise) {
@@ -141,7 +206,7 @@ export class PrismaService
           // Ignore disconnect failures while recovering a stale connection.
         }
 
-        await extended.$connect();
+        await connectWithRetry('prisma.reconnect');
       })();
 
       try {
@@ -169,7 +234,7 @@ export class PrismaService
     Object.defineProperties(extended, {
       onModuleInit: {
         value: async () => {
-          await extended.$connect();
+          await connectWithRetry('prisma.startup');
         },
       },
       onModuleDestroy: {
@@ -186,7 +251,11 @@ export class PrismaService
   }
 
   async onModuleInit() {
-    await this.$connect();
+    await connectWithTransientRetry({
+      logger: new Logger(PrismaService.name),
+      operationLabel: 'prisma.startup',
+      connect: () => this.$connect(),
+    });
   }
 
   async onModuleDestroy() {
@@ -200,6 +269,10 @@ export class PrismaService
       // Ignore disconnect failures while recovering a stale connection.
     }
 
-    await this.$connect();
+    await connectWithTransientRetry({
+      logger: new Logger(PrismaService.name),
+      operationLabel: 'prisma.reconnect',
+      connect: () => this.$connect(),
+    });
   }
 }

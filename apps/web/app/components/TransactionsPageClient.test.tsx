@@ -216,7 +216,7 @@ function renderPage(
       categories={categories}
       expenseValidationRules={rules}
       initialFilters={initialFilters}
-      hasPendingSync={false}
+      initialHasPendingSync={false}
       showTransactionTimes={showTransactionTimes}
     />,
   );

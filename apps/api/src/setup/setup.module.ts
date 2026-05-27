@@ -9,5 +9,6 @@ import { SetupService } from '@/setup/setup.service';
   imports: [PrismaModule, AccountsModule],
   controllers: [SetupController],
   providers: [SetupService, RequestOwnerResolver],
+  exports: [SetupService],
 })
 export class SetupModule {}

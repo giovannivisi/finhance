@@ -1,3 +1,6 @@
+import type { AccountResponse } from "./accounts.js";
+import type { ExpenseValidationRuleResponse } from "./expense-validation.js";
+
 export type CategoryType = "EXPENSE" | "INCOME";
 
 export interface UpsertCategoryRequest {
@@ -119,6 +122,14 @@ export interface TransactionResponse {
   isRecurringGenerated: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TransactionsPageDataResponse {
+  transactions: TransactionResponse[];
+  cashflow: CashflowSummaryResponse;
+  accounts: AccountResponse[];
+  categories: CategoryResponse[];
+  expenseValidationRules: ExpenseValidationRuleResponse[];
 }
 
 export interface CashflowCategoryTotalResponse {

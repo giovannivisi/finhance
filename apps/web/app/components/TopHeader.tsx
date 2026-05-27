@@ -1,31 +1,20 @@
 import Link from "next/link";
 import Image from "next/image";
 import ShellAccountMenu from "@components/ShellAccountMenu";
-import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
-import { getUserSettingsOrDefaults } from "@lib/server-user-settings";
-import { getStartPageHref } from "@lib/user-settings";
 
-export default async function TopHeader() {
-  const session = isHostedAuthMode() ? await auth() : null;
-  const settings = await getUserSettingsOrDefaults();
-  const identity = session?.user
-    ? {
-        title:
-          session.user.name?.trim() || session.user.email?.trim() || "Account",
-        subtitle: session.user.email?.trim() || "Hosted workspace",
-      }
-    : {
-        title: isHostedAuthMode() ? "Hosted workspace" : "Local workspace",
-        subtitle: isHostedAuthMode()
-          ? "Account and app actions"
-          : "Private on this device",
-      };
-  const startPageHref = getStartPageHref(settings.startPage);
+export default function TopHeader() {
+  const hostedAuthMode = isHostedAuthMode();
+  const identity = {
+    title: hostedAuthMode ? "Hosted workspace" : "Local workspace",
+    subtitle: hostedAuthMode
+      ? "Account and app actions"
+      : "Private on this device",
+  };
 
   return (
     <header className="top-header">
-      <Link href={startPageHref} className="top-header-brand">
+      <Link href="/" className="top-header-brand">
         <Image
           src="/logo-dark.svg"
           alt="finhance logo dark"

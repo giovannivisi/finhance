@@ -2,6 +2,7 @@ import "server-only";
 
 import { importPKCS8, SignJWT } from "jose";
 import { AUTH_MODE_HOSTED, isHostedAuthMode } from "./auth-mode";
+import { resolveServerApiBaseUrl } from "./api-base-url";
 import { resolveDirectApiUrl } from "./api-url";
 
 interface HostedApiJwtConfig {
@@ -93,14 +94,11 @@ export async function mintApiAccessToken(input: {
     .sign(key);
 }
 
-export function getDirectApiUrl(path: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
-
-  if (!baseUrl) {
-    throw new Error("NEXT_PUBLIC_API_URL is not configured.");
-  }
-
-  return resolveDirectApiUrl(path, baseUrl);
+export function getDirectApiUrl(
+  path: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return resolveDirectApiUrl(path, resolveServerApiBaseUrl(env));
 }
 
 export { InvalidApiPathError, normalizeDirectApiPath } from "./api-url";

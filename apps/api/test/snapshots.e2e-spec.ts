@@ -46,6 +46,7 @@ function createDashboard(): DashboardResponse {
         type: 'ASSET',
         accountId: null,
         accountName: null,
+        accountType: null,
         kind: 'CASH',
         liabilityKind: null,
         ticker: null,

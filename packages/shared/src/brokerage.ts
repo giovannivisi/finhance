@@ -4,6 +4,7 @@ import type {
 } from "./accounts.js";
 import type {
   AssetKind,
+  AggregatePricingStatus,
   DashboardAssetResponse,
   ValuationSource,
 } from "./assets.js";
@@ -84,6 +85,7 @@ export interface PortfolioAllocationSnapshotResponse {
 export interface BrokerageWorkspaceResponse {
   reportingCurrency: string;
   baseCurrency?: string;
+  pricingStatus: AggregatePricingStatus;
   brokers: BrokerageAccountSummaryResponse[];
   selectedBroker: BrokerageAccountSummaryResponse;
   cashReconciliation: AccountReconciliationResponse | null;

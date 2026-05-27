@@ -83,6 +83,7 @@ describe('AssetsService', () => {
     buildMarketSymbol: jest.Mock;
     getMarketPrice: jest.Mock;
     getFxRate: jest.Mock;
+    getStoredFxRateSnapshot: jest.Mock;
     getFxRateForDate: jest.Mock;
   };
   let accounts: {
@@ -141,6 +142,12 @@ describe('AssetsService', () => {
       ),
       getMarketPrice: jest.fn(),
       getFxRate: jest.fn(),
+      getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
+        rate: new Prisma.Decimal('0.9'),
+        status: 'EXACT',
+        rateDate: new Date('2026-05-20T00:00:00.000Z'),
+        updatedAt: new Date('2026-05-20T10:00:00.000Z'),
+      }),
       getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('0.9')),
     };
 
@@ -234,7 +241,12 @@ describe('AssetsService', () => {
         lastFxRateAt: now,
       }),
     ]);
-    prices.getFxRateForDate.mockResolvedValue(new Prisma.Decimal('0.9'));
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'EXACT',
+      rateDate: now,
+      updatedAt: now,
+    });
 
     const dashboard = await service.getDashboard(OWNER_ID);
 
@@ -250,6 +262,38 @@ describe('AssetsService', () => {
     expect(dashboard.summary.netWorth).toBe(90);
   });
 
+  it('marks the dashboard stale when it falls back to an older stored FX rate', async () => {
+    const quoteTime = new Date('2026-05-27T10:00:00.000Z');
+    const staleFxTime = new Date('2026-05-26T18:00:00.000Z');
+    prisma.asset.findMany.mockResolvedValue([
+      createAsset({
+        accountId: 'account-1',
+        quantity: new Prisma.Decimal('2'),
+        balance: new Prisma.Decimal('80'),
+        lastPrice: new Prisma.Decimal('50'),
+        lastPriceAt: quoteTime,
+      }),
+    ]);
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'STALE',
+      rateDate: new Date('2026-05-26T00:00:00.000Z'),
+      updatedAt: staleFxTime,
+    });
+
+    const dashboard = await service.getDashboard(OWNER_ID);
+
+    expect(dashboard.pricingStatus).toEqual({
+      state: 'STALE',
+      refreshSuggested: true,
+      hasStaleQuotes: true,
+      hasStaleFx: true,
+      hasMissingFx: false,
+    });
+    expect(dashboard.assets[0].valuationSource).toBe('LAST_QUOTE');
+    expect(dashboard.assets[0].isStale).toBe(true);
+  });
+
   it('falls back to average cost when no quote is available', async () => {
     const now = new Date();
     prisma.asset.findMany.mockResolvedValue([
@@ -261,7 +305,12 @@ describe('AssetsService', () => {
         lastFxRateAt: now,
       }),
     ]);
-    prices.getFxRateForDate.mockResolvedValue(new Prisma.Decimal('0.9'));
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'EXACT',
+      rateDate: now,
+      updatedAt: now,
+    });
 
     const dashboard = await service.getDashboard(OWNER_ID);
 
@@ -430,7 +479,13 @@ describe('AssetsService', () => {
       ]);
     prisma.asset.update.mockResolvedValue(createAsset());
     prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
-    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
+    prices.getFxRateForDate.mockResolvedValue(new Prisma.Decimal('0.9'));
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'EXACT',
+      rateDate: new Date(),
+      updatedAt: new Date(),
+    });
 
     const response = await service.refreshAssets(OWNER_ID);
 
@@ -447,7 +502,7 @@ describe('AssetsService', () => {
       }),
     );
     expect(prices.getMarketPrice).toHaveBeenCalledTimes(1);
-    expect(prices.getFxRate).toHaveBeenCalledTimes(1);
+    expect(prices.getFxRateForDate).toHaveBeenCalledTimes(1);
     expect(prisma.asset.update).toHaveBeenCalledTimes(2);
     expect(response.updatedCount).toBe(2);
     expect(response.staleCount).toBe(0);
@@ -500,7 +555,7 @@ describe('AssetsService', () => {
       ]);
     prisma.asset.update.mockResolvedValue(createAsset());
     prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
-    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
+    prices.getFxRateForDate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
     await service.refreshAssets(OWNER_ID);
 

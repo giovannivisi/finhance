@@ -7,7 +7,7 @@ const { apiMock } = vi.hoisted(() => ({
   apiMock: vi.fn(),
 }));
 
-vi.mock("@lib/server-api", () => ({
+vi.mock("@lib/api", () => ({
   api: apiMock,
 }));
 
@@ -69,7 +69,7 @@ describe("BrokerageAccountPage", () => {
     );
 
     expect(
-      screen.getByText("Brokerage account client: IBKR"),
+      await screen.findByText("Brokerage account client: IBKR"),
     ).toBeInTheDocument();
   });
 });

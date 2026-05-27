@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { AssetKind, FxRateSource, Prisma } from '@finhance/db';
 import { isSupportedCurrencyCode } from '@/common/catalogues';
 import { PrismaService } from '@prisma/prisma.service';
@@ -16,6 +16,15 @@ interface PriceResponseShape {
       };
     }>;
   };
+}
+
+export type StoredFxRateStatus = 'EXACT' | 'STALE' | 'MISSING';
+
+export interface StoredFxRateSnapshot {
+  rate: Prisma.Decimal | null;
+  status: StoredFxRateStatus;
+  rateDate: Date | null;
+  updatedAt: Date | null;
 }
 
 const BASE_QUOTE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
@@ -45,7 +54,9 @@ export class PricesService {
       !CURRENCY_PATTERN.test(normalized) ||
       !isSupportedCurrencyCode(normalized)
     ) {
-      throw new Error(`Unsupported currency code "${currency ?? ''}".`);
+      throw new BadRequestException(
+        `Unsupported currency code "${currency ?? ''}".`,
+      );
     }
 
     return normalized;
@@ -134,6 +145,71 @@ export class PricesService {
     });
 
     return record?.rate ?? null;
+  }
+
+  async getStoredFxRateSnapshot(
+    ownerId: string,
+    date: Date,
+    fromCurrency: string,
+    toCurrency = 'EUR',
+  ): Promise<StoredFxRateSnapshot> {
+    const from = this.normalizeCurrency(fromCurrency);
+    const to = this.normalizeCurrency(toCurrency);
+
+    if (from === to) {
+      return {
+        rate: new Prisma.Decimal(1),
+        status: 'EXACT',
+        rateDate: this.toRomeDateValue(date),
+        updatedAt: date,
+      };
+    }
+
+    const exactRateDate = this.toRomeDateValue(date);
+    const stored = await this.prisma.fxRate.findUnique({
+      where: {
+        userId_rateDate_fromCurrency_toCurrency: {
+          userId: ownerId,
+          rateDate: exactRateDate,
+          fromCurrency: from,
+          toCurrency: to,
+        },
+      },
+    });
+
+    if (stored) {
+      return {
+        rate: stored.rate,
+        status: 'EXACT',
+        rateDate: stored.rateDate,
+        updatedAt: stored.updatedAt,
+      };
+    }
+
+    const latestStored = await this.prisma.fxRate.findFirst({
+      where: {
+        userId: ownerId,
+        fromCurrency: from,
+        toCurrency: to,
+      },
+      orderBy: [{ rateDate: 'desc' }, { updatedAt: 'desc' }],
+    });
+
+    if (latestStored) {
+      return {
+        rate: latestStored.rate,
+        status: 'STALE',
+        rateDate: latestStored.rateDate,
+        updatedAt: latestStored.updatedAt,
+      };
+    }
+
+    return {
+      rate: null,
+      status: 'MISSING',
+      rateDate: null,
+      updatedAt: null,
+    };
   }
 
   async getFxRateForDate(
@@ -242,7 +318,7 @@ export class PricesService {
 
   private assertYahooSymbol(symbol: string): void {
     if (!YAHOO_SYMBOL_PATTERN.test(symbol)) {
-      throw new Error(`Unsupported Yahoo symbol "${symbol}".`);
+      throw new BadRequestException(`Unsupported Yahoo symbol "${symbol}".`);
     }
   }
 

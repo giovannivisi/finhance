@@ -151,6 +151,7 @@ describe('AccountsService', () => {
   let prices: {
     normalizeCurrency: jest.Mock;
     getFxRate: jest.Mock;
+    getStoredFxRateSnapshot: jest.Mock;
   };
   let transactionsService: {
     createReconciliationAdjustment: jest.Mock;
@@ -200,6 +201,7 @@ describe('AccountsService', () => {
         (currency ?? 'EUR').trim().toUpperCase(),
       ),
       getFxRate: jest.fn(),
+      getStoredFxRateSnapshot: jest.fn(),
     };
 
     transactionsService = {
@@ -448,11 +450,21 @@ describe('AccountsService', () => {
         amount: new Prisma.Decimal(90),
       }),
     ]);
-    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'EXACT',
+      rateDate: new Date('2026-05-27T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-27T10:00:00.000Z'),
+    });
 
     const [entry] = await service.findReconciliation(OWNER_ID);
 
-    expect(prices.getFxRate).toHaveBeenCalledWith('USD', 'EUR');
+    expect(prices.getStoredFxRateSnapshot).toHaveBeenCalledWith(
+      OWNER_ID,
+      expect.any(Date),
+      'USD',
+      'EUR',
+    );
     expect(entry.status).toBe('CLEAN');
     expect(entry.trackedBalance?.eq(new Prisma.Decimal(90))).toBe(true);
     expect(entry.expectedBalance?.eq(new Prisma.Decimal(90))).toBe(true);
@@ -511,7 +523,12 @@ describe('AccountsService', () => {
       }),
     ]);
     prisma.transaction.findMany.mockResolvedValue([createTransaction()]);
-    prices.getFxRate.mockResolvedValue(null);
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: null,
+      status: 'MISSING',
+      rateDate: null,
+      updatedAt: null,
+    });
 
     const [entry] = await service.findReconciliation(OWNER_ID);
 
@@ -521,6 +538,37 @@ describe('AccountsService', () => {
     expect(entry.delta).toBeNull();
     expect(entry.issueCodes).toContain('FX_UNAVAILABLE');
     expect(entry.canCreateAdjustment).toBe(false);
+  });
+
+  it('flags stale FX while still computing reconciliation balances', async () => {
+    const account = createAccount({ currency: 'EUR' });
+    prisma.account.findMany.mockResolvedValue([account]);
+    prisma.asset.findMany.mockResolvedValue([
+      createAsset({
+        currency: 'USD',
+        balance: new Prisma.Decimal(100),
+      }),
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransaction({
+        amount: new Prisma.Decimal(90),
+      }),
+    ]);
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'STALE',
+      rateDate: new Date('2026-05-26T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-26T18:00:00.000Z'),
+    });
+
+    const [entry] = await service.findReconciliation(OWNER_ID);
+
+    expect(entry.status).toBe('CLEAN');
+    expect(entry.issueCodes).toContain('FX_STALE');
+    expect(entry.trackedBalance?.eq(new Prisma.Decimal(90))).toBe(true);
+    expect(entry.expectedBalance?.eq(new Prisma.Decimal(90))).toBe(true);
+    expect(entry.canCreateAdjustment).toBe(false);
+    expect(entry.canEstablishOpeningBalanceBaseline).toBe(false);
   });
 
   it('flags incomplete transfer groups while still computing expected balances', async () => {

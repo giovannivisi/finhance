@@ -6,6 +6,7 @@ import type {
 } from '@finhance/shared';
 import { isSupportedReportingCurrencyCode } from '@/common/catalogues';
 import { PrismaService } from '@prisma/prisma.service';
+import { buildOwnerPlaceholderEmail } from '@/security/owner-user';
 import { isUserStartPage, normalizeUserSettings } from '@/users/users.settings';
 
 @Injectable()
@@ -13,12 +14,14 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getSettings(ownerId: string): Promise<UserSettingsResponse> {
-    const user = await this.prisma.user.findUniqueOrThrow({
+    const user = await this.prisma.user.findUnique({
       where: { id: ownerId },
       select: { userSettings: true },
     });
 
-    return normalizeUserSettings(toUserSettingsRecord(user.userSettings));
+    return normalizeUserSettings(
+      toUserSettingsRecord(user?.userSettings ?? null),
+    );
   }
 
   async updateSettings(
@@ -31,9 +34,14 @@ export class UsersService {
       ...input,
     });
 
-    const user = await this.prisma.user.update({
+    const user = await this.prisma.user.upsert({
       where: { id: ownerId },
-      data: {
+      update: {
+        userSettings: next as unknown as Prisma.InputJsonValue,
+      },
+      create: {
+        id: ownerId,
+        email: buildOwnerPlaceholderEmail(ownerId),
         userSettings: next as unknown as Prisma.InputJsonValue,
       },
       select: {
