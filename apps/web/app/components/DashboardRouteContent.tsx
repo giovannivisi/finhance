@@ -1,6 +1,8 @@
 import type {
   DashboardAssetResponse,
+  DashboardPageDataResponse,
   DashboardResponse,
+  DashboardSupportDataResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
 import DashboardClient from "@components/DashboardClient";
@@ -9,10 +11,18 @@ import { api } from "@lib/server-api";
 
 export default async function DashboardRouteContent() {
   let dashboard: DashboardResponse | null = null;
+  let supportData: DashboardSupportDataResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
-    dashboard = await api<DashboardResponse>("/dashboard");
+    const pageData = await api<DashboardPageDataResponse>(
+      "/dashboard/page-data",
+    );
+    dashboard = pageData.dashboard;
+    supportData = {
+      budgetView: pageData.budgetView,
+      setup: pageData.setup,
+    };
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -89,7 +99,7 @@ export default async function DashboardRouteContent() {
         brokerageAccountIds={[...brokerageAccountIds]}
       />
 
-      <DashboardSupportDataClient />
+      <DashboardSupportDataClient supportData={supportData} />
     </Container>
   );
 }

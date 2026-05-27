@@ -35,8 +35,8 @@ export class DashboardService {
     const currentMonth = utcDateToRomeMonth(new Date());
     const [dashboard, budgetView, accounts, setup] = await Promise.all([
       this.getDashboard(ownerId),
-      this.budgetsService.findMonthly(ownerId, currentMonth),
-      this.accountsService.findAll(ownerId),
+      this.budgetsService.findMonthly(ownerId, currentMonth).catch(() => null),
+      this.accountsService.findAll(ownerId).catch(() => []),
       this.setupService
         .getStatus(ownerId, { includeWarnings: false })
         .catch(() => null),
@@ -53,7 +53,7 @@ export class DashboardService {
   async getSupportData(ownerId: string): Promise<DashboardSupportDataResponse> {
     const currentMonth = utcDateToRomeMonth(new Date());
     const [budgetView, setup] = await Promise.all([
-      this.budgetsService.findMonthly(ownerId, currentMonth),
+      this.budgetsService.findMonthly(ownerId, currentMonth).catch(() => null),
       this.setupService
         .getStatus(ownerId, { includeWarnings: false })
         .catch(() => null),

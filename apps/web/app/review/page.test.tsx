@@ -8,7 +8,7 @@ const { apiMock } = vi.hoisted(() => ({
   apiMock: vi.fn(),
 }));
 
-vi.mock("@lib/api", () => ({
+vi.mock("@lib/server-api", () => ({
   api: apiMock,
 }));
 
@@ -293,10 +293,10 @@ describe("ReviewPage", () => {
       }),
     );
 
-    expect(await screen.findByText("Opening net worth")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Monthly close" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("Opening net worth")).toBeInTheDocument();
     expect(screen.getByText("Close status")).toBeInTheDocument();
     expect(screen.getByText("Warnings and actions")).toBeInTheDocument();
     expect(screen.getByText("Highlights")).toBeInTheDocument();
@@ -367,7 +367,7 @@ describe("ReviewPage", () => {
     );
 
     expect(
-      await screen.findByText("No monthly close warnings for this month."),
+      screen.getByText("No monthly close warnings for this month."),
     ).toBeInTheDocument();
     expect(
       screen.getByText("No budget data is available for this month."),
@@ -408,7 +408,7 @@ describe("ReviewPage", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: "Capture snapshot" }),
+      screen.getByRole("button", { name: "Capture snapshot" }),
     ).toBeInTheDocument();
   });
 });

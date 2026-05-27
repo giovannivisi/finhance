@@ -1,11 +1,7 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import type { DashboardSupportDataResponse } from "@finhance/shared";
 import MoneyValue from "@components/MoneyValue";
 import WorkflowSection from "@components/WorkflowSection";
-import { api } from "@lib/api";
 import { getCurrentRomeMonth } from "@lib/budgets";
 import { getPrimarySetupAction, getSetupProgressLabel } from "@lib/setup";
 import { getWorkflowCards } from "@lib/workflow";
@@ -25,30 +21,11 @@ function BudgetMetric({
   );
 }
 
-export default function DashboardSupportDataClient() {
-  const [supportData, setSupportData] =
-    useState<DashboardSupportDataResponse | null>(null);
-
-  useEffect(() => {
-    let isActive = true;
-
-    api<DashboardSupportDataResponse>("/dashboard/support-data")
-      .then((data) => {
-        if (isActive) {
-          setSupportData(data);
-        }
-      })
-      .catch(() => {
-        if (isActive) {
-          setSupportData(null);
-        }
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
+export default function DashboardSupportDataClient({
+  supportData,
+}: {
+  supportData: DashboardSupportDataResponse | null;
+}) {
   if (!supportData) {
     return null;
   }

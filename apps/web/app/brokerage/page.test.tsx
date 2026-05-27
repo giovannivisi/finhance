@@ -7,7 +7,7 @@ const { apiMock } = vi.hoisted(() => ({
   apiMock: vi.fn(),
 }));
 
-vi.mock("@lib/api", () => ({
+vi.mock("@lib/server-api", () => ({
   api: apiMock,
 }));
 
@@ -59,7 +59,7 @@ describe("BrokeragePage", () => {
       screen.getByRole("heading", { name: "Brokerage" }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText("No active broker accounts yet."),
+      screen.getByText("No active broker accounts yet."),
     ).toBeInTheDocument();
   });
 
@@ -80,9 +80,7 @@ describe("BrokeragePage", () => {
 
     render(await BrokeragePage());
 
-    expect(
-      await screen.findByText("Brokerage client: IBKR"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Brokerage client: IBKR")).toBeInTheDocument();
   });
 
   it("renders the shared brokerage client when multiple brokers exist", async () => {
@@ -108,9 +106,7 @@ describe("BrokeragePage", () => {
 
     render(await BrokeragePage());
 
-    expect(
-      await screen.findByText("Brokerage client: IBKR"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Brokerage client: IBKR")).toBeInTheDocument();
   });
 
   it("renders an inline error instead of a blank page when the initial workspace load fails", async () => {
@@ -126,7 +122,7 @@ describe("BrokeragePage", () => {
     render(await BrokeragePage());
 
     expect(
-      await screen.findByText("The web app could not reach the API."),
+      screen.getByText("The web app could not reach the API."),
     ).toBeInTheDocument();
     expect(
       screen.getByText('Unsupported Yahoo symbol "BAD/TICKER".'),

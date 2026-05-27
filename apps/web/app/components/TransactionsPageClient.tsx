@@ -8,7 +8,6 @@ import type {
   CashflowSummaryResponse,
   CategoryResponse,
   ExpenseValidationRuleResponse,
-  RecurringPendingStatusResponse,
   TransactionResponse,
 } from "@finhance/shared";
 import AnalyticsCategoryBarChart from "@components/AnalyticsCategoryBarChart";
@@ -44,7 +43,6 @@ import {
   useSingleFlightActions,
   useSingleFlightNavigation,
 } from "@lib/single-flight";
-import { api } from "@lib/api";
 
 const DATETIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "medium",
@@ -329,26 +327,6 @@ export default function TransactionsPageClient({
   useEffect(() => {
     setHasPendingSync(initialHasPendingSync);
   }, [initialHasPendingSync]);
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    void api<RecurringPendingStatusResponse>("/recurring-rules/has-pending")
-      .then((result) => {
-        if (!isCancelled) {
-          setHasPendingSync(result.hasPending);
-        }
-      })
-      .catch(() => {
-        if (!isCancelled) {
-          setHasPendingSync(false);
-        }
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
 
   const accountsById = useMemo(
     () => new Map(accounts.map((account) => [account.id, account])),

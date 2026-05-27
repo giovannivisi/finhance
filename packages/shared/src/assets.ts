@@ -101,13 +101,13 @@ export interface DashboardResponse {
 
 export interface DashboardPageDataResponse {
   dashboard: DashboardResponse;
-  budgetView: MonthlyBudgetResponse;
+  budgetView: MonthlyBudgetResponse | null;
   accounts: AccountResponse[];
   setup: SetupStatusResponse | null;
 }
 
 export interface DashboardSupportDataResponse {
-  budgetView: MonthlyBudgetResponse;
+  budgetView: MonthlyBudgetResponse | null;
   setup: SetupStatusResponse | null;
 }
 
