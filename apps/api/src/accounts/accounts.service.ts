@@ -448,6 +448,89 @@ export class AccountsService {
     );
   }
 
+  async getDeletionStatesForOwner(
+    ownerId: string,
+  ): Promise<Map<string, AccountDeletionState>> {
+    const [assets, transactions, recurringRules] = await Promise.all([
+      this.prisma.asset.findMany({
+        where: { userId: ownerId },
+        select: { accountId: true },
+      }),
+      this.prisma.transaction.findMany({
+        where: { userId: ownerId },
+        select: { accountId: true },
+      }),
+      this.prisma.recurringTransactionRule.findMany({
+        where: { userId: ownerId },
+        select: {
+          accountId: true,
+          sourceAccountId: true,
+          destinationAccountId: true,
+        },
+      }),
+    ]);
+
+    const counts = new Map<
+      string,
+      { assets: number; transactions: number; recurringRules: number }
+    >();
+    const bump = (
+      accountId: string | null,
+      key: 'assets' | 'transactions' | 'recurringRules',
+    ) => {
+      if (!accountId) {
+        return;
+      }
+      const current = counts.get(accountId) ?? {
+        assets: 0,
+        transactions: 0,
+        recurringRules: 0,
+      };
+      current[key] += 1;
+      counts.set(accountId, current);
+    };
+
+    for (const asset of assets) {
+      bump(asset.accountId, 'assets');
+    }
+    for (const transaction of transactions) {
+      bump(transaction.accountId, 'transactions');
+    }
+    for (const rule of recurringRules) {
+      const linkedIds = new Set(
+        [
+          rule.accountId,
+          rule.sourceAccountId,
+          rule.destinationAccountId,
+        ].filter((value): value is string => value !== null),
+      );
+      for (const linkedId of linkedIds) {
+        bump(linkedId, 'recurringRules');
+      }
+    }
+
+    const states = new Map<string, AccountDeletionState>();
+    for (const [accountId, accountCounts] of counts) {
+      const parts = [
+        this.formatDeleteDependency(accountCounts.assets, 'asset'),
+        this.formatDeleteDependency(accountCounts.transactions, 'transaction'),
+        this.formatDeleteDependency(
+          accountCounts.recurringRules,
+          'recurring rule',
+        ),
+      ].filter((value): value is string => value !== null);
+
+      states.set(accountId, {
+        canDeletePermanently: parts.length === 0,
+        deleteBlockReason:
+          parts.length === 0
+            ? null
+            : `This account still has linked ${parts.join(', ')}.`,
+      });
+    }
+    return states;
+  }
+
   async getDeletionStates(
     ownerId: string,
     accountIds: string[],

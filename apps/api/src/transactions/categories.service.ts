@@ -366,6 +366,102 @@ export class CategoriesService {
     });
   }
 
+  async getDeletionStatesForOwner(
+    ownerId: string,
+  ): Promise<Map<string, CategoryDeletionState>> {
+    const [transactions, recurringRules, budgets, childCategories, rules] =
+      await Promise.all([
+        this.prisma.transaction.findMany({
+          where: { userId: ownerId },
+          select: { categoryId: true },
+        }),
+        this.prisma.recurringTransactionRule.findMany({
+          where: { userId: ownerId },
+          select: { categoryId: true },
+        }),
+        this.prisma.categoryBudget.findMany({
+          where: { userId: ownerId },
+          select: { categoryId: true },
+        }),
+        this.prisma.category.findMany({
+          where: { userId: ownerId, parentCategoryId: { not: null } },
+          select: { parentCategoryId: true },
+        }),
+        this.prisma.expenseValidationRule.findMany({
+          where: { userId: ownerId },
+          select: { secondaryCategoryId: true },
+        }),
+      ]);
+
+    type Counts = {
+      transactions: number;
+      recurringRules: number;
+      budgets: number;
+      childCategories: number;
+      expenseValidationRules: number;
+    };
+    const counts = new Map<string, Counts>();
+    const bump = (categoryId: string | null, key: keyof Counts) => {
+      if (!categoryId) {
+        return;
+      }
+      const current = counts.get(categoryId) ?? {
+        transactions: 0,
+        recurringRules: 0,
+        budgets: 0,
+        childCategories: 0,
+        expenseValidationRules: 0,
+      };
+      current[key] += 1;
+      counts.set(categoryId, current);
+    };
+
+    for (const transaction of transactions) {
+      bump(transaction.categoryId, 'transactions');
+    }
+    for (const recurringRule of recurringRules) {
+      bump(recurringRule.categoryId, 'recurringRules');
+    }
+    for (const budget of budgets) {
+      bump(budget.categoryId, 'budgets');
+    }
+    for (const childCategory of childCategories) {
+      bump(childCategory.parentCategoryId, 'childCategories');
+    }
+    for (const rule of rules) {
+      bump(rule.secondaryCategoryId, 'expenseValidationRules');
+    }
+
+    const states = new Map<string, CategoryDeletionState>();
+    for (const [categoryId, categoryCounts] of counts) {
+      const parts = [
+        this.formatDeleteDependency(
+          categoryCounts.childCategories,
+          'secondary category',
+        ),
+        this.formatDeleteDependency(categoryCounts.transactions, 'transaction'),
+        this.formatDeleteDependency(
+          categoryCounts.recurringRules,
+          'recurring rule',
+        ),
+        this.formatDeleteDependency(categoryCounts.budgets, 'budget'),
+        this.formatDeleteDependency(
+          categoryCounts.expenseValidationRules,
+          'expense validation rule',
+        ),
+      ].filter((value): value is string => value !== null);
+
+      states.set(categoryId, {
+        canDeletePermanently: parts.length === 0,
+        deleteBlockReason:
+          parts.length === 0
+            ? null
+            : `This category still has linked ${parts.join(', ')}.`,
+      });
+    }
+    return states;
+  }
+
   async getDeletionStates(
     ownerId: string,
     categoryIds: string[],

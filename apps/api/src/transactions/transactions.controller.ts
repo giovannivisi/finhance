@@ -62,32 +62,38 @@ export class TransactionsController {
       accounts,
       categories,
       expenseValidationRules,
+      accountDeletionStates,
+      categoryDeletionStates,
     ] = await Promise.all([
       this.transactionsService.findAll(ownerId, query),
       this.transactionsService.getCashflowSummary(ownerId, query),
       this.accountsService.findAll(ownerId, { includeArchived: true }),
       this.categoriesService.findAll(ownerId, { includeArchived: true }),
       this.expenseValidationService.list(ownerId),
-    ]);
-    const [accountDeletionStates, categoryDeletionStates] = await Promise.all([
-      this.accountsService.getDeletionStates(
-        ownerId,
-        accounts.map((account) => account.id),
-      ),
-      this.categoriesService.getDeletionStates(
-        ownerId,
-        categories.map((category) => category.id),
-      ),
+      this.accountsService.getDeletionStatesForOwner(ownerId),
+      this.categoriesService.getDeletionStatesForOwner(ownerId),
     ]);
 
     return {
       transactions: transactions.map(toTransactionResponse),
       cashflow,
       accounts: accounts.map((account) =>
-        toAccountResponse(account, accountDeletionStates.get(account.id)),
+        toAccountResponse(
+          account,
+          accountDeletionStates.get(account.id) ?? {
+            canDeletePermanently: true,
+            deleteBlockReason: null,
+          },
+        ),
       ),
       categories: categories.map((category) =>
-        toCategoryResponse(category, categoryDeletionStates.get(category.id)),
+        toCategoryResponse(
+          category,
+          categoryDeletionStates.get(category.id) ?? {
+            canDeletePermanently: true,
+            deleteBlockReason: null,
+          },
+        ),
       ),
       expenseValidationRules: expenseValidationRules.map(
         toExpenseValidationRuleResponse,

@@ -1,28 +1,16 @@
 import type {
   DashboardAssetResponse,
-  DashboardPageDataResponse,
   DashboardResponse,
-  DashboardSupportDataResponse,
 } from "@finhance/shared";
-import Container from "@components/Container";
 import DashboardClient from "@components/DashboardClient";
-import DashboardSupportDataClient from "@components/DashboardSupportDataClient";
 import { api } from "@lib/server-api";
 
-export default async function DashboardRouteContent() {
+export default async function DashboardMainSection() {
   let dashboard: DashboardResponse | null = null;
-  let supportData: DashboardSupportDataResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
-    const pageData = await api<DashboardPageDataResponse>(
-      "/dashboard/page-data",
-    );
-    dashboard = pageData.dashboard;
-    supportData = {
-      budgetView: pageData.budgetView,
-      setup: pageData.setup,
-    };
+    dashboard = await api<DashboardResponse>("/dashboard");
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -32,7 +20,7 @@ export default async function DashboardRouteContent() {
 
   if (!dashboard) {
     return (
-      <Container>
+      <>
         <h2 className="text-2xl font-semibold">Dashboard unavailable</h2>
         <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
           <p className="font-medium">The web app could not reach the API.</p>
@@ -40,7 +28,7 @@ export default async function DashboardRouteContent() {
             {errorMessage ?? "Start the API and refresh the page."}
           </p>
         </div>
-      </Container>
+      </>
     );
   }
 
@@ -73,11 +61,9 @@ export default async function DashboardRouteContent() {
   );
 
   const kindTotalsArray = Object.entries(kindTotals)
-    .map(([kind, total]) => ({
-      kind,
-      total,
-    }))
+    .map(([kind, total]) => ({ kind, total }))
     .sort((left, right) => right.total - left.total);
+
   const brokerageAccountIds = new Set(
     assets
       .filter((asset) => asset.accountType === "BROKER" && asset.accountId)
@@ -85,21 +71,15 @@ export default async function DashboardRouteContent() {
   );
 
   return (
-    <Container>
-      <h2 className="home-summary-title">Summary</h2>
-
-      <DashboardClient
-        grouped={grouped}
-        kindTotalsArray={kindTotalsArray}
-        baseCurrency={dashboard.reportingCurrency}
-        pricingStatus={dashboard.pricingStatus}
-        lastRefreshAt={dashboard.lastRefreshAt}
-        summary={dashboard.summary}
-        assetKindOrder={dashboard.assetKindOrder}
-        brokerageAccountIds={[...brokerageAccountIds]}
-      />
-
-      <DashboardSupportDataClient supportData={supportData} />
-    </Container>
+    <DashboardClient
+      grouped={grouped}
+      kindTotalsArray={kindTotalsArray}
+      baseCurrency={dashboard.reportingCurrency}
+      pricingStatus={dashboard.pricingStatus}
+      lastRefreshAt={dashboard.lastRefreshAt}
+      summary={dashboard.summary}
+      assetKindOrder={dashboard.assetKindOrder}
+      brokerageAccountIds={[...brokerageAccountIds]}
+    />
   );
 }
