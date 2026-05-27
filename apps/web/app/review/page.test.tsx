@@ -216,6 +216,7 @@ function buildReviewResponse(): MonthlyReviewResponse {
         accountName: "Main account",
         accountType: "BANK",
         currency: "EUR",
+        reconciliationScope: "FULL_BALANCE",
         baselineMode: "FULL_HISTORY",
         trackedBalance: 1200,
         expectedBalance: 1170,

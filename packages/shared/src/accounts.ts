@@ -40,6 +40,8 @@ export type AccountReconciliationBaselineMode =
   | "FULL_HISTORY"
   | "OPENING_BALANCE";
 
+export type AccountReconciliationScope = "FULL_BALANCE" | "CASH_ONLY";
+
 export type AccountReconciliationIssueCode =
   | "FX_UNAVAILABLE"
   | "TRANSFER_GROUP_INCOMPLETE";
@@ -75,6 +77,7 @@ export interface AccountReconciliationResponse {
   accountName: string;
   accountType: AccountType;
   currency: string;
+  reconciliationScope: AccountReconciliationScope;
   baselineMode: AccountReconciliationBaselineMode;
   trackedBalance: number | null;
   expectedBalance: number | null;

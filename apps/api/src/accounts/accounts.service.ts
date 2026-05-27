@@ -32,6 +32,7 @@ import type {
   AccountReconciliationBaselineMode,
   AccountReconciliationDiagnosticResponse,
   AccountReconciliationIssueCode,
+  AccountReconciliationScope,
   AccountReconciliationStatus,
 } from '@finhance/shared';
 
@@ -55,6 +56,7 @@ export interface AccountDeletionState {
 export interface AccountReconciliationModel {
   account: Account;
   status: AccountReconciliationStatus;
+  reconciliationScope: AccountReconciliationScope;
   baselineMode: AccountReconciliationBaselineMode;
   trackedBalance: Prisma.Decimal | null;
   expectedBalance: Prisma.Decimal | null;
@@ -789,11 +791,13 @@ export class AccountsService {
         assetCount: assets.length,
         transactionCount: transactions.length + brokerageOperations.length,
       });
-      return {
-        account,
-        status: 'UNSUPPORTED',
-        baselineMode,
-        trackedBalance: null,
+    return {
+      account,
+      status: 'UNSUPPORTED',
+      reconciliationScope:
+        account.type === AccountType.BROKER ? 'CASH_ONLY' : 'FULL_BALANCE',
+      baselineMode,
+      trackedBalance: null,
         expectedBalance: null,
         delta: null,
         assetCount: assets.length,
@@ -848,6 +852,8 @@ export class AccountsService {
     return {
       account,
       status,
+      reconciliationScope:
+        account.type === AccountType.BROKER ? 'CASH_ONLY' : 'FULL_BALANCE',
       baselineMode,
       trackedBalance,
       expectedBalance,

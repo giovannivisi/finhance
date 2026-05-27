@@ -78,12 +78,17 @@ function buildAccount(overrides: Partial<AccountResponse>): AccountResponse {
 function buildReconciliation(
   overrides: Partial<AccountReconciliationResponse>,
 ): AccountReconciliationResponse {
+  const accountType = overrides.accountType ?? "BANK";
+
   return {
     status: overrides.status ?? "CLEAN",
     accountId: overrides.accountId ?? "account-1",
     accountName: overrides.accountName ?? "Account",
-    accountType: overrides.accountType ?? "BANK",
+    accountType,
     currency: overrides.currency ?? "EUR",
+    reconciliationScope:
+      overrides.reconciliationScope ??
+      (accountType === "BROKER" ? "CASH_ONLY" : "FULL_BALANCE"),
     baselineMode: overrides.baselineMode ?? "FULL_HISTORY",
     trackedBalance: overrides.trackedBalance ?? 100,
     expectedBalance: overrides.expectedBalance ?? 100,

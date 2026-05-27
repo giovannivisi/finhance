@@ -99,6 +99,33 @@ function createTransaction(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+function createBrokerageOperation(
+  overrides: Partial<Record<string, unknown>> = {},
+) {
+  const now = new Date();
+
+  return {
+    id: 'operation-1',
+    userId: OWNER_ID,
+    accountId: 'account-1',
+    assetId: 'asset-1',
+    kind: 'BUY',
+    postedAt: now,
+    currency: 'EUR',
+    quantity: new Prisma.Decimal(1),
+    unitPrice: new Prisma.Decimal(50),
+    grossAmount: new Prisma.Decimal(50),
+    feeAmount: new Prisma.Decimal(0),
+    cashAmount: new Prisma.Decimal(-50),
+    realisedGainLoss: null,
+    notes: null,
+    mirroredTransactionId: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 describe('AccountsService', () => {
   let service: AccountsService;
   let prisma: {
@@ -317,6 +344,7 @@ describe('AccountsService', () => {
 
     expect(entry).toMatchObject({
       status: 'CLEAN',
+      reconciliationScope: 'FULL_BALANCE',
       assetCount: 1,
       transactionCount: 1,
       canCreateAdjustment: false,
@@ -428,6 +456,50 @@ describe('AccountsService', () => {
     expect(entry.status).toBe('CLEAN');
     expect(entry.trackedBalance?.eq(new Prisma.Decimal(90))).toBe(true);
     expect(entry.expectedBalance?.eq(new Prisma.Decimal(90))).toBe(true);
+  });
+
+  it('uses a cash-only reconciliation scope for broker accounts and ignores open positions', async () => {
+    const broker = createAccount({
+      id: 'broker-account',
+      type: AccountType.BROKER,
+      currency: 'EUR',
+      openingBalance: new Prisma.Decimal(120),
+    });
+    prisma.account.findMany.mockResolvedValue([broker]);
+    prisma.asset.findMany.mockResolvedValue([
+      createAsset({
+        accountId: broker.id,
+        kind: AssetKind.CASH,
+        balance: new Prisma.Decimal(100),
+      }),
+      createAsset({
+        id: 'stock-asset',
+        accountId: broker.id,
+        kind: AssetKind.STOCK,
+        ticker: 'VWCE',
+        exchange: '.MI',
+        quantity: new Prisma.Decimal(2),
+        unitPrice: new Prisma.Decimal(150),
+        balance: new Prisma.Decimal(300),
+      }),
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([]);
+    prisma.brokerageOperation.findMany.mockResolvedValue([
+      createBrokerageOperation({
+        accountId: broker.id,
+        cashAmount: new Prisma.Decimal(-20),
+      }),
+    ]);
+
+    const [entry] = await service.findReconciliation(OWNER_ID);
+
+    expect(entry.reconciliationScope).toBe('CASH_ONLY');
+    expect(entry.status).toBe('CLEAN');
+    expect(entry.assetCount).toBe(2);
+    expect(entry.transactionCount).toBe(1);
+    expect(entry.trackedBalance?.eq(new Prisma.Decimal(100))).toBe(true);
+    expect(entry.expectedBalance?.eq(new Prisma.Decimal(100))).toBe(true);
+    expect(entry.delta?.eq(ZERO)).toBe(true);
   });
 
   it('marks reconciliation unsupported when FX is unavailable', async () => {

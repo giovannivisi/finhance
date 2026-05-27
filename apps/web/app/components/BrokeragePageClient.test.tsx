@@ -138,6 +138,7 @@ function buildWorkspace() {
       accountName: "IBKR",
       accountType: "BROKER" as const,
       currency: "EUR",
+      reconciliationScope: "CASH_ONLY" as const,
       baselineMode: "FULL_HISTORY" as const,
       trackedBalance: 900,
       expectedBalance: 900,

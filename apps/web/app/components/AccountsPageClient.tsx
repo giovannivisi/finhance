@@ -496,7 +496,8 @@ export default function AccountsPageClient({
                               className="account-reconciliation-details"
                             >
                               <div className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-                                {account.type === "BROKER" ? (
+                                {reconciliation.reconciliationScope ===
+                                "CASH_ONLY" ? (
                                   <p>
                                     Brokerage reconciliation tracks cash
                                     movements only. Open positions are excluded
