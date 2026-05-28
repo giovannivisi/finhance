@@ -62,38 +62,26 @@ export class TransactionsController {
       accounts,
       categories,
       expenseValidationRules,
-      accountDeletionStates,
-      categoryDeletionStates,
     ] = await Promise.all([
       this.transactionsService.findAll(ownerId, query),
       this.transactionsService.getCashflowSummary(ownerId, query),
       this.accountsService.findAll(ownerId, { includeArchived: true }),
       this.categoriesService.findAll(ownerId, { includeArchived: true }),
       this.expenseValidationService.list(ownerId),
-      this.accountsService.getDeletionStatesForOwner(ownerId),
-      this.categoriesService.getDeletionStatesForOwner(ownerId),
     ]);
+    const editableReferenceState = {
+      canDeletePermanently: true,
+      deleteBlockReason: null,
+    };
 
     return {
       transactions: transactions.map(toTransactionResponse),
       cashflow,
       accounts: accounts.map((account) =>
-        toAccountResponse(
-          account,
-          accountDeletionStates.get(account.id) ?? {
-            canDeletePermanently: true,
-            deleteBlockReason: null,
-          },
-        ),
+        toAccountResponse(account, editableReferenceState),
       ),
       categories: categories.map((category) =>
-        toCategoryResponse(
-          category,
-          categoryDeletionStates.get(category.id) ?? {
-            canDeletePermanently: true,
-            deleteBlockReason: null,
-          },
-        ),
+        toCategoryResponse(category, editableReferenceState),
       ),
       expenseValidationRules: expenseValidationRules.map(
         toExpenseValidationRuleResponse,
