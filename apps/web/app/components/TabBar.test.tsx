@@ -5,11 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import TabBar from "@components/TabBar";
 
 const pushMock = vi.fn();
+const prefetchMock = vi.fn();
 const usePathnameMock = vi.fn();
+const startNavigationProgressMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => usePathnameMock(),
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, prefetch: prefetchMock }),
 }));
 
 vi.mock("next/link", () => ({
@@ -49,9 +51,15 @@ vi.mock("@components/ThemeProvider", () => ({
   }),
 }));
 
+vi.mock("@lib/navigation-progress", () => ({
+  startNavigationProgress: (path: string) => startNavigationProgressMock(path),
+}));
+
 describe("TabBar", () => {
   beforeEach(() => {
     pushMock.mockReset();
+    prefetchMock.mockReset();
+    startNavigationProgressMock.mockReset();
     usePathnameMock.mockReturnValue("/accounts");
   });
 
@@ -72,6 +80,7 @@ describe("TabBar", () => {
     await user.click(screen.getByRole("link", { name: "Analytics" }));
 
     await waitFor(() => {
+      expect(startNavigationProgressMock).toHaveBeenCalledWith("/analytics");
       expect(pushMock).toHaveBeenCalledWith("/analytics");
     });
   });

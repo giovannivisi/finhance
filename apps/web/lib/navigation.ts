@@ -47,7 +47,7 @@ export const DESKTOP_NAV_ITEMS: readonly AppNavItem[] = [
   ...SECONDARY_NAV_ITEMS,
 ] as const;
 
-function normalizePath(path: string | null): string | null {
+export function normalizeNavigationPath(path: string | null): string | null {
   if (!path) {
     return null;
   }
@@ -64,9 +64,9 @@ export function isRedundantTabNavigation(input: {
   targetPath: string;
   pendingPath?: string | null;
 }): boolean {
-  const currentPath = normalizePath(input.currentPath);
-  const targetPath = normalizePath(input.targetPath);
-  const pendingPath = normalizePath(input.pendingPath ?? null);
+  const currentPath = normalizeNavigationPath(input.currentPath);
+  const targetPath = normalizeNavigationPath(input.targetPath);
+  const pendingPath = normalizeNavigationPath(input.pendingPath ?? null);
 
   if (!currentPath || !targetPath) {
     return false;
@@ -79,8 +79,8 @@ export function isActivePath(
   currentPath: string | null,
   targetPath: string,
 ): boolean {
-  const normalizedCurrentPath = normalizePath(currentPath);
-  const normalizedTargetPath = normalizePath(targetPath);
+  const normalizedCurrentPath = normalizeNavigationPath(currentPath);
+  const normalizedTargetPath = normalizeNavigationPath(targetPath);
 
   if (!normalizedCurrentPath || !normalizedTargetPath) {
     return false;
@@ -91,4 +91,19 @@ export function isActivePath(
   }
 
   return normalizedCurrentPath.startsWith(normalizedTargetPath);
+}
+
+export function getNavigationTitle(path: string | null): string {
+  const normalizedPath = normalizeNavigationPath(path);
+
+  if (!normalizedPath || normalizedPath === "/" || normalizedPath === "/dashboard") {
+    return "Dashboard";
+  }
+
+  if (normalizedPath === "/setup") {
+    return "Setup";
+  }
+
+  const item = DESKTOP_NAV_ITEMS.find((candidate) => candidate.href === normalizedPath);
+  return item?.label ?? "Loading";
 }
