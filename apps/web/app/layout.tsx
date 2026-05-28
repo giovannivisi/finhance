@@ -3,6 +3,11 @@ import "./globals.css";
 export const metadata = {
   title: "Finhance",
   description: "Finance dashboard",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export const viewport = {

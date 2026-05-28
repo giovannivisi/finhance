@@ -88,16 +88,6 @@ export default function TabBar() {
     : (pendingSlotIndex ?? activeSlotIndex);
   const pillIndex = hoveredIndex ?? visualActiveIndex;
 
-  useEffect(() => {
-    if (!showMore) {
-      return;
-    }
-
-    for (const item of SECONDARY_NAV_ITEMS) {
-      router.prefetch(item.href);
-    }
-  }, [router, showMore]);
-
   const getTabIndexAt = useCallback((clientX: number) => {
     const bar = barRef.current;
     if (!bar) {
@@ -418,6 +408,7 @@ export default function TabBar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    prefetch={false}
                     onClick={(event) => {
                       event.preventDefault();
                       handleNavigate(item.href);
@@ -476,6 +467,7 @@ export default function TabBar() {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 draggable={false}
                 aria-label={item.label}
                 aria-current={isActive ? "page" : undefined}

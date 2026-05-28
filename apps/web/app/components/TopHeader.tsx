@@ -14,7 +14,7 @@ export default function TopHeader() {
 
   return (
     <header className="top-header">
-      <Link href="/" className="top-header-brand">
+      <Link href="/" prefetch={false} className="top-header-brand">
         <Image
           src="/logo-dark.svg"
           alt="finhance logo dark"

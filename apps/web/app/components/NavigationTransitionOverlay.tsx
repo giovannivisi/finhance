@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import {
-  getNavigationTitle,
-  normalizeNavigationPath,
-} from "@lib/navigation";
+import { getNavigationTitle, normalizeNavigationPath } from "@lib/navigation";
 import {
   NAVIGATION_OVERLAY_DELAY_MS,
   subscribeToNavigationStart,
@@ -53,8 +50,14 @@ export default function NavigationTransitionOverlay() {
       timerRef.current = null;
     }
 
-    setPendingPath(null);
-    setIsVisible(false);
+    const clearTimer = window.setTimeout(() => {
+      setPendingPath(null);
+      setIsVisible(false);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(clearTimer);
+    };
   }, [pathname, pendingPath]);
 
   const title = useMemo(() => getNavigationTitle(pendingPath), [pendingPath]);

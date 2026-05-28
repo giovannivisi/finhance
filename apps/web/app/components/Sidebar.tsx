@@ -55,6 +55,7 @@ function DesktopNavLink({
   return (
     <Link
       href={item.href}
+      prefetch={false}
       aria-current={isActive ? "page" : undefined}
       aria-disabled={isBlocked || undefined}
       onClick={handleClick}
