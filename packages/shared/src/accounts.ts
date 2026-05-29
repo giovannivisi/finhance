@@ -92,3 +92,8 @@ export interface AccountReconciliationResponse {
   openingBalanceBaselineGuidance: string | null;
   adjustmentGuidance: AccountReconciliationAdjustmentGuidanceResponse;
 }
+
+export interface AccountsPageDataResponse {
+  accounts: AccountResponse[];
+  reconciliations: AccountReconciliationResponse[];
+}

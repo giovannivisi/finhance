@@ -1,5 +1,7 @@
 import "./globals.css";
 
+export const preferredRegion = "fra1";
+
 export const metadata = {
   title: "Finhance",
   description: "Finance dashboard",
@@ -19,7 +21,6 @@ export const viewport = {
 import TabBar from "@components/TabBar";
 import TopHeader from "@components/TopHeader";
 import Sidebar from "@components/Sidebar";
-import NavigationTransitionOverlay from "@components/NavigationTransitionOverlay";
 import { ThemeProvider } from "@components/ThemeProvider";
 import Script from "next/script";
 
@@ -62,7 +63,6 @@ export default function RootLayout({
                 {children}
               </main>
             </div>
-            <NavigationTransitionOverlay />
             <TabBar />
           </div>
         </ThemeProvider>

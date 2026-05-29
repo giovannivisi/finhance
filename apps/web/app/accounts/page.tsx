@@ -1,25 +1,18 @@
 import Container from "@components/Container";
 import AccountsPageClient from "@components/AccountsPageClient";
 import { api } from "@lib/server-api";
-import type {
-  AccountReconciliationResponse,
-  AccountResponse,
-} from "@finhance/shared";
+import type { AccountsPageDataResponse } from "@finhance/shared";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountsPage() {
-  let accounts: AccountResponse[] | null = null;
-  let reconciliations: AccountReconciliationResponse[] | null = null;
+  let pageData: AccountsPageDataResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
-    [accounts, reconciliations] = await Promise.all([
-      api<AccountResponse[]>("/accounts?includeArchived=true"),
-      api<AccountReconciliationResponse[]>(
-        "/accounts/reconciliation?includeArchived=true",
-      ),
-    ]);
+    pageData = await api<AccountsPageDataResponse>(
+      "/accounts/page-data?includeArchived=true",
+    );
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -30,7 +23,7 @@ export default async function AccountsPage() {
   return (
     <>
       <Container>
-        {!accounts || !reconciliations ? (
+        {!pageData ? (
           <section className="page-shell">
             <div className="page-hero">
               <p className="page-kicker">Structure</p>
@@ -47,8 +40,8 @@ export default async function AccountsPage() {
           </section>
         ) : (
           <AccountsPageClient
-            accounts={accounts}
-            reconciliations={reconciliations}
+            accounts={pageData.accounts}
+            reconciliations={pageData.reconciliations}
           />
         )}
       </Container>

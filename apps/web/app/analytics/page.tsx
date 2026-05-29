@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type {
   AccountResponse,
+  CashflowAnalyticsPageDataResponse,
   CashflowAnalyticsResponse,
   CategoryResponse,
   RecurringPendingStatusResponse,
@@ -95,29 +96,25 @@ export default async function AnalyticsPage({
   let errorMessage: string | null = null;
 
   try {
-    [analytics, accounts, categories] = await Promise.all([
-      api<CashflowAnalyticsResponse>(`/cashflow/analytics?${queryString}`),
-      api<AccountResponse[]>("/accounts?includeArchived=true"),
-      api<CategoryResponse[]>("/categories?includeArchived=true"),
+    const pendingStatusPromise = api<RecurringPendingStatusResponse>(
+      "/recurring-rules/has-pending",
+    ).catch(() => null);
+    const [pageData, pendingStatus] = await Promise.all([
+      api<CashflowAnalyticsPageDataResponse>(
+        `/cashflow/page-data?${queryString}`,
+      ),
+      pendingStatusPromise,
     ]);
+    analytics = pageData.analytics;
+    accounts = pageData.accounts;
+    categories = pageData.categories;
+    setup = pageData.setup;
+    hasPendingSync = pendingStatus?.hasPending ?? false;
   } catch (error) {
     errorMessage =
       error instanceof Error
         ? error.message
         : "Analytics data is currently unavailable.";
-  }
-
-  if (analytics) {
-    const [resolvedSetup, pendingStatus] = await Promise.all([
-      api<SetupStatusResponse>("/setup/status?includeWarnings=false").catch(
-        () => null,
-      ),
-      api<RecurringPendingStatusResponse>("/recurring-rules/has-pending").catch(
-        () => null,
-      ),
-    ]);
-    setup = resolvedSetup;
-    hasPendingSync = pendingStatus?.hasPending ?? false;
   }
 
   const visibleExpensePrimaries = categories
@@ -335,15 +332,21 @@ export default async function AnalyticsPage({
                 <div className="mt-4 flex flex-wrap gap-3">
                   <Link
                     href={!setup?.isComplete ? "/setup" : "/import"}
+                    prefetch={false}
                     className="btn-secondary"
                   >
                     {!setup?.isComplete ? "Open setup" : "Open import"}
                   </Link>
-                  <Link href="/analytics" className="btn-secondary">
+                  <Link
+                    href="/analytics"
+                    prefetch={false}
+                    className="btn-secondary"
+                  >
                     Clear filters
                   </Link>
                   <Link
                     href={`/review?month=${encodeURIComponent(analytics.focusMonth)}`}
+                    prefetch={false}
                     className="btn-secondary"
                   >
                     Open monthly close

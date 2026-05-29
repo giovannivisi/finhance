@@ -19,6 +19,7 @@ import {
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { toTransactionResponse } from '@transactions/transactions.mapper';
 import type {
+  AccountsPageDataResponse,
   AccountReconciliationResponse,
   AccountResponse,
   TransactionResponse,
@@ -35,15 +36,15 @@ export class AccountsController {
     return this.requestOwnerResolver.resolveOwnerId();
   }
 
-  @Get()
-  async findAll(
-    @Query('includeArchived') includeArchived?: string,
+  private async readAccounts(
+    ownerId: string,
+    includeArchived: boolean,
   ): Promise<AccountResponse[]> {
-    const accounts = await this.accountsService.findAll(this.resolveOwnerId(), {
-      includeArchived: includeArchived === 'true',
+    const accounts = await this.accountsService.findAll(ownerId, {
+      includeArchived,
     });
     const deletionStates = await this.accountsService.getDeletionStates(
-      this.resolveOwnerId(),
+      ownerId,
       accounts.map((account) => account.id),
     );
     return accounts.map((account) =>
@@ -51,17 +52,51 @@ export class AccountsController {
     );
   }
 
+  private async readReconciliation(
+    ownerId: string,
+    includeArchived: boolean,
+  ): Promise<AccountReconciliationResponse[]> {
+    const entries = await this.accountsService.findReconciliation(
+      ownerId,
+      {
+        includeArchived,
+      },
+    );
+    return entries.map(toAccountReconciliationResponse);
+  }
+
+  @Get()
+  async findAll(
+    @Query('includeArchived') includeArchived?: string,
+  ): Promise<AccountResponse[]> {
+    return this.readAccounts(
+      this.resolveOwnerId(),
+      includeArchived === 'true',
+    );
+  }
+
+  @Get('page-data')
+  async getPageData(
+    @Query('includeArchived') includeArchived?: string,
+  ): Promise<AccountsPageDataResponse> {
+    const ownerId = this.resolveOwnerId();
+    const includeArchivedAccounts = includeArchived === 'true';
+    const [accounts, reconciliations] = await Promise.all([
+      this.readAccounts(ownerId, includeArchivedAccounts),
+      this.readReconciliation(ownerId, includeArchivedAccounts),
+    ]);
+
+    return { accounts, reconciliations };
+  }
+
   @Get('reconciliation')
   async findReconciliation(
     @Query('includeArchived') includeArchived?: string,
   ): Promise<AccountReconciliationResponse[]> {
-    const entries = await this.accountsService.findReconciliation(
+    return this.readReconciliation(
       this.resolveOwnerId(),
-      {
-        includeArchived: includeArchived === 'true',
-      },
+      includeArchived === 'true',
     );
-    return entries.map(toAccountReconciliationResponse);
   }
 
   @Post()

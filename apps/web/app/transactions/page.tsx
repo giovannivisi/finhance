@@ -82,24 +82,26 @@ export default async function TransactionsPage({
       }
     : defaultFilters;
 
-  const settings = await getUserSettingsOrDefaults();
-
   let pageData: TransactionsPageDataResponse | null = null;
+  let showTransactionTimes = true;
   let hasPendingSync = false;
   let errorMessage: string | null = null;
 
   try {
+    const settingsPromise = getUserSettingsOrDefaults();
     const pendingStatusPromise = api<RecurringPendingStatusResponse>(
       "/recurring-rules/has-pending",
     ).catch(() => null);
 
-    const [nextPageData, pendingStatus] = await Promise.all([
+    const [settings, nextPageData, pendingStatus] = await Promise.all([
+      settingsPromise,
       api<TransactionsPageDataResponse>(
         `/transactions/page-data${buildPageDataQueryString(filters)}`,
       ),
       pendingStatusPromise,
     ]);
 
+    showTransactionTimes = settings.showTransactionTimes;
     pageData = nextPageData;
     hasPendingSync = pendingStatus?.hasPending ?? false;
   } catch (error) {
@@ -133,7 +135,7 @@ export default async function TransactionsPage({
           expenseValidationRules={pageData.expenseValidationRules}
           initialFilters={filters}
           initialHasPendingSync={hasPendingSync}
-          showTransactionTimes={settings.showTransactionTimes}
+          showTransactionTimes={showTransactionTimes}
         />
       )}
     </Container>

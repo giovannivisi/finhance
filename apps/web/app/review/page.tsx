@@ -1,9 +1,9 @@
 import Link from "next/link";
 import type {
   MonthlyBudgetItemResponse,
+  MonthlyReviewPageDataResponse,
   MonthlyReviewResponse,
   MonthlyReviewWarningResponse,
-  RecurringPendingStatusResponse,
   SetupStatusResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
@@ -112,34 +112,22 @@ export default async function ReviewPage({
 
   let review: MonthlyReviewResponse | null = null;
   let setup: SetupStatusResponse | null = null;
+  let hasPendingSync = false;
   let errorMessage: string | null = null;
 
   try {
-    review = await api<MonthlyReviewResponse>(
-      `/monthly-review?month=${encodeURIComponent(month)}`,
+    const pageData = await api<MonthlyReviewPageDataResponse>(
+      `/monthly-review/page-data?month=${encodeURIComponent(month)}`,
     );
+    review = pageData.review;
+    setup = pageData.setup;
+    hasPendingSync = pageData.hasPendingSync;
   } catch (error) {
     errorMessage =
       error instanceof Error
         ? error.message
         : "Monthly close data is currently unavailable.";
   }
-
-  let hasPendingSync = false;
-
-  if (review) {
-    const [resolvedSetup, pendingStatus] = await Promise.all([
-      api<SetupStatusResponse>("/setup/status?includeWarnings=false").catch(
-        () => null,
-      ),
-      api<RecurringPendingStatusResponse>("/recurring-rules/has-pending").catch(
-        () => null,
-      ),
-    ]);
-    setup = resolvedSetup;
-    hasPendingSync = pendingStatus?.hasPending ?? false;
-  }
-
   if (!review) {
     return (
       <Container>

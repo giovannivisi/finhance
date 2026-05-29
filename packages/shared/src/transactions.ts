@@ -1,5 +1,6 @@
 import type { AccountResponse } from "./accounts.js";
 import type { ExpenseValidationRuleResponse } from "./expense-validation.js";
+import type { SetupStatusResponse } from "./setup.js";
 
 export type CategoryType = "EXPENSE" | "INCOME";
 
@@ -252,6 +253,13 @@ export interface CashflowAnalyticsResponse {
   focusMonth: string;
   reportingOverview?: CashflowAnalyticsReportingOverviewResponse | null;
   currencies: CashflowAnalyticsCurrencyResponse[];
+}
+
+export interface CashflowAnalyticsPageDataResponse {
+  analytics: CashflowAnalyticsResponse;
+  accounts: AccountResponse[];
+  categories: CategoryResponse[];
+  setup: SetupStatusResponse | null;
 }
 
 export interface MonthlyCashflowMonthResponse {

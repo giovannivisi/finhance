@@ -3,6 +3,7 @@ import type {
   MonthlyBudgetCurrencySummaryResponse,
   MonthlyBudgetItemResponse,
 } from "./budgets.js";
+import type { SetupStatusResponse } from "./setup.js";
 import type {
   CashflowSummaryResponse,
   TransactionDirection,
@@ -213,4 +214,10 @@ export interface MonthlyReviewResponse {
   budgetHighlights: MonthlyBudgetItemResponse[];
   reconciliationHighlights: AccountReconciliationResponse[];
   recurringExceptions: RecurringOccurrenceResponse[];
+}
+
+export interface MonthlyReviewPageDataResponse {
+  review: MonthlyReviewResponse;
+  setup: SetupStatusResponse | null;
+  hasPendingSync: boolean;
 }

@@ -1,7 +1,11 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { MonthlyReviewResponse } from "@finhance/shared";
+import type {
+  MonthlyReviewPageDataResponse,
+  MonthlyReviewResponse,
+  SetupStatusResponse,
+} from "@finhance/shared";
 import ReviewPage from "@/review/page";
 
 const { apiMock } = vi.hoisted(() => ({
@@ -272,20 +276,45 @@ function buildReviewResponse(): MonthlyReviewResponse {
   };
 }
 
+function buildSetupResponse(): SetupStatusResponse {
+  return {
+    isComplete: true,
+    currentMonth: "2026-04",
+    requiredCompletedCount: 2,
+    requiredTotalCount: 2,
+    requiredSteps: [],
+    recommendedSteps: [],
+    warnings: [],
+    handoff: [],
+    activeAccountCount: 1,
+    activeIncomeCategoryCount: 1,
+    activeExpenseCategoryCount: 1,
+    activeRecurringRuleCount: 1,
+    currentMonthBudgetCount: 1,
+    hasAppliedImportBatch: false,
+    hasSnapshot: true,
+    hasReportingCurrencyConfigured: true,
+  };
+}
+
+function buildReviewPageData(
+  overrides: Partial<MonthlyReviewPageDataResponse> = {},
+): MonthlyReviewPageDataResponse {
+  return {
+    review: buildReviewResponse(),
+    setup: buildSetupResponse(),
+    hasPendingSync: false,
+    ...overrides,
+  };
+}
+
 describe("ReviewPage", () => {
   beforeEach(() => {
     apiMock.mockReset();
   });
 
   it("renders the monthly close hub with compact highlights and actions", async () => {
-    apiMock
-      .mockResolvedValueOnce(buildReviewResponse())
-      .mockResolvedValueOnce({
-        isComplete: true,
-        requiredCompletedCount: 2,
-        requiredTotalCount: 2,
-      })
-      .mockResolvedValueOnce({ hasPending: true });
+    apiMock.mockResolvedValueOnce(buildReviewPageData({ hasPendingSync: true }));
 
     const { container } = render(
       await ReviewPage({
@@ -351,14 +380,7 @@ describe("ReviewPage", () => {
     review.currencyInsights = [];
     review.reconciliationHighlights = [];
 
-    apiMock
-      .mockResolvedValueOnce(review)
-      .mockResolvedValueOnce({
-        isComplete: true,
-        requiredCompletedCount: 2,
-        requiredTotalCount: 2,
-      })
-      .mockResolvedValueOnce({ hasPending: false });
+    apiMock.mockResolvedValueOnce(buildReviewPageData({ review }));
 
     render(
       await ReviewPage({
@@ -392,14 +414,15 @@ describe("ReviewPage", () => {
     const review = buildReviewResponse();
     review.month = "2026-05";
 
-    apiMock
-      .mockResolvedValueOnce(review)
-      .mockResolvedValueOnce({
-        isComplete: true,
-        requiredCompletedCount: 2,
-        requiredTotalCount: 2,
-      })
-      .mockResolvedValueOnce({ hasPending: false });
+    apiMock.mockResolvedValueOnce(
+      buildReviewPageData({
+        review,
+        setup: {
+          ...buildSetupResponse(),
+          currentMonth: "2026-05",
+        },
+      }),
+    );
 
     render(
       await ReviewPage({

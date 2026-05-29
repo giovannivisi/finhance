@@ -98,6 +98,7 @@ async function forwardRequest(
 }
 
 export const runtime = "nodejs";
+export const preferredRegion = "fra1";
 
 export async function GET(request: Request, context: RouteContext) {
   return forwardRequest(request, context);
