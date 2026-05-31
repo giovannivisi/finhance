@@ -83,5 +83,10 @@ repos:
           || { echo "❌  Commit message must start with a prefix:";
                echo "    feat|fix|perf|refactor|chore|docs|test|ci|style";
                echo "    Example: fix: correct fx rate rounding";
-               exit 1; }' --
+               exit 1; };
+          echo "$msg" | grep -qE "^(feat|fix|perf|refactor|chore|docs|test|ci|style)\((feat|fix|perf|refactor|chore|docs|test|ci|style)\):"
+          && { echo "❌  The scope must not be a reserved prefix word.";
+               echo "    e.g. feat(docs): is wrong — a docs change is just docs:";
+               echo "    If the change is documentation, use docs: not feat(docs):";
+               exit 1; } || true' --
         stages: [commit-msg]

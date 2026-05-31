@@ -63,3 +63,7 @@ docs/handoffs/
 *.mp4
 *.mov
 .env*
+
+# temporary files and directories
+tmp/
+temp/
