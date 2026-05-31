@@ -16,6 +16,7 @@ import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import Sparkline from "@components/Sparkline";
 
 import WorkflowSection from "@components/WorkflowSection";
+import { isMissingPageDataRouteError } from "@lib/api-fallback";
 import { api } from "@lib/server-api";
 import {
   buildAnalyticsQueryString,
@@ -94,11 +95,11 @@ export default async function AnalyticsPage({
   let setup: SetupStatusResponse | null = null;
   let hasPendingSync = false;
   let errorMessage: string | null = null;
+  const pendingStatusPromise = api<RecurringPendingStatusResponse>(
+    "/recurring-rules/has-pending",
+  ).catch(() => null);
 
   try {
-    const pendingStatusPromise = api<RecurringPendingStatusResponse>(
-      "/recurring-rules/has-pending",
-    ).catch(() => null);
     const [pageData, pendingStatus] = await Promise.all([
       api<CashflowAnalyticsPageDataResponse>(
         `/cashflow/page-data?${queryString}`,
@@ -111,10 +112,34 @@ export default async function AnalyticsPage({
     setup = pageData.setup;
     hasPendingSync = pendingStatus?.hasPending ?? false;
   } catch (error) {
-    errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Analytics data is currently unavailable.";
+    if (isMissingPageDataRouteError(error)) {
+      try {
+        const [legacyAnalytics, legacyAccounts, legacyCategories, pendingStatus] =
+          await Promise.all([
+            api<CashflowAnalyticsResponse>(`/cashflow/analytics?${queryString}`),
+            api<AccountResponse[]>("/accounts?includeArchived=true"),
+            api<CategoryResponse[]>("/categories?includeArchived=true"),
+            pendingStatusPromise,
+          ]);
+        analytics = legacyAnalytics;
+        accounts = legacyAccounts;
+        categories = legacyCategories;
+        hasPendingSync = pendingStatus?.hasPending ?? false;
+        setup = await api<SetupStatusResponse>(
+          "/setup/status?includeWarnings=false",
+        ).catch(() => null);
+      } catch (fallbackError) {
+        errorMessage =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Analytics data is currently unavailable.";
+      }
+    } else {
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Analytics data is currently unavailable.";
+    }
   }
 
   const visibleExpensePrimaries = categories

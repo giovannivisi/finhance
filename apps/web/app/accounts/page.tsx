@@ -1,7 +1,12 @@
 import Container from "@components/Container";
 import AccountsPageClient from "@components/AccountsPageClient";
+import { isMissingPageDataRouteError } from "@lib/api-fallback";
 import { api } from "@lib/server-api";
-import type { AccountsPageDataResponse } from "@finhance/shared";
+import type {
+  AccountReconciliationResponse,
+  AccountResponse,
+  AccountsPageDataResponse,
+} from "@finhance/shared";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +19,27 @@ export default async function AccountsPage() {
       "/accounts/page-data?includeArchived=true",
     );
   } catch (error) {
-    errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Account data is currently unavailable.";
+    if (isMissingPageDataRouteError(error)) {
+      try {
+        const [accounts, reconciliations] = await Promise.all([
+          api<AccountResponse[]>("/accounts?includeArchived=true"),
+          api<AccountReconciliationResponse[]>(
+            "/accounts/reconciliation?includeArchived=true",
+          ),
+        ]);
+        pageData = { accounts, reconciliations };
+      } catch (fallbackError) {
+        errorMessage =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Account data is currently unavailable.";
+      }
+    } else {
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Account data is currently unavailable.";
+    }
   }
 
   return (

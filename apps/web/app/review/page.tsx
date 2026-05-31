@@ -4,6 +4,7 @@ import type {
   MonthlyReviewPageDataResponse,
   MonthlyReviewResponse,
   MonthlyReviewWarningResponse,
+  RecurringPendingStatusResponse,
   SetupStatusResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
@@ -12,6 +13,7 @@ import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import ReviewCaptureSnapshotButton from "@components/ReviewCaptureSnapshotButton";
 import ReviewMonthPicker from "@components/ReviewMonthPicker";
 import WorkflowSection from "@components/WorkflowSection";
+import { isMissingPageDataRouteError } from "@lib/api-fallback";
 import { formatCurrency } from "@lib/format";
 import { formatHierarchyName } from "@lib/hierarchical-categories";
 import { getReviewWarningLink, shouldOfferSnapshotCapture } from "@lib/review";
@@ -123,10 +125,33 @@ export default async function ReviewPage({
     setup = pageData.setup;
     hasPendingSync = pageData.hasPendingSync;
   } catch (error) {
-    errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Monthly close data is currently unavailable.";
+    if (isMissingPageDataRouteError(error)) {
+      try {
+        review = await api<MonthlyReviewResponse>(
+          `/monthly-review?month=${encodeURIComponent(month)}`,
+        );
+        const [resolvedSetup, pendingStatus] = await Promise.all([
+          api<SetupStatusResponse>("/setup/status?includeWarnings=false").catch(
+            () => null,
+          ),
+          api<RecurringPendingStatusResponse>("/recurring-rules/has-pending").catch(
+            () => null,
+          ),
+        ]);
+        setup = resolvedSetup;
+        hasPendingSync = pendingStatus?.hasPending ?? false;
+      } catch (fallbackError) {
+        errorMessage =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Monthly close data is currently unavailable.";
+      }
+    } else {
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Monthly close data is currently unavailable.";
+    }
   }
   if (!review) {
     return (
