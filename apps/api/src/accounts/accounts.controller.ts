@@ -56,12 +56,9 @@ export class AccountsController {
     ownerId: string,
     includeArchived: boolean,
   ): Promise<AccountReconciliationResponse[]> {
-    const entries = await this.accountsService.findReconciliation(
-      ownerId,
-      {
-        includeArchived,
-      },
-    );
+    const entries = await this.accountsService.findReconciliation(ownerId, {
+      includeArchived,
+    });
     return entries.map(toAccountReconciliationResponse);
   }
 
@@ -69,10 +66,7 @@ export class AccountsController {
   async findAll(
     @Query('includeArchived') includeArchived?: string,
   ): Promise<AccountResponse[]> {
-    return this.readAccounts(
-      this.resolveOwnerId(),
-      includeArchived === 'true',
-    );
+    return this.readAccounts(this.resolveOwnerId(), includeArchived === 'true');
   }
 
   @Get('page-data')

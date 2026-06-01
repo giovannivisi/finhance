@@ -12,7 +12,11 @@ import { TransactionsController } from '@transactions/transactions.controller';
 import { TransactionsService } from '@transactions/transactions.service';
 
 @Module({
-  imports: [forwardRef(() => AccountsModule), PricesModule, SetupModule],
+  imports: [
+    forwardRef(() => AccountsModule),
+    PricesModule,
+    forwardRef(() => SetupModule),
+  ],
   controllers: [
     CashflowController,
     CategoriesController,
