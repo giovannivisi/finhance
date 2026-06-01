@@ -4,6 +4,8 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -115,6 +117,7 @@ interface BudgetImportRef {
 const CSV_IMPORT_SOURCE = ImportSource.CSV_TEMPLATE;
 const RECENT_BATCH_LIMIT = 20;
 const IMPORT_PREVIEW_TTL_MS = 15 * 60 * 1000;
+const IMPORT_PREVIEW_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const IMPORT_APPLY_TRANSACTION_MAX_WAIT_MS = 15_000;
 const IMPORT_APPLY_TRANSACTION_TIMEOUT_MS = 120_000;
 const MAX_UPLOAD_FILE_BYTES = 1024 * 1024;
@@ -136,15 +139,33 @@ const ZERO = new Prisma.Decimal(0);
 type CsvRecord = Record<string, string>;
 
 @Injectable()
-export class ImportsService {
+export class ImportsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ImportsService.name);
   private readonly previewPayloads = new Map<string, StoredPreviewPayload>();
+  private cleanupTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricesService: PricesService,
     private readonly recurringService: RecurringService,
   ) {}
+
+  onModuleInit(): void {
+    this.schedulePersistedPreviewCleanup();
+    this.cleanupTimer = setInterval(() => {
+      this.schedulePersistedPreviewCleanup();
+    }, IMPORT_PREVIEW_CLEANUP_INTERVAL_MS);
+    this.cleanupTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (!this.cleanupTimer) {
+      return;
+    }
+
+    clearInterval(this.cleanupTimer);
+    this.cleanupTimer = null;
+  }
 
   async listRecent(ownerId: string): Promise<ImportBatchResponse[]> {
     await this.clearExpiredPersistedPreviewPayloads(ownerId);
@@ -4999,16 +5020,18 @@ export class ImportsService {
       return null;
     }
 
+    let decimal: Prisma.Decimal;
     try {
-      const decimal = new Prisma.Decimal(normalized);
-      if (decimal.lte(ZERO)) {
-        throw new Error('non-positive');
-      }
-
-      return decimal.toString();
+      decimal = new Prisma.Decimal(normalized);
     } catch {
       throw new BadRequestException('Expected a positive decimal value.');
     }
+
+    if (decimal.lte(ZERO)) {
+      throw new BadRequestException('Expected a positive decimal value.');
+    }
+
+    return decimal.toString();
   }
 
   private requiredDecimal(
@@ -5679,6 +5702,14 @@ export class ImportsService {
       data: {
         payloadJson: Prisma.DbNull,
       },
+    });
+  }
+
+  private schedulePersistedPreviewCleanup(): void {
+    void this.clearExpiredPersistedPreviewPayloads().catch((error) => {
+      this.logger.warn(
+        `Import preview cleanup failed: ${this.describeError(error)}`,
+      );
     });
   }
 

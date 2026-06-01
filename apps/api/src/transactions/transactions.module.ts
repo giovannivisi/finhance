@@ -2,6 +2,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { AccountsModule } from '@accounts/accounts.module';
 import { PricesModule } from '@prices/prices.module';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { LocalOnlyImportsGuard } from '@/security/local-only-imports.guard';
 import { SetupModule } from '@/setup/setup.module';
 import { CashflowController } from '@transactions/cashflow.controller';
 import { CategoriesController } from '@transactions/categories.controller';
@@ -26,6 +27,7 @@ import { TransactionsService } from '@transactions/transactions.service';
   providers: [
     CategoriesService,
     ExpenseValidationService,
+    LocalOnlyImportsGuard,
     TransactionsService,
     RequestOwnerResolver,
   ],

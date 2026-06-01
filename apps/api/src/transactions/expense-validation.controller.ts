@@ -10,12 +10,14 @@ import {
   Put,
   Res,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { createNamedThrottleOverride } from '@/config/throttle.config';
+import { LocalOnlyImportsGuard } from '@/security/local-only-imports.guard';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import type { ExpenseValidationRuleResponse } from '@finhance/shared';
 import { toExpenseValidationRuleResponse } from '@transactions/expense-validation.mapper';
@@ -90,6 +92,7 @@ export class ExpenseValidationController {
 
   @Post('rules/import')
   @Throttle(createNamedThrottleOverride('imports'))
+  @UseGuards(LocalOnlyImportsGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
@@ -108,6 +111,7 @@ export class ExpenseValidationController {
 
   @Post('hierarchy/import')
   @Throttle(createNamedThrottleOverride('imports'))
+  @UseGuards(LocalOnlyImportsGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {

@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 import { BadRequestException } from '@nestjs/common';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { LocalOnlyImportsGuard } from '@/security/local-only-imports.guard';
 import { ExpenseValidationController } from '@transactions/expense-validation.controller';
 
 describe('ExpenseValidationController throttling', () => {
@@ -16,6 +18,17 @@ describe('ExpenseValidationController throttling', () => {
     ).toBeDefined();
     expect(Reflect.getMetadata('THROTTLER:TTLimports', handler)).toBeDefined();
   });
+
+  it.each(['importRules', 'importHierarchy'] as const)(
+    'applies the local import guard to %s',
+    (methodName) => {
+      const handler = ExpenseValidationController.prototype[methodName];
+
+      expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toContain(
+        LocalOnlyImportsGuard,
+      );
+    },
+  );
 
   it.each([
     ['importRules', 'rules.csv'],
