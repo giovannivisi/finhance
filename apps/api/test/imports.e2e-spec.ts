@@ -9,7 +9,7 @@ import { PrismaService } from '@prisma/prisma.service';
 import { RecurringService } from '@recurring/recurring.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { IdempotencyService } from '@/request-safety/idempotency.service';
-import { AccountType, ImportBatchStatus, ImportSource } from '@finhance/db';
+import { AccountType, ImportBatchStatus, ImportSource } from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
 type ResponseWithBody = { body: unknown };
@@ -411,16 +411,12 @@ describe('Import routes (e2e)', () => {
           'recurringExceptions.csv',
           'budgets.csv',
           'budgetOverrides.csv',
-          'expenseValidationRules.csv',
         ]);
         expect(entries.get('accounts.csv')).toContain(
           'importKey,name,type,currency,institution,notes,order,openingBalance,openingBalanceDate,archived',
         );
         expect(entries.get('categories.csv')).toBe(
-          'importKey,type,level,primary,secondary,primaryOrder,secondaryOrder,archived\n',
-        );
-        expect(entries.get('expenseValidationRules.csv')).toBe(
-          'entry,primary,secondary\n',
+          'importKey,name,type,order,archived\n',
         );
       });
   });

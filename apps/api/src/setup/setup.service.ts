@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
 import { PrismaService } from '@prisma/prisma.service';
-import { CategoryType, ImportBatchStatus, type Account } from '@finhance/db';
+import { CategoryType, ImportBatchStatus, type Account } from '@prisma/client';
 import type {
   SetupHandoffResponse,
   SetupStatusResponse,
@@ -40,7 +40,6 @@ export class SetupService {
       appliedImportCount,
       latestSnapshot,
       reconciliations,
-      ownerUser,
     ] = await Promise.all([
       this.prisma.account.count({
         where: { userId: ownerId, archivedAt: null },
@@ -72,15 +71,7 @@ export class SetupService {
             includeArchived: false,
           })
         : Promise.resolve([]),
-      this.prisma.user.findUnique({
-        where: { id: ownerId },
-        select: { userSettings: true },
-      }),
     ]);
-
-    const hasReportingCurrencyConfigured = this.hasReportingCurrencyConfigured(
-      ownerUser?.userSettings ?? null,
-    );
 
     const activeIncomeCategoryCount = activeCategories.filter(
       (category) => category.type === CategoryType.INCOME,
@@ -100,18 +91,6 @@ export class SetupService {
         status: activeAccountCount > 0 ? 'COMPLETE' : 'INCOMPLETE',
         href: '/accounts',
         actionLabel: activeAccountCount > 0 ? 'Open accounts' : 'Add account',
-      },
-      {
-        code: 'REPORTING_CURRENCY',
-        title: 'Choose the reporting currency',
-        detail: hasReportingCurrencyConfigured
-          ? 'Reporting currency is configured for aggregate totals.'
-          : 'Choose the currency used for net worth, history, and converted summaries.',
-        status: hasReportingCurrencyConfigured ? 'COMPLETE' : 'INCOMPLETE',
-        href: '/settings/user',
-        actionLabel: hasReportingCurrencyConfigured
-          ? 'Review reporting currency'
-          : 'Choose reporting currency',
       },
       {
         code: 'CATEGORIES',
@@ -186,7 +165,6 @@ export class SetupService {
       currentMonthBudgetCount,
       hasAppliedImportBatch: appliedImportCount > 0,
       hasSnapshot: latestSnapshot !== null,
-      hasReportingCurrencyConfigured,
     };
   }
 
@@ -307,14 +285,5 @@ export class SetupService {
         : '';
 
     return `${visible.join(', ')}${suffix}`;
-  }
-
-  private hasReportingCurrencyConfigured(value: unknown): boolean {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return false;
-    }
-
-    const candidate = (value as Record<string, unknown>).reportingCurrency;
-    return typeof candidate === 'string' && candidate.trim().length > 0;
   }
 }

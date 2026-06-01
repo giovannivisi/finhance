@@ -7,7 +7,6 @@ import type {
 export interface CategoryFormValues {
   name: string;
   type: CategoryType;
-  parentCategoryId: string;
   order: string;
 }
 
@@ -17,7 +16,6 @@ export function createEmptyCategoryFormValues(): CategoryFormValues {
   return {
     name: "",
     type: DEFAULT_CATEGORY_TYPE,
-    parentCategoryId: "",
     order: "",
   };
 }
@@ -28,7 +26,6 @@ export function categoryToFormValues(
   return {
     name: category.name,
     type: category.type,
-    parentCategoryId: category.parentCategoryId ?? "",
     order: String(category.order),
   };
 }
@@ -48,10 +45,6 @@ export function buildCategoryPayload(values: CategoryFormValues): {
     payload: {
       name,
       type: values.type,
-      parentCategoryId:
-        values.type === "EXPENSE"
-          ? values.parentCategoryId.trim() || null
-          : null,
       order,
     },
   };

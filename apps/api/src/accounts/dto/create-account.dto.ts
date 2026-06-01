@@ -10,8 +10,7 @@ import {
   IsString,
   Matches,
 } from 'class-validator';
-import { AccountType as PrismaAccountType } from '@finhance/db';
-import { IsSupportedCurrencyCode } from '@/common/catalog-validators';
+import { AccountType as PrismaAccountType } from '@prisma/client';
 import type { AccountType, UpsertAccountRequest } from '@finhance/shared';
 
 function trimStringValue({ value }: TransformFnParams): unknown {
@@ -42,7 +41,7 @@ export class CreateAccountDto implements UpsertAccountRequest {
 
   @IsOptional()
   @IsString()
-  @IsSupportedCurrencyCode()
+  @Matches(/^[A-Z]{3}$/)
   @Transform(uppercaseStringValue)
   currency?: string;
 

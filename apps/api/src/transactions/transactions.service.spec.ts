@@ -4,7 +4,7 @@ import {
   Prisma,
   TransactionDirection,
   TransactionKind,
-} from '@finhance/db';
+} from '@prisma/client';
 import { CategoriesService } from '@transactions/categories.service';
 import { TransactionsService } from '@transactions/transactions.service';
 
@@ -19,11 +19,7 @@ type TransactionCreateCall = {
   };
   include: {
     account: true;
-    category: {
-      include: {
-        parentCategory: true;
-      };
-    };
+    category: true;
   };
 };
 
@@ -83,31 +79,11 @@ function createTransactionRow(
     notes: null,
     counterparty: 'Employer',
     transferGroupId: null,
-    splitGroupId: null,
     createdAt: now,
     updatedAt: now,
     account: createAccount(),
     category: createCategory(),
     ...overrides,
-  };
-}
-
-function withEmptyHierarchy<
-  T extends { categoryId: string | null; name: string },
->(
-  input: T,
-): T & {
-  primaryCategoryId: null;
-  primaryCategoryName: null;
-  secondaryCategoryId: null;
-  secondaryCategoryName: null;
-} {
-  return {
-    ...input,
-    primaryCategoryId: null,
-    primaryCategoryName: null,
-    secondaryCategoryId: null,
-    secondaryCategoryName: null,
   };
 }
 
@@ -122,14 +98,6 @@ describe('TransactionsService', () => {
       delete: jest.Mock;
       deleteMany: jest.Mock;
     };
-    asset: {
-      findFirst: jest.Mock;
-      update: jest.Mock;
-      create: jest.Mock;
-    };
-    account: {
-      findFirst: jest.Mock;
-    };
     $transaction: jest.Mock;
   };
   let accounts: {
@@ -137,12 +105,6 @@ describe('TransactionsService', () => {
   };
   let categories: {
     getAssignableCategory: jest.Mock;
-    findMatchingExpenseSecondaryCategory: jest.Mock;
-  };
-  let prices: {
-    getFxRateForDate: jest.Mock;
-    getStoredFxRateSnapshot: jest.Mock;
-    saveManualFxRate: jest.Mock;
   };
 
   beforeEach(() => {
@@ -155,21 +117,6 @@ describe('TransactionsService', () => {
         delete: jest.fn(),
         deleteMany: jest.fn(),
       },
-      asset: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: 'cash-asset-1',
-          balance: new Prisma.Decimal('10000'),
-          currency: 'EUR',
-        }),
-        update: jest.fn(),
-        create: jest.fn(),
-      },
-      account: {
-        findFirst: jest.fn().mockResolvedValue({
-          currency: 'EUR',
-          name: 'Checking',
-        }),
-      },
       $transaction: jest.fn(),
     };
 
@@ -177,14 +124,10 @@ describe('TransactionsService', () => {
       async (
         callback: (tx: {
           transaction: typeof prisma.transaction;
-          asset: typeof prisma.asset;
-          account: typeof prisma.account;
         }) => Promise<unknown>,
       ) =>
         callback({
           transaction: prisma.transaction,
-          asset: prisma.asset,
-          account: prisma.account,
         }),
     );
 
@@ -194,26 +137,12 @@ describe('TransactionsService', () => {
 
     categories = {
       getAssignableCategory: jest.fn().mockResolvedValue(createCategory()),
-      findMatchingExpenseSecondaryCategory: jest.fn().mockResolvedValue(null),
-    };
-
-    prices = {
-      getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
-      getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
-        rate: new Prisma.Decimal('1'),
-        status: 'EXACT',
-        source: 'LIVE',
-        rateDate: new Date('2026-04-17T00:00:00.000Z'),
-        updatedAt: new Date('2026-04-17T08:00:00.000Z'),
-      }),
-      saveManualFxRate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
     };
 
     service = new TransactionsService(
       prisma as never,
       accounts as unknown as AccountsService,
       categories as unknown as CategoriesService,
-      prices as never,
     );
   });
 
@@ -249,15 +178,7 @@ describe('TransactionsService', () => {
       description: 'Salary',
       counterparty: 'Employer',
     });
-    expect(createCall.include).toEqual({
-      account: true,
-      category: {
-        include: {
-          parentCategory: true,
-        },
-      },
-    });
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(createCall.include).toEqual({ account: true, category: true });
   });
 
   it('creates transfer pairs and returns one logical entry', async () => {
@@ -300,339 +221,25 @@ describe('TransactionsService', () => {
 
     expect(result.entryType).toBe('TRANSFER');
     expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  it('creates split-funded expenses and returns one logical entry', async () => {
+  it('enforces same-currency transfers', async () => {
     accounts.getAssignableAccount
-      .mockResolvedValueOnce(createAccount({ id: 'voucher', currency: 'EUR' }))
-      .mockResolvedValueOnce(createAccount({ id: 'cash', currency: 'EUR' }));
-    categories.getAssignableCategory.mockResolvedValue(
-      createCategory({
-        id: 'category-food',
-        name: 'Food',
-        type: CategoryType.EXPENSE,
-      }),
-    );
-    prisma.transaction.findMany.mockResolvedValue([
-      createTransactionRow({
-        id: 'split-row-1',
-        accountId: 'voucher',
-        amount: new Prisma.Decimal('7'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-        splitGroupId: 'split_group',
-      }),
-      createTransactionRow({
-        id: 'split-row-2',
-        accountId: 'cash',
-        amount: new Prisma.Decimal('5'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-        splitGroupId: 'split_group',
-      }),
-    ]);
-
-    const result = await service.create(OWNER_ID, {
-      postedAt: '2026-04-17T09:00:00.000Z',
-      kind: TransactionKind.EXPENSE,
-      amount: 12,
-      description: 'Lunch',
-      categoryId: 'category-food',
-      counterparty: 'Cafe',
-      fundingLegs: [
-        { accountId: 'voucher', amount: 7 },
-        { accountId: 'cash', amount: 5 },
-      ],
-    });
-
-    expect(result.entryType).toBe('SPLIT');
-    expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
-    expect(
-      nthCallArg<TransactionCreateCall>(prisma.transaction.create, 0).data,
-    ).toMatchObject({
-      accountId: 'voucher',
-      categoryId: 'category-food',
-      description: 'Lunch',
-      counterparty: 'Cafe',
-    });
-  });
-
-  it('rejects split-funded expenses that reuse the same account', async () => {
-    await expect(
-      service.create(OWNER_ID, {
-        postedAt: '2026-04-17T09:00:00.000Z',
-        kind: TransactionKind.EXPENSE,
-        amount: 12,
-        description: 'Lunch',
-        categoryId: 'category-food',
-        counterparty: 'Cafe',
-        fundingLegs: [
-          { accountId: 'voucher', amount: 7 },
-          { accountId: 'voucher', amount: 5 },
-        ],
-      }),
-    ).rejects.toThrow('cannot repeat the same account');
-
-    expect(accounts.getAssignableAccount).not.toHaveBeenCalled();
-  });
-
-  it('rejects split-funded expenses with mixed account currencies', async () => {
-    accounts.getAssignableAccount
-      .mockResolvedValueOnce(createAccount({ id: 'voucher', currency: 'EUR' }))
-      .mockResolvedValueOnce(createAccount({ id: 'cash', currency: 'USD' }));
-    categories.getAssignableCategory.mockResolvedValue(
-      createCategory({
-        id: 'category-food',
-        name: 'Food',
-        type: CategoryType.EXPENSE,
-      }),
-    );
+      .mockResolvedValueOnce(createAccount({ id: 'source', currency: 'EUR' }))
+      .mockResolvedValueOnce(
+        createAccount({ id: 'destination', currency: 'USD' }),
+      );
 
     await expect(
       service.create(OWNER_ID, {
         postedAt: '2026-04-17T09:00:00.000Z',
-        kind: TransactionKind.EXPENSE,
-        amount: 12,
-        description: 'Lunch',
-        categoryId: 'category-food',
-        fundingLegs: [
-          { accountId: 'voucher', amount: 7 },
-          { accountId: 'cash', amount: 5 },
-        ],
+        kind: TransactionKind.TRANSFER,
+        amount: 25,
+        description: 'Transfer',
+        sourceAccountId: 'source',
+        destinationAccountId: 'destination',
       }),
     ).rejects.toThrow('same currency');
-  });
-
-  it('creates cross-currency transfers with a stored FX rate by default', async () => {
-    accounts.getAssignableAccount
-      .mockResolvedValueOnce(createAccount({ id: 'source', currency: 'EUR' }))
-      .mockResolvedValueOnce(
-        createAccount({ id: 'destination', currency: 'USD' }),
-      );
-    prices.getStoredFxRateSnapshot.mockResolvedValueOnce({
-      rate: new Prisma.Decimal('1.2'),
-      status: 'EXACT',
-      source: 'LIVE',
-      rateDate: new Date('2026-04-17T00:00:00.000Z'),
-      updatedAt: new Date('2026-04-17T08:00:00.000Z'),
-    });
-    prisma.transaction.findMany.mockResolvedValue([
-      createTransactionRow({
-        id: 'row-1',
-        accountId: 'source',
-        amount: new Prisma.Decimal('25'),
-        currency: 'EUR',
-        categoryId: null,
-        direction: TransactionDirection.OUTFLOW,
-        kind: TransactionKind.TRANSFER,
-        description: 'Transfer',
-        counterparty: null,
-        transferGroupId: 'transfer_group',
-        fxRateUsed: new Prisma.Decimal('1.2'),
-        fxRateSource: 'LIVE',
-      }),
-      createTransactionRow({
-        id: 'row-2',
-        accountId: 'destination',
-        amount: new Prisma.Decimal('30'),
-        currency: 'USD',
-        categoryId: null,
-        direction: TransactionDirection.INFLOW,
-        kind: TransactionKind.TRANSFER,
-        description: 'Transfer',
-        counterparty: null,
-        transferGroupId: 'transfer_group',
-        fxRateUsed: new Prisma.Decimal('1.2'),
-        fxRateSource: 'LIVE',
-      }),
-    ]);
-
-    const result = await service.create(OWNER_ID, {
-      postedAt: '2026-04-17T09:00:00.000Z',
-      kind: TransactionKind.TRANSFER,
-      amount: 25,
-      description: 'Transfer',
-      sourceAccountId: 'source',
-      destinationAccountId: 'destination',
-    });
-
-    expect(result.entryType).toBe('TRANSFER');
-    expect(prices.getStoredFxRateSnapshot).toHaveBeenCalledWith(
-      OWNER_ID,
-      new Date('2026-04-17T09:00:00.000Z'),
-      'EUR',
-      'USD',
-    );
-    expect(prices.getFxRateForDate).not.toHaveBeenCalled();
-  });
-
-  it('creates dual-currency standard transactions with a manual FX override', async () => {
-    categories.getAssignableCategory.mockResolvedValue(
-      createCategory({
-        id: 'category-food',
-        name: 'Food',
-        type: CategoryType.EXPENSE,
-      }),
-    );
-    prisma.transaction.create.mockResolvedValue(
-      createTransactionRow({
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        amount: new Prisma.Decimal('9'),
-        currency: 'EUR',
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        nativeAmount: new Prisma.Decimal('10'),
-        nativeCurrency: 'USD',
-        fxRateUsed: new Prisma.Decimal('0.9'),
-        fxRateSource: 'MANUAL',
-      }),
-    );
-
-    const result = await service.create(OWNER_ID, {
-      postedAt: '2026-04-17T09:00:00.000Z',
-      kind: TransactionKind.EXPENSE,
-      amount: 9,
-      description: 'Lunch',
-      accountId: 'account-1',
-      direction: TransactionDirection.OUTFLOW,
-      categoryId: 'category-food',
-      nativeAmount: 10,
-      nativeCurrency: 'USD',
-      fxRateUsed: 0.9,
-    });
-
-    expect(result.entryType).toBe('STANDARD');
-    expect(prices.saveManualFxRate).toHaveBeenCalledWith(
-      OWNER_ID,
-      new Date('2026-04-17T09:00:00.000Z'),
-      'USD',
-      'EUR',
-      expect.any(Prisma.Decimal),
-    );
-    expect(prices.getFxRateForDate).not.toHaveBeenCalled();
-    expect(
-      nthCallArg<TransactionCreateCall>(prisma.transaction.create, 0).data,
-    ).toMatchObject({
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      amount: expect.any(Prisma.Decimal),
-      currency: 'EUR',
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      nativeAmount: expect.any(Prisma.Decimal),
-      nativeCurrency: 'USD',
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      fxRateUsed: expect.any(Prisma.Decimal),
-      fxRateSource: 'MANUAL',
-    });
-  });
-
-  it('creates cross-currency transfers with a manual FX override', async () => {
-    accounts.getAssignableAccount
-      .mockResolvedValueOnce(createAccount({ id: 'source', currency: 'EUR' }))
-      .mockResolvedValueOnce(
-        createAccount({ id: 'destination', currency: 'USD' }),
-      );
-    prisma.transaction.findMany.mockResolvedValue([
-      createTransactionRow({
-        id: 'row-1',
-        accountId: 'source',
-        amount: new Prisma.Decimal('25'),
-        currency: 'EUR',
-        categoryId: null,
-        direction: TransactionDirection.OUTFLOW,
-        kind: TransactionKind.TRANSFER,
-        description: 'Transfer',
-        counterparty: null,
-        transferGroupId: 'transfer_group',
-        fxRateUsed: new Prisma.Decimal('1.1'),
-        fxRateSource: 'MANUAL',
-      }),
-      createTransactionRow({
-        id: 'row-2',
-        accountId: 'destination',
-        amount: new Prisma.Decimal('27.5'),
-        currency: 'USD',
-        categoryId: null,
-        direction: TransactionDirection.INFLOW,
-        kind: TransactionKind.TRANSFER,
-        description: 'Transfer',
-        counterparty: null,
-        transferGroupId: 'transfer_group',
-        fxRateUsed: new Prisma.Decimal('1.1'),
-        fxRateSource: 'MANUAL',
-      }),
-    ]);
-
-    const result = await service.create(OWNER_ID, {
-      postedAt: '2026-04-17T09:00:00.000Z',
-      kind: TransactionKind.TRANSFER,
-      amount: 25,
-      description: 'Transfer',
-      sourceAccountId: 'source',
-      destinationAccountId: 'destination',
-      sourceAmount: 25,
-      destinationAmount: 27.5,
-      fxRateUsed: 1.1,
-    });
-
-    expect(result.entryType).toBe('TRANSFER');
-    expect(prices.saveManualFxRate).toHaveBeenCalledWith(
-      OWNER_ID,
-      new Date('2026-04-17T09:00:00.000Z'),
-      'EUR',
-      'USD',
-      expect.any(Prisma.Decimal),
-    );
-    expect(prices.getFxRateForDate).not.toHaveBeenCalled();
-    expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
-    expect(
-      nthCallArg<{ data: Record<string, unknown> }>(
-        prisma.transaction.create,
-        0,
-      ).data,
-    ).toMatchObject({
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      amount: expect.any(Prisma.Decimal),
-      currency: 'EUR',
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      fxRateUsed: expect.any(Prisma.Decimal),
-      fxRateSource: 'MANUAL',
-    });
-    expect(
-      nthCallArg<{ data: Record<string, unknown> }>(
-        prisma.transaction.create,
-        1,
-      ).data,
-    ).toMatchObject({
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      amount: expect.any(Prisma.Decimal),
-      currency: 'USD',
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      fxRateUsed: expect.any(Prisma.Decimal),
-      fxRateSource: 'MANUAL',
-    });
   });
 
   it('rejects non-transfer transactions before the account opening-balance date', async () => {
@@ -650,7 +257,6 @@ describe('TransactionsService', () => {
         description: 'Salary',
         accountId: 'account-1',
         direction: TransactionDirection.INFLOW,
-        categoryId: 'category-1',
       }),
     ).rejects.toThrow('Transactions before 2026-04-10 are not allowed');
   });
@@ -705,226 +311,6 @@ describe('TransactionsService', () => {
       'Generated recurring transactions',
     );
   });
-
-  it('rejects edited expenses that exceed the post-reversal cash balance', async () => {
-    prisma.transaction.findFirst.mockResolvedValue(
-      createTransactionRow({
-        id: 'expense-1',
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        amount: new Prisma.Decimal('40'),
-        categoryId: null,
-        category: null,
-      }),
-    );
-    prisma.asset.findFirst
-      .mockResolvedValueOnce({
-        id: 'cash-asset-1',
-        balance: new Prisma.Decimal('10'),
-        currency: 'EUR',
-      })
-      .mockResolvedValueOnce({
-        id: 'cash-asset-1',
-        balance: new Prisma.Decimal('50'),
-        currency: 'EUR',
-      });
-
-    await expect(
-      service.update(OWNER_ID, 'expense-1', {
-        postedAt: '2026-04-17T09:00:00.000Z',
-        kind: TransactionKind.EXPENSE,
-        amount: 60,
-        description: 'Rent',
-        accountId: 'account-1',
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-1',
-        counterparty: null,
-      }),
-    ).rejects.toThrow('Insufficient cash balance');
-
-    expect(prisma.transaction.update).not.toHaveBeenCalled();
-  });
-
-  it('converts a standard expense into a split-funded expense on update', async () => {
-    prisma.transaction.findFirst.mockResolvedValue(
-      createTransactionRow({
-        id: 'expense-1',
-        amount: new Prisma.Decimal('12'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-      }),
-    );
-    accounts.getAssignableAccount
-      .mockResolvedValueOnce(createAccount({ id: 'voucher', currency: 'EUR' }))
-      .mockResolvedValueOnce(createAccount({ id: 'cash', currency: 'EUR' }));
-    categories.getAssignableCategory.mockResolvedValue(
-      createCategory({
-        id: 'category-food',
-        name: 'Food',
-        type: CategoryType.EXPENSE,
-      }),
-    );
-    prisma.transaction.findMany.mockResolvedValue([
-      createTransactionRow({
-        id: 'split-row-1',
-        accountId: 'voucher',
-        amount: new Prisma.Decimal('7'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-        splitGroupId: 'split_group',
-      }),
-      createTransactionRow({
-        id: 'split-row-2',
-        accountId: 'cash',
-        account: createAccount({ id: 'cash' }),
-        amount: new Prisma.Decimal('5'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-        splitGroupId: 'split_group',
-      }),
-    ]);
-
-    const result = await service.update(OWNER_ID, 'expense-1', {
-      postedAt: '2026-04-17T09:00:00.000Z',
-      kind: TransactionKind.EXPENSE,
-      amount: 12,
-      description: 'Lunch',
-      categoryId: 'category-food',
-      counterparty: 'Cafe',
-      fundingLegs: [
-        { accountId: 'voucher', amount: 7 },
-        { accountId: 'cash', amount: 5 },
-      ],
-    });
-
-    expect(result.entryType).toBe('SPLIT');
-    expect(prisma.transaction.delete).toHaveBeenCalledWith({
-      where: { id: 'expense-1' },
-    });
-    expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
-  });
-
-  it('converts a split-funded expense back into a standard expense on update', async () => {
-    prisma.transaction.findFirst.mockResolvedValue(null);
-    prisma.transaction.findMany.mockResolvedValueOnce([
-      createTransactionRow({
-        id: 'split-row-1',
-        accountId: 'voucher',
-        amount: new Prisma.Decimal('7'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-        splitGroupId: 'split-1',
-      }),
-      createTransactionRow({
-        id: 'split-row-2',
-        accountId: 'cash',
-        account: createAccount({ id: 'cash' }),
-        amount: new Prisma.Decimal('5'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-        splitGroupId: 'split-1',
-      }),
-    ]);
-    accounts.getAssignableAccount.mockResolvedValue(
-      createAccount({ id: 'account-1', currency: 'EUR' }),
-    );
-    categories.getAssignableCategory.mockResolvedValue(
-      createCategory({
-        id: 'category-food',
-        name: 'Food',
-        type: CategoryType.EXPENSE,
-      }),
-    );
-    prisma.transaction.create.mockResolvedValue(
-      createTransactionRow({
-        id: 'expense-2',
-        accountId: 'account-1',
-        amount: new Prisma.Decimal('12'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-      }),
-    );
-
-    const result = await service.update(OWNER_ID, 'split-1', {
-      postedAt: '2026-04-17T09:00:00.000Z',
-      kind: TransactionKind.EXPENSE,
-      amount: 12,
-      description: 'Lunch',
-      accountId: 'account-1',
-      direction: TransactionDirection.OUTFLOW,
-      categoryId: 'category-food',
-      counterparty: 'Cafe',
-    });
-
-    expect(result.entryType).toBe('STANDARD');
-    expect(prisma.transaction.deleteMany).toHaveBeenCalledWith({
-      where: {
-        userId: OWNER_ID,
-        splitGroupId: 'split-1',
-      },
-    });
-    const createCalls = prisma.transaction.create.mock.calls as Array<
-      [
-        {
-          data?: { accountId?: string; splitGroupId?: string | null };
-        },
-      ]
-    >;
-    const createCall = createCalls[0]?.[0];
-    expect(createCall?.data).toMatchObject({
-      accountId: 'account-1',
-      splitGroupId: null,
-    });
-  });
-
   it('collapses transfer rows and filters archived accounts from the list', async () => {
     prisma.transaction.findMany.mockResolvedValue([
       createTransactionRow({
@@ -964,168 +350,6 @@ describe('TransactionsService', () => {
     expect(withArchived).toHaveLength(2);
   });
 
-  it('collapses split-funded expense rows into one logical entry', async () => {
-    prisma.transaction.findMany.mockResolvedValue([
-      createTransactionRow({
-        id: 'split-row-1',
-        accountId: 'voucher',
-        amount: new Prisma.Decimal('7'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-        splitGroupId: 'split-1',
-      }),
-      createTransactionRow({
-        id: 'split-row-2',
-        accountId: 'cash',
-        account: createAccount({ id: 'cash' }),
-        amount: new Prisma.Decimal('5'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        counterparty: 'Cafe',
-        splitGroupId: 'split-1',
-      }),
-    ]);
-
-    const result = await service.findAll(OWNER_ID, {});
-
-    expect(result).toHaveLength(1);
-    expect(result[0]?.entryType).toBe('SPLIT');
-  });
-
-  it('resolves a split-funded expense when asked for one child row id', async () => {
-    prisma.transaction.findFirst.mockResolvedValue(
-      createTransactionRow({
-        id: 'split-row-1',
-        accountId: 'voucher',
-        amount: new Prisma.Decimal('7'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        splitGroupId: 'split-1',
-      }),
-    );
-    prisma.transaction.findMany.mockResolvedValue([
-      createTransactionRow({
-        id: 'split-row-1',
-        accountId: 'voucher',
-        amount: new Prisma.Decimal('7'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        splitGroupId: 'split-1',
-      }),
-      createTransactionRow({
-        id: 'split-row-2',
-        accountId: 'cash',
-        account: createAccount({ id: 'cash' }),
-        amount: new Prisma.Decimal('5'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        splitGroupId: 'split-1',
-      }),
-    ]);
-
-    const result = await service.findOne(OWNER_ID, 'split-row-1');
-
-    expect(result.entryType).toBe('SPLIT');
-  });
-
-  it('deletes a split-funded expense when asked for one child row id', async () => {
-    prisma.transaction.findFirst.mockResolvedValue(
-      createTransactionRow({
-        id: 'split-row-1',
-        accountId: 'voucher',
-        amount: new Prisma.Decimal('7'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        splitGroupId: 'split-1',
-      }),
-    );
-    prisma.transaction.findMany.mockResolvedValue([
-      createTransactionRow({
-        id: 'split-row-1',
-        accountId: 'voucher',
-        amount: new Prisma.Decimal('7'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        splitGroupId: 'split-1',
-      }),
-      createTransactionRow({
-        id: 'split-row-2',
-        accountId: 'cash',
-        account: createAccount({ id: 'cash' }),
-        amount: new Prisma.Decimal('5'),
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        categoryId: 'category-food',
-        category: createCategory({
-          id: 'category-food',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        splitGroupId: 'split-1',
-      }),
-    ]);
-
-    await service.remove(OWNER_ID, 'split-row-1');
-
-    expect(prisma.transaction.deleteMany).toHaveBeenCalledWith({
-      where: {
-        userId: OWNER_ID,
-        splitGroupId: 'split-1',
-      },
-    });
-  });
-
   it('returns the full history when pagination is not requested', async () => {
     prisma.transaction.findMany.mockResolvedValue(
       Array.from({ length: 205 }, (_, index) =>
@@ -1145,149 +369,6 @@ describe('TransactionsService', () => {
       ).where,
     ).toEqual({
       userId: OWNER_ID,
-    });
-  });
-
-  it('loads recent account history with a bounded query and hydrates transfer counterparts', async () => {
-    prisma.transaction.findMany
-      .mockResolvedValueOnce([
-        createTransactionRow({
-          id: 'transfer-out',
-          postedAt: new Date('2026-04-18T09:00:00.000Z'),
-          accountId: 'account-1',
-          categoryId: null,
-          category: null,
-          kind: TransactionKind.TRANSFER,
-          direction: TransactionDirection.OUTFLOW,
-          transferGroupId: 'transfer-1',
-        }),
-        createTransactionRow({
-          id: 'income-1',
-          postedAt: new Date('2026-04-17T09:00:00.000Z'),
-          kind: TransactionKind.INCOME,
-        }),
-      ])
-      .mockResolvedValueOnce([
-        createTransactionRow({
-          id: 'transfer-in',
-          postedAt: new Date('2026-04-18T09:00:00.000Z'),
-          accountId: 'account-2',
-          account: createAccount({ id: 'account-2' }),
-          categoryId: null,
-          category: null,
-          kind: TransactionKind.TRANSFER,
-          direction: TransactionDirection.INFLOW,
-          transferGroupId: 'transfer-1',
-        }),
-      ]);
-
-    const result = await service.findRecentByAccount(OWNER_ID, 'account-1', {
-      includeArchivedAccounts: true,
-      limit: 2,
-    });
-
-    expect(result).toHaveLength(2);
-    expect(result[0]?.entryType).toBe('TRANSFER');
-    expect(result[1]?.entryType).toBe('STANDARD');
-    expect(prisma.transaction.findMany).toHaveBeenCalledTimes(2);
-    expect(
-      nthCallArg<{
-        where: Record<string, unknown>;
-        take: number;
-        skip: number;
-      }>(prisma.transaction.findMany, 0),
-    ).toMatchObject({
-      where: {
-        userId: OWNER_ID,
-        accountId: 'account-1',
-      },
-      take: 50,
-      skip: 0,
-    });
-    expect(
-      nthCallArg<{ where: Record<string, unknown> }>(
-        prisma.transaction.findMany,
-        1,
-      ).where,
-    ).toMatchObject({
-      userId: OWNER_ID,
-      OR: [
-        {
-          transferGroupId: {
-            in: ['transfer-1'],
-          },
-          accountId: {
-            not: 'account-1',
-          },
-        },
-      ],
-    });
-  });
-
-  it('hydrates split-funded expense counterparts in recent account history', async () => {
-    prisma.transaction.findMany
-      .mockResolvedValueOnce([
-        createTransactionRow({
-          id: 'split-row-1',
-          postedAt: new Date('2026-04-18T09:00:00.000Z'),
-          accountId: 'account-1',
-          amount: new Prisma.Decimal('7'),
-          kind: TransactionKind.EXPENSE,
-          direction: TransactionDirection.OUTFLOW,
-          categoryId: 'category-food',
-          category: createCategory({
-            id: 'category-food',
-            name: 'Food',
-            type: CategoryType.EXPENSE,
-          }),
-          description: 'Lunch',
-          splitGroupId: 'split-1',
-        }),
-      ])
-      .mockResolvedValueOnce([
-        createTransactionRow({
-          id: 'split-row-2',
-          postedAt: new Date('2026-04-18T09:00:00.000Z'),
-          accountId: 'account-2',
-          account: createAccount({ id: 'account-2' }),
-          amount: new Prisma.Decimal('5'),
-          kind: TransactionKind.EXPENSE,
-          direction: TransactionDirection.OUTFLOW,
-          categoryId: 'category-food',
-          category: createCategory({
-            id: 'category-food',
-            name: 'Food',
-            type: CategoryType.EXPENSE,
-          }),
-          description: 'Lunch',
-          splitGroupId: 'split-1',
-        }),
-      ]);
-
-    const result = await service.findRecentByAccount(OWNER_ID, 'account-1', {
-      includeArchivedAccounts: true,
-      limit: 1,
-    });
-
-    expect(result).toHaveLength(1);
-    expect(result[0]?.entryType).toBe('SPLIT');
-    expect(
-      nthCallArg<{ where: Record<string, unknown> }>(
-        prisma.transaction.findMany,
-        1,
-      ).where,
-    ).toMatchObject({
-      userId: OWNER_ID,
-      OR: [
-        {
-          splitGroupId: {
-            in: ['split-1'],
-          },
-          accountId: {
-            not: 'account-1',
-          },
-        },
-      ],
     });
   });
 
@@ -1520,16 +601,16 @@ describe('TransactionsService', () => {
         currency: 'EUR',
         averageMonthlyExpense: 27.5,
         rangeExpenseCategories: [
-          withEmptyHierarchy({
+          {
             categoryId: 'category-expense',
             name: 'Rent',
             total: 40,
-          }),
-          withEmptyHierarchy({
+          },
+          {
             categoryId: null,
             name: 'Uncategorized',
             total: 15,
-          }),
+          },
         ],
         months: [
           {
@@ -1544,23 +625,23 @@ describe('TransactionsService', () => {
             uncategorizedIncomeTotal: 0,
             savingsRate: 0.45,
             expenseCategories: [
-              withEmptyHierarchy({
+              {
                 categoryId: 'category-expense',
                 name: 'Rent',
                 total: 40,
-              }),
-              withEmptyHierarchy({
+              },
+              {
                 categoryId: null,
                 name: 'Uncategorized',
                 total: 15,
-              }),
+              },
             ],
             incomeCategories: [
-              withEmptyHierarchy({
+              {
                 categoryId: 'category-income',
                 name: 'Salary',
                 total: 100,
-              }),
+              },
             ],
           },
           {
@@ -1611,11 +692,11 @@ describe('TransactionsService', () => {
             savingsRate: 1,
             expenseCategories: [],
             incomeCategories: [
-              withEmptyHierarchy({
+              {
                 categoryId: null,
                 name: 'Uncategorized',
                 total: 50,
-              }),
+              },
             ],
           },
         ],
@@ -1715,11 +796,11 @@ describe('TransactionsService', () => {
         currency: 'EUR',
         averageMonthlyExpense: 40,
         rangeExpenseCategories: [
-          withEmptyHierarchy({
+          {
             categoryId: 'category-expense',
             name: 'Rent',
             total: 40,
-          }),
+          },
         ],
         months: [
           {
@@ -1734,11 +815,11 @@ describe('TransactionsService', () => {
             uncategorizedIncomeTotal: 0,
             savingsRate: null,
             expenseCategories: [
-              withEmptyHierarchy({
+              {
                 categoryId: 'category-expense',
                 name: 'Rent',
                 total: 40,
-              }),
+              },
             ],
             incomeCategories: [],
           },
@@ -1853,7 +934,6 @@ describe('TransactionsService', () => {
       from: '2026-04',
       to: '2026-05',
       focusMonth: '2026-05',
-      reportingOverview: null,
       currencies: [
         {
           currency: 'EUR',
@@ -1882,53 +962,47 @@ describe('TransactionsService', () => {
             },
           ],
           focusMonthExpenseBreakdown: [
-            withEmptyHierarchy({
+            {
               categoryId: 'category-rent',
               name: 'Rent',
               total: 50,
-            }),
-            withEmptyHierarchy({
+            },
+            {
               categoryId: null,
               name: 'Uncategorized',
               total: 15,
-            }),
+            },
           ],
           focusMonthIncomeBreakdown: [
-            withEmptyHierarchy({
+            {
               categoryId: 'category-income',
               name: 'Salary',
               total: 120,
-            }),
+            },
           ],
           expenseCategoryTrends: [
             {
-              ...withEmptyHierarchy({
-                categoryId: 'category-rent',
-                name: 'Rent',
-                total: 90,
-              }),
+              categoryId: 'category-rent',
+              name: 'Rent',
+              total: 90,
               series: [
                 { month: '2026-04', total: 40 },
                 { month: '2026-05', total: 50 },
               ],
             },
             {
-              ...withEmptyHierarchy({
-                categoryId: null,
-                name: 'Uncategorized',
-                total: 15,
-              }),
+              categoryId: null,
+              name: 'Uncategorized',
+              total: 15,
               series: [
                 { month: '2026-04', total: 0 },
                 { month: '2026-05', total: 15 },
               ],
             },
             {
-              ...withEmptyHierarchy({
-                categoryId: 'category-groceries',
-                name: 'Groceries',
-                total: 10,
-              }),
+              categoryId: 'category-groceries',
+              name: 'Groceries',
+              total: 10,
               series: [
                 { month: '2026-04', total: 10 },
                 { month: '2026-05', total: 0 },
@@ -1937,11 +1011,9 @@ describe('TransactionsService', () => {
           ],
           incomeCategoryTrends: [
             {
-              ...withEmptyHierarchy({
-                categoryId: 'category-income',
-                name: 'Salary',
-                total: 220,
-              }),
+              categoryId: 'category-income',
+              name: 'Salary',
+              total: 220,
               series: [
                 { month: '2026-04', total: 100 },
                 { month: '2026-05', total: 120 },
@@ -1949,36 +1021,36 @@ describe('TransactionsService', () => {
             },
           ],
           expenseMonthOverMonthChanges: [
-            withEmptyHierarchy({
+            {
               categoryId: null,
               name: 'Uncategorized',
               previousTotal: 0,
               currentTotal: 15,
               delta: 15,
-            }),
-            withEmptyHierarchy({
+            },
+            {
               categoryId: 'category-groceries',
               name: 'Groceries',
               previousTotal: 10,
               currentTotal: 0,
               delta: -10,
-            }),
-            withEmptyHierarchy({
+            },
+            {
               categoryId: 'category-rent',
               name: 'Rent',
               previousTotal: 40,
               currentTotal: 50,
               delta: 10,
-            }),
+            },
           ],
           incomeMonthOverMonthChanges: [
-            withEmptyHierarchy({
+            {
               categoryId: 'category-income',
               name: 'Salary',
               previousTotal: 100,
               currentTotal: 120,
               delta: 20,
-            }),
+            },
           ],
         },
       ],

@@ -6,7 +6,6 @@ import {
   buildBudgetTransactionsLink,
   buildBudgetsQueryString,
   getBudgetConfidenceMessage,
-  getBudgetFilterSummaryStatus,
   getBudgetQuickFillSuggestions,
   getBudgetFilters,
   getCurrentRomeMonth,
@@ -61,9 +60,9 @@ test("buildBudgetTransactionsLink narrows to expense rows for the month and cate
   assert.equal(
     buildBudgetTransactionsLink({
       month: "2026-04",
-      secondaryCategoryId: "category-1",
+      categoryId: "category-1",
     }),
-    "/transactions?from=2026-04-01&to=2026-04-30&secondaryCategoryId=category-1&kind=EXPENSE",
+    "/transactions?from=2026-04-01&to=2026-04-30&categoryId=category-1&kind=EXPENSE",
   );
 });
 
@@ -85,33 +84,12 @@ test("buildBudgetPageLink and month navigation preserve archived filters", () =>
   );
 });
 
-test("getBudgetFilterSummaryStatus shows month by default and active count for archived categories", () => {
-  assert.equal(
-    getBudgetFilterSummaryStatus({
-      monthLabel: "April 2026",
-      includeArchivedCategories: false,
-    }),
-    "April 2026",
-  );
-  assert.equal(
-    getBudgetFilterSummaryStatus({
-      monthLabel: "April 2026",
-      includeArchivedCategories: true,
-    }),
-    "1 active",
-  );
-});
-
 test("sortBudgetItemsForDisplay promotes over-budget rows first", () => {
   const items = sortBudgetItemsForDisplay([
     {
       budgetId: "within",
       categoryId: "1",
       categoryName: "Groceries",
-      primaryCategoryId: "10",
-      primaryCategoryName: "Food",
-      secondaryCategoryId: "1",
-      secondaryCategoryName: "Groceries",
       categoryArchivedAt: null,
       currency: "EUR",
       budgetAmount: 100,
@@ -129,10 +107,6 @@ test("sortBudgetItemsForDisplay promotes over-budget rows first", () => {
       budgetId: "over",
       categoryId: "2",
       categoryName: "Rent",
-      primaryCategoryId: "20",
-      primaryCategoryName: "Housing",
-      secondaryCategoryId: "2",
-      secondaryCategoryName: "Rent",
       categoryArchivedAt: null,
       currency: "EUR",
       budgetAmount: 100,
@@ -164,11 +138,20 @@ test("getBudgetQuickFillSuggestions returns available history suggestions", () =
   );
 });
 
-test("getBudgetConfidenceMessage distinguishes unbudgeted and clean states", () => {
+test("getBudgetConfidenceMessage distinguishes uncategorized and unbudgeted gaps", () => {
+  assert.equal(
+    getBudgetConfidenceMessage({
+      currency: "EUR",
+      unbudgetedExpenseTotal: 0,
+      uncategorizedExpenseTotal: 10,
+    }).tone,
+    "warning",
+  );
   assert.equal(
     getBudgetConfidenceMessage({
       currency: "EUR",
       unbudgetedExpenseTotal: 10,
+      uncategorizedExpenseTotal: 0,
     }).tone,
     "info",
   );
@@ -176,6 +159,7 @@ test("getBudgetConfidenceMessage distinguishes unbudgeted and clean states", () 
     getBudgetConfidenceMessage({
       currency: "EUR",
       unbudgetedExpenseTotal: 0,
+      uncategorizedExpenseTotal: 0,
     }).tone,
     "success",
   );

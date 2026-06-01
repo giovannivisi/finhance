@@ -1,9 +1,8 @@
-const COOLDOWN_NOTICE_PATTERN = /^(.*?)(Try again in )(\d+)(s(?:\.{3}|\.)?)$/;
+const COOLDOWN_NOTICE_PATTERN = /^(.*?)(Try again in )(\d+)(s\.)$/;
 
 export interface ParsedCooldownNotice {
   prefix: string;
   seconds: number;
-  suffix: string;
 }
 
 export function parseCooldownNotice(
@@ -26,7 +25,6 @@ export function parseCooldownNotice(
   return {
     prefix: `${match[1]}${match[2]}`,
     seconds,
-    suffix: match[4],
   };
 }
 
@@ -34,6 +32,9 @@ export function formatCooldownNotice(
   parsedNotice: ParsedCooldownNotice,
   secondsRemaining: number,
 ): string {
-  const nextSeconds = secondsRemaining <= 0 ? 0 : secondsRemaining;
-  return `${parsedNotice.prefix}${nextSeconds}${parsedNotice.suffix}`;
+  if (secondsRemaining <= 0) {
+    return `${parsedNotice.prefix}0s.`;
+  }
+
+  return `${parsedNotice.prefix}${secondsRemaining}s.`;
 }

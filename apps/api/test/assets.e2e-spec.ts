@@ -29,7 +29,7 @@ import {
   AssetType,
   NetWorthSnapshot,
   Prisma,
-} from '@finhance/db';
+} from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
 type ResponseWithBody = { body: unknown };
@@ -84,8 +84,6 @@ function createSnapshot(
     assetsTotal: new Prisma.Decimal('72'),
     liabilitiesTotal: new Prisma.Decimal('0'),
     netWorthTotal: new Prisma.Decimal('72'),
-    nativeAssetTotals: null,
-    nativeLiabilityTotals: null,
     unavailableCount: 0,
     isPartial: false,
     createdAt: now,
@@ -139,9 +137,6 @@ describe('Asset routes (e2e)', () => {
       create: jest.Mock;
       delete: jest.Mock;
     };
-    user: {
-      findUnique: jest.Mock;
-    };
     $transaction: jest.Mock;
   };
   let operationLock: { runExclusive: jest.Mock };
@@ -151,11 +146,9 @@ describe('Asset routes (e2e)', () => {
     buildMarketSymbol: jest.Mock;
     getMarketPrice: jest.Mock;
     getFxRate: jest.Mock;
-    getFxRateForDate: jest.Mock;
   };
   let accounts: {
     assertAccountAssignmentAllowed: jest.Mock;
-    getAssignableAccount: jest.Mock;
   };
   let snapshots: {
     findLatest: jest.Mock;
@@ -176,12 +169,6 @@ describe('Asset routes (e2e)', () => {
         update: jest.fn(),
         create: jest.fn(),
         delete: jest.fn(),
-      },
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          assetKindOrder: null,
-          userSettings: { reportingCurrency: 'EUR' },
-        }),
       },
       $transaction: jest.fn(),
     };
@@ -206,22 +193,16 @@ describe('Asset routes (e2e)', () => {
       ),
       getMarketPrice: jest.fn(),
       getFxRate: jest.fn(),
-      getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('0.9')),
     };
 
     accounts = {
       assertAccountAssignmentAllowed: jest.fn(),
-      getAssignableAccount: jest.fn().mockResolvedValue({
-        id: 'account-1',
-        type: 'BROKER',
-        archivedAt: null,
-      }),
     };
 
     snapshots = {
       findLatest: jest.fn(),
       hasSnapshotForDate: jest.fn().mockResolvedValue(true),
-      captureFromDashboard: jest.fn().mockResolvedValue(undefined),
+      captureFromDashboard: jest.fn(),
     };
 
     const passThrough: RunExclusiveFn = async (_options, work) => work();
@@ -269,7 +250,6 @@ describe('Asset routes (e2e)', () => {
   it('creates a market position through POST /assets', async () => {
     const created = createAsset();
     const transactionAsset = {
-      findFirst: jest.fn().mockResolvedValue(null),
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue(created),
       update: jest.fn(),
@@ -295,7 +275,6 @@ describe('Asset routes (e2e)', () => {
         quantity: 2,
         unitPrice: 40,
         currency: 'usd',
-        accountId: 'account-1',
       })
       .expect(201)
       .expect((response: ResponseWithBody) => {
@@ -337,34 +316,6 @@ describe('Asset routes (e2e)', () => {
       OWNER_ID,
       'account-1',
     );
-  });
-
-  it('rejects market assets assigned to non-broker accounts through POST /assets', async () => {
-    accounts.getAssignableAccount.mockResolvedValueOnce({
-      id: 'account-1',
-      type: 'BANK',
-      archivedAt: null,
-    });
-
-    await request(httpServer())
-      .post('/assets')
-      .send({
-        name: 'VWCE',
-        type: 'ASSET',
-        kind: 'STOCK',
-        ticker: 'VWCE',
-        exchange: '.MI',
-        quantity: 2,
-        unitPrice: 100,
-        currency: 'EUR',
-        accountId: 'account-1',
-      })
-      .expect(400)
-      .expect((response: ResponseWithBody) => {
-        expect(bodyAs<Record<string, unknown>>(response).message).toContain(
-          'Market assets must belong to a BROKER account.',
-        );
-      });
   });
 
   it('rejects overly long asset notes on POST /assets', async () => {
@@ -446,9 +397,10 @@ describe('Asset routes (e2e)', () => {
   });
 
   it('rejects duplicate PUT /assets/:id updates with 409', async () => {
-    prisma.asset.findFirst
-      .mockResolvedValueOnce(createAsset())
-      .mockResolvedValueOnce(createAsset({ id: 'asset-2' }));
+    prisma.asset.findFirst.mockResolvedValueOnce(createAsset());
+    prisma.asset.findUnique.mockResolvedValueOnce(
+      createAsset({ id: 'asset-2' }),
+    );
 
     await request(httpServer())
       .put('/assets/asset-1')
@@ -461,7 +413,6 @@ describe('Asset routes (e2e)', () => {
         quantity: 2,
         unitPrice: 40,
         currency: 'USD',
-        accountId: 'account-1',
       })
       .expect(409);
   });
@@ -577,7 +528,7 @@ describe('Asset routes (e2e)', () => {
     await request(httpServer()).post('/assets/refresh').expect(409);
   });
 
-  it('returns fallback valuation metadata from GET /dashboard and auto-captures a missing snapshot', async () => {
+  it('returns fallback valuation metadata from GET /dashboard without writing a snapshot', async () => {
     prisma.asset.findMany.mockResolvedValue([
       createAsset({
         lastPrice: null,
@@ -599,7 +550,7 @@ describe('Asset routes (e2e)', () => {
       .expect(200)
       .expect((response: ResponseWithBody) => {
         const body = bodyAs<DashboardResponse>(response);
-        expect(body.reportingCurrency).toBe('EUR');
+        expect(body.baseCurrency).toBe('EUR');
         expect(body.assets[0].valuationSource).toBe('AVG_COST');
         expect(body.summary.assets).toBe(72);
         expect(body.latestSnapshotDate).toBe('2026-04-16');
@@ -607,12 +558,6 @@ describe('Asset routes (e2e)', () => {
         expect(body.latestSnapshotIsPartial).toBe(true);
       });
 
-    expect(snapshots.captureFromDashboard).toHaveBeenCalledTimes(1);
-    expect(snapshots.captureFromDashboard).toHaveBeenCalledWith(
-      OWNER_ID,
-      expect.objectContaining({
-        reportingCurrency: 'EUR',
-      }),
-    );
+    expect(snapshots.captureFromDashboard).not.toHaveBeenCalled();
   });
 });

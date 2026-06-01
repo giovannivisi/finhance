@@ -3,11 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AccountsService } from '@accounts/accounts.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
-import { SetupService } from '@/setup/setup.service';
 import { CategoriesService } from '@transactions/categories.service';
 import { CashflowController } from '@transactions/cashflow.controller';
-import { ExpenseValidationService } from '@transactions/expense-validation.service';
-import { PricesService } from '@prices/prices.service';
 import { TransactionsController } from '@transactions/transactions.controller';
 import { TransactionsService } from '@transactions/transactions.service';
 import type {
@@ -21,7 +18,7 @@ import {
   Prisma,
   TransactionDirection,
   TransactionKind,
-} from '@finhance/db';
+} from '@prisma/client';
 import { PrismaService } from '@prisma/prisma.service';
 
 const OWNER_ID = 'local-dev';
@@ -88,11 +85,6 @@ function createTransactionRow(
     notes: null,
     counterparty: 'Employer',
     transferGroupId: null,
-    splitGroupId: null,
-    nativeAmount: null,
-    nativeCurrency: null,
-    fxRateUsed: null,
-    fxRateSource: null,
     createdAt: now,
     updatedAt: now,
     account: createAccount(),
@@ -119,14 +111,6 @@ describe('Transaction routes (e2e)', () => {
       delete: jest.Mock;
       deleteMany: jest.Mock;
     };
-    account: {
-      findFirst: jest.Mock;
-    };
-    asset: {
-      findFirst: jest.Mock;
-      create: jest.Mock;
-      update: jest.Mock;
-    };
     $transaction: jest.Mock;
   };
   let accounts: {
@@ -134,17 +118,6 @@ describe('Transaction routes (e2e)', () => {
   };
   let categories: {
     getAssignableCategory: jest.Mock;
-  };
-  let expenseValidation: {
-    list: jest.Mock;
-  };
-  let setup: {
-    getStatus: jest.Mock;
-  };
-  let prices: {
-    getFxRateForDate: jest.Mock;
-    getStoredFxRateSnapshot: jest.Mock;
-    saveManualFxRate: jest.Mock;
   };
 
   function httpServer(): HttpServer {
@@ -161,18 +134,6 @@ describe('Transaction routes (e2e)', () => {
         delete: jest.fn(),
         deleteMany: jest.fn(),
       },
-      account: {
-        findFirst: jest.fn().mockResolvedValue({ type: 'BANK' }),
-      },
-      asset: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: 'cash-asset-1',
-          balance: new Prisma.Decimal('1000'),
-          currency: 'EUR',
-        }),
-        create: jest.fn(),
-        update: jest.fn(),
-      },
       $transaction: jest.fn(),
     };
 
@@ -180,14 +141,10 @@ describe('Transaction routes (e2e)', () => {
       async (
         callback: (tx: {
           transaction: typeof prisma.transaction;
-          account: typeof prisma.account;
-          asset: typeof prisma.asset;
         }) => Promise<unknown>,
       ) =>
         callback({
           transaction: prisma.transaction,
-          account: prisma.account,
-          asset: prisma.asset,
         }),
     );
 
@@ -198,23 +155,6 @@ describe('Transaction routes (e2e)', () => {
     categories = {
       getAssignableCategory: jest.fn().mockResolvedValue(createCategory()),
     };
-    expenseValidation = {
-      list: jest.fn().mockResolvedValue([]),
-    };
-    setup = {
-      getStatus: jest.fn().mockResolvedValue(null),
-    };
-    prices = {
-      getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
-      getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
-        rate: new Prisma.Decimal('1'),
-        status: 'EXACT',
-        source: 'LIVE',
-        rateDate: new Date('2026-04-17T00:00:00.000Z'),
-        updatedAt: new Date('2026-04-17T08:00:00.000Z'),
-      }),
-      saveManualFxRate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
-    };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [TransactionsController, CashflowController],
@@ -223,9 +163,6 @@ describe('Transaction routes (e2e)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AccountsService, useValue: accounts },
         { provide: CategoriesService, useValue: categories },
-        { provide: ExpenseValidationService, useValue: expenseValidation },
-        { provide: PricesService, useValue: prices },
-        { provide: SetupService, useValue: setup },
         {
           provide: RequestOwnerResolver,
           useValue: {
@@ -278,67 +215,6 @@ describe('Transaction routes (e2e)', () => {
           },
         );
       });
-  });
-
-  it('creates dual-currency standard transactions through POST /transactions', async () => {
-    prisma.transaction.create.mockResolvedValue(
-      createTransactionRow({
-        kind: TransactionKind.EXPENSE,
-        direction: TransactionDirection.OUTFLOW,
-        amount: new Prisma.Decimal('9'),
-        currency: 'EUR',
-        categoryId: 'category-expense',
-        category: createCategory({
-          id: 'category-expense',
-          name: 'Food',
-          type: CategoryType.EXPENSE,
-        }),
-        description: 'Lunch',
-        nativeAmount: new Prisma.Decimal('10'),
-        nativeCurrency: 'USD',
-        fxRateUsed: new Prisma.Decimal('0.9'),
-        fxRateSource: 'MANUAL',
-      }),
-    );
-
-    await request(httpServer())
-      .post('/transactions')
-      .send({
-        postedAt: '2026-04-17T09:00:00.000Z',
-        kind: 'EXPENSE',
-        amount: 9,
-        description: 'Lunch',
-        accountId: 'account-1',
-        direction: 'OUTFLOW',
-        categoryId: 'category-expense',
-        nativeAmount: 10,
-        nativeCurrency: 'USD',
-        fxRateUsed: 0.9,
-      })
-      .expect(201)
-      .expect((response: ResponseWithBody) => {
-        expectTransactionResponseDto(
-          bodyAs<Record<string, unknown>>(response),
-          {
-            kind: 'EXPENSE',
-            amount: 9,
-            currency: 'EUR',
-            nativeAmount: 10,
-            nativeCurrency: 'USD',
-            fxRateUsed: 0.9,
-            fxRateSource: 'MANUAL',
-          },
-        );
-      });
-
-    expect(prices.saveManualFxRate).toHaveBeenCalledWith(
-      OWNER_ID,
-      new Date('2026-04-17T09:00:00.000Z'),
-      'USD',
-      'EUR',
-      expect.any(Prisma.Decimal),
-    );
-    expect(prices.getFxRateForDate).not.toHaveBeenCalled();
   });
 
   it('creates logical transfer transactions through POST /transactions', async () => {
@@ -394,82 +270,6 @@ describe('Transaction routes (e2e)', () => {
       });
 
     expect(prisma.transaction.create).toHaveBeenCalledTimes(2);
-  });
-
-  it('creates cross-currency logical transfers with explicit source and destination amounts', async () => {
-    accounts.getAssignableAccount
-      .mockResolvedValueOnce(createAccount({ id: 'source', currency: 'EUR' }))
-      .mockResolvedValueOnce(
-        createAccount({ id: 'destination', currency: 'USD' }),
-      );
-    prisma.transaction.findMany.mockResolvedValue([
-      createTransactionRow({
-        id: 'row-out',
-        accountId: 'source',
-        amount: new Prisma.Decimal('25'),
-        currency: 'EUR',
-        categoryId: null,
-        kind: TransactionKind.TRANSFER,
-        direction: TransactionDirection.OUTFLOW,
-        transferGroupId: 'transfer_group',
-        counterparty: null,
-        fxRateUsed: new Prisma.Decimal('1.1'),
-        fxRateSource: 'MANUAL',
-      }),
-      createTransactionRow({
-        id: 'row-in',
-        accountId: 'destination',
-        amount: new Prisma.Decimal('27.5'),
-        currency: 'USD',
-        categoryId: null,
-        kind: TransactionKind.TRANSFER,
-        direction: TransactionDirection.INFLOW,
-        transferGroupId: 'transfer_group',
-        counterparty: null,
-        fxRateUsed: new Prisma.Decimal('1.1'),
-        fxRateSource: 'MANUAL',
-      }),
-    ]);
-
-    await request(httpServer())
-      .post('/transactions')
-      .send({
-        postedAt: '2026-04-17T09:00:00.000Z',
-        kind: 'TRANSFER',
-        amount: 25,
-        description: 'FX transfer',
-        sourceAccountId: 'source',
-        destinationAccountId: 'destination',
-        sourceAmount: 25,
-        destinationAmount: 27.5,
-        fxRateUsed: 1.1,
-      })
-      .expect(201)
-      .expect((response: ResponseWithBody) => {
-        expectTransactionResponseDto(
-          bodyAs<Record<string, unknown>>(response),
-          {
-            kind: 'TRANSFER',
-            sourceAccountId: 'source',
-            destinationAccountId: 'destination',
-            sourceAmount: 25,
-            destinationAmount: 27.5,
-            sourceCurrency: 'EUR',
-            destinationCurrency: 'USD',
-            fxRateUsed: 1.1,
-            fxRateSource: 'MANUAL',
-          },
-        );
-      });
-
-    expect(prices.saveManualFxRate).toHaveBeenCalledWith(
-      OWNER_ID,
-      new Date('2026-04-17T09:00:00.000Z'),
-      'EUR',
-      'USD',
-      expect.any(Prisma.Decimal),
-    );
-    expect(prices.getFxRateForDate).not.toHaveBeenCalled();
   });
 
   it('rejects extra body fields on POST /transactions', async () => {
@@ -741,10 +541,6 @@ describe('Transaction routes (e2e)', () => {
               {
                 categoryId: 'category-expense',
                 name: 'Rent',
-                primaryCategoryId: null,
-                primaryCategoryName: null,
-                secondaryCategoryId: null,
-                secondaryCategoryName: null,
                 total: 40,
               },
             ],
@@ -764,10 +560,6 @@ describe('Transaction routes (e2e)', () => {
                   {
                     categoryId: 'category-expense',
                     name: 'Rent',
-                    primaryCategoryId: null,
-                    primaryCategoryName: null,
-                    secondaryCategoryId: null,
-                    secondaryCategoryName: null,
                     total: 40,
                   },
                 ],
@@ -775,10 +567,6 @@ describe('Transaction routes (e2e)', () => {
                   {
                     categoryId: 'category-1',
                     name: 'Salary',
-                    primaryCategoryId: null,
-                    primaryCategoryName: null,
-                    secondaryCategoryId: null,
-                    secondaryCategoryName: null,
                     total: 100,
                   },
                 ],
@@ -846,7 +634,6 @@ describe('Transaction routes (e2e)', () => {
           from: '2026-04',
           to: '2026-05',
           focusMonth: '2026-05',
-          reportingOverview: null,
           currencies: [
             {
               currency: 'EUR',
@@ -878,10 +665,6 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-expense',
                   name: 'Rent',
-                  primaryCategoryId: null,
-                  primaryCategoryName: null,
-                  secondaryCategoryId: null,
-                  secondaryCategoryName: null,
                   total: 40,
                 },
               ],
@@ -890,10 +673,6 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-expense',
                   name: 'Rent',
-                  primaryCategoryId: null,
-                  primaryCategoryName: null,
-                  secondaryCategoryId: null,
-                  secondaryCategoryName: null,
                   total: 40,
                   series: [
                     { month: '2026-04', total: 0 },
@@ -905,10 +684,6 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-income',
                   name: 'Salary',
-                  primaryCategoryId: null,
-                  primaryCategoryName: null,
-                  secondaryCategoryId: null,
-                  secondaryCategoryName: null,
                   total: 100,
                   series: [
                     { month: '2026-04', total: 100 },
@@ -920,10 +695,6 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-expense',
                   name: 'Rent',
-                  primaryCategoryId: null,
-                  primaryCategoryName: null,
-                  secondaryCategoryId: null,
-                  secondaryCategoryName: null,
                   previousTotal: 0,
                   currentTotal: 40,
                   delta: 40,
@@ -933,10 +704,6 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-income',
                   name: 'Salary',
-                  primaryCategoryId: null,
-                  primaryCategoryName: null,
-                  secondaryCategoryId: null,
-                  secondaryCategoryName: null,
                   previousTotal: 100,
                   currentTotal: 0,
                   delta: -100,

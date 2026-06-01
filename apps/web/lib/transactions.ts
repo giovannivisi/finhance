@@ -36,43 +36,9 @@ export function formatTransactionAmount(
   formatter: (value: number, currency: string) => string,
 ): string {
   if (transaction.kind === "TRANSFER") {
-    if (
-      transaction.sourceAmount !== null &&
-      transaction.sourceAmount !== undefined &&
-      transaction.destinationAmount !== null &&
-      transaction.destinationAmount !== undefined &&
-      transaction.sourceCurrency &&
-      transaction.destinationCurrency &&
-      (transaction.sourceCurrency !== transaction.destinationCurrency ||
-        transaction.sourceAmount !== transaction.destinationAmount)
-    ) {
-      return `${formatter(
-        transaction.sourceAmount,
-        transaction.sourceCurrency,
-      )} -> ${formatter(
-        transaction.destinationAmount,
-        transaction.destinationCurrency,
-      )}`;
-    }
-
-    return formatter(
-      transaction.sourceAmount ?? transaction.amount,
-      transaction.sourceCurrency ?? transaction.currency,
-    );
+    return formatter(transaction.amount, transaction.currency);
   }
 
   const prefix = transaction.direction === "INFLOW" ? "+" : "-";
-  if (
-    transaction.nativeAmount !== null &&
-    transaction.nativeAmount !== undefined &&
-    transaction.nativeCurrency &&
-    transaction.nativeCurrency !== transaction.currency
-  ) {
-    return `${prefix}${formatter(
-      transaction.nativeAmount,
-      transaction.nativeCurrency,
-    )} (${formatter(transaction.amount, transaction.currency)})`;
-  }
-
   return `${prefix}${formatter(transaction.amount, transaction.currency)}`;
 }

@@ -14,7 +14,6 @@ describe('env-loader', () => {
     delete process.env.API_ALLOWED_ORIGINS;
     delete process.env.API_TRUST_PROXY;
     delete process.env.FINHANCE_TEST_ONLY;
-    delete process.env.AUTH_API_JWT_PUBLIC_KEY;
     rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -66,30 +65,5 @@ describe('env-loader', () => {
     loadApiEnv([apiOwnedEnvPath]);
 
     expect(process.env.API_ALLOWED_ORIGINS).toBe('http://localhost:3001');
-  });
-
-  it('loads quoted multiline env values without truncating them', () => {
-    const apiOwnedEnvPath = join(tempDir, 'apps-api.env');
-
-    writeFileSync(
-      apiOwnedEnvPath,
-      [
-        'AUTH_API_JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----',
-        'line-two',
-        '-----END PUBLIC KEY-----"',
-        '',
-      ].join('\n'),
-      'utf8',
-    );
-
-    loadApiEnv([apiOwnedEnvPath]);
-
-    expect(process.env.AUTH_API_JWT_PUBLIC_KEY).toBe(
-      [
-        '-----BEGIN PUBLIC KEY-----',
-        'line-two',
-        '-----END PUBLIC KEY-----',
-      ].join('\n'),
-    );
   });
 });

@@ -42,7 +42,4 @@ test("getWorkflowCards omits the current page and setup when the baseline is com
     cards.map((card) => card.code),
     ["REVIEW", "BUDGETS"],
   );
-  assert.equal(cards[0]?.title, "Monthly close");
-  assert.equal(cards[0]?.actionLabel, "Open monthly close");
-  assert.equal(cards[0]?.href, "/review?month=2026-04");
 });

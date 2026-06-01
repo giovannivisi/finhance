@@ -10,7 +10,7 @@ export default function AddAssetButton({ onClick }: { onClick: () => void }) {
         right: "24px",
         background: "var(--color-primary)",
         color: "#fff",
-        borderRadius: "999px",
+        borderRadius: "50%",
         width: "56px",
         height: "56px",
         boxShadow: "0 10px 25px rgba(0,0,0,0.5)",

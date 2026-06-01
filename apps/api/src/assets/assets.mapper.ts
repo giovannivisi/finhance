@@ -1,5 +1,5 @@
 import type { AssetResponse } from '@finhance/shared';
-import type { Asset, Prisma } from '@finhance/db';
+import type { Asset, Prisma } from '@prisma/client';
 
 function decimalToNumber(
   value: Prisma.Decimal | null | undefined,

@@ -1,5 +1,5 @@
 import { ConflictException, HttpStatus } from '@nestjs/common';
-import { OperationType, Prisma } from '@finhance/db';
+import { OperationType, Prisma } from '@prisma/client';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
 
 type OperationStateRecord = {
@@ -68,7 +68,6 @@ describe('OperationLockService', () => {
         options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
       ]
     >;
-    recoverConnection: jest.Mock<Promise<void>, []>;
   };
 
   beforeEach(() => {
@@ -94,7 +93,6 @@ describe('OperationLockService', () => {
         ],
         Promise<unknown>
       >(),
-      recoverConnection: createMock<[], Promise<void>>(),
     };
 
     prisma.$transaction.mockImplementation(
@@ -121,19 +119,6 @@ describe('OperationLockService', () => {
       code,
       clientVersion: '6.19.0',
     });
-  }
-
-  function retryableTransactionStartTimeoutError() {
-    return new Prisma.PrismaClientKnownRequestError(
-      'Transaction API error: Unable to start a transaction in the given time.',
-      {
-        code: 'P2028',
-        clientVersion: '6.19.0',
-        meta: {
-          error: 'Unable to start a transaction in the given time.',
-        },
-      },
-    );
   }
 
   it('blocks overlapping work when a fresh lock already exists', async () => {
@@ -268,31 +253,5 @@ describe('OperationLockService', () => {
     ).resolves.toBe('ok');
 
     expect(prisma.operationState.update).toHaveBeenCalledTimes(2);
-  });
-
-  it('recovers and retries when claiming a lock times out starting a transaction', async () => {
-    const options: RunExclusiveOptions = {
-      userId: 'local-dev',
-      type: PORTFOLIO_REFRESH,
-      startedAt: new Date('2026-04-29T10:00:00.000Z'),
-      inProgressMessage: 'Refresh already running.',
-    };
-    prisma.recoverConnection.mockResolvedValue(undefined);
-    prisma.$transaction
-      .mockRejectedValueOnce(retryableTransactionStartTimeoutError())
-      .mockImplementationOnce(
-        async (callback: (client: typeof tx) => Promise<unknown>) =>
-          callback(tx),
-      );
-    tx.operationState.findUnique.mockResolvedValue(null);
-    tx.operationState.upsert.mockResolvedValue(undefined);
-    prisma.operationState.update.mockResolvedValue(undefined);
-
-    await expect(
-      service.runExclusive(options, () => Promise.resolve('ok')),
-    ).resolves.toBe('ok');
-
-    expect(prisma.recoverConnection).toHaveBeenCalledTimes(1);
-    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 });

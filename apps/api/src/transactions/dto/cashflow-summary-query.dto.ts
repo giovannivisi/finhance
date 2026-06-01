@@ -55,16 +55,6 @@ export class CashflowSummaryQueryDto {
   categoryId?: string;
 
   @IsOptional()
-  @IsString()
-  @Transform(trimOptionalStringValue)
-  primaryCategoryId?: string;
-
-  @IsOptional()
-  @IsString()
-  @Transform(trimOptionalStringValue)
-  secondaryCategoryId?: string;
-
-  @IsOptional()
   @Transform(booleanValue)
   @IsBoolean()
   includeArchivedAccounts?: boolean;

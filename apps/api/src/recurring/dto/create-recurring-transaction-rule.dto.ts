@@ -17,7 +17,7 @@ import {
 import {
   TransactionDirection as PrismaTransactionDirection,
   TransactionKind as PrismaTransactionKind,
-} from '@finhance/db';
+} from '@prisma/client';
 import type {
   TransactionDirection,
   TransactionKind,

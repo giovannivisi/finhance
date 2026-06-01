@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AccountsController } from '@accounts/accounts.controller';
 import { AccountsService } from '@accounts/accounts.service';
-import { Prisma } from '@finhance/db';
+import { Prisma } from '@prisma/client';
 import type {
   AccountReconciliationResponse,
   AccountResponse,
@@ -20,7 +20,7 @@ import {
   AssetType,
   TransactionDirection,
   TransactionKind,
-} from '@finhance/db';
+} from '@prisma/client';
 
 const OWNER_ID = 'local-dev';
 type ResponseWithBody = { body: unknown };
@@ -361,7 +361,6 @@ describe('Account routes (e2e)', () => {
           accountName: account.name,
           accountType: account.type,
           currency: account.currency,
-          reconciliationScope: 'FULL_BALANCE',
           trackedBalance: 100,
           expectedBalance: 100,
           delta: 0,

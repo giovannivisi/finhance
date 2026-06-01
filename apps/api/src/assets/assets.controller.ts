@@ -3,7 +3,6 @@ import {
   Controller,
   Delete,
   Get,
-  HttpCode,
   Param,
   Post,
   Put,
@@ -18,8 +17,6 @@ import type {
   AssetResponse,
   DashboardAssetResponse,
   DashboardSummary,
-  ReorderAssetKindsRequest,
-  ReorderAssetsRequest,
   RefreshAssetsResponse,
 } from '@finhance/shared';
 import { toAssetResponse } from '@assets/assets.mapper';
@@ -82,24 +79,7 @@ export class AssetsController {
     return toAssetResponse(asset);
   }
 
-  @Put('reorder/assets')
-  async reorderAssets(@Body() body: ReorderAssetsRequest): Promise<void> {
-    return this.assetsService.reorderAssets(
-      this.resolveOwnerId(),
-      body.assetIds,
-    );
-  }
-
-  @Put('reorder/kinds')
-  async reorderKinds(@Body() body: ReorderAssetKindsRequest): Promise<void> {
-    return this.assetsService.reorderAssetKinds(
-      this.resolveOwnerId(),
-      body.kindOrder,
-    );
-  }
-
   @Delete(':id')
-  @HttpCode(204)
   async remove(@Param('id') id: string): Promise<void> {
     return this.assetsService.remove(this.resolveOwnerId(), id);
   }

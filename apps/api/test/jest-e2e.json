@@ -10,14 +10,12 @@
     "^@/(.*)$": "<rootDir>/src/$1",
     "^@accounts/(.*)$": "<rootDir>/src/accounts/$1",
     "^@assets/(.*)$": "<rootDir>/src/assets/$1",
-    "^@brokerage/(.*)$": "<rootDir>/src/brokerage/$1",
     "^@budgets/(.*)$": "<rootDir>/src/budgets/$1",
     "^@recurring/(.*)$": "<rootDir>/src/recurring/$1",
     "^@imports/(.*)$": "<rootDir>/src/imports/$1",
     "^@snapshots/(.*)$": "<rootDir>/src/snapshots/$1",
     "^@transactions/(.*)$": "<rootDir>/src/transactions/$1",
     "^@prices/(.*)$": "<rootDir>/src/prices/$1",
-    "^@users/(.*)$": "<rootDir>/src/users/$1",
     "^@prisma/(prisma\\..*)$": "<rootDir>/src/prisma/$1"
   }
 }

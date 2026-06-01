@@ -13,27 +13,24 @@
     "target": "ES2023",
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "baseUrl": "./",
     "paths": {
       "@/*": ["./src/*"],
       "@prisma/*": ["./src/prisma/*"],
-      "@accounts/*": ["./src/accounts/*"],
-      "@assets/*": ["./src/assets/*"],
-      "@brokerage/*": ["./src/brokerage/*"],
-      "@budgets/*": ["./src/budgets/*"],
-      "@recurring/*": ["./src/recurring/*"],
-      "@imports/*": ["./src/imports/*"],
-      "@snapshots/*": ["./src/snapshots/*"],
-      "@transactions/*": ["./src/transactions/*"],
-      "@prices/*": ["./src/prices/*"],
-      "@users/*": ["./src/users/*"]
+      "@accounts/*": ["src/accounts/*"],
+      "@assets/*": ["src/assets/*"],
+      "@budgets/*": ["src/budgets/*"],
+      "@recurring/*": ["src/recurring/*"],
+      "@imports/*": ["src/imports/*"],
+      "@snapshots/*": ["src/snapshots/*"],
+      "@transactions/*": ["src/transactions/*"],
+      "@prices/*": ["./src/prices/*"]
     },
     "incremental": true,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "skipLibCheck": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "strictNullChecks": true
   },
-  "exclude": ["node_modules", "dist", "test", "prisma.config.ts"]
+  "exclude": ["node_modules", "dist", "prisma.config.ts"]
 }

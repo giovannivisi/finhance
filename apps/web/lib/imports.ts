@@ -13,7 +13,7 @@ export interface ImportSummaryGroup {
 }
 
 export interface ImportReadiness {
-  tone: "ready" | "warning" | "blocked" | "success";
+  tone: "ready" | "warning" | "blocked";
   title: string;
   detail: string;
 }
@@ -23,13 +23,8 @@ const GROUP_CONFIG = [
     id: "foundation",
     title: "Foundation",
     detail:
-      "Accounts, categories, hierarchy, and expense validation rules establish the baseline the rest of the import relies on.",
-    fileOrder: [
-      "accounts",
-      "categories",
-      "expenseCategoryHierarchy",
-      "expenseValidationRules",
-    ] as const,
+      "Accounts and categories establish the baseline the rest of the import relies on.",
+    fileOrder: ["accounts", "categories"] as const,
   },
   {
     id: "activity",
@@ -66,45 +61,33 @@ export function groupImportSummaries(
 }
 
 export function getImportReadiness(
-  preview: Pick<
-    ImportPreviewResponse,
-    "canApply" | "summary" | "appliedAt" | "status"
-  >,
+  preview: Pick<ImportPreviewResponse, "canApply" | "summary">,
 ): ImportReadiness {
-  if (preview.appliedAt || preview.status === "APPLIED") {
-    return {
-      tone: "success",
-      title: "Import applied successfully",
-      detail:
-        "This batch has already been applied. The selected files were merged into the current workspace.",
-    };
-  }
-
   if (!preview.canApply || preview.summary.errorCount > 0) {
     return {
       tone: "blocked",
       title: "Blocked by import errors",
       detail: `${preview.summary.errorCount} error${
         preview.summary.errorCount === 1 ? "" : "s"
-      } must be fixed before you can apply these changes.`,
+      } must be fixed before apply is allowed.`,
     };
   }
 
   if (preview.summary.warningCount > 0) {
     return {
       tone: "warning",
-      title: "Ready to apply changes, but warnings need review",
+      title: "Ready to apply, but warnings need review",
       detail: `${preview.summary.warningCount} warning${
         preview.summary.warningCount === 1 ? "" : "s"
-      } will not block the apply step, but they may weaken trust in the result.`,
+      } will not block apply, but they may weaken trust in the result.`,
     };
   }
 
   return {
     tone: "ready",
-    title: "Ready to apply changes",
+    title: "Ready to apply",
     detail:
-      "No validation blockers or warnings were found in this preview. Applying these changes will merge the selected files into the current workspace.",
+      "No validation blockers or warnings were found in this preview. Applying will merge the selected files into the current workspace.",
   };
 }
 

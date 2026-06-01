@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
-import { Prisma, TransactionKind } from '@finhance/db';
+import { CategoryType, Prisma, TransactionKind } from '@prisma/client';
 import type {
   CategoryBudgetOverrideResponse,
   CategoryBudgetResponse,
@@ -14,7 +14,6 @@ import type {
   MonthlyBudgetUnbudgetedCategoryResponse,
 } from '@finhance/shared';
 import { CategoriesService } from '@transactions/categories.service';
-import { getCategoryHierarchyMetadata } from '@transactions/category-hierarchy';
 import {
   addMonthsToRomeMonth,
   diffRomeMonths,
@@ -36,22 +35,14 @@ const OVER_BUDGET_HIGHLIGHT_LIMIT = 3;
 
 type CategoryBudgetModel = Prisma.CategoryBudgetGetPayload<{
   include: {
-    category: {
-      include: {
-        parentCategory: true;
-      };
-    };
+    category: true;
     overrides: true;
   };
 }>;
 
 type ExpenseTransactionRow = Prisma.TransactionGetPayload<{
   include: {
-    category: {
-      include: {
-        parentCategory: true;
-      };
-    };
+    category: true;
   };
 }>;
 
@@ -100,11 +91,7 @@ export class BudgetsService {
               }),
         },
         include: {
-          category: {
-            include: {
-              parentCategory: true,
-            },
-          },
+          category: true,
           overrides: {
             where: {
               month: monthValue,
@@ -232,7 +219,6 @@ export class BudgetsService {
         currencyBucket.push({
           categoryId: row.categoryId,
           categoryName: row.category.name,
-          ...getCategoryHierarchyMetadata(row.category),
           categoryArchivedAt: row.category.archivedAt?.toISOString() ?? null,
           currency: row.currency,
           spentAmount: row.amount.toNumber(),
@@ -253,7 +239,6 @@ export class BudgetsService {
     return {
       month: monthKey,
       includeArchivedCategories,
-      reportingOverview: null,
       currencies: [...currencies]
         .sort((left, right) => left.localeCompare(right))
         .map((currency) => {
@@ -332,11 +317,7 @@ export class BudgetsService {
               endMonth: endMonth ? this.monthKeyToValue(endMonth) : null,
             },
             include: {
-              category: {
-                include: {
-                  parentCategory: true,
-                },
-              },
+              category: true,
             },
           });
 
@@ -404,11 +385,7 @@ export class BudgetsService {
                   : null,
               },
               include: {
-                category: {
-                  include: {
-                    parentCategory: true,
-                  },
-                },
+                category: true,
               },
             });
 
@@ -440,11 +417,7 @@ export class BudgetsService {
                 : null,
             },
             include: {
-              category: {
-                include: {
-                  parentCategory: true,
-                },
-              },
+              category: true,
             },
           });
 
@@ -624,11 +597,7 @@ export class BudgetsService {
         userId: ownerId,
       },
       include: {
-        category: {
-          include: {
-            parentCategory: true,
-          },
-        },
+        category: true,
         overrides: {
           where: {
             userId: ownerId,
@@ -647,14 +616,15 @@ export class BudgetsService {
   private async requireExpenseCategory(
     ownerId: string,
     categoryId: string,
-    options?: { requireActive?: boolean; currentCategoryId?: string },
+    options?: { requireActive?: boolean },
   ) {
-    const category = await this.categoriesService.getAssignableCategory(
-      ownerId,
-      categoryId,
-      TransactionKind.EXPENSE,
-      options?.currentCategoryId,
-    );
+    const category = await this.categoriesService.findOne(ownerId, categoryId);
+
+    if (category.type !== CategoryType.EXPENSE) {
+      throw new BadRequestException(
+        'Budgets can only be assigned to expense categories.',
+      );
+    }
 
     if (options?.requireActive && category.archivedAt) {
       throw new BadRequestException(
@@ -739,11 +709,7 @@ export class BudgetsService {
             }),
       },
       include: {
-        category: {
-          include: {
-            parentCategory: true,
-          },
-        },
+        category: true,
       },
     });
   }
@@ -805,7 +771,6 @@ export class BudgetsService {
     spentAmount: number,
     historicalContext: HistoricalCategoryContext | null,
   ): MonthlyBudgetItemResponse {
-    const categoryHierarchy = getCategoryHierarchyMetadata(budget.category);
     const remainingAmount = budgetAmount - spentAmount;
     const usageRatio =
       budgetAmount > 0
@@ -818,10 +783,6 @@ export class BudgetsService {
       budgetId: budget.id,
       categoryId: budget.categoryId,
       categoryName: budget.category.name,
-      primaryCategoryId: categoryHierarchy.primaryCategoryId,
-      primaryCategoryName: categoryHierarchy.primaryCategoryName,
-      secondaryCategoryId: categoryHierarchy.secondaryCategoryId,
-      secondaryCategoryName: categoryHierarchy.secondaryCategoryName,
       categoryArchivedAt: budget.category.archivedAt?.toISOString() ?? null,
       currency: budget.currency,
       budgetAmount,

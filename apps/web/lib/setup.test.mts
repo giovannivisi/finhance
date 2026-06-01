@@ -48,10 +48,10 @@ test("getPrimarySetupAction falls through to handoff once setup is complete", ()
     handoff: [
       {
         code: "REVIEW",
-        title: "Monthly close",
+        title: "Open monthly review",
         detail: "",
         href: "/review?month=2026-04",
-        actionLabel: "Open monthly close",
+        actionLabel: "Open review",
       },
     ],
   });

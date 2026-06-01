@@ -23,10 +23,6 @@ export interface CategoryBudgetResponse {
   id: string;
   categoryId: string;
   categoryName: string;
-  primaryCategoryId: string | null;
-  primaryCategoryName: string | null;
-  secondaryCategoryId: string | null;
-  secondaryCategoryName: string | null;
   categoryArchivedAt: string | null;
   currency: string;
   amount: number;
@@ -50,10 +46,6 @@ export interface MonthlyBudgetItemResponse {
   budgetId: string;
   categoryId: string;
   categoryName: string;
-  primaryCategoryId: string | null;
-  primaryCategoryName: string | null;
-  secondaryCategoryId: string | null;
-  secondaryCategoryName: string | null;
   categoryArchivedAt: string | null;
   currency: string;
   budgetAmount: number;
@@ -71,10 +63,6 @@ export interface MonthlyBudgetItemResponse {
 export interface MonthlyBudgetUnbudgetedCategoryResponse {
   categoryId: string;
   categoryName: string;
-  primaryCategoryId: string | null;
-  primaryCategoryName: string | null;
-  secondaryCategoryId: string | null;
-  secondaryCategoryName: string | null;
   categoryArchivedAt: string | null;
   currency: string;
   spentAmount: number;
@@ -97,19 +85,8 @@ export interface MonthlyBudgetCurrencySummaryResponse {
   unbudgetedCategories: MonthlyBudgetUnbudgetedCategoryResponse[];
 }
 
-export interface MonthlyBudgetReportingOverviewResponse {
-  reportingCurrency: string;
-  budgetTotal: number;
-  spentTotal: number;
-  remainingTotal: number;
-  overBudgetTotal: number;
-  unbudgetedExpenseTotal: number;
-  uncategorizedExpenseTotal: number;
-}
-
 export interface MonthlyBudgetResponse {
   month: string;
   includeArchivedCategories: boolean;
-  reportingOverview?: MonthlyBudgetReportingOverviewResponse | null;
   currencies: MonthlyBudgetCurrencySummaryResponse[];
 }

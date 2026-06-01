@@ -11,7 +11,6 @@ test("parseCooldownNotice extracts the countdown prefix and seconds", () => {
     {
       prefix: "Refresh is cooling down. Try again in ",
       seconds: 36,
-      suffix: "s.",
     },
   );
 });
@@ -37,16 +36,5 @@ test("formatCooldownNotice rebuilds the message with updated seconds", () => {
   assert.equal(
     formatCooldownNotice(parsed, 0),
     "Recurring materialization is cooling down. Try again in 0s.",
-  );
-});
-
-test("formatCooldownNotice preserves ellipsis-based countdown suffixes", () => {
-  const parsed = parseCooldownNotice("Cooling down. Try again in 15s...");
-
-  assert.ok(parsed);
-  assert.equal(parsed.suffix, "s...");
-  assert.equal(
-    formatCooldownNotice(parsed, 4),
-    "Cooling down. Try again in 4s...",
   );
 });

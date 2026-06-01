@@ -5,9 +5,7 @@ import { createSingleFlightRegistry } from "./single-flight.ts";
 test("createSingleFlightRegistry ignores duplicate runs for the same key", async () => {
   const registry = createSingleFlightRegistry<string>();
   let callCount = 0;
-  let resolveAction: (value: string) => void = () => {
-    throw new Error("action resolver was not initialized");
-  };
+  let resolveAction: ((value: string) => void) | null = null;
 
   const action = () => {
     callCount += 1;
@@ -24,7 +22,7 @@ test("createSingleFlightRegistry ignores duplicate runs for the same key", async
   assert.equal(callCount, 1);
   assert.equal(registry.isRunning("save"), true);
 
-  resolveAction("done");
+  resolveAction?.("done");
 
   const [firstResult, secondResult] = await Promise.all([firstRun, secondRun]);
   assert.equal(firstResult, "done");

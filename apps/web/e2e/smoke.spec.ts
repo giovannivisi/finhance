@@ -29,7 +29,7 @@ test.describe("core pages", () => {
     page,
     browserName,
   }) => {
-    test.skip(browserName !== "chromium");
+    test.skip(browserName !== "chromium" && browserName !== "mobile-chrome");
 
     await page.goto("/setup");
     await page.getByRole("button", { name: /more navigation/i }).click();

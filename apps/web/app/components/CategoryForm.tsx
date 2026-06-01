@@ -2,11 +2,9 @@
 
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import type { CategoryResponse } from "@finhance/shared";
 import type { CategoryFormValues } from "@lib/category-form";
 import { buildCategoryPayload } from "@lib/category-form";
 import { CATEGORY_TYPE_LABELS, CATEGORY_TYPE_OPTIONS } from "@lib/categories";
-import { expensePrimaryCategories } from "@lib/hierarchical-categories";
 import { apiMutation } from "@lib/api";
 import { useSingleFlightActions } from "@lib/single-flight";
 
@@ -14,7 +12,6 @@ interface CategoryFormProps {
   categoryId?: string;
   initialValues: CategoryFormValues;
   mode: "create" | "edit";
-  categories: CategoryResponse[];
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -23,7 +20,6 @@ export default function CategoryForm({
   categoryId,
   initialValues,
   mode,
-  categories,
   onSuccess,
   onCancel,
 }: CategoryFormProps) {
@@ -38,11 +34,6 @@ export default function CategoryForm({
   useEffect(() => {
     setForm(initialValues);
   }, [initialValues]);
-
-  const primaryCategories = expensePrimaryCategories(
-    categories,
-    form.parentCategoryId,
-  ).filter((category) => category.id !== categoryId);
 
   function updateField<Field extends keyof CategoryFormValues>(
     field: Field,
@@ -116,14 +107,10 @@ export default function CategoryForm({
             id={`${fieldPrefix}-type`}
             value={form.type}
             onChange={(event) =>
-              setForm((previous) => ({
-                ...previous,
-                type: event.target.value as CategoryFormValues["type"],
-                parentCategoryId:
-                  event.target.value === "EXPENSE"
-                    ? previous.parentCategoryId
-                    : "",
-              }))
+              updateField(
+                "type",
+                event.target.value as CategoryFormValues["type"],
+              )
             }
             required
           >
@@ -134,32 +121,6 @@ export default function CategoryForm({
             ))}
           </select>
         </div>
-
-        {form.type === "EXPENSE" ? (
-          <div className="app-form-field">
-            <label
-              htmlFor={`${fieldPrefix}-parent-category`}
-              className="is-optional"
-            >
-              <span>Under primary</span>
-              <span>Optional</span>
-            </label>
-            <select
-              id={`${fieldPrefix}-parent-category`}
-              value={form.parentCategoryId}
-              onChange={(event) =>
-                updateField("parentCategoryId", event.target.value)
-              }
-            >
-              <option value="">None (create primary)</option>
-              {primaryCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
 
         <div className="app-form-field">
           <label htmlFor={`${fieldPrefix}-order`} className="is-optional">

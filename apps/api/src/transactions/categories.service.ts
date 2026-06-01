@@ -5,16 +5,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
-import { CategoryType, Prisma, TransactionKind } from '@finhance/db';
+import {
+  Category,
+  CategoryType,
+  Prisma,
+  TransactionKind,
+} from '@prisma/client';
 import { CreateCategoryDto } from '@transactions/dto/create-category.dto';
 import { UpdateCategoryDto } from '@transactions/dto/update-category.dto';
-import type { HierarchicalCategoryRecord } from '@transactions/category-hierarchy';
 
 interface PreparedCategoryInput {
   userId: string;
   name: string;
   type: CategoryType;
-  parentCategoryId: string | null;
   order: number | null;
 }
 
@@ -24,7 +27,6 @@ export interface CategoryDeletionState {
 }
 
 type CategoryTransactionClient = Prisma.TransactionClient;
-type CategoryReadClient = PrismaService | Prisma.TransactionClient;
 
 @Injectable()
 export class CategoriesService {
@@ -33,32 +35,44 @@ export class CategoriesService {
   async findAll(
     ownerId: string,
     options?: { includeArchived?: boolean },
-  ): Promise<HierarchicalCategoryRecord[]> {
+  ): Promise<Category[]> {
     const includeArchived = options?.includeArchived ?? false;
     const categories = await this.prisma.category.findMany({
       where: {
         userId: ownerId,
         ...(includeArchived ? {} : { archivedAt: null }),
       },
-      include: {
-        parentCategory: true,
-      },
+      orderBy: [{ type: 'asc' }, { order: 'asc' }, { createdAt: 'asc' }],
     });
 
-    return categories.sort((left, right) =>
-      this.compareCategoriesForDisplay(left, right, includeArchived),
-    );
+    if (!includeArchived) {
+      return categories;
+    }
+
+    return categories.sort((left, right) => {
+      if (left.type !== right.type) {
+        return left.type.localeCompare(right.type);
+      }
+
+      if (left.archivedAt && !right.archivedAt) {
+        return 1;
+      }
+
+      if (!left.archivedAt && right.archivedAt) {
+        return -1;
+      }
+
+      if (left.order !== right.order) {
+        return left.order - right.order;
+      }
+
+      return left.createdAt.getTime() - right.createdAt.getTime();
+    });
   }
 
-  async findOne(
-    ownerId: string,
-    id: string,
-  ): Promise<HierarchicalCategoryRecord> {
+  async findOne(ownerId: string, id: string): Promise<Category> {
     const category = await this.prisma.category.findFirst({
       where: { id, userId: ownerId },
-      include: {
-        parentCategory: true,
-      },
     });
 
     if (!category) {
@@ -68,35 +82,8 @@ export class CategoriesService {
     return category;
   }
 
-  async findManyByIds(
-    ownerId: string,
-    ids: string[],
-  ): Promise<HierarchicalCategoryRecord[]> {
-    const uniqueIds = [...new Set(ids.filter((id) => id.trim().length > 0))];
-    if (uniqueIds.length === 0) {
-      return [];
-    }
-
-    const categories = await this.prisma.category.findMany({
-      where: {
-        userId: ownerId,
-        id: { in: uniqueIds },
-      },
-      include: {
-        parentCategory: true,
-      },
-    });
-
-    return categories.sort((left, right) =>
-      this.compareCategoriesForDisplay(left, right, true),
-    );
-  }
-
-  async create(
-    ownerId: string,
-    dto: CreateCategoryDto,
-  ): Promise<HierarchicalCategoryRecord> {
-    const prepared = await this.prepareCategoryInput(ownerId, dto);
+  async create(ownerId: string, dto: CreateCategoryDto): Promise<Category> {
+    const prepared = this.prepareCategoryInput(ownerId, dto);
 
     return this.prisma.$transaction(async (tx) => {
       await this.assertActiveNameAvailable(
@@ -104,14 +91,12 @@ export class CategoriesService {
         ownerId,
         prepared.type,
         prepared.name,
-        prepared.parentCategoryId,
       );
 
       const activeCategories = await this.findActiveOrderedCategories(
         tx,
         ownerId,
         prepared.type,
-        prepared.parentCategoryId,
       );
       const targetOrder = this.clampOrder(
         prepared.order,
@@ -122,7 +107,6 @@ export class CategoriesService {
           userId: prepared.userId,
           name: prepared.name,
           type: prepared.type,
-          parentCategoryId: prepared.parentCategoryId,
           order: activeCategories.length,
         },
       });
@@ -145,13 +129,11 @@ export class CategoriesService {
     ownerId: string,
     id: string,
     dto: UpdateCategoryDto,
-  ): Promise<HierarchicalCategoryRecord> {
-    const prepared = await this.prepareCategoryInput(ownerId, dto, id);
+  ): Promise<Category> {
+    const prepared = this.prepareCategoryInput(ownerId, dto);
 
     return this.prisma.$transaction(async (tx) => {
       const existing = await this.getRequiredCategory(tx, ownerId, id);
-
-      await this.assertHierarchyChangeAllowed(tx, ownerId, existing, prepared);
 
       if (!existing.archivedAt) {
         await this.assertActiveNameAvailable(
@@ -159,7 +141,6 @@ export class CategoriesService {
           ownerId,
           prepared.type,
           prepared.name,
-          prepared.parentCategoryId,
           id,
         );
       }
@@ -170,7 +151,6 @@ export class CategoriesService {
           data: {
             name: prepared.name,
             type: prepared.type,
-            parentCategoryId: prepared.parentCategoryId,
             order:
               prepared.order === null
                 ? existing.order
@@ -181,17 +161,12 @@ export class CategoriesService {
         return this.getRequiredCategory(tx, ownerId, id);
       }
 
-      const sameSiblingGroup =
-        existing.type === prepared.type &&
-        existing.parentCategoryId === prepared.parentCategoryId;
-
-      if (sameSiblingGroup) {
+      if (existing.type === prepared.type) {
         await tx.category.update({
           where: { id },
           data: {
             name: prepared.name,
             type: prepared.type,
-            parentCategoryId: prepared.parentCategoryId,
           },
         });
 
@@ -199,7 +174,6 @@ export class CategoriesService {
           tx,
           ownerId,
           prepared.type,
-          prepared.parentCategoryId,
         );
         const reorderedIds = activeCategories
           .map((activeCategory) => activeCategory.id)
@@ -222,13 +196,11 @@ export class CategoriesService {
         tx,
         ownerId,
         existing.type,
-        existing.parentCategoryId,
       );
       const newActiveCategories = await this.findActiveOrderedCategories(
         tx,
         ownerId,
         prepared.type,
-        prepared.parentCategoryId,
       );
 
       await tx.category.update({
@@ -236,7 +208,6 @@ export class CategoriesService {
         data: {
           name: prepared.name,
           type: prepared.type,
-          parentCategoryId: prepared.parentCategoryId,
           order: newActiveCategories.length,
         },
       });
@@ -273,15 +244,10 @@ export class CategoriesService {
         return;
       }
 
-      await this.assertCategoryHasNoChildren(tx, ownerId, existing.id, {
-        forAction: 'archive',
-      });
-
       const activeCategories = await this.findActiveOrderedCategories(
         tx,
         ownerId,
         existing.type,
-        existing.parentCategoryId,
       );
       const reorderedIds = activeCategories
         .map((activeCategory) => activeCategory.id)
@@ -295,10 +261,7 @@ export class CategoriesService {
     });
   }
 
-  async unarchive(
-    ownerId: string,
-    id: string,
-  ): Promise<HierarchicalCategoryRecord> {
+  async unarchive(ownerId: string, id: string): Promise<Category> {
     return this.prisma.$transaction(async (tx) => {
       const existing = await this.getRequiredCategory(tx, ownerId, id);
 
@@ -306,25 +269,10 @@ export class CategoriesService {
         return existing;
       }
 
-      if (existing.parentCategoryId) {
-        const parentCategory = await this.getRequiredCategory(
-          tx,
-          ownerId,
-          existing.parentCategoryId,
-        );
-
-        if (parentCategory.archivedAt) {
-          throw new ConflictException(
-            'Unarchive the primary category before unarchiving this secondary category.',
-          );
-        }
-      }
-
       const activeCategories = await this.findActiveOrderedCategories(
         tx,
         ownerId,
         existing.type,
-        existing.parentCategoryId,
       );
 
       await tx.category.update({
@@ -369,7 +317,7 @@ export class CategoriesService {
   async getDeletionStates(
     ownerId: string,
     categoryIds: string[],
-    client: CategoryReadClient = this.prisma,
+    client: PrismaService | Prisma.TransactionClient = this.prisma,
   ): Promise<Map<string, CategoryDeletionState>> {
     const uniqueIds = [...new Set(categoryIds)];
 
@@ -383,73 +331,42 @@ export class CategoriesService {
         : null;
     const budgetClient =
       'categoryBudget' in client ? client.categoryBudget : null;
-    const expenseValidationRuleClient =
-      'expenseValidationRule' in client ? client.expenseValidationRule : null;
 
-    const [transactions, recurringRules, budgets, childCategories, rules] =
-      await Promise.all([
-        client.transaction.findMany({
-          where: {
-            userId: ownerId,
-            categoryId: { in: uniqueIds },
-          },
-          select: { categoryId: true },
-        }),
-        recurringRuleClient
-          ? recurringRuleClient.findMany({
-              where: {
-                userId: ownerId,
-                categoryId: { in: uniqueIds },
-              },
-              select: { categoryId: true },
-            })
-          : Promise.resolve([]),
-        budgetClient
-          ? budgetClient.findMany({
-              where: {
-                userId: ownerId,
-                categoryId: { in: uniqueIds },
-              },
-              select: { categoryId: true },
-            })
-          : Promise.resolve([]),
-        client.category.findMany({
-          where: {
-            userId: ownerId,
-            parentCategoryId: { in: uniqueIds },
-          },
-          select: { parentCategoryId: true },
-        }),
-        expenseValidationRuleClient
-          ? expenseValidationRuleClient.findMany({
-              where: {
-                userId: ownerId,
-                secondaryCategoryId: { in: uniqueIds },
-              },
-              select: { secondaryCategoryId: true },
-            })
-          : Promise.resolve([]),
-      ]);
+    const [transactions, recurringRules, budgets] = await Promise.all([
+      client.transaction.findMany({
+        where: {
+          userId: ownerId,
+          categoryId: { in: uniqueIds },
+        },
+        select: { categoryId: true },
+      }),
+      recurringRuleClient
+        ? recurringRuleClient.findMany({
+            where: {
+              userId: ownerId,
+              categoryId: { in: uniqueIds },
+            },
+            select: { categoryId: true },
+          })
+        : Promise.resolve([]),
+      budgetClient
+        ? budgetClient.findMany({
+            where: {
+              userId: ownerId,
+              categoryId: { in: uniqueIds },
+            },
+            select: { categoryId: true },
+          })
+        : Promise.resolve([]),
+    ]);
 
     const dependencyCounts = new Map<
       string,
-      {
-        transactions: number;
-        recurringRules: number;
-        budgets: number;
-        childCategories: number;
-        expenseValidationRules: number;
-      }
+      { transactions: number; recurringRules: number; budgets: number }
     >(
       uniqueIds.map((id) => [
         id,
-        {
-          transactions: 0,
-          recurringRules: 0,
-          budgets: 0,
-          childCategories: 0,
-          expenseValidationRules: 0,
-        },
+        { transactions: 0, recurringRules: 0, budgets: 0 },
       ]),
     );
 
@@ -473,35 +390,13 @@ export class CategoriesService {
       dependencyCounts.get(budget.categoryId)!.budgets += 1;
     }
 
-    for (const childCategory of childCategories) {
-      if (!childCategory.parentCategoryId) {
-        continue;
-      }
-
-      dependencyCounts.get(childCategory.parentCategoryId)!.childCategories +=
-        1;
-    }
-
-    for (const rule of rules) {
-      dependencyCounts.get(rule.secondaryCategoryId)!.expenseValidationRules +=
-        1;
-    }
-
     return new Map(
       uniqueIds.map((id) => {
         const counts = dependencyCounts.get(id)!;
         const parts = [
-          this.formatDeleteDependency(
-            counts.childCategories,
-            'secondary category',
-          ),
           this.formatDeleteDependency(counts.transactions, 'transaction'),
           this.formatDeleteDependency(counts.recurringRules, 'recurring rule'),
           this.formatDeleteDependency(counts.budgets, 'budget'),
-          this.formatDeleteDependency(
-            counts.expenseValidationRules,
-            'expense validation rule',
-          ),
         ].filter((value): value is string => value !== null);
 
         return [
@@ -523,7 +418,7 @@ export class CategoriesService {
     categoryId: string,
     transactionKind: TransactionKind,
     currentCategoryId?: string | null,
-  ): Promise<HierarchicalCategoryRecord> {
+  ): Promise<Category> {
     if (
       transactionKind !== TransactionKind.EXPENSE &&
       transactionKind !== TransactionKind.INCOME
@@ -533,7 +428,7 @@ export class CategoriesService {
       );
     }
 
-    let category: HierarchicalCategoryRecord;
+    let category: Category;
 
     try {
       category = await this.findOne(ownerId, categoryId);
@@ -562,119 +457,17 @@ export class CategoriesService {
       );
     }
 
-    if (
-      transactionKind === TransactionKind.EXPENSE &&
-      !category.parentCategoryId
-    ) {
-      throw new BadRequestException(
-        'Expense transactions must use secondary categories.',
-      );
-    }
-
-    if (
-      transactionKind === TransactionKind.INCOME &&
-      category.parentCategoryId
-    ) {
-      throw new BadRequestException(
-        'Income transactions cannot use secondary categories.',
-      );
-    }
-
-    if (
-      category.parentCategoryId &&
-      category.parentCategory?.archivedAt &&
-      category.id !== currentCategoryId
-    ) {
-      throw new BadRequestException(
-        'Secondary categories with archived primaries cannot be newly assigned.',
-      );
-    }
-
     return category;
   }
 
-  async findMatchingExpenseSecondaryCategory(
-    ownerId: string,
-    normalizedEntry: string,
-  ): Promise<HierarchicalCategoryRecord | null> {
-    if (!normalizedEntry) {
-      return null;
-    }
-
-    const rule = await this.prisma.expenseValidationRule.findFirst({
-      where: {
-        userId: ownerId,
-        normalizedEntry,
-        secondaryCategory: {
-          archivedAt: null,
-          parentCategoryId: { not: null },
-          parentCategory: {
-            archivedAt: null,
-          },
-        },
-      },
-      include: {
-        secondaryCategory: {
-          include: {
-            parentCategory: true,
-          },
-        },
-      },
-    });
-
-    return rule?.secondaryCategory ?? null;
-  }
-
-  private async prepareCategoryInput(
+  private prepareCategoryInput(
     ownerId: string,
     dto: CreateCategoryDto | UpdateCategoryDto,
-    categoryId?: string,
-  ): Promise<PreparedCategoryInput> {
-    const parentCategoryId = dto.parentCategoryId?.trim() || null;
-
-    if (categoryId && parentCategoryId === categoryId) {
-      throw new BadRequestException(
-        'A category cannot be its own primary category.',
-      );
-    }
-
-    let resolvedParentCategoryId: string | null = null;
-
-    if (dto.type === CategoryType.INCOME) {
-      if (parentCategoryId) {
-        throw new BadRequestException(
-          'Income categories cannot have primary categories.',
-        );
-      }
-    } else if (parentCategoryId) {
-      const parentCategory = await this.findOne(ownerId, parentCategoryId);
-
-      if (parentCategory.type !== CategoryType.EXPENSE) {
-        throw new BadRequestException(
-          'Expense secondary categories must belong to expense primaries.',
-        );
-      }
-
-      if (parentCategory.parentCategoryId) {
-        throw new BadRequestException(
-          'Secondary categories cannot have their own secondary categories.',
-        );
-      }
-
-      if (parentCategory.archivedAt) {
-        throw new BadRequestException(
-          'Archived primary categories cannot receive secondary categories.',
-        );
-      }
-
-      resolvedParentCategoryId = parentCategory.id;
-    }
-
+  ): PreparedCategoryInput {
     return {
       userId: ownerId,
       name: dto.name.trim(),
       type: dto.type,
-      parentCategoryId: resolvedParentCategoryId,
       order: dto.order ?? null,
     };
   }
@@ -684,14 +477,12 @@ export class CategoriesService {
     ownerId: string,
     type: CategoryType,
     name: string,
-    parentCategoryId: string | null,
     excludeId?: string,
   ): Promise<void> {
     const duplicate = await tx.category.findFirst({
       where: {
         userId: ownerId,
         type,
-        parentCategoryId,
         archivedAt: null,
         name: {
           equals: name,
@@ -702,7 +493,7 @@ export class CategoriesService {
 
     if (duplicate && duplicate.id !== excludeId) {
       throw new ConflictException(
-        `An active ${type.toLowerCase()} category named ${name} already exists in this group.`,
+        `An active ${type.toLowerCase()} category named ${name} already exists.`,
       );
     }
   }
@@ -711,76 +502,20 @@ export class CategoriesService {
     tx: CategoryTransactionClient,
     ownerId: string,
     type: CategoryType,
-    parentCategoryId: string | null,
-  ) {
+  ): Promise<Category[]> {
     return tx.category.findMany({
       where: {
         userId: ownerId,
         type,
-        parentCategoryId,
         archivedAt: null,
       },
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
     });
   }
 
-  private async assertHierarchyChangeAllowed(
-    tx: CategoryTransactionClient,
-    ownerId: string,
-    existing: HierarchicalCategoryRecord,
-    next: PreparedCategoryInput,
-  ): Promise<void> {
-    const currentlyPrimaryExpense =
-      existing.type === CategoryType.EXPENSE &&
-      existing.parentCategoryId === null;
-    const remainsPrimaryExpense =
-      next.type === CategoryType.EXPENSE && next.parentCategoryId === null;
-
-    if (!currentlyPrimaryExpense || remainsPrimaryExpense) {
-      return;
-    }
-
-    const childCount = await tx.category.count({
-      where: {
-        userId: ownerId,
-        parentCategoryId: existing.id,
-      },
-    });
-
-    if (childCount > 0) {
-      throw new ConflictException(
-        'Primary expense categories with secondary categories must keep their current role until those secondary categories are moved or removed.',
-      );
-    }
-  }
-
-  private async assertCategoryHasNoChildren(
-    tx: CategoryTransactionClient,
-    ownerId: string,
-    categoryId: string,
-    options: { forAction: 'archive' | 'delete' },
-  ): Promise<void> {
-    const childCount = await tx.category.count({
-      where: {
-        userId: ownerId,
-        parentCategoryId: categoryId,
-      },
-    });
-
-    if (childCount === 0) {
-      return;
-    }
-
-    throw new ConflictException(
-      options.forAction === 'archive'
-        ? 'Primary expense categories with secondary categories cannot be archived until those secondary categories are moved or archived.'
-        : 'Primary expense categories with secondary categories cannot be deleted until those secondary categories are removed.',
-    );
-  }
-
   private async applyActiveOrder(
     tx: CategoryTransactionClient,
-    categories: Array<{ id: string; order: number }>,
+    categories: Category[],
     orderedIds: string[],
   ): Promise<void> {
     const categoriesById = new Map(
@@ -810,15 +545,12 @@ export class CategoriesService {
   }
 
   private async getRequiredCategory(
-    tx: CategoryReadClient,
+    tx: CategoryTransactionClient,
     ownerId: string,
     id: string,
-  ): Promise<HierarchicalCategoryRecord> {
+  ): Promise<Category> {
     const category = await tx.category.findFirst({
       where: { id, userId: ownerId },
-      include: {
-        parentCategory: true,
-      },
     });
 
     if (!category) {
@@ -826,53 +558,6 @@ export class CategoriesService {
     }
 
     return category;
-  }
-
-  private compareCategoriesForDisplay(
-    left: HierarchicalCategoryRecord,
-    right: HierarchicalCategoryRecord,
-    includeArchived: boolean,
-  ): number {
-    if (left.type !== right.type) {
-      return left.type.localeCompare(right.type);
-    }
-
-    const leftGroupOrder = left.parentCategory?.order ?? left.order;
-    const rightGroupOrder = right.parentCategory?.order ?? right.order;
-    if (leftGroupOrder !== rightGroupOrder) {
-      return leftGroupOrder - rightGroupOrder;
-    }
-
-    const leftGroupName = left.parentCategory?.name ?? left.name;
-    const rightGroupName = right.parentCategory?.name ?? right.name;
-    const groupNameCompare = leftGroupName.localeCompare(rightGroupName);
-    if (groupNameCompare !== 0) {
-      return groupNameCompare;
-    }
-
-    if (left.parentCategoryId === null && right.parentCategoryId !== null) {
-      return -1;
-    }
-
-    if (left.parentCategoryId !== null && right.parentCategoryId === null) {
-      return 1;
-    }
-
-    if (includeArchived) {
-      if (left.archivedAt && !right.archivedAt) {
-        return 1;
-      }
-
-      if (!left.archivedAt && right.archivedAt) {
-        return -1;
-      }
-    }
-
-    if (left.order !== right.order) {
-      return left.order - right.order;
-    }
-
-    return left.createdAt.getTime() - right.createdAt.getTime();
   }
 
   private formatDeleteDependency(

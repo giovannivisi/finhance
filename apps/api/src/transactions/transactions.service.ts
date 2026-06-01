@@ -4,12 +4,10 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { AccountsService } from '@accounts/accounts.service';
-import { PricesService } from '@prices/prices.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { CategoriesService } from '@transactions/categories.service';
 import { CreateTransactionDto } from '@transactions/dto/create-transaction.dto';
@@ -23,16 +21,11 @@ import {
 } from '@transactions/transactions.types';
 import {
   Account,
-  AccountType,
-  AssetKind,
-  AssetType,
   CategoryType,
-  FxRateSource,
-  LiabilityKind,
   Prisma,
   TransactionDirection,
   TransactionKind,
-} from '@finhance/db';
+} from '@prisma/client';
 import type {
   CashflowAnalyticsBreakdownItemResponse,
   CashflowAnalyticsCategoryTrendResponse,
@@ -56,10 +49,6 @@ import {
   romeMonthToUtcStart,
   utcDateToRomeMonth,
 } from '@transactions/transactions.dates';
-import {
-  getCategoryHierarchyMetadata,
-  normalizeExpenseValidationEntry,
-} from '@transactions/category-hierarchy';
 
 const DEFAULT_TRANSACTION_LIMIT = 200;
 const MAX_TRANSACTION_LIMIT = 500;
@@ -81,10 +70,6 @@ interface PreparedStandardTransactionInput {
   postedAt: Date;
   amount: Prisma.Decimal;
   currency: string;
-  nativeAmount: Prisma.Decimal | null;
-  nativeCurrency: string | null;
-  fxRateUsed: Prisma.Decimal | null;
-  fxRateSource: FxRateSource | null;
   kind: 'EXPENSE' | 'INCOME' | 'ADJUSTMENT';
   direction: TransactionDirection;
   accountId: string;
@@ -96,32 +81,12 @@ interface PreparedStandardTransactionInput {
 
 interface PreparedTransferTransactionInput {
   postedAt: Date;
-  sourceAmount: Prisma.Decimal;
-  destinationAmount: Prisma.Decimal;
-  sourceCurrency: string;
-  destinationCurrency: string;
-  fxRateUsed: Prisma.Decimal | null;
-  fxRateSource: FxRateSource | null;
+  amount: Prisma.Decimal;
+  currency: string;
   description: string;
   notes: string | null;
   sourceAccountId: string;
   destinationAccountId: string;
-}
-
-interface PreparedSplitFundingLegInput {
-  accountId: string;
-  amount: Prisma.Decimal;
-}
-
-interface PreparedSplitTransactionInput {
-  postedAt: Date;
-  amount: Prisma.Decimal;
-  currency: string;
-  categoryId: string;
-  description: string;
-  notes: string | null;
-  counterparty: string | null;
-  fundingLegs: PreparedSplitFundingLegInput[];
 }
 
 interface CashflowAnalyticsFilters {
@@ -129,8 +94,6 @@ interface CashflowAnalyticsFilters {
   to: string;
   accountId?: string;
   categoryId?: string;
-  primaryCategoryId?: string;
-  secondaryCategoryId?: string;
   includeArchivedAccounts?: boolean;
 }
 
@@ -143,7 +106,6 @@ export class TransactionsService {
     @Inject(forwardRef(() => AccountsService))
     private readonly accountsService: AccountsService,
     private readonly categoriesService: CategoriesService,
-    private readonly pricesService: PricesService,
   ) {}
 
   async findAll(
@@ -172,180 +134,17 @@ export class TransactionsService {
     );
   }
 
-  async findRecentByAccount(
-    ownerId: string,
-    accountId: string,
-    options: {
-      includeArchivedAccounts?: boolean;
-      limit?: number;
-    } = {},
-  ): Promise<LogicalTransactionEntry[]> {
-    const limit = this.normalizeLimit(
-      options.limit ?? DEFAULT_TRANSACTION_LIMIT,
-    );
-    const includeArchivedAccounts = options.includeArchivedAccounts ?? false;
-    const batchSize = Math.min(MAX_TRANSACTION_LIMIT, Math.max(limit * 2, 50));
-    const entries: LogicalTransactionEntry[] = [];
-    const seenEntryKeys = new Set<string>();
-    const seenTransferGroupIds = new Set<string>();
-    let skip = 0;
-
-    while (entries.length < limit) {
-      const accountRows = await this.prisma.transaction.findMany({
-        where: {
-          userId: ownerId,
-          accountId,
-          ...(!includeArchivedAccounts
-            ? {
-                account: {
-                  archivedAt: null,
-                },
-              }
-            : {}),
-        },
-        include: {
-          account: true,
-          category: {
-            include: {
-              parentCategory: true,
-            },
-          },
-        },
-        orderBy: [{ postedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
-        take: batchSize,
-        skip,
-      });
-
-      if (accountRows.length === 0) {
-        break;
-      }
-
-      skip += accountRows.length;
-
-      const transferGroupIds = [
-        ...new Set(
-          accountRows
-            .filter(
-              (row) =>
-                row.kind === TransactionKind.TRANSFER &&
-                row.transferGroupId &&
-                !seenTransferGroupIds.has(row.transferGroupId),
-            )
-            .map((row) => row.transferGroupId as string),
-        ),
-      ];
-      const splitGroupIds = [
-        ...new Set(
-          accountRows
-            .filter(
-              (row) =>
-                row.splitGroupId &&
-                !seenEntryKeys.has(`SPLIT:${row.splitGroupId}`),
-            )
-            .map((row) => row.splitGroupId as string),
-        ),
-      ];
-
-      for (const transferGroupId of transferGroupIds) {
-        seenTransferGroupIds.add(transferGroupId);
-      }
-
-      const counterpartRows =
-        transferGroupIds.length === 0 && splitGroupIds.length === 0
-          ? []
-          : await this.prisma.transaction.findMany({
-              where: {
-                userId: ownerId,
-                OR: [
-                  ...(transferGroupIds.length > 0
-                    ? [
-                        {
-                          transferGroupId: { in: transferGroupIds },
-                          accountId: { not: accountId },
-                        },
-                      ]
-                    : []),
-                  ...(splitGroupIds.length > 0
-                    ? [
-                        {
-                          splitGroupId: { in: splitGroupIds },
-                          accountId: { not: accountId },
-                        },
-                      ]
-                    : []),
-                ],
-              },
-              include: {
-                account: true,
-                category: {
-                  include: {
-                    parentCategory: true,
-                  },
-                },
-              },
-            });
-
-      const batchEntries = this.toLogicalEntries([
-        ...accountRows,
-        ...counterpartRows,
-      ])
-        .filter((entry) =>
-          this.matchesFilters(entry, {
-            accountId,
-            includeArchivedAccounts,
-          }),
-        )
-        .sort((left, right) => this.compareEntriesDesc(left, right));
-
-      for (const entry of batchEntries) {
-        const entryKey =
-          entry.entryType === 'TRANSFER'
-            ? `TRANSFER:${entry.transferGroupId}`
-            : entry.entryType === 'SPLIT'
-              ? `SPLIT:${entry.splitGroupId}`
-              : `STANDARD:${entry.row.id}`;
-
-        if (seenEntryKeys.has(entryKey)) {
-          continue;
-        }
-
-        seenEntryKeys.add(entryKey);
-        entries.push(entry);
-
-        if (entries.length === limit) {
-          break;
-        }
-      }
-
-      if (accountRows.length < batchSize) {
-        break;
-      }
-    }
-
-    return entries
-      .sort((left, right) => this.compareEntriesDesc(left, right))
-      .slice(0, limit);
-  }
-
   async findOne(ownerId: string, id: string): Promise<LogicalTransactionEntry> {
     const byId = await this.prisma.transaction.findFirst({
       where: { id, userId: ownerId },
       include: {
         account: true,
-        category: {
-          include: {
-            parentCategory: true,
-          },
-        },
+        category: true,
       },
     });
 
     if (byId) {
       if (byId.kind !== TransactionKind.TRANSFER) {
-        if (byId.splitGroupId) {
-          return this.findSplitEntry(ownerId, byId.splitGroupId);
-        }
-
         return {
           entryType: 'STANDARD',
           row: byId,
@@ -355,36 +154,7 @@ export class TransactionsService {
       return this.findTransferEntry(ownerId, byId.transferGroupId ?? id);
     }
 
-    const groupedRows = await this.prisma.transaction.findMany({
-      where: {
-        userId: ownerId,
-        OR: [{ transferGroupId: id }, { splitGroupId: id }],
-      },
-      include: {
-        account: true,
-        category: {
-          include: {
-            parentCategory: true,
-          },
-        },
-      },
-    });
-
-    if (groupedRows.some((row) => row.transferGroupId === id)) {
-      return this.toTransferEntry(
-        id,
-        groupedRows.filter((row) => row.transferGroupId === id),
-      );
-    }
-
-    if (groupedRows.some((row) => row.splitGroupId === id)) {
-      return this.toSplitEntry(
-        id,
-        groupedRows.filter((row) => row.splitGroupId === id),
-      );
-    }
-
-    throw new NotFoundException(`Transaction ${id} was not found.`);
+    return this.findTransferEntry(ownerId, id);
   }
 
   async create(
@@ -392,97 +162,36 @@ export class TransactionsService {
     dto: CreateTransactionDto,
     client: TransactionWriteClient = this.prisma,
   ): Promise<LogicalTransactionEntry> {
-    if (dto.fundingLegs && dto.fundingLegs.length > 0) {
-      return this.createSplitExpense(ownerId, dto, client);
-    }
-
     if (dto.kind === TransactionKind.TRANSFER) {
       return this.createTransfer(ownerId, dto, client);
     }
 
     const prepared = await this.prepareStandardTransaction(ownerId, dto);
-    const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
-
-    const persist = async (tx: TransactionWriteClient) => {
-      if (!isAdjustment) {
-        await this.validateAccountCashBalance(
-          ownerId,
-          prepared.accountId,
-          prepared.amount,
-          prepared.direction,
-          tx,
-        );
-      }
-
-      const row = await tx.transaction.create({
-        data: {
-          userId: ownerId,
-          postedAt: prepared.postedAt,
-          accountId: prepared.accountId,
-          categoryId: prepared.categoryId,
-          amount: prepared.amount,
-          currency: prepared.currency,
-          nativeAmount: prepared.nativeAmount,
-          nativeCurrency: prepared.nativeCurrency,
-          fxRateUsed: prepared.fxRateUsed,
-          fxRateSource: prepared.fxRateSource,
-          direction: prepared.direction,
-          kind: prepared.kind,
-          description: prepared.description,
-          notes: prepared.notes,
-          counterparty: prepared.counterparty,
-          transferGroupId: null,
-        },
-        include: {
-          account: true,
-          category: {
-            include: {
-              parentCategory: true,
-            },
-          },
-        },
-      });
-
-      if (!isAdjustment) {
-        await this.adjustAccountCashBalance(
-          ownerId,
-          prepared.accountId,
-          prepared.amount,
-          prepared.direction,
-          tx,
-        );
-      }
-
-      return row;
-    };
-
-    const row =
-      client === this.prisma
-        ? await this.prisma.$transaction((tx) => persist(tx))
-        : await persist(client);
+    const row = await client.transaction.create({
+      data: {
+        userId: ownerId,
+        postedAt: prepared.postedAt,
+        accountId: prepared.accountId,
+        categoryId: prepared.categoryId,
+        amount: prepared.amount,
+        currency: prepared.currency,
+        direction: prepared.direction,
+        kind: prepared.kind,
+        description: prepared.description,
+        notes: prepared.notes,
+        counterparty: prepared.counterparty,
+        transferGroupId: null,
+      },
+      include: {
+        account: true,
+        category: true,
+      },
+    });
 
     return {
       entryType: 'STANDARD',
       row,
     };
-  }
-
-  async applyAccountCashMovement(
-    ownerId: string,
-    accountId: string,
-    amount: Prisma.Decimal,
-    direction: TransactionDirection,
-    client: TransactionWriteClient = this.prisma,
-    options?: { skipValidation?: boolean },
-  ): Promise<void> {
-    return this.adjustAccountCashBalance(
-      ownerId,
-      accountId,
-      amount,
-      direction,
-      client,
-      options,
-    );
   }
 
   async createReconciliationAdjustment(
@@ -539,43 +248,13 @@ export class TransactionsService {
       });
 
       await this.prisma.$transaction(async (tx) => {
-        // Reverse old transfer cash effects (skip validation — reversals)
-        await this.adjustAccountCashBalance(
-          ownerId,
-          existing.outflow.accountId,
-          existing.outflow.amount,
-          TransactionDirection.INFLOW,
-          tx,
-          { skipValidation: true },
-        );
-        await this.adjustAccountCashBalance(
-          ownerId,
-          existing.inflow.accountId,
-          existing.inflow.amount,
-          TransactionDirection.OUTFLOW,
-          tx,
-          { skipValidation: true },
-        );
-
-        await this.validateAccountCashBalance(
-          ownerId,
-          prepared.sourceAccountId,
-          prepared.sourceAmount,
-          TransactionDirection.OUTFLOW,
-          tx,
-        );
-
         await tx.transaction.update({
           where: { id: existing.outflow.id },
           data: {
             postedAt: prepared.postedAt,
             accountId: prepared.sourceAccountId,
-            amount: prepared.sourceAmount,
-            currency: prepared.sourceCurrency,
-            nativeAmount: null,
-            nativeCurrency: null,
-            fxRateUsed: prepared.fxRateUsed,
-            fxRateSource: prepared.fxRateSource,
+            amount: prepared.amount,
+            currency: prepared.currency,
             direction: TransactionDirection.OUTFLOW,
             kind: TransactionKind.TRANSFER,
             categoryId: null,
@@ -590,12 +269,8 @@ export class TransactionsService {
           data: {
             postedAt: prepared.postedAt,
             accountId: prepared.destinationAccountId,
-            amount: prepared.destinationAmount,
-            currency: prepared.destinationCurrency,
-            nativeAmount: null,
-            nativeCurrency: null,
-            fxRateUsed: prepared.fxRateUsed,
-            fxRateSource: prepared.fxRateSource,
+            amount: prepared.amount,
+            currency: prepared.currency,
             direction: TransactionDirection.INFLOW,
             kind: TransactionKind.TRANSFER,
             categoryId: null,
@@ -604,275 +279,15 @@ export class TransactionsService {
             counterparty: null,
           },
         });
-
-        // Apply new transfer cash effects (skip validation — balance was
-        // already adjusted by the reversal above)
-        await this.adjustAccountCashBalance(
-          ownerId,
-          prepared.sourceAccountId,
-          prepared.sourceAmount,
-          TransactionDirection.OUTFLOW,
-          tx,
-        );
-        await this.adjustAccountCashBalance(
-          ownerId,
-          prepared.destinationAccountId,
-          prepared.destinationAmount,
-          TransactionDirection.INFLOW,
-          tx,
-          { skipValidation: true },
-        );
       });
 
       return this.findTransferEntry(ownerId, existing.transferGroupId);
-    }
-
-    if (existing.entryType === 'SPLIT') {
-      if (dto.kind !== TransactionKind.EXPENSE) {
-        throw new ConflictException(
-          'Transaction kind cannot be changed. Delete and recreate the transaction.',
-        );
-      }
-
-      if (dto.fundingLegs && dto.fundingLegs.length > 0) {
-        const prepared = await this.prepareSplitExpenseTransaction(
-          ownerId,
-          dto,
-          {
-            fundingAccountIds: existing.rows.map((row) => row.accountId),
-            categoryId: existing.rows[0]?.categoryId,
-          },
-        );
-
-        await this.prisma.$transaction(async (tx) => {
-          for (const row of existing.rows) {
-            await this.adjustAccountCashBalance(
-              ownerId,
-              row.accountId,
-              row.amount,
-              TransactionDirection.INFLOW,
-              tx,
-              { skipValidation: true },
-            );
-          }
-
-          for (const leg of prepared.fundingLegs) {
-            await this.validateAccountCashBalance(
-              ownerId,
-              leg.accountId,
-              leg.amount,
-              TransactionDirection.OUTFLOW,
-              tx,
-            );
-          }
-
-          await tx.transaction.deleteMany({
-            where: {
-              userId: ownerId,
-              splitGroupId: existing.splitGroupId,
-            },
-          });
-
-          for (const leg of prepared.fundingLegs) {
-            await tx.transaction.create({
-              data: {
-                userId: ownerId,
-                postedAt: prepared.postedAt,
-                accountId: leg.accountId,
-                categoryId: prepared.categoryId,
-                amount: leg.amount,
-                currency: prepared.currency,
-                nativeAmount: null,
-                nativeCurrency: null,
-                fxRateUsed: null,
-                fxRateSource: null,
-                direction: TransactionDirection.OUTFLOW,
-                kind: TransactionKind.EXPENSE,
-                description: prepared.description,
-                notes: prepared.notes,
-                counterparty: prepared.counterparty,
-                transferGroupId: null,
-                splitGroupId: existing.splitGroupId,
-              },
-            });
-          }
-
-          for (const leg of prepared.fundingLegs) {
-            await this.adjustAccountCashBalance(
-              ownerId,
-              leg.accountId,
-              leg.amount,
-              TransactionDirection.OUTFLOW,
-              tx,
-            );
-          }
-        });
-
-        return this.findSplitEntry(ownerId, existing.splitGroupId);
-      }
-
-      const prepared = await this.prepareStandardTransaction(ownerId, dto, {
-        categoryId: existing.rows[0]?.categoryId,
-      });
-      const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
-
-      const row = await this.prisma.$transaction(async (tx) => {
-        for (const existingRow of existing.rows) {
-          await this.adjustAccountCashBalance(
-            ownerId,
-            existingRow.accountId,
-            existingRow.amount,
-            TransactionDirection.INFLOW,
-            tx,
-            { skipValidation: true },
-          );
-        }
-
-        if (!isAdjustment) {
-          await this.validateAccountCashBalance(
-            ownerId,
-            prepared.accountId,
-            prepared.amount,
-            prepared.direction,
-            tx,
-          );
-        }
-
-        await tx.transaction.deleteMany({
-          where: {
-            userId: ownerId,
-            splitGroupId: existing.splitGroupId,
-          },
-        });
-
-        const createdRow = await tx.transaction.create({
-          data: {
-            userId: ownerId,
-            postedAt: prepared.postedAt,
-            accountId: prepared.accountId,
-            categoryId: prepared.categoryId,
-            amount: prepared.amount,
-            currency: prepared.currency,
-            nativeAmount: prepared.nativeAmount,
-            nativeCurrency: prepared.nativeCurrency,
-            fxRateUsed: prepared.fxRateUsed,
-            fxRateSource: prepared.fxRateSource,
-            direction: prepared.direction,
-            kind: prepared.kind,
-            description: prepared.description,
-            notes: prepared.notes,
-            counterparty: prepared.counterparty,
-            transferGroupId: null,
-            splitGroupId: null,
-          },
-          include: {
-            account: true,
-            category: {
-              include: {
-                parentCategory: true,
-              },
-            },
-          },
-        });
-
-        if (!isAdjustment) {
-          await this.adjustAccountCashBalance(
-            ownerId,
-            prepared.accountId,
-            prepared.amount,
-            prepared.direction,
-            tx,
-          );
-        }
-
-        return createdRow;
-      });
-
-      return {
-        entryType: 'STANDARD',
-        row,
-      };
     }
 
     if (dto.kind === TransactionKind.TRANSFER) {
       throw new ConflictException(
         'Transaction kind cannot be changed. Delete and recreate the transaction.',
       );
-    }
-
-    if (dto.fundingLegs && dto.fundingLegs.length > 0) {
-      if (existing.row.kind !== TransactionKind.EXPENSE) {
-        throw new ConflictException(
-          'Only expense transactions can be split across multiple accounts.',
-        );
-      }
-
-      const prepared = await this.prepareSplitExpenseTransaction(ownerId, dto, {
-        fundingAccountIds: [existing.row.accountId],
-        categoryId: existing.row.categoryId,
-      });
-      const splitGroupId = `split_${randomUUID()}`;
-
-      await this.prisma.$transaction(async (tx) => {
-        await this.adjustAccountCashBalance(
-          ownerId,
-          existing.row.accountId,
-          existing.row.amount,
-          TransactionDirection.INFLOW,
-          tx,
-          { skipValidation: true },
-        );
-
-        for (const leg of prepared.fundingLegs) {
-          await this.validateAccountCashBalance(
-            ownerId,
-            leg.accountId,
-            leg.amount,
-            TransactionDirection.OUTFLOW,
-            tx,
-          );
-        }
-
-        await tx.transaction.delete({
-          where: { id: existing.row.id },
-        });
-
-        for (const leg of prepared.fundingLegs) {
-          await tx.transaction.create({
-            data: {
-              userId: ownerId,
-              postedAt: prepared.postedAt,
-              accountId: leg.accountId,
-              categoryId: prepared.categoryId,
-              amount: leg.amount,
-              currency: prepared.currency,
-              nativeAmount: null,
-              nativeCurrency: null,
-              fxRateUsed: null,
-              fxRateSource: null,
-              direction: TransactionDirection.OUTFLOW,
-              kind: TransactionKind.EXPENSE,
-              description: prepared.description,
-              notes: prepared.notes,
-              counterparty: prepared.counterparty,
-              transferGroupId: null,
-              splitGroupId,
-            },
-          });
-        }
-
-        for (const leg of prepared.fundingLegs) {
-          await this.adjustAccountCashBalance(
-            ownerId,
-            leg.accountId,
-            leg.amount,
-            TransactionDirection.OUTFLOW,
-            tx,
-          );
-        }
-      });
-
-      return this.findSplitEntry(ownerId, splitGroupId);
     }
 
     if (dto.kind !== existing.row.kind) {
@@ -886,72 +301,23 @@ export class TransactionsService {
       categoryId: existing.row.categoryId,
     });
 
-    const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
-
-    const row = await this.prisma.$transaction(async (tx) => {
-      if (!isAdjustment) {
-        // Reverse the old transaction's cash effect before validating the
-        // replacement against the same atomic balance state.
-        const reverseDirection =
-          existing.row.direction === TransactionDirection.INFLOW
-            ? TransactionDirection.OUTFLOW
-            : TransactionDirection.INFLOW;
-        await this.adjustAccountCashBalance(
-          ownerId,
-          existing.row.accountId,
-          existing.row.amount,
-          reverseDirection,
-          tx,
-          { skipValidation: true },
-        );
-
-        await this.validateAccountCashBalance(
-          ownerId,
-          prepared.accountId,
-          prepared.amount,
-          prepared.direction,
-          tx,
-        );
-      }
-
-      const updatedRow = await tx.transaction.update({
-        where: { id: existing.row.id },
-        data: {
-          postedAt: prepared.postedAt,
-          accountId: prepared.accountId,
-          categoryId: prepared.categoryId,
-          amount: prepared.amount,
-          currency: prepared.currency,
-          nativeAmount: prepared.nativeAmount,
-          nativeCurrency: prepared.nativeCurrency,
-          fxRateUsed: prepared.fxRateUsed,
-          fxRateSource: prepared.fxRateSource,
-          direction: prepared.direction,
-          description: prepared.description,
-          notes: prepared.notes,
-          counterparty: prepared.counterparty,
-        },
-        include: {
-          account: true,
-          category: {
-            include: {
-              parentCategory: true,
-            },
-          },
-        },
-      });
-
-      if (!isAdjustment) {
-        await this.adjustAccountCashBalance(
-          ownerId,
-          prepared.accountId,
-          prepared.amount,
-          prepared.direction,
-          tx,
-        );
-      }
-
-      return updatedRow;
+    const row = await this.prisma.transaction.update({
+      where: { id: existing.row.id },
+      data: {
+        postedAt: prepared.postedAt,
+        accountId: prepared.accountId,
+        categoryId: prepared.categoryId,
+        amount: prepared.amount,
+        currency: prepared.currency,
+        direction: prepared.direction,
+        description: prepared.description,
+        notes: prepared.notes,
+        counterparty: prepared.counterparty,
+      },
+      include: {
+        account: true,
+        category: true,
+      },
     });
 
     return {
@@ -965,23 +331,6 @@ export class TransactionsService {
     this.assertEntryIsMutable(existing);
 
     if (existing.entryType === 'TRANSFER') {
-      // Reverse cash effects for both legs of the transfer (skip validation)
-      await this.adjustAccountCashBalance(
-        ownerId,
-        existing.outflow.accountId,
-        existing.outflow.amount,
-        TransactionDirection.INFLOW,
-        this.prisma,
-        { skipValidation: true },
-      );
-      await this.adjustAccountCashBalance(
-        ownerId,
-        existing.inflow.accountId,
-        existing.inflow.amount,
-        TransactionDirection.OUTFLOW,
-        this.prisma,
-        { skipValidation: true },
-      );
       await this.prisma.transaction.deleteMany({
         where: {
           userId: ownerId,
@@ -989,45 +338,6 @@ export class TransactionsService {
         },
       });
       return;
-    }
-
-    if (existing.entryType === 'SPLIT') {
-      for (const row of existing.rows) {
-        await this.adjustAccountCashBalance(
-          ownerId,
-          row.accountId,
-          row.amount,
-          TransactionDirection.INFLOW,
-          this.prisma,
-          { skipValidation: true },
-        );
-      }
-
-      await this.prisma.transaction.deleteMany({
-        where: {
-          userId: ownerId,
-          splitGroupId: existing.splitGroupId,
-        },
-      });
-      return;
-    }
-
-    const isAdjustment = existing.row.kind === TransactionKind.ADJUSTMENT;
-
-    if (!isAdjustment) {
-      // Reverse the deleted transaction's cash effect (skip validation)
-      const reverseDirection =
-        existing.row.direction === TransactionDirection.INFLOW
-          ? TransactionDirection.OUTFLOW
-          : TransactionDirection.INFLOW;
-      await this.adjustAccountCashBalance(
-        ownerId,
-        existing.row.accountId,
-        existing.row.amount,
-        reverseDirection,
-        this.prisma,
-        { skipValidation: true },
-      );
     }
 
     await this.prisma.transaction.delete({
@@ -1050,7 +360,7 @@ export class TransactionsService {
           not: TransactionKind.TRANSFER,
         },
         ...(filters.accountId ? { accountId: filters.accountId } : {}),
-        ...this.toCategoryWhere(filters),
+        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
         ...(!(filters.includeArchivedAccounts ?? false)
           ? {
               account: {
@@ -1062,11 +372,7 @@ export class TransactionsService {
       },
       include: {
         account: true,
-        category: {
-          include: {
-            parentCategory: true,
-          },
-        },
+        category: true,
       },
     });
 
@@ -1098,7 +404,7 @@ export class TransactionsService {
             ],
           },
           ...(accountIds ? { accountId: { in: accountIds } } : {}),
-          ...this.toCategoryWhere(filters),
+          ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
           ...(!includeArchivedAccounts
             ? {
                 account: {
@@ -1110,16 +416,10 @@ export class TransactionsService {
         },
         include: {
           account: true,
-          category: {
-            include: {
-              parentCategory: true,
-            },
-          },
+          category: true,
         },
       }),
-      filters.categoryId ||
-      filters.primaryCategoryId ||
-      filters.secondaryCategoryId
+      filters.categoryId
         ? Promise.resolve([])
         : this.prisma.transaction.findMany({
             where: {
@@ -1137,11 +437,7 @@ export class TransactionsService {
             },
             include: {
               account: true,
-              category: {
-                include: {
-                  parentCategory: true,
-                },
-              },
+              category: true,
             },
           }),
     ]);
@@ -1166,7 +462,6 @@ export class TransactionsService {
       from: range.from,
       to: range.to,
       focusMonth: range.to,
-      reportingOverview: null,
       currencies: monthlyCashflow.map((bucket) =>
         this.toCashflowAnalyticsCurrency(bucket, range.to),
       ),
@@ -1184,26 +479,14 @@ export class TransactionsService {
     const persistTransfer = async (
       tx: Prisma.TransactionClient,
     ): Promise<void> => {
-      await this.validateAccountCashBalance(
-        ownerId,
-        prepared.sourceAccountId,
-        prepared.sourceAmount,
-        TransactionDirection.OUTFLOW,
-        tx,
-      );
-
       await tx.transaction.create({
         data: {
           userId: ownerId,
           postedAt: prepared.postedAt,
           accountId: prepared.sourceAccountId,
           categoryId: null,
-          amount: prepared.sourceAmount,
-          currency: prepared.sourceCurrency,
-          nativeAmount: null,
-          nativeCurrency: null,
-          fxRateUsed: prepared.fxRateUsed,
-          fxRateSource: prepared.fxRateSource,
+          amount: prepared.amount,
+          currency: prepared.currency,
           direction: TransactionDirection.OUTFLOW,
           kind: TransactionKind.TRANSFER,
           description: prepared.description,
@@ -1219,12 +502,8 @@ export class TransactionsService {
           postedAt: prepared.postedAt,
           accountId: prepared.destinationAccountId,
           categoryId: null,
-          amount: prepared.destinationAmount,
-          currency: prepared.destinationCurrency,
-          nativeAmount: null,
-          nativeCurrency: null,
-          fxRateUsed: prepared.fxRateUsed,
-          fxRateSource: prepared.fxRateSource,
+          amount: prepared.amount,
+          currency: prepared.currency,
           direction: TransactionDirection.INFLOW,
           kind: TransactionKind.TRANSFER,
           description: prepared.description,
@@ -1233,21 +512,6 @@ export class TransactionsService {
           transferGroupId,
         },
       });
-
-      await this.adjustAccountCashBalance(
-        ownerId,
-        prepared.sourceAccountId,
-        prepared.sourceAmount,
-        TransactionDirection.OUTFLOW,
-        tx,
-      );
-      await this.adjustAccountCashBalance(
-        ownerId,
-        prepared.destinationAccountId,
-        prepared.destinationAmount,
-        TransactionDirection.INFLOW,
-        tx,
-      );
     };
 
     if (client === this.prisma) {
@@ -1257,71 +521,6 @@ export class TransactionsService {
     }
 
     return this.findTransferEntry(ownerId, transferGroupId, client);
-  }
-
-  private async createSplitExpense(
-    ownerId: string,
-    dto: CreateTransactionDto,
-    client: TransactionWriteClient = this.prisma,
-  ): Promise<LogicalTransactionEntry> {
-    const prepared = await this.prepareSplitExpenseTransaction(ownerId, dto);
-    const splitGroupId = `split_${randomUUID()}`;
-
-    const persistSplitExpense = async (
-      tx: Prisma.TransactionClient,
-    ): Promise<void> => {
-      for (const leg of prepared.fundingLegs) {
-        await this.validateAccountCashBalance(
-          ownerId,
-          leg.accountId,
-          leg.amount,
-          TransactionDirection.OUTFLOW,
-          tx,
-        );
-      }
-
-      for (const leg of prepared.fundingLegs) {
-        await tx.transaction.create({
-          data: {
-            userId: ownerId,
-            postedAt: prepared.postedAt,
-            accountId: leg.accountId,
-            categoryId: prepared.categoryId,
-            amount: leg.amount,
-            currency: prepared.currency,
-            nativeAmount: null,
-            nativeCurrency: null,
-            fxRateUsed: null,
-            fxRateSource: null,
-            direction: TransactionDirection.OUTFLOW,
-            kind: TransactionKind.EXPENSE,
-            description: prepared.description,
-            notes: prepared.notes,
-            counterparty: prepared.counterparty,
-            transferGroupId: null,
-            splitGroupId,
-          },
-        });
-      }
-
-      for (const leg of prepared.fundingLegs) {
-        await this.adjustAccountCashBalance(
-          ownerId,
-          leg.accountId,
-          leg.amount,
-          TransactionDirection.OUTFLOW,
-          tx,
-        );
-      }
-    };
-
-    if (client === this.prisma) {
-      await this.prisma.$transaction(persistSplitExpense);
-    } else {
-      await persistSplitExpense(client);
-    }
-
-    return this.findSplitEntry(ownerId, splitGroupId, client);
   }
 
   private async prepareStandardTransaction(
@@ -1335,12 +534,6 @@ export class TransactionsService {
     if (dto.kind === TransactionKind.TRANSFER) {
       throw new BadRequestException(
         'Transfer transactions must use source and destination accounts.',
-      );
-    }
-
-    if (dto.fundingLegs && dto.fundingLegs.length > 0) {
-      throw new BadRequestException(
-        'Split funding is only valid for split expense transactions.',
       );
     }
 
@@ -1397,99 +590,15 @@ export class TransactionsService {
         current?.categoryId,
       );
       categoryId = category.id;
-    } else if (dto.kind === TransactionKind.EXPENSE) {
-      const matchedCategory =
-        await this.categoriesService.findMatchingExpenseSecondaryCategory(
-          ownerId,
-          dto.description
-            ? normalizeExpenseValidationEntry(dto.description)
-            : '',
-        );
-      categoryId = matchedCategory?.id ?? null;
-    }
-
-    if (
-      (dto.kind === TransactionKind.EXPENSE ||
-        dto.kind === TransactionKind.INCOME) &&
-      !categoryId
-    ) {
-      throw new BadRequestException(
-        'Expense and income transactions require a category.',
-      );
     }
 
     const postedAt = this.parsePostedAt(dto.postedAt);
     this.assertPostedAtAllowedForAccount(account, postedAt);
 
-    const normalizedNativeCurrency = dto.nativeCurrency
-      ? dto.nativeCurrency.trim().toUpperCase()
-      : null;
-    let nativeAmount: Prisma.Decimal | null = null;
-    let nativeCurrency: string | null = null;
-    let fxRateUsed: Prisma.Decimal | null = null;
-    let fxRateSource: FxRateSource | null = null;
-
-    if (
-      normalizedNativeCurrency &&
-      normalizedNativeCurrency !== account.currency
-    ) {
-      nativeCurrency = normalizedNativeCurrency;
-      nativeAmount =
-        dto.nativeAmount !== undefined && dto.nativeAmount !== null
-          ? this.toDecimal(dto.nativeAmount)
-          : null;
-
-      if (!nativeAmount) {
-        throw new BadRequestException(
-          'nativeAmount is required when nativeCurrency differs from the account currency.',
-        );
-      }
-
-      if (dto.fxRateUsed !== undefined && dto.fxRateUsed !== null) {
-        fxRateUsed = this.toDecimal(dto.fxRateUsed);
-        fxRateSource = dto.fxRateSource ?? FxRateSource.MANUAL;
-        await this.pricesService.saveManualFxRate(
-          ownerId,
-          postedAt,
-          nativeCurrency,
-          account.currency,
-          fxRateUsed,
-        );
-      } else {
-        const storedRate = await this.pricesService.getStoredFxRateSnapshot(
-          ownerId,
-          postedAt,
-          nativeCurrency,
-          account.currency,
-        );
-        fxRateUsed = storedRate.rate;
-        fxRateSource = storedRate.source;
-      }
-
-      if (!fxRateUsed) {
-        throw new BadRequestException(
-          `No FX rate is available for ${nativeCurrency} to ${account.currency}.`,
-        );
-      }
-
-      const expectedSettledAmount = nativeAmount.mul(fxRateUsed);
-      if (
-        !this.decimalsClose(expectedSettledAmount, this.toDecimal(dto.amount))
-      ) {
-        throw new BadRequestException(
-          'The settled amount must match the native amount multiplied by the FX rate.',
-        );
-      }
-    }
-
     return {
       postedAt,
       amount: this.toDecimal(dto.amount),
       currency: account.currency,
-      nativeAmount,
-      nativeCurrency,
-      fxRateUsed,
-      fxRateSource,
       kind: dto.kind,
       direction: dto.direction,
       accountId: account.id,
@@ -1500,136 +609,6 @@ export class TransactionsService {
       ),
       notes: this.optionalText(dto.notes),
       counterparty: this.optionalText(dto.counterparty),
-    };
-  }
-
-  private async prepareSplitExpenseTransaction(
-    ownerId: string,
-    dto: CreateTransactionDto | UpdateTransactionDto,
-    current?: {
-      fundingAccountIds?: string[];
-      categoryId?: string | null;
-    },
-  ): Promise<PreparedSplitTransactionInput> {
-    if (dto.kind !== TransactionKind.EXPENSE) {
-      throw new BadRequestException(
-        'Split funding is only supported for expense transactions.',
-      );
-    }
-
-    if (dto.accountId || dto.sourceAccountId || dto.destinationAccountId) {
-      throw new BadRequestException(
-        'Split-funded expenses must omit accountId, sourceAccountId, and destinationAccountId.',
-      );
-    }
-
-    if (dto.direction && dto.direction !== TransactionDirection.OUTFLOW) {
-      throw new BadRequestException(
-        'Split-funded expenses must use the OUTFLOW direction.',
-      );
-    }
-
-    const fundingLegs = dto.fundingLegs ?? [];
-    if (fundingLegs.length < 2) {
-      throw new BadRequestException(
-        'Split-funded expenses require at least two funding legs.',
-      );
-    }
-
-    const normalizedLegs = fundingLegs.map((leg) => ({
-      accountId: leg.accountId.trim(),
-      amount: this.toDecimal(leg.amount),
-    }));
-
-    if (normalizedLegs.some((leg) => !leg.accountId)) {
-      throw new BadRequestException('Each funding leg requires an accountId.');
-    }
-
-    if (
-      new Set(normalizedLegs.map((leg) => leg.accountId)).size !==
-      normalizedLegs.length
-    ) {
-      throw new BadRequestException(
-        'Split-funded expenses cannot repeat the same account.',
-      );
-    }
-
-    let categoryId: string | null = null;
-    if (dto.categoryId) {
-      const category = await this.categoriesService.getAssignableCategory(
-        ownerId,
-        dto.categoryId,
-        dto.kind,
-        current?.categoryId,
-      );
-      categoryId = category.id;
-    } else {
-      const matchedCategory =
-        await this.categoriesService.findMatchingExpenseSecondaryCategory(
-          ownerId,
-          dto.description
-            ? normalizeExpenseValidationEntry(dto.description)
-            : '',
-        );
-      categoryId = matchedCategory?.id ?? null;
-    }
-
-    if (!categoryId) {
-      throw new BadRequestException('Expense transactions require a category.');
-    }
-
-    const totalAmount = this.toDecimal(dto.amount);
-    const sumOfLegAmounts = normalizedLegs.reduce(
-      (sum, leg) => sum.add(leg.amount),
-      new Prisma.Decimal('0'),
-    );
-
-    if (!sumOfLegAmounts.eq(totalAmount)) {
-      throw new BadRequestException(
-        'The total amount must equal the sum of all funding legs.',
-      );
-    }
-
-    const accounts = await Promise.all(
-      normalizedLegs.map((leg) =>
-        this.accountsService.getAssignableAccount(
-          ownerId,
-          leg.accountId,
-          current?.fundingAccountIds?.includes(leg.accountId)
-            ? leg.accountId
-            : undefined,
-        ),
-      ),
-    );
-
-    const currency = accounts[0]?.currency;
-    if (!currency) {
-      throw new BadRequestException('Split funding requires valid accounts.');
-    }
-
-    if (accounts.some((account) => account.currency !== currency)) {
-      throw new BadRequestException(
-        'Split-funded expenses require accounts with the same currency.',
-      );
-    }
-
-    const postedAt = this.parsePostedAt(dto.postedAt);
-    for (const account of accounts) {
-      this.assertPostedAtAllowedForAccount(account, postedAt);
-    }
-
-    return {
-      postedAt,
-      amount: totalAmount,
-      currency,
-      categoryId,
-      description: this.requireText(
-        dto.description,
-        'Description is required.',
-      ),
-      notes: this.optionalText(dto.notes),
-      counterparty: this.optionalText(dto.counterparty),
-      fundingLegs: normalizedLegs,
     };
   }
 
@@ -1644,12 +623,6 @@ export class TransactionsService {
     if (dto.kind !== TransactionKind.TRANSFER) {
       throw new BadRequestException(
         'Only transfer transactions may use source and destination accounts.',
-      );
-    }
-
-    if (dto.fundingLegs && dto.fundingLegs.length > 0) {
-      throw new BadRequestException(
-        'Transfers cannot be split across multiple accounts.',
       );
     }
 
@@ -1682,72 +655,20 @@ export class TransactionsService {
       current?.destinationAccountId,
     );
 
+    if (sourceAccount.currency !== destinationAccount.currency) {
+      throw new BadRequestException(
+        'Transfers require source and destination accounts with the same currency.',
+      );
+    }
+
     const postedAt = this.parsePostedAt(dto.postedAt);
     this.assertPostedAtAllowedForAccount(sourceAccount, postedAt);
     this.assertPostedAtAllowedForAccount(destinationAccount, postedAt);
 
-    const sourceAmount = this.toDecimal(dto.sourceAmount ?? dto.amount);
-    let destinationAmount = this.toDecimal(dto.destinationAmount ?? dto.amount);
-    const sourceCurrency = sourceAccount.currency;
-    const destinationCurrency = destinationAccount.currency;
-    let fxRateUsed: Prisma.Decimal | null = null;
-    let fxRateSource: FxRateSource | null = null;
-
-    if (sourceCurrency !== destinationCurrency) {
-      if (dto.fxRateUsed !== undefined && dto.fxRateUsed !== null) {
-        fxRateUsed = this.toDecimal(dto.fxRateUsed);
-        fxRateSource = dto.fxRateSource ?? FxRateSource.MANUAL;
-        await this.pricesService.saveManualFxRate(
-          ownerId,
-          postedAt,
-          sourceCurrency,
-          destinationCurrency,
-          fxRateUsed,
-        );
-      } else {
-        const storedRate = await this.pricesService.getStoredFxRateSnapshot(
-          ownerId,
-          postedAt,
-          sourceCurrency,
-          destinationCurrency,
-        );
-        fxRateUsed = storedRate.rate;
-        fxRateSource = storedRate.source;
-      }
-
-      if (!fxRateUsed) {
-        throw new BadRequestException(
-          `No FX rate is available for ${sourceCurrency} to ${destinationCurrency}.`,
-        );
-      }
-
-      const computedDestinationAmount = sourceAmount.mul(fxRateUsed);
-      if (
-        dto.destinationAmount !== undefined &&
-        dto.destinationAmount !== null
-      ) {
-        if (!this.decimalsClose(computedDestinationAmount, destinationAmount)) {
-          throw new BadRequestException(
-            'The destination amount must match the source amount multiplied by the FX rate.',
-          );
-        }
-      } else {
-        destinationAmount = computedDestinationAmount;
-      }
-    } else {
-      fxRateUsed = new Prisma.Decimal(1);
-      fxRateSource = dto.fxRateSource ?? null;
-      destinationAmount = sourceAmount;
-    }
-
     return {
       postedAt,
-      sourceAmount,
-      destinationAmount,
-      sourceCurrency,
-      destinationCurrency,
-      fxRateUsed,
-      fxRateSource,
+      amount: this.toDecimal(dto.amount),
+      currency: sourceAccount.currency,
       description: this.requireText(
         dto.description,
         'Description is required.',
@@ -1766,16 +687,12 @@ export class TransactionsService {
       where: {
         userId: ownerId,
         ...(filters.kind ? { kind: filters.kind } : {}),
-        ...this.toCategoryWhere(filters),
+        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
         ...this.toPostedAtWhere(filters.from, filters.to),
       },
       include: {
         account: true,
-        category: {
-          include: {
-            parentCategory: true,
-          },
-        },
+        category: true,
       },
     });
   }
@@ -1792,11 +709,7 @@ export class TransactionsService {
       },
       include: {
         account: true,
-        category: {
-          include: {
-            parentCategory: true,
-          },
-        },
+        category: true,
       },
     });
 
@@ -1809,46 +722,9 @@ export class TransactionsService {
     return this.toTransferEntry(transferGroupId, rows);
   }
 
-  private async findSplitEntry(
-    ownerId: string,
-    splitGroupId: string,
-    client: TransactionWriteClient = this.prisma,
-  ): Promise<LogicalTransactionEntry> {
-    const rows = await client.transaction.findMany({
-      where: {
-        userId: ownerId,
-        splitGroupId,
-      },
-      include: {
-        account: true,
-        category: {
-          include: {
-            parentCategory: true,
-          },
-        },
-      },
-    });
-
-    if (rows.length === 0) {
-      throw new NotFoundException(`Transaction ${splitGroupId} was not found.`);
-    }
-
-    return this.toSplitEntry(splitGroupId, rows);
-  }
-
   private assertEntryIsMutable(entry: LogicalTransactionEntry): void {
     if (entry.entryType === 'STANDARD') {
       if (entry.row.recurringRuleId) {
-        throw new ConflictException(
-          'Generated recurring transactions cannot be edited or deleted. Update the recurring rule instead.',
-        );
-      }
-
-      return;
-    }
-
-    if (entry.entryType === 'SPLIT') {
-      if (entry.rows.some((row) => row.recurringRuleId)) {
         throw new ConflictException(
           'Generated recurring transactions cannot be edited or deleted. Update the recurring rule instead.',
         );
@@ -1869,20 +745,12 @@ export class TransactionsService {
   ): LogicalTransactionEntry[] {
     const entries: LogicalTransactionEntry[] = [];
     const transferGroups = new Map<string, TransactionRecord[]>();
-    const splitGroups = new Map<string, TransactionRecord[]>();
 
     for (const row of rows) {
       if (row.kind === TransactionKind.TRANSFER && row.transferGroupId) {
         const group = transferGroups.get(row.transferGroupId) ?? [];
         group.push(row);
         transferGroups.set(row.transferGroupId, group);
-        continue;
-      }
-
-      if (row.splitGroupId) {
-        const group = splitGroups.get(row.splitGroupId) ?? [];
-        group.push(row);
-        splitGroups.set(row.splitGroupId, group);
         continue;
       }
 
@@ -1894,10 +762,6 @@ export class TransactionsService {
 
     for (const [transferGroupId, groupRows] of transferGroups.entries()) {
       entries.push(this.toTransferEntry(transferGroupId, groupRows));
-    }
-
-    for (const [splitGroupId, groupRows] of splitGroups.entries()) {
-      entries.push(this.toSplitEntry(splitGroupId, groupRows));
     }
 
     return entries;
@@ -1934,53 +798,6 @@ export class TransactionsService {
     };
   }
 
-  private toSplitEntry(
-    splitGroupId: string,
-    rows: TransactionRecord[],
-  ): LogicalTransactionEntry {
-    if (rows.length < 2) {
-      throw new ConflictException(
-        `Split expense ${splitGroupId} is incomplete and cannot be represented.`,
-      );
-    }
-
-    const [firstRow] = rows;
-    const firstOccurrenceMonthTime =
-      firstRow.recurringOccurrenceMonth?.getTime() ?? null;
-    const isConsistent = rows.every(
-      (row) =>
-        row.kind === TransactionKind.EXPENSE &&
-        row.direction === TransactionDirection.OUTFLOW &&
-        row.currency === firstRow.currency &&
-        row.categoryId === firstRow.categoryId &&
-        row.postedAt.getTime() === firstRow.postedAt.getTime() &&
-        row.description === firstRow.description &&
-        row.notes === firstRow.notes &&
-        row.counterparty === firstRow.counterparty &&
-        row.recurringRuleId === firstRow.recurringRuleId &&
-        (row.recurringOccurrenceMonth?.getTime() ?? null) ===
-          firstOccurrenceMonthTime,
-    );
-
-    if (!isConsistent) {
-      throw new ConflictException(
-        `Split expense ${splitGroupId} is inconsistent and cannot be represented.`,
-      );
-    }
-
-    return {
-      entryType: 'SPLIT',
-      splitGroupId,
-      rows: rows
-        .slice()
-        .sort(
-          (left, right) =>
-            left.createdAt.getTime() - right.createdAt.getTime() ||
-            left.id.localeCompare(right.id),
-        ),
-    };
-  }
-
   private matchesFilters(
     entry: LogicalTransactionEntry,
     filters: TransactionFilters,
@@ -2005,28 +822,9 @@ export class TransactionsService {
 
     if (filters.categoryId) {
       return (
-        entry.entryType !== 'TRANSFER' &&
-        this.getEntryCategoryId(entry) === filters.categoryId
+        entry.entryType === 'STANDARD' &&
+        entry.row.categoryId === filters.categoryId
       );
-    }
-
-    if (
-      filters.secondaryCategoryId &&
-      (entry.entryType === 'TRANSFER' ||
-        this.getEntryCategoryId(entry) !== filters.secondaryCategoryId)
-    ) {
-      return false;
-    }
-
-    if (filters.primaryCategoryId) {
-      if (entry.entryType === 'TRANSFER') {
-        return false;
-      }
-
-      const categoryHierarchy = getCategoryHierarchyMetadata(
-        this.getEntryCategory(entry),
-      );
-      return categoryHierarchy.primaryCategoryId === filters.primaryCategoryId;
     }
 
     return true;
@@ -2109,30 +907,6 @@ export class TransactionsService {
     };
   }
 
-  private toCategoryWhere(filters: {
-    categoryId?: string;
-    primaryCategoryId?: string;
-    secondaryCategoryId?: string;
-  }): Prisma.TransactionWhereInput {
-    if (filters.categoryId) {
-      return { categoryId: filters.categoryId };
-    }
-
-    if (filters.secondaryCategoryId) {
-      return { categoryId: filters.secondaryCategoryId };
-    }
-
-    if (filters.primaryCategoryId) {
-      return {
-        category: {
-          parentCategoryId: filters.primaryCategoryId,
-        },
-      };
-    }
-
-    return {};
-  }
-
   private getTodayRomeDateString(): string {
     const parts = ROME_DATE_FORMATTER.formatToParts(new Date());
     const year = parts.find((part) => part.type === 'year')?.value;
@@ -2140,9 +914,7 @@ export class TransactionsService {
     const day = parts.find((part) => part.type === 'day')?.value;
 
     if (!year || !month || !day) {
-      throw new InternalServerErrorException(
-        'Unable to resolve the current Europe/Rome date.',
-      );
+      throw new Error('Unable to resolve the current Europe/Rome date.');
     }
 
     return `${year}-${month}-${day}`;
@@ -2240,10 +1012,6 @@ export class TransactionsService {
       return entry.row.account.archivedAt !== null;
     }
 
-    if (entry.entryType === 'SPLIT') {
-      return entry.rows.some((row) => row.account.archivedAt !== null);
-    }
-
     return (
       entry.outflow.account.archivedAt !== null ||
       entry.inflow.account.archivedAt !== null
@@ -2258,10 +1026,6 @@ export class TransactionsService {
       return entry.row.accountId === accountId;
     }
 
-    if (entry.entryType === 'SPLIT') {
-      return entry.rows.some((row) => row.accountId === accountId);
-    }
-
     return (
       entry.outflow.accountId === accountId ||
       entry.inflow.accountId === accountId
@@ -2269,15 +1033,9 @@ export class TransactionsService {
   }
 
   private getEntryKind(entry: LogicalTransactionEntry): TransactionKind {
-    if (entry.entryType === 'STANDARD') {
-      return entry.row.kind;
-    }
-
-    if (entry.entryType === 'SPLIT') {
-      return entry.rows[0].kind;
-    }
-
-    return TransactionKind.TRANSFER;
+    return entry.entryType === 'STANDARD'
+      ? entry.row.kind
+      : TransactionKind.TRANSFER;
   }
 
   private compareEntriesDesc(
@@ -2304,28 +1062,14 @@ export class TransactionsService {
   }
 
   private getEntryPostedAt(entry: LogicalTransactionEntry): Date {
-    if (entry.entryType === 'STANDARD') {
-      return entry.row.postedAt;
-    }
-
-    if (entry.entryType === 'SPLIT') {
-      return entry.rows[0].postedAt;
-    }
-
-    return entry.outflow.postedAt;
+    return entry.entryType === 'STANDARD'
+      ? entry.row.postedAt
+      : entry.outflow.postedAt;
   }
 
   private getEntryUpdatedAt(entry: LogicalTransactionEntry): Date {
     if (entry.entryType === 'STANDARD') {
       return entry.row.updatedAt;
-    }
-
-    if (entry.entryType === 'SPLIT') {
-      return entry.rows.reduce(
-        (latest, row) =>
-          row.updatedAt.getTime() > latest.getTime() ? row.updatedAt : latest,
-        entry.rows[0].updatedAt,
-      );
     }
 
     return entry.outflow.updatedAt.getTime() >= entry.inflow.updatedAt.getTime()
@@ -2334,39 +1078,9 @@ export class TransactionsService {
   }
 
   private getEntryId(entry: LogicalTransactionEntry): string {
-    if (entry.entryType === 'STANDARD') {
-      return entry.row.id;
-    }
-
-    if (entry.entryType === 'SPLIT') {
-      return entry.splitGroupId;
-    }
-
-    return entry.transferGroupId;
-  }
-
-  private getEntryCategoryId(entry: LogicalTransactionEntry): string | null {
-    if (entry.entryType === 'STANDARD') {
-      return entry.row.categoryId;
-    }
-
-    if (entry.entryType === 'SPLIT') {
-      return entry.rows[0].categoryId;
-    }
-
-    return null;
-  }
-
-  private getEntryCategory(entry: LogicalTransactionEntry) {
-    if (entry.entryType === 'STANDARD') {
-      return entry.row.category;
-    }
-
-    if (entry.entryType === 'SPLIT') {
-      return entry.rows[0].category;
-    }
-
-    return null;
+    return entry.entryType === 'STANDARD'
+      ? entry.row.id
+      : entry.transferGroupId;
   }
 
   private buildMonthlyCashflow(
@@ -2377,10 +1091,6 @@ export class TransactionsService {
     type CategoryAccumulator = {
       categoryId: string | null;
       name: string;
-      primaryCategoryId: string | null;
-      primaryCategoryName: string | null;
-      secondaryCategoryId: string | null;
-      secondaryCategoryName: string | null;
       total: Prisma.Decimal;
     };
     type MonthAccumulator = {
@@ -2454,7 +1164,6 @@ export class TransactionsService {
           totals.incomeCategories,
           row.categoryId,
           row.category?.name ?? 'Uncategorized',
-          getCategoryHierarchyMetadata(row.category),
           row.amount,
         );
         continue;
@@ -2473,14 +1182,12 @@ export class TransactionsService {
           totals.expenseCategories,
           row.categoryId,
           row.category?.name ?? 'Uncategorized',
-          getCategoryHierarchyMetadata(row.category),
           row.amount,
         );
         this.addMonthlyCategoryTotal(
           currency.rangeExpenseCategories,
           row.categoryId,
           row.category?.name ?? 'Uncategorized',
-          getCategoryHierarchyMetadata(row.category),
           row.amount,
         );
         continue;
@@ -2603,9 +1310,7 @@ export class TransactionsService {
     const match = months.find((month) => month.month === monthKey);
 
     if (!match) {
-      throw new InternalServerErrorException(
-        `Month ${monthKey} is missing from monthly cashflow.`,
-      );
+      throw new Error(`Month ${monthKey} is missing from monthly cashflow.`);
     }
 
     return match;
@@ -2630,10 +1335,6 @@ export class TransactionsService {
     return items.slice(0, ANALYTICS_BREAKDOWN_LIMIT).map((item) => ({
       categoryId: item.categoryId,
       name: item.name,
-      primaryCategoryId: item.primaryCategoryId,
-      primaryCategoryName: item.primaryCategoryName,
-      secondaryCategoryId: item.secondaryCategoryId,
-      secondaryCategoryName: item.secondaryCategoryName,
       total: item.total,
     }));
   }
@@ -2647,10 +1348,6 @@ export class TransactionsService {
       {
         categoryId: string | null;
         name: string;
-        primaryCategoryId: string | null;
-        primaryCategoryName: string | null;
-        secondaryCategoryId: string | null;
-        secondaryCategoryName: string | null;
         total: number;
         series: Map<string, number>;
       }
@@ -2662,10 +1359,6 @@ export class TransactionsService {
         const existing = totalsByCategory.get(key) ?? {
           categoryId: item.categoryId,
           name: item.name,
-          primaryCategoryId: item.primaryCategoryId,
-          primaryCategoryName: item.primaryCategoryName,
-          secondaryCategoryId: item.secondaryCategoryId,
-          secondaryCategoryName: item.secondaryCategoryName,
           total: 0,
           series: new Map<string, number>(),
         };
@@ -2687,10 +1380,6 @@ export class TransactionsService {
       .map((item) => ({
         categoryId: item.categoryId,
         name: item.name,
-        primaryCategoryId: item.primaryCategoryId,
-        primaryCategoryName: item.primaryCategoryName,
-        secondaryCategoryId: item.secondaryCategoryId,
-        secondaryCategoryName: item.secondaryCategoryName,
         total: item.total,
         series: months.map((month) => ({
           month: month.month,
@@ -2723,22 +1412,6 @@ export class TransactionsService {
           categoryId:
             currentItem?.categoryId ?? previousItem?.categoryId ?? null,
           name: currentItem?.name ?? previousItem?.name ?? 'Uncategorized',
-          primaryCategoryId:
-            currentItem?.primaryCategoryId ??
-            previousItem?.primaryCategoryId ??
-            null,
-          primaryCategoryName:
-            currentItem?.primaryCategoryName ??
-            previousItem?.primaryCategoryName ??
-            null,
-          secondaryCategoryId:
-            currentItem?.secondaryCategoryId ??
-            previousItem?.secondaryCategoryId ??
-            null,
-          secondaryCategoryName:
-            currentItem?.secondaryCategoryName ??
-            previousItem?.secondaryCategoryName ??
-            null,
           previousTotal: previousItem?.total ?? 0,
           currentTotal: currentItem?.total ?? 0,
           delta: (currentItem?.total ?? 0) - (previousItem?.total ?? 0),
@@ -2762,10 +1435,6 @@ export class TransactionsService {
       categoryId: string | null;
       name: string;
       type: CategoryType;
-      primaryCategoryId: string | null;
-      primaryCategoryName: string | null;
-      secondaryCategoryId: string | null;
-      secondaryCategoryName: string | null;
       total: Prisma.Decimal;
     };
     type AccountCashflowTotal = {
@@ -2839,7 +1508,6 @@ export class TransactionsService {
           categoryId: row.categoryId,
           name: row.category?.name ?? 'Uncategorized',
           type: row.category?.type ?? categoryType,
-          ...getCategoryHierarchyMetadata(row.category),
           total: this.toDecimal(0),
         };
 
@@ -2862,10 +1530,6 @@ export class TransactionsService {
             categoryId: categoryTotal.categoryId,
             name: categoryTotal.name,
             type: categoryTotal.type,
-            primaryCategoryId: categoryTotal.primaryCategoryId,
-            primaryCategoryName: categoryTotal.primaryCategoryName,
-            secondaryCategoryId: categoryTotal.secondaryCategoryId,
-            secondaryCategoryName: categoryTotal.secondaryCategoryName,
             total: categoryTotal.total.toNumber(),
           }))
           .sort((left, right) => {
@@ -2942,26 +1606,17 @@ export class TransactionsService {
       {
         categoryId: string | null;
         name: string;
-        primaryCategoryId: string | null;
-        primaryCategoryName: string | null;
-        secondaryCategoryId: string | null;
-        secondaryCategoryName: string | null;
         total: Prisma.Decimal;
       }
     >,
     categoryId: string | null,
     name: string,
-    hierarchy: ReturnType<typeof getCategoryHierarchyMetadata>,
     amount: Prisma.Decimal,
   ): void {
     const key = categoryId ?? 'uncategorized';
     const existing = totals.get(key) ?? {
       categoryId,
       name,
-      primaryCategoryId: hierarchy.primaryCategoryId,
-      primaryCategoryName: hierarchy.primaryCategoryName,
-      secondaryCategoryId: hierarchy.secondaryCategoryId,
-      secondaryCategoryName: hierarchy.secondaryCategoryName,
       total: this.toDecimal(0),
     };
 
@@ -2975,10 +1630,6 @@ export class TransactionsService {
       {
         categoryId: string | null;
         name: string;
-        primaryCategoryId: string | null;
-        primaryCategoryName: string | null;
-        secondaryCategoryId: string | null;
-        secondaryCategoryName: string | null;
         total: Prisma.Decimal;
       }
     >,
@@ -2987,10 +1638,6 @@ export class TransactionsService {
       .map((total) => ({
         categoryId: total.categoryId,
         name: total.name,
-        primaryCategoryId: total.primaryCategoryId,
-        primaryCategoryName: total.primaryCategoryName,
-        secondaryCategoryId: total.secondaryCategoryId,
-        secondaryCategoryName: total.secondaryCategoryName,
         total: total.total.toNumber(),
       }))
       .sort((left, right) => {
@@ -3017,10 +1664,6 @@ export class TransactionsService {
         {
           categoryId: string | null;
           name: string;
-          primaryCategoryId: string | null;
-          primaryCategoryName: string | null;
-          secondaryCategoryId: string | null;
-          secondaryCategoryName: string | null;
           total: Prisma.Decimal;
         }
       >;
@@ -3029,10 +1672,6 @@ export class TransactionsService {
         {
           categoryId: string | null;
           name: string;
-          primaryCategoryId: string | null;
-          primaryCategoryName: string | null;
-          secondaryCategoryId: string | null;
-          secondaryCategoryName: string | null;
           total: Prisma.Decimal;
         }
       >;
@@ -3124,241 +1763,5 @@ export class TransactionsService {
 
   private toDecimal(value: number): Prisma.Decimal {
     return new Prisma.Decimal(value.toString());
-  }
-
-  private decimalsClose(
-    left: Prisma.Decimal,
-    right: Prisma.Decimal,
-    tolerance = new Prisma.Decimal('0.000001'),
-  ): boolean {
-    return left.sub(right).abs().lte(tolerance);
-  }
-
-  /**
-   * Pre-flight check: ensures the account can support this transaction.
-   *
-   * For OUTFLOW: the account must have a CASH asset with enough balance.
-   * For INFLOW: no validation needed (auto-creation handled by adjust).
-   */
-  private async validateAccountCashBalance(
-    ownerId: string,
-    accountId: string,
-    amount: Prisma.Decimal,
-    direction: TransactionDirection,
-    client: TransactionWriteClient = this.prisma,
-  ): Promise<void> {
-    if (direction !== TransactionDirection.OUTFLOW) return;
-
-    // Liability accounts (CARD, LOAN) don't require cash validation —
-    // outflows increase the debt rather than spending cash.
-    if (await this.isLiabilityAccount(ownerId, accountId, client)) {
-      return;
-    }
-
-    const cashAsset = await client.asset.findFirst({
-      where: {
-        userId: ownerId,
-        accountId,
-        kind: AssetKind.CASH,
-        type: AssetType.ASSET,
-      },
-      select: { balance: true, currency: true },
-    });
-
-    if (!cashAsset) {
-      throw new BadRequestException(
-        'This account has no cash holding to draw from.',
-      );
-    }
-
-    if (cashAsset.balance.lt(amount)) {
-      throw new BadRequestException(
-        `Insufficient cash balance in this account (available: ${cashAsset.balance.toFixed(2)} ${cashAsset.currency}).`,
-      );
-    }
-  }
-
-  /**
-   * Adjust the asset balance in an account to reflect a transaction.
-   *
-   * For standard accounts (BANK, BROKER, CASH, OTHER):
-   *   INFLOW  → cash balance goes up   (income, transfer-in)
-   *   OUTFLOW → cash balance goes down  (expense, transfer-out)
-   *   Auto-creates a cash asset on first inflow.
-   *
-   * For liability accounts (CARD, LOAN):
-   *   OUTFLOW → liability balance goes up   (new expense on credit)
-   *   INFLOW  → liability balance goes down  (debt payment)
-   *   Auto-creates a liability asset on first outflow.
-   *
-   * Set `skipValidation` to true for reversals (update/delete) where the
-   * balance was already validated on the original transaction.
-   */
-  private async adjustAccountCashBalance(
-    ownerId: string,
-    accountId: string,
-    amount: Prisma.Decimal,
-    direction: TransactionDirection,
-    client: TransactionWriteClient = this.prisma,
-    options?: { skipValidation?: boolean },
-  ): Promise<void> {
-    if (await this.isLiabilityAccount(ownerId, accountId, client)) {
-      return this.adjustAccountLiabilityBalance(
-        ownerId,
-        accountId,
-        amount,
-        direction,
-        client,
-      );
-    }
-
-    const cashAsset = await client.asset.findFirst({
-      where: {
-        userId: ownerId,
-        accountId,
-        kind: AssetKind.CASH,
-        type: AssetType.ASSET,
-      },
-      select: { id: true, balance: true, currency: true },
-    });
-
-    if (direction === TransactionDirection.OUTFLOW) {
-      if (!options?.skipValidation) {
-        if (!cashAsset) {
-          throw new BadRequestException(
-            'This account has no cash holding to draw from.',
-          );
-        }
-
-        if (cashAsset.balance.lt(amount)) {
-          throw new BadRequestException(
-            `Insufficient cash balance in this account (available: ${cashAsset.balance.toFixed(2)} ${cashAsset.currency}).`,
-          );
-        }
-      }
-
-      if (!cashAsset) return;
-
-      await client.asset.update({
-        where: { id: cashAsset.id },
-        data: { balance: cashAsset.balance.sub(amount) },
-      });
-      return;
-    }
-
-    // INFLOW: auto-create a cash asset if one doesn't exist yet
-    if (!cashAsset) {
-      const account = await client.account.findFirst({
-        where: { id: accountId, userId: ownerId },
-        select: { currency: true, name: true },
-      });
-
-      if (!account) return;
-
-      await client.asset.create({
-        data: {
-          userId: ownerId,
-          accountId,
-          name: `${account.name} Cash`,
-          type: AssetType.ASSET,
-          kind: AssetKind.CASH,
-          balance: amount,
-          currency: account.currency,
-        },
-      });
-      return;
-    }
-
-    await client.asset.update({
-      where: { id: cashAsset.id },
-      data: { balance: cashAsset.balance.add(amount) },
-    });
-  }
-
-  /**
-   * Check whether an account is a liability-type account (CARD or LOAN).
-   * For these accounts, transactions adjust the liability asset instead
-   * of the cash asset.
-   */
-  private async isLiabilityAccount(
-    ownerId: string,
-    accountId: string,
-    client: TransactionWriteClient = this.prisma,
-  ): Promise<boolean> {
-    const account = await client.account.findFirst({
-      where: { id: accountId, userId: ownerId },
-      select: { type: true },
-    });
-    return (
-      account?.type === AccountType.CARD || account?.type === AccountType.LOAN
-    );
-  }
-
-  /**
-   * Adjust the LIABILITY asset balance in a CARD/LOAN account.
-   *
-   * OUTFLOW → liability increases (new expense on credit)
-   * INFLOW  → liability decreases (debt payment / refund)
-   *
-   * Auto-creates a liability asset on the first outflow.
-   */
-  private async adjustAccountLiabilityBalance(
-    ownerId: string,
-    accountId: string,
-    amount: Prisma.Decimal,
-    direction: TransactionDirection,
-    client: TransactionWriteClient,
-  ): Promise<void> {
-    const liabilityAsset = await client.asset.findFirst({
-      where: {
-        userId: ownerId,
-        accountId,
-        type: AssetType.LIABILITY,
-      },
-      select: { id: true, balance: true },
-    });
-
-    if (direction === TransactionDirection.OUTFLOW) {
-      // OUTFLOW on a liability account → debt increases
-      if (!liabilityAsset) {
-        const account = await client.account.findFirst({
-          where: { id: accountId, userId: ownerId },
-          select: { currency: true, name: true },
-        });
-
-        if (!account) return;
-
-        await client.asset.create({
-          data: {
-            userId: ownerId,
-            accountId,
-            name: `${account.name} Debt`,
-            type: AssetType.LIABILITY,
-            liabilityKind: LiabilityKind.DEBT,
-            balance: amount,
-            currency: account.currency,
-          },
-        });
-        return;
-      }
-
-      await client.asset.update({
-        where: { id: liabilityAsset.id },
-        data: { balance: liabilityAsset.balance.add(amount) },
-      });
-      return;
-    }
-
-    // INFLOW on a liability account → debt decreases (payment)
-    if (!liabilityAsset) {
-      throw new BadRequestException(
-        'This account has no liability to pay off.',
-      );
-    }
-
-    await client.asset.update({
-      where: { id: liabilityAsset.id },
-      data: { balance: liabilityAsset.balance.sub(amount) },
-    });
   }
 }

@@ -1,6 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { PrismaClient } from '@finhance/db';
+import { PrismaClient } from '@prisma/client';
 import request from 'supertest';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { BudgetsController } from '@budgets/budgets.controller';
@@ -96,18 +96,10 @@ describe('Budget routes with Prisma schema (e2e)', () => {
     await prisma.category.createMany({
       data: [
         {
-          id: 'category-household',
-          userId: OWNER_ID,
-          name: 'Household',
-          type: 'EXPENSE',
-          order: 0,
-        },
-        {
           id: 'category-groceries',
           userId: OWNER_ID,
           name: 'Groceries',
           type: 'EXPENSE',
-          parentCategoryId: 'category-household',
           order: 0,
         },
         {
@@ -115,7 +107,6 @@ describe('Budget routes with Prisma schema (e2e)', () => {
           userId: OWNER_ID,
           name: 'Dining',
           type: 'EXPENSE',
-          parentCategoryId: 'category-household',
           order: 1,
         },
       ],

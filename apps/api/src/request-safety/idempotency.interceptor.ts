@@ -6,11 +6,10 @@ import {
 } from '@nestjs/common';
 import { lastValueFrom, from, type Observable } from 'rxjs';
 import { defaultIfEmpty } from 'rxjs/operators';
-import { resolveRequestOwnerId } from '@/security/request-owner.resolver';
+import { resolveLocalDevOwnerId } from '@/security/request-owner.resolver';
 import { IdempotencyService } from '@/request-safety/idempotency.service';
-import type { RequestWithApiAuth } from '@/security/api-auth.types';
 
-type HttpRequest = RequestWithApiAuth & {
+type HttpRequest = {
   method?: string;
   headers?: Record<string, string | string[] | undefined>;
   params?: Record<string, unknown>;
@@ -50,12 +49,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
       request.route?.path,
     );
     const idempotencyKey = request.headers?.['idempotency-key'];
-    const ownerId = resolveRequestOwnerId(request);
 
     return from(
       this.idempotencyService
         .executeJson({
-          userId: ownerId,
+          userId: resolveLocalDevOwnerId(),
           method,
           routePath,
           idempotencyKey,

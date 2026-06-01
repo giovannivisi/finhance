@@ -1,4 +1,4 @@
-import { api } from "@lib/server-api";
+import { api } from "@lib/api";
 import type { AssetResponse } from "@finhance/shared";
 import EditAssetForm from "@components/EditAssetForm";
 

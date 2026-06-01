@@ -1,9 +1,8 @@
-import { CategoryBudgetOverride, Prisma } from '@finhance/db';
+import { CategoryBudgetOverride, Prisma } from '@prisma/client';
 import type {
   CategoryBudgetOverrideResponse,
   CategoryBudgetResponse,
 } from '@finhance/shared';
-import { getCategoryHierarchyMetadata } from '@transactions/category-hierarchy';
 
 function decimalToNumber(value: Prisma.Decimal): number {
   return value.toNumber();
@@ -19,11 +18,7 @@ function toMonthKey(value: Date | null): string | null {
 
 type CategoryBudgetModel = Prisma.CategoryBudgetGetPayload<{
   include: {
-    category: {
-      include: {
-        parentCategory: true;
-      };
-    };
+    category: true;
   };
 }>;
 
@@ -44,15 +39,10 @@ export function toCategoryBudgetOverrideResponse(
 export function toCategoryBudgetResponse(
   budget: CategoryBudgetModel,
 ): CategoryBudgetResponse {
-  const categoryHierarchy = getCategoryHierarchyMetadata(budget.category);
   return {
     id: budget.id,
     categoryId: budget.categoryId,
     categoryName: budget.category.name,
-    primaryCategoryId: categoryHierarchy.primaryCategoryId,
-    primaryCategoryName: categoryHierarchy.primaryCategoryName,
-    secondaryCategoryId: categoryHierarchy.secondaryCategoryId,
-    secondaryCategoryName: categoryHierarchy.secondaryCategoryName,
     categoryArchivedAt: budget.category.archivedAt?.toISOString() ?? null,
     currency: budget.currency,
     amount: decimalToNumber(budget.amount),

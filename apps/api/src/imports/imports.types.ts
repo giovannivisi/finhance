@@ -12,7 +12,6 @@ import type {
   CategoryBudgetOverride,
   Category,
   CategoryType,
-  ExpenseValidationRule,
   LiabilityKind,
   RecurringOccurrenceStatus,
   RecurringTransactionOccurrence,
@@ -20,7 +19,7 @@ import type {
   Transaction,
   TransactionDirection,
   TransactionKind,
-} from '@finhance/db';
+} from '@prisma/client';
 
 export interface ImportUploadFile {
   originalName: string;
@@ -44,12 +43,9 @@ export interface AccountImportRow {
 export interface CategoryImportRow {
   rowNumber: number;
   importKey: string;
+  name: string;
   type: CategoryType;
-  level: 'PRIMARY' | 'SECONDARY';
-  primary: string;
-  secondary: string | null;
-  primaryOrder: number | null;
-  secondaryOrder: number | null;
+  order: number | null;
   archived: boolean;
 }
 
@@ -142,22 +138,6 @@ export interface BudgetOverrideImportRow {
   note: string | null;
 }
 
-export interface ExpenseCategoryHierarchyImportRow {
-  rowNumber: number;
-  level: 'PRIMARY' | 'SECONDARY';
-  primary: string;
-  secondary: string | null;
-  primaryOrder: number | null;
-  secondaryOrder: number | null;
-}
-
-export interface ExpenseValidationRuleImportRow {
-  rowNumber: number;
-  entry: string;
-  primary: string;
-  secondary: string;
-}
-
 export interface ImportPayload {
   providedFiles: ImportFileType[];
   accounts: AccountImportRow[];
@@ -168,8 +148,6 @@ export interface ImportPayload {
   recurringExceptions: RecurringExceptionImportRow[];
   budgets: BudgetImportRow[];
   budgetOverrides: BudgetOverrideImportRow[];
-  expenseCategoryHierarchy: ExpenseCategoryHierarchyImportRow[];
-  expenseValidationRules: ExpenseValidationRuleImportRow[];
 }
 
 export interface ImportAnalysisState {
@@ -187,7 +165,6 @@ export interface ImportAnalysisState {
   accountImportKeyById: Map<string, string>;
   categoryImportKeyById: Map<string, string>;
   activeCategories: Category[];
-  expenseValidationRulesByNormalizedEntry: Map<string, ExpenseValidationRule>;
   marketAssetsByKey: Map<string, Asset[]>;
 }
 
@@ -197,12 +174,6 @@ export interface ImportAnalysisResult {
   canApply: boolean;
   state: ImportAnalysisState;
 }
-
-export const IMPORT_TEMPLATE_OPTIONAL_HEADERS: Partial<
-  Record<ImportFileType, readonly string[]>
-> = {
-  accounts: ['openingBalance', 'openingBalanceDate'],
-};
 
 export const IMPORT_TEMPLATE_HEADERS: Record<
   ImportFileType,
@@ -220,16 +191,7 @@ export const IMPORT_TEMPLATE_HEADERS: Record<
     'openingBalanceDate',
     'archived',
   ],
-  categories: [
-    'importKey',
-    'type',
-    'level',
-    'primary',
-    'secondary',
-    'primaryOrder',
-    'secondaryOrder',
-    'archived',
-  ],
+  categories: ['importKey', 'name', 'type', 'order', 'archived'],
   assets: [
     'importKey',
     'name',
@@ -302,14 +264,6 @@ export const IMPORT_TEMPLATE_HEADERS: Record<
     'endMonth',
   ],
   budgetOverrides: ['budgetImportKey', 'month', 'amount', 'note'],
-  expenseCategoryHierarchy: [
-    'level',
-    'primary',
-    'secondary',
-    'primaryOrder',
-    'secondaryOrder',
-  ],
-  expenseValidationRules: ['entry', 'primary', 'secondary'],
 };
 
 type AssetlessAccountType = Account['type'];

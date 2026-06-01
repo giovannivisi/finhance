@@ -31,7 +31,7 @@ type UploadedImportFiles = Partial<
 >;
 
 const MAX_IMPORT_UPLOAD_FILE_BYTES = 1024 * 1024;
-const MAX_IMPORT_UPLOAD_FILES = 10;
+const MAX_IMPORT_UPLOAD_FILES = 8;
 
 @Controller('imports')
 @UseGuards(LocalOnlyImportsGuard)
@@ -59,8 +59,6 @@ export class ImportsController {
         { name: 'recurringExceptions', maxCount: 1 },
         { name: 'budgets', maxCount: 1 },
         { name: 'budgetOverrides', maxCount: 1 },
-        { name: 'expenseCategoryHierarchy', maxCount: 1 },
-        { name: 'expenseValidationRules', maxCount: 1 },
       ],
       {
         limits: {
@@ -110,19 +108,6 @@ export class ImportsController {
     const result = await this.importsService.exportCsvZip(
       this.resolveOwnerId(),
     );
-    response.setHeader('Content-Type', 'application/zip');
-    response.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${result.filename}"`,
-    );
-    response.send(result.buffer);
-  }
-
-  @Post('csv/templates/export')
-  @HttpCode(200)
-  @Throttle(createNamedThrottleOverride('imports'))
-  exportTemplates(@Res() response: Response): void {
-    const result = this.importsService.exportTemplateZip();
     response.setHeader('Content-Type', 'application/zip');
     response.setHeader(
       'Content-Disposition',

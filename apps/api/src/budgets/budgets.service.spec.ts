@@ -1,9 +1,9 @@
-import { Prisma } from '@finhance/db';
+import { Prisma } from '@prisma/client';
 import {
   CategoryType,
   TransactionDirection,
   TransactionKind,
-} from '@finhance/db';
+} from '@prisma/client';
 import { BudgetsService } from '@budgets/budgets.service';
 
 const OWNER_ID = 'local-dev';
@@ -108,7 +108,7 @@ describe('BudgetsService', () => {
     };
   };
   let categories: {
-    getAssignableCategory: jest.Mock;
+    findOne: jest.Mock;
   };
 
   beforeEach(() => {
@@ -146,15 +146,17 @@ describe('BudgetsService', () => {
     );
 
     categories = {
-      getAssignableCategory: jest.fn().mockResolvedValue(createCategory()),
+      findOne: jest.fn().mockResolvedValue(createCategory()),
     };
 
     service = new BudgetsService(prisma as never, categories as never);
   });
 
   it('rejects non-expense categories for budgets', async () => {
-    categories.getAssignableCategory.mockRejectedValue(
-      new Error('Budgets can only be assigned to expense categories.'),
+    categories.findOne.mockResolvedValue(
+      createCategory({
+        type: CategoryType.INCOME,
+      }),
     );
 
     await expect(
@@ -248,10 +250,6 @@ describe('BudgetsService', () => {
             status: 'OVER_BUDGET',
             previousMonthExpense: 60,
             averageExpenseLast3Months: 30,
-            primaryCategoryId: null,
-            primaryCategoryName: null,
-            secondaryCategoryId: null,
-            secondaryCategoryName: null,
             startMonth: '2026-04',
             endMonth: null,
             override: {
@@ -280,10 +278,6 @@ describe('BudgetsService', () => {
             spentAmount: 30,
             previousMonthExpense: null,
             averageExpenseLast3Months: null,
-            primaryCategoryId: null,
-            primaryCategoryName: null,
-            secondaryCategoryId: null,
-            secondaryCategoryName: null,
           },
         ],
       },

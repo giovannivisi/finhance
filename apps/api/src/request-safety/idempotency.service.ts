@@ -7,11 +7,8 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { IdempotencyRequestStatus, Prisma } from '@finhance/db';
-import {
-  isRetryableConnectionError,
-  PrismaService,
-} from '@prisma/prisma.service';
+import { IdempotencyRequestStatus, Prisma } from '@prisma/client';
+import { PrismaService } from '@prisma/prisma.service';
 
 const IDEMPOTENCY_KEY_REQUIRED_MESSAGE = 'Idempotency-Key header is required.';
 const IDEMPOTENCY_KEY_IN_PROGRESS_MESSAGE =
@@ -323,18 +320,8 @@ export class IdempotencyService implements OnModuleInit, OnModuleDestroy {
     try {
       return await operation();
     } catch (error) {
-      if (attempt < 2) {
-        if (this.isRetryablePrismaError(error)) {
-          return this.withRetry(operation, attempt + 1);
-        }
-
-        if (isRetryableConnectionError(error)) {
-          this.logger.warn(
-            `Retrying idempotency operation after transient database connectivity failure: ${this.describeError(error)}`,
-          );
-          await this.prisma.recoverConnection();
-          return this.withRetry(operation, attempt + 1);
-        }
+      if (attempt < 2 && this.isRetryablePrismaError(error)) {
+        return this.withRetry(operation, attempt + 1);
       }
 
       throw error;

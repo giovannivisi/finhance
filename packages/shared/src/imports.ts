@@ -10,9 +10,7 @@ export type ImportFileType =
   | "recurringRules"
   | "recurringExceptions"
   | "budgets"
-  | "budgetOverrides"
-  | "expenseCategoryHierarchy"
-  | "expenseValidationRules";
+  | "budgetOverrides";
 
 export type ImportIssueSeverity = "ERROR" | "WARNING";
 
@@ -66,12 +64,9 @@ export const ACCOUNT_IMPORT_HEADERS = [
 
 export const CATEGORY_IMPORT_HEADERS = [
   "importKey",
+  "name",
   "type",
-  "level",
-  "primary",
-  "secondary",
-  "primaryOrder",
-  "secondaryOrder",
+  "order",
   "archived",
 ] as const;
 
@@ -158,26 +153,6 @@ export const BUDGET_OVERRIDE_IMPORT_HEADERS = [
   "note",
 ] as const;
 
-export const EXPENSE_CATEGORY_HIERARCHY_IMPORT_HEADERS = [
-  "level",
-  "primary",
-  "secondary",
-  "primaryOrder",
-  "secondaryOrder",
-] as const;
-
-export const EXPENSE_VALIDATION_RULE_IMPORT_HEADERS = [
-  "entry",
-  "primary",
-  "secondary",
-] as const;
-
-export const IMPORT_TEMPLATE_OPTIONAL_HEADERS: Partial<
-  Record<ImportFileType, readonly string[]>
-> = {
-  accounts: ["openingBalance", "openingBalanceDate"],
-};
-
 export const IMPORT_TEMPLATE_HEADERS: Record<
   ImportFileType,
   readonly string[]
@@ -190,6 +165,4 @@ export const IMPORT_TEMPLATE_HEADERS: Record<
   recurringExceptions: RECURRING_EXCEPTION_IMPORT_HEADERS,
   budgets: BUDGET_IMPORT_HEADERS,
   budgetOverrides: BUDGET_OVERRIDE_IMPORT_HEADERS,
-  expenseCategoryHierarchy: EXPENSE_CATEGORY_HIERARCHY_IMPORT_HEADERS,
-  expenseValidationRules: EXPENSE_VALIDATION_RULE_IMPORT_HEADERS,
 };

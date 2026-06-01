@@ -2,6 +2,7 @@
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { useAppPreferences } from "@components/ThemeProvider";
+import { COLORS } from "@lib/asset-ui";
 import { formatSensitiveCurrency } from "@lib/money";
 
 export default function AllocationChart({
@@ -9,7 +10,7 @@ export default function AllocationChart({
   size = 400,
   currency = "EUR",
 }: {
-  data: { label: string; total: number; color?: string }[];
+  data: { label: string; total: number }[];
   size?: number;
   currency?: string;
 }) {
@@ -39,7 +40,10 @@ export default function AllocationChart({
             label={false}
           >
             {cleaned.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color ?? "#6B7280"} />
+              <Cell
+                key={`cell-${index}`}
+                fill={COLORS[entry.label as keyof typeof COLORS] || "#6B7280"}
+              />
             ))}
           </Pie>
 
@@ -78,7 +82,7 @@ export default function AllocationChart({
               contentStyle={{
                 backgroundColor: "var(--chart-tooltip-bg)",
                 borderColor: "var(--chart-tooltip-border)",
-                borderRadius: "var(--radius-sm)",
+                borderRadius: "12px",
                 color: "var(--text-primary)",
                 fontSize: "12px",
                 padding: "8px 12px",

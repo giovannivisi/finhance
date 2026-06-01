@@ -4,7 +4,6 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { isHostedAuthMode } from '@/config/auth-mode';
 import { isLoopbackHost, normalizeHost } from '@/config/bootstrap.config';
 import { resolveClientIp } from '@/security/client-ip';
 
@@ -20,10 +19,6 @@ type RequestLike = {
 @Injectable()
 export class LocalOnlyImportsGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    if (isHostedAuthMode()) {
-      return true;
-    }
-
     const request = context.switchToHttp().getRequest<RequestLike>();
     const clientIp = resolveClientIp(request);
 

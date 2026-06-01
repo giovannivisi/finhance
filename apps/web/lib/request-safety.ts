@@ -3,9 +3,6 @@ interface RequestSafetyErrorInput {
   error: string;
 }
 
-const RECURRING_MATERIALIZATION_COOLDOWN_PREFIX =
-  "Recurring materialization is cooling down. ";
-
 const CALM_REPEATED_ACTION_ERRORS = [
   {
     status: 409,
@@ -42,14 +39,4 @@ export function getRepeatedActionNotice(
   }
 
   return null;
-}
-
-export function getRecurringMaterializationNoticeText(notice: string): string {
-  if (notice.startsWith(RECURRING_MATERIALIZATION_COOLDOWN_PREFIX)) {
-    return `Cooling down... ${notice
-      .slice(RECURRING_MATERIALIZATION_COOLDOWN_PREFIX.length)
-      .replace(/s\.$/, "s")}`;
-  }
-
-  return notice;
 }

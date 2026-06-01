@@ -9,10 +9,7 @@ import type {
   UpdateCategoryBudgetRequest,
 } from "@finhance/shared";
 import { apiMutation } from "@lib/api";
-import SearchablePicker from "@components/SearchablePicker";
 import { formatCategoryOptionLabel } from "@lib/categories";
-import { getCurrencyPickerOptions } from "@lib/currency-ui";
-import { expenseBudgetCategories } from "@lib/hierarchical-categories";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 interface BudgetPlanFormProps {
@@ -97,7 +94,6 @@ export default function BudgetPlanForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
-  const currencyOptions = getCurrencyPickerOptions();
 
   useEffect(() => {
     setForm(
@@ -112,7 +108,12 @@ export default function BudgetPlanForm({
   }, [budget, defaultMonth, mode, preferredCategoryId, preferredCurrency]);
 
   const selectableCategories = useMemo(
-    () => expenseBudgetCategories(categories, form.categoryId),
+    () =>
+      categories.filter(
+        (category) =>
+          category.type === "EXPENSE" &&
+          (category.archivedAt === null || category.id === form.categoryId),
+      ),
     [categories, form.categoryId],
   );
 
@@ -233,14 +234,12 @@ export default function BudgetPlanForm({
       <div className="app-form-grid">
         <div className="app-form-field">
           <label htmlFor={`${fieldPrefix}-currency`}>Currency</label>
-          <SearchablePicker
+          <input
             id={`${fieldPrefix}-currency`}
             value={form.currency}
-            onChange={(nextValue) => updateField("currency", nextValue)}
-            options={currencyOptions}
-            placeholder="Choose a currency"
-            searchPlaceholder="Search currencies…"
+            onChange={(event) => updateField("currency", event.target.value)}
             disabled={!isCreateMode}
+            required
           />
         </div>
 

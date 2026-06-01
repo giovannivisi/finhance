@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type {
   AccountResponse,
   CategoryResponse,
-  ExpenseValidationRuleResponse,
   MaterializeRecurringRulesResponse,
   RecurringOccurrenceResponse,
   RecurringTransactionRuleResponse,
@@ -21,10 +20,7 @@ import {
 } from "@lib/recurring-rule-form";
 import { formatCurrency } from "@lib/format";
 import { requestRecurringMaterialization } from "@lib/recurring-materialization";
-import {
-  getRecurringMaterializationNoticeText,
-  getRepeatedActionNotice,
-} from "@lib/request-safety";
+import { getRepeatedActionNotice } from "@lib/request-safety";
 import { TRANSACTION_KIND_LABELS } from "@lib/transactions";
 import { api, apiMutation } from "@lib/api";
 import { useSingleFlightActions } from "@lib/single-flight";
@@ -39,12 +35,10 @@ export default function RecurringPageClient({
   rules,
   accounts,
   categories,
-  expenseValidationRules,
 }: {
   rules: RecurringTransactionRuleResponse[];
   accounts: AccountResponse[];
   categories: CategoryResponse[];
-  expenseValidationRules: ExpenseValidationRuleResponse[];
 }) {
   const router = useRouter();
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
@@ -119,9 +113,7 @@ export default function RecurringPageClient({
           });
 
           if (repeatedActionNotice) {
-            setActionNotice(
-              getRecurringMaterializationNoticeText(repeatedActionNotice),
-            );
+            setActionNotice(repeatedActionNotice);
             return;
           }
           setActionError(result.error);
@@ -343,8 +335,8 @@ export default function RecurringPageClient({
           <div className="list-stack is-loose">
             {rules.map((rule) => (
               <article key={rule.id} className="list-card is-roomy">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="recurring-rule-details">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="section-stack-tight">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-lg font-semibold text-[var(--text-primary)]">
                         {rule.name}
@@ -364,7 +356,9 @@ export default function RecurringPageClient({
                       {rule.endDate
                         ? ` · ${rule.startDate} to ${rule.endDate}`
                         : ` · from ${rule.startDate}`}
-                      {" · "}
+                    </p>
+
+                    <p className="text-sm text-[var(--text-secondary)]">
                       {describeRule(rule)} ·{" "}
                       {formatCurrency(rule.amount, ruleCurrency(rule))}
                     </p>
@@ -403,16 +397,7 @@ export default function RecurringPageClient({
                       >
                         {busyRuleId === rule.id ? "Disabling..." : "Disable"}
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => void handleDisable(rule.id)}
-                        disabled={busyRuleId === rule.id}
-                        className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {busyRuleId === rule.id ? "Deleting..." : "Delete"}
-                      </button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -450,7 +435,6 @@ export default function RecurringPageClient({
             mode="create"
             accounts={accounts}
             categories={categories}
-            expenseValidationRules={expenseValidationRules}
             initialValues={createEmptyRecurringRuleFormValues()}
             onSuccess={() => setIsCreateModalOpen(false)}
             onCancel={() => setIsCreateModalOpen(false)}
@@ -475,7 +459,6 @@ export default function RecurringPageClient({
                 ruleId={editingRule.id}
                 accounts={accounts}
                 categories={categories}
-                expenseValidationRules={expenseValidationRules}
                 initialValues={recurringRuleToFormValues(editingRule)}
                 onSuccess={() => setEditingRuleId(null)}
                 onCancel={() => setEditingRuleId(null)}
@@ -569,7 +552,6 @@ export default function RecurringPageClient({
                   ruleId={occurrenceRule.id}
                   accounts={accounts}
                   categories={categories}
-                  expenseValidationRules={expenseValidationRules}
                   initialValues={createRecurringOccurrenceFormValuesFromRule(
                     occurrenceRule,
                     occurrenceMonth,

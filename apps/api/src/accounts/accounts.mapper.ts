@@ -1,4 +1,4 @@
-import { Prisma } from '@finhance/db';
+import { Prisma } from '@prisma/client';
 import type {
   AccountReconciliationResponse,
   AccountResponse,
@@ -6,7 +6,7 @@ import type {
 import type { AccountReconciliationModel } from '@accounts/accounts.service';
 import type { AccountDeletionState } from '@accounts/accounts.service';
 
-import type { Account } from '@finhance/db';
+import type { Account } from '@prisma/client';
 
 function decimalToNumber(value: Prisma.Decimal | null): number | null {
   return value?.toNumber() ?? null;
@@ -44,7 +44,6 @@ export function toAccountReconciliationResponse(
     accountName: model.account.name,
     accountType: model.account.type,
     currency: model.account.currency,
-    reconciliationScope: model.reconciliationScope,
     baselineMode: model.baselineMode,
     trackedBalance: decimalToNumber(model.trackedBalance),
     expectedBalance: decimalToNumber(model.expectedBalance),

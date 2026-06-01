@@ -1,9 +1,4 @@
-export type SetupStepCode =
-  | "ACCOUNTS"
-  | "CATEGORIES"
-  | "REPORTING_CURRENCY"
-  | "RECURRING"
-  | "BUDGETS";
+export type SetupStepCode = "ACCOUNTS" | "CATEGORIES" | "RECURRING" | "BUDGETS";
 
 export type SetupStepStatus = "COMPLETE" | "INCOMPLETE";
 
@@ -59,5 +54,4 @@ export interface SetupStatusResponse {
   currentMonthBudgetCount: number;
   hasAppliedImportBatch: boolean;
   hasSnapshot: boolean;
-  hasReportingCurrencyConfigured: boolean;
 }
