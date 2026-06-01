@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TabBar from "@components/TabBar";
+import { resetNavigationPrefetchesForTests } from "@lib/navigation-prefetch";
 
 const pushMock = vi.fn();
 const prefetchMock = vi.fn();
@@ -60,6 +61,7 @@ describe("TabBar", () => {
     pushMock.mockReset();
     prefetchMock.mockReset();
     startNavigationProgressMock.mockReset();
+    resetNavigationPrefetchesForTests();
     usePathnameMock.mockReturnValue("/accounts");
   });
 
@@ -92,10 +94,33 @@ describe("TabBar", () => {
     await user.click(screen.getByRole("button", { name: /more navigation/i }));
 
     expect(screen.getByRole("link", { name: "Analytics" })).toBeInTheDocument();
-    expect(prefetchMock).not.toHaveBeenCalled();
+    expect(prefetchMock).toHaveBeenCalledWith("/brokerage");
     expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: "Privacy notice" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("prefetches primary routes on hover and brokerage when More opens", async () => {
+    const user = userEvent.setup();
+    render(<TabBar />);
+
+    await user.hover(screen.getByLabelText("Analytics"));
+    await user.click(screen.getByRole("button", { name: /more navigation/i }));
+
+    expect(prefetchMock).toHaveBeenCalledWith("/analytics");
+    expect(prefetchMock).toHaveBeenCalledWith("/brokerage");
+  });
+
+  it("prefetches secondary follow-up routes when More stays open briefly", async () => {
+    const user = userEvent.setup();
+    render(<TabBar />);
+
+    await user.click(screen.getByRole("button", { name: /more navigation/i }));
+
+    await waitFor(() => {
+      expect(prefetchMock).toHaveBeenCalledWith("/history");
+      expect(prefetchMock).toHaveBeenCalledWith("/review");
+    });
   });
 });

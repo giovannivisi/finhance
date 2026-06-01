@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { getNavigationTitle, normalizeNavigationPath } from "@lib/navigation";
+import {
+  getNavigationTitle,
+  normalizeNavigationPath,
+  shouldPrefetchNavPath,
+} from "@lib/navigation";
+import { hasRecentNavigationPrefetch } from "@lib/navigation-prefetch";
 import {
   NAVIGATION_OVERLAY_DELAY_MS,
   subscribeToNavigationStart,
@@ -25,13 +30,23 @@ export default function NavigationTransitionOverlay() {
   useEffect(() => {
     return subscribeToNavigationStart((nextPath) => {
       const normalisedPath = normalizeNavigationPath(nextPath);
-      setPendingPath(normalisedPath);
-      setIsVisible(false);
 
       if (timerRef.current !== null) {
         window.clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
 
+      if (
+        hasRecentNavigationPrefetch(normalisedPath) ||
+        shouldPrefetchNavPath(normalisedPath ?? "")
+      ) {
+        setPendingPath(null);
+        setIsVisible(false);
+        return;
+      }
+
+      setPendingPath(normalisedPath);
+      setIsVisible(false);
       timerRef.current = window.setTimeout(() => {
         setIsVisible(true);
       }, NAVIGATION_OVERLAY_DELAY_MS);

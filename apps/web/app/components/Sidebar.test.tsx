@@ -3,14 +3,16 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Sidebar from "@components/Sidebar";
+import { resetNavigationPrefetchesForTests } from "@lib/navigation-prefetch";
 
 const pushMock = vi.fn();
+const prefetchMock = vi.fn();
 const usePathnameMock = vi.fn();
 const startNavigationProgressMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => usePathnameMock(),
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, prefetch: prefetchMock }),
 }));
 
 vi.mock("next/link", () => ({
@@ -32,7 +34,9 @@ vi.mock("@lib/navigation-progress", () => ({
 describe("Sidebar", () => {
   beforeEach(() => {
     pushMock.mockReset();
+    prefetchMock.mockReset();
     startNavigationProgressMock.mockReset();
+    resetNavigationPrefetchesForTests();
     usePathnameMock.mockReturnValue("/accounts");
   });
 
@@ -59,5 +63,18 @@ describe("Sidebar", () => {
 
     expect(startNavigationProgressMock).toHaveBeenCalledWith("/analytics");
     expect(pushMock).toHaveBeenCalledWith("/analytics");
+  });
+
+  it("prefetches selected routes on hover intent", async () => {
+    const user = userEvent.setup();
+    render(<Sidebar />);
+
+    await user.hover(screen.getByRole("link", { name: "Analytics" }));
+    await user.hover(screen.getByRole("link", { name: "Brokerage" }));
+    await user.hover(screen.getByRole("link", { name: "History" }));
+
+    expect(prefetchMock).toHaveBeenCalledWith("/analytics");
+    expect(prefetchMock).toHaveBeenCalledWith("/brokerage");
+    expect(prefetchMock).not.toHaveBeenCalledWith("/history");
   });
 });

@@ -11,8 +11,10 @@ import {
   DESKTOP_NAV_ITEMS,
   isActivePath,
   isRedundantTabNavigation,
+  shouldPrefetchNavPath,
   type AppNavItem,
 } from "@lib/navigation";
+import { recordNavigationPrefetch } from "@lib/navigation-prefetch";
 import { startNavigationProgress } from "@lib/navigation-progress";
 
 function DesktopNavLink({
@@ -20,11 +22,13 @@ function DesktopNavLink({
   currentPath,
   pendingPath,
   onNavigate,
+  onPrefetch,
 }: {
   item: AppNavItem;
   currentPath: string | null;
   pendingPath: string | null;
   onNavigate: (path: string) => void;
+  onPrefetch: (path: string) => void;
 }) {
   const isActive = isActivePath(currentPath, item.href);
   const isBlocked = isRedundantTabNavigation({
@@ -59,6 +63,9 @@ function DesktopNavLink({
       aria-current={isActive ? "page" : undefined}
       aria-disabled={isBlocked || undefined}
       onClick={handleClick}
+      onMouseEnter={() => onPrefetch(item.href)}
+      onFocus={() => onPrefetch(item.href)}
+      onTouchStart={() => onPrefetch(item.href)}
       className={`desktop-nav-link${isActive ? " is-active" : ""}`}
     >
       <item.icon size={18} aria-hidden="true" />
@@ -94,6 +101,28 @@ export default function Sidebar() {
     [activePendingPath, currentPath, router],
   );
 
+  const prefetchPath = useCallback(
+    (nextPath: string) => {
+      if (!recordNavigationPrefetch(nextPath)) {
+        return;
+      }
+
+      router.prefetch(nextPath);
+    },
+    [router],
+  );
+
+  const handlePrefetch = useCallback(
+    (nextPath: string) => {
+      if (!shouldPrefetchNavPath(nextPath)) {
+        return;
+      }
+
+      prefetchPath(nextPath);
+    },
+    [prefetchPath],
+  );
+
   return (
     <aside className="desktop-nav" aria-label="Primary navigation">
       <div className="desktop-nav-card">
@@ -105,6 +134,7 @@ export default function Sidebar() {
               currentPath={currentPath}
               pendingPath={activePendingPath}
               onNavigate={handleNavigate}
+              onPrefetch={handlePrefetch}
             />
           ))}
         </nav>

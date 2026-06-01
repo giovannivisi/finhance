@@ -47,6 +47,62 @@ export const DESKTOP_NAV_ITEMS: readonly AppNavItem[] = [
   ...SECONDARY_NAV_ITEMS,
 ] as const;
 
+const PREFETCH_NAV_PATHS = new Set<string>([
+  "/dashboard",
+  "/transactions",
+  "/accounts",
+  "/analytics",
+  "/brokerage",
+]);
+
+const ROUTE_SUCCESSOR_PREFETCH_PATHS: Record<string, readonly string[]> = {
+  "/dashboard": ["/transactions", "/setup", "/review", "/analytics"],
+  "/transactions": ["/accounts"],
+  "/accounts": ["/analytics", "/brokerage"],
+  "/analytics": ["/review", "/budgets", "/setup"],
+  "/review": ["/accounts", "/budgets", "/recurring", "/analytics"],
+  "/setup": ["/accounts", "/import", "/categories"],
+  "/import": ["/review", "/analytics", "/budgets"],
+  "/budgets": ["/review", "/analytics"],
+  "/brokerage": ["/accounts"],
+} as const;
+
+const MORE_MENU_EXPANDED_PREFETCH_PATHS = ["/history", "/review"] as const;
+const DEFAULT_RETURN_PREFETCH_PATH = "/dashboard";
+
+export function shouldPrefetchNavPath(path: string): boolean {
+  return PREFETCH_NAV_PATHS.has(normalizeNavigationPath(path) ?? path);
+}
+
+export function getRouteSuccessorPrefetchPaths(
+  path: string | null,
+): readonly string[] {
+  const normalizedPath = normalizeNavigationPath(path);
+
+  if (!normalizedPath || normalizedPath === "/") {
+    return ROUTE_SUCCESSOR_PREFETCH_PATHS["/dashboard"];
+  }
+
+  const basePaths = ROUTE_SUCCESSOR_PREFETCH_PATHS[normalizedPath] ?? [];
+
+  if (
+    normalizedPath === DEFAULT_RETURN_PREFETCH_PATH ||
+    basePaths.includes(DEFAULT_RETURN_PREFETCH_PATH)
+  ) {
+    return basePaths;
+  }
+
+  if (basePaths.length === 0) {
+    return [DEFAULT_RETURN_PREFETCH_PATH];
+  }
+
+  return [basePaths[0]!, DEFAULT_RETURN_PREFETCH_PATH, ...basePaths.slice(1)];
+}
+
+export function getExpandedMoreMenuPrefetchPaths(): readonly string[] {
+  return MORE_MENU_EXPANDED_PREFETCH_PATHS;
+}
+
 export function normalizeNavigationPath(path: string | null): string | null {
   if (!path) {
     return null;

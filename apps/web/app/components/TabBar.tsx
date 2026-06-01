@@ -20,12 +20,15 @@ import { MoreHorizontal } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useTheme } from "@components/ThemeProvider";
+import { recordNavigationPrefetch } from "@lib/navigation-prefetch";
 import { startNavigationProgress } from "@lib/navigation-progress";
 import {
+  getExpandedMoreMenuPrefetchPaths,
   PRIMARY_NAV_ITEMS,
   SECONDARY_NAV_ITEMS,
   isActivePath,
   isRedundantTabNavigation,
+  shouldPrefetchNavPath,
 } from "@lib/navigation";
 
 function cn(...inputs: ClassValue[]) {
@@ -150,10 +153,39 @@ export default function TabBar() {
     [activePendingPath, currentPath, router],
   );
 
+  const prefetchPath = useCallback(
+    (nextPath: string) => {
+      if (!recordNavigationPrefetch(nextPath)) {
+        return;
+      }
+
+      router.prefetch(nextPath);
+    },
+    [router],
+  );
+
+  const handlePrefetch = useCallback(
+    (nextPath: string) => {
+      if (!shouldPrefetchNavPath(nextPath)) {
+        return;
+      }
+
+      prefetchPath(nextPath);
+    },
+    [prefetchPath],
+  );
+
   useEffect(() => {
     if (!showMore) {
       return;
     }
+
+    prefetchPath("/brokerage");
+    const delayedPrefetchId = window.setTimeout(() => {
+      for (const path of getExpandedMoreMenuPrefetchPaths()) {
+        prefetchPath(path);
+      }
+    }, 200);
 
     function handlePointerDown(event: MouseEvent) {
       if (!menuRef.current?.contains(event.target as Node)) {
@@ -172,10 +204,11 @@ export default function TabBar() {
     document.addEventListener("keydown", handleEscape);
 
     return () => {
+      window.clearTimeout(delayedPrefetchId);
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [showMore]);
+  }, [prefetchPath, showMore]);
 
   useEffect(() => {
     if (!isPointerTracking) {
@@ -409,6 +442,9 @@ export default function TabBar() {
                     key={item.href}
                     href={item.href}
                     prefetch={false}
+                    onMouseEnter={() => handlePrefetch(item.href)}
+                    onFocus={() => handlePrefetch(item.href)}
+                    onTouchStart={() => handlePrefetch(item.href)}
                     onClick={(event) => {
                       event.preventDefault();
                       handleNavigate(item.href);
@@ -477,9 +513,12 @@ export default function TabBar() {
                   handleNavigate(item.href);
                 }}
                 onMouseEnter={(event) => {
+                  handlePrefetch(item.href);
                   setHoveredIndex(index);
                   setHoverLeftPct(getHoverLeftPctAt(event.clientX));
                 }}
+                onFocus={() => handlePrefetch(item.href)}
+                onTouchStart={() => handlePrefetch(item.href)}
                 className={cn(
                   "tab-bar-link",
                   visualActiveIndex === index ? "is-active" : "is-inactive",
@@ -507,9 +546,12 @@ export default function TabBar() {
               setHoverLeftPct(null);
             }}
             onMouseEnter={(event) => {
+              handlePrefetch("/brokerage");
               setHoveredIndex(PRIMARY_NAV_ITEMS.length);
               setHoverLeftPct(getHoverLeftPctAt(event.clientX));
             }}
+            onFocus={() => handlePrefetch("/brokerage")}
+            onTouchStart={() => handlePrefetch("/brokerage")}
             className={cn(
               "tab-bar-link tab-more-btn",
               showMore || moreIsActive ? "is-active" : "is-inactive",
