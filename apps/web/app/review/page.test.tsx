@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   MonthlyReviewPageDataResponse,
   MonthlyReviewResponse,
@@ -313,8 +313,14 @@ describe("ReviewPage", () => {
     apiMock.mockReset();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders the monthly close hub with compact highlights and actions", async () => {
-    apiMock.mockResolvedValueOnce(buildReviewPageData({ hasPendingSync: true }));
+    apiMock.mockResolvedValueOnce(
+      buildReviewPageData({ hasPendingSync: true }),
+    );
 
     const { container } = render(
       await ReviewPage({
@@ -411,6 +417,9 @@ describe("ReviewPage", () => {
   });
 
   it("shows snapshot capture only for the current month when the closing snapshot is missing", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-15T12:00:00.000Z"));
+
     const review = buildReviewResponse();
     review.month = "2026-05";
 

@@ -59,8 +59,10 @@ async function forwardRequest(
 
     const params = await context.params;
     const path = buildProxiedPath(params.path, request);
-    const headers = stripForwardedHeaders(request.headers);
     const hostedAuthMode = isHostedAuthMode();
+    const headers = stripForwardedHeaders(request.headers, {
+      stripBrowserContext: hostedAuthMode,
+    });
     const session = hostedAuthMode ? await auth() : null;
     const authorization = await resolveProxyAuthorization({
       hostedAuthMode,
