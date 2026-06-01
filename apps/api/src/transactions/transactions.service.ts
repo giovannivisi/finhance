@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -2137,7 +2138,9 @@ export class TransactionsService {
     const day = parts.find((part) => part.type === 'day')?.value;
 
     if (!year || !month || !day) {
-      throw new Error('Unable to resolve the current Europe/Rome date.');
+      throw new InternalServerErrorException(
+        'Unable to resolve the current Europe/Rome date.',
+      );
     }
 
     return `${year}-${month}-${day}`;
@@ -2598,7 +2601,9 @@ export class TransactionsService {
     const match = months.find((month) => month.month === monthKey);
 
     if (!match) {
-      throw new Error(`Month ${monthKey} is missing from monthly cashflow.`);
+      throw new InternalServerErrorException(
+        `Month ${monthKey} is missing from monthly cashflow.`,
+      );
     }
 
     return match;

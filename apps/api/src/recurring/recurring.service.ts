@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
@@ -883,7 +884,9 @@ export class RecurringService {
 
     if (defaultSpec.kind === 'TRANSFER') {
       if (targets.kind !== 'TRANSFER') {
-        throw new Error('Transfer materialization requires transfer targets.');
+        throw new InternalServerErrorException(
+          'Transfer materialization requires transfer targets.',
+        );
       }
 
       const { sourceAccount, destinationAccount } = targets;
@@ -939,7 +942,9 @@ export class RecurringService {
     }
 
     if (targets.kind !== 'STANDARD') {
-      throw new Error('Standard materialization requires standard targets.');
+      throw new InternalServerErrorException(
+        'Standard materialization requires standard targets.',
+      );
     }
 
     const { account, category } = targets;

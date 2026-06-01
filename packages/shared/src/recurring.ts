@@ -1,14 +1,14 @@
-import type { AccountReconciliationResponse } from "./accounts.js";
+import type { AccountReconciliationResponse } from "#accounts";
 import type {
   MonthlyBudgetCurrencySummaryResponse,
   MonthlyBudgetItemResponse,
-} from "./budgets.js";
-import type { SetupStatusResponse } from "./setup.js";
+} from "#budgets";
+import type { SetupStatusResponse } from "#setup";
 import type {
   CashflowSummaryResponse,
   TransactionDirection,
   TransactionKind,
-} from "./transactions.js";
+} from "#transactions";
 
 export interface UpsertRecurringTransactionRuleRequest {
   name: string;

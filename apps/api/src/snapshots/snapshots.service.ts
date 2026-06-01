@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { OperationType } from '@finhance/db';
 import { AssetsService } from '@assets/assets.service';
 import { PrismaService } from '@prisma/prisma.service';
@@ -148,7 +148,9 @@ export class SnapshotsService {
     const day = parts.find((part) => part.type === 'day')?.value;
 
     if (!year || !month || !day) {
-      throw new Error('Unable to derive Europe/Rome snapshot date.');
+      throw new InternalServerErrorException(
+        'Unable to derive Europe/Rome snapshot date.',
+      );
     }
 
     return `${year}-${month}-${day}`;

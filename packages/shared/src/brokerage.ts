@@ -1,14 +1,11 @@
-import type {
-  AccountReconciliationResponse,
-  AccountResponse,
-} from "./accounts.js";
+import type { AccountReconciliationResponse, AccountResponse } from "#accounts";
 import type {
   AssetKind,
   AggregatePricingStatus,
   DashboardAssetResponse,
   ValuationSource,
-} from "./assets.js";
-import type { CategoryResponse, TransactionResponse } from "./transactions.js";
+} from "#assets";
+import type { CategoryResponse, TransactionResponse } from "#transactions";
 
 export type BrokerageOperationKind = "BUY" | "SELL" | "DIVIDEND" | "FEE";
 

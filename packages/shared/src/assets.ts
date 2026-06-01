@@ -1,6 +1,6 @@
-import type { AccountResponse, AccountType } from "./accounts.js";
-import type { MonthlyBudgetResponse } from "./budgets.js";
-import type { SetupStatusResponse } from "./setup.js";
+import type { AccountResponse, AccountType } from "#accounts";
+import type { MonthlyBudgetResponse } from "#budgets";
+import type { SetupStatusResponse } from "#setup";
 
 export type AssetType = "ASSET" | "LIABILITY";
 

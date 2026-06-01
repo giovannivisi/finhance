@@ -52,7 +52,12 @@ Pass `sections` as `OverflowMenuSection[]`.
 - State modifiers as separate classes: `.is-open`, `.is-disabled`, `.is-error`
 - All custom properties (colours, spacing) defined in `app/globals.css` as
   CSS variables on `:root` and `[data-theme="dark"]`
-- Do not use Tailwind or inline styles for layout — use the CSS class system
+- Tailwind is available through `app/globals.css`; use utility classes only for
+  one-off spacing, sizing, and typography. Prefer the CSS class system for
+  reusable layouts, component surfaces, and stateful UI.
+- Avoid inline styles for static layout and visual styling. Inline styles are
+  acceptable for dynamic runtime values such as chart geometry, popover
+  placement, or data-driven colours.
 
 ## Testing
 

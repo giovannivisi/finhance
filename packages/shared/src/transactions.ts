@@ -1,6 +1,6 @@
-import type { AccountResponse } from "./accounts.js";
-import type { ExpenseValidationRuleResponse } from "./expense-validation.js";
-import type { SetupStatusResponse } from "./setup.js";
+import type { AccountResponse } from "#accounts";
+import type { ExpenseValidationRuleResponse } from "#expense-validation";
+import type { SetupStatusResponse } from "#setup";
 
 export type CategoryType = "EXPENSE" | "INCOME";
 

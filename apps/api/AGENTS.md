@@ -10,6 +10,16 @@ Each domain lives in `src/<domain>/` with four files: `controller`, `service`,
 put business logic in controllers — controllers validate input and delegate to
 services.
 
+Large legacy services should not receive new unrelated responsibilities:
+
+- `imports/imports.service.ts` currently owns CSV parsing, validation, applying,
+  export, and import-key backfill. New import work should prefer extracted
+  parser, analyser, applier, exporter, or backfill helpers.
+- `recurring/recurring.service.ts` currently owns rule CRUD, materialisation,
+  occurrence overrides, monthly review, and cashflow warning logic. New recurring
+  work should keep materialisation and review logic in separate helpers where
+  practical.
+
 ## DTOs and validation
 
 - All request bodies use class-validator + class-transformer decorators

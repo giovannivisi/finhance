@@ -1,4 +1,4 @@
-import type { AssetKind } from "./assets.js";
+import type { AssetKind } from "#assets";
 
 export interface ExchangeDefinition {
   value: string;
