@@ -25,7 +25,7 @@ export default function HistoryPageClient({
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const actions = useSingleFlightActions<"capture">();
-  const baseCurrency = snapshots[0]?.baseCurrency ?? "EUR";
+  const reportingCurrency = snapshots[0]?.reportingCurrency ?? "EUR";
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
 
@@ -121,7 +121,7 @@ export default function HistoryPageClient({
             <div className="mt-6">
               <NetWorthHistoryChart
                 snapshots={snapshots}
-                baseCurrency={baseCurrency}
+                reportingCurrency={reportingCurrency}
               />
             </div>
           </section>
@@ -155,21 +155,21 @@ export default function HistoryPageClient({
                         <td className="py-3 pr-4">
                           {formatSensitiveCurrency(
                             snapshot.netWorthTotal,
-                            snapshot.baseCurrency,
+                            snapshot.reportingCurrency,
                             shouldHideMoney,
                           )}
                         </td>
                         <td className="py-3 pr-4">
                           {formatSensitiveCurrency(
                             snapshot.assetsTotal,
-                            snapshot.baseCurrency,
+                            snapshot.reportingCurrency,
                             shouldHideMoney,
                           )}
                         </td>
                         <td className="py-3 pr-4">
                           {formatSensitiveCurrency(
                             snapshot.liabilitiesTotal,
-                            snapshot.baseCurrency,
+                            snapshot.reportingCurrency,
                             shouldHideMoney,
                           )}
                         </td>

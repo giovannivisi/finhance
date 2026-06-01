@@ -26,9 +26,7 @@ vi.mock("@components/CategoryForm", () => ({
   default: () => <div>Category form</div>,
 }));
 
-function buildCategory(
-  overrides: Partial<CategoryResponse>,
-): CategoryResponse {
+function buildCategory(overrides: Partial<CategoryResponse>): CategoryResponse {
   return {
     id: overrides.id ?? "category-1",
     name: overrides.name ?? "Category",

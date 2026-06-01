@@ -48,6 +48,9 @@ const DATETIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const DATE_FORMATTER = new Intl.DateTimeFormat("it-IT", {
+  dateStyle: "medium",
+});
 
 const ENTRY_MONTH_KEY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/Rome",
@@ -249,7 +252,8 @@ export default function TransactionsPageClient({
   categories,
   expenseValidationRules,
   initialFilters,
-  hasPendingSync,
+  initialHasPendingSync = false,
+  showTransactionTimes,
 }: {
   transactions: TransactionResponse[];
   cashflow: CashflowSummaryResponse;
@@ -257,7 +261,8 @@ export default function TransactionsPageClient({
   categories: CategoryResponse[];
   expenseValidationRules: ExpenseValidationRuleResponse[];
   initialFilters: ActivityFilters;
-  hasPendingSync: boolean;
+  initialHasPendingSync?: boolean;
+  showTransactionTimes: boolean;
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState<ActivityFilters>(initialFilters);
@@ -283,6 +288,7 @@ export default function TransactionsPageClient({
   const [openEntryMonthKey, setOpenEntryMonthKey] = useState<string | null>(
     null,
   );
+  const [hasPendingSync, setHasPendingSync] = useState(initialHasPendingSync);
   const [
     selectedCashflowPrimaryByCurrency,
     setSelectedCashflowPrimaryByCurrency,
@@ -317,6 +323,10 @@ export default function TransactionsPageClient({
   useEffect(() => {
     setFilters(initialFilters);
   }, [initialFilters]);
+
+  useEffect(() => {
+    setHasPendingSync(initialHasPendingSync);
+  }, [initialHasPendingSync]);
 
   const accountsById = useMemo(
     () => new Map(accounts.map((account) => [account.id, account])),
@@ -1110,7 +1120,8 @@ export default function TransactionsPageClient({
                 Entries
               </h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                Logical transactions, including paired transfers.
+                Logical transactions, including paired transfers and
+                split-funded expenses.
               </p>
             </div>
           </div>
@@ -1205,6 +1216,10 @@ export default function TransactionsPageClient({
                                 transaction.categoryId !== null
                                   ? categoriesById.get(transaction.categoryId)
                                   : null;
+                              const fundingLegs = transaction.fundingLegs ?? [];
+                              const isSplitExpense =
+                                transaction.kind === "EXPENSE" &&
+                                fundingLegs.length >= 2;
 
                               return (
                                 <tr
@@ -1212,9 +1227,10 @@ export default function TransactionsPageClient({
                                   className="text-[var(--text-secondary)]"
                                 >
                                   <td className="py-3 pr-4 text-[var(--text-primary)]">
-                                    {DATETIME_FORMATTER.format(
-                                      new Date(transaction.postedAt),
-                                    )}
+                                    {(showTransactionTimes
+                                      ? DATETIME_FORMATTER
+                                      : DATE_FORMATTER
+                                    ).format(new Date(transaction.postedAt))}
                                   </td>
                                   <td className="py-3 pr-4">
                                     <div className="flex flex-wrap items-center gap-2">
@@ -1225,6 +1241,11 @@ export default function TransactionsPageClient({
                                           ]
                                         }
                                       </span>
+                                      {isSplitExpense ? (
+                                        <span className="status-chip is-neutral">
+                                          Split
+                                        </span>
+                                      ) : null}
                                       {transaction.isRecurringGenerated ? (
                                         <span className="status-chip is-neutral">
                                           Recurring
@@ -1251,6 +1272,29 @@ export default function TransactionsPageClient({
                                         {destinationAccount?.name ??
                                           transaction.destinationAccountId}
                                       </p>
+                                    ) : isSplitExpense ? (
+                                      <details className="group">
+                                        <summary className="cursor-pointer font-medium text-[var(--text-primary)]">
+                                          Split across {fundingLegs.length}{" "}
+                                          accounts
+                                        </summary>
+                                        <ul className="mt-2 space-y-1 text-xs text-[var(--text-secondary)]">
+                                          {fundingLegs.map((leg) => (
+                                            <li
+                                              key={`${transaction.id}-${leg.accountId}`}
+                                            >
+                                              {(accountsById.get(leg.accountId)
+                                                ?.name ?? leg.accountId) +
+                                                ": " +
+                                                formatSensitiveCurrency(
+                                                  leg.amount,
+                                                  leg.currency,
+                                                  shouldHideMoney,
+                                                )}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </details>
                                     ) : (
                                       <p>
                                         {account?.name ?? transaction.accountId}
@@ -1389,7 +1433,10 @@ export default function TransactionsPageClient({
             accounts={accounts}
             categories={categories}
             expenseValidationRules={expenseValidationRules}
-            initialValues={createEmptyTransactionFormValues()}
+            showTransactionTimes={showTransactionTimes}
+            initialValues={createEmptyTransactionFormValues(
+              showTransactionTimes,
+            )}
             onSuccess={() => setIsCreateModalOpen(false)}
             onCancel={() => setIsCreateModalOpen(false)}
           />
@@ -1419,7 +1466,11 @@ export default function TransactionsPageClient({
                 accounts={accounts}
                 categories={categories}
                 expenseValidationRules={expenseValidationRules}
-                initialValues={transactionToFormValues(editingTransaction)}
+                showTransactionTimes={showTransactionTimes}
+                initialValues={transactionToFormValues(
+                  editingTransaction,
+                  showTransactionTimes,
+                )}
                 onSuccess={() => setEditingTransactionId(null)}
                 onCancel={() => setEditingTransactionId(null)}
               />

@@ -59,7 +59,8 @@ export default async function BrokeragePage() {
             <p className="page-kicker">Investing</p>
             <h1 className="page-title is-compact">Brokerage</h1>
             <p className="page-description">
-              Create a broker account first to unlock positions, trades, and allocation targets.
+              Create a broker account first to unlock positions, trades, and
+              allocation targets.
             </p>
           </div>
           <div className="page-inline-notice surface-dashed">

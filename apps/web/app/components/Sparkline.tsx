@@ -33,19 +33,16 @@ export default function Sparkline({
   });
 
   const linePath = coords
-    .map((coord, index) =>
-      `${index === 0 ? "M" : "L"}${coord.x.toFixed(2)},${coord.y.toFixed(2)}`,
+    .map(
+      (coord, index) =>
+        `${index === 0 ? "M" : "L"}${coord.x.toFixed(2)},${coord.y.toFixed(2)}`,
     )
     .join(" ");
   const baselineY = height - padding;
   const areaPath = `${linePath} L${coords[coords.length - 1].x.toFixed(2)},${baselineY} L${coords[0].x.toFixed(2)},${baselineY} Z`;
 
   const stroke =
-    tone === "income"
-      ? "#10b981"
-      : tone === "expense"
-        ? "#e11d48"
-        : "#0284c7";
+    tone === "income" ? "#10b981" : tone === "expense" ? "#e11d48" : "#0284c7";
   const last = coords[coords.length - 1];
 
   return (

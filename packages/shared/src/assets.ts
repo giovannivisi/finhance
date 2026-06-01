@@ -1,3 +1,7 @@
+import type { AccountResponse, AccountType } from "#accounts";
+import type { MonthlyBudgetResponse } from "#budgets";
+import type { SetupStatusResponse } from "#setup";
+
 export type AssetType = "ASSET" | "LIABILITY";
 
 export type AssetKind =
@@ -58,6 +62,7 @@ export interface AssetResponse {
 
 export interface DashboardAssetResponse extends AssetResponse {
   accountName: string | null;
+  accountType: AccountType | null;
   currentValue: number | null;
   referenceValue: number | null;
   valuationSource: ValuationSource;
@@ -71,15 +76,39 @@ export interface DashboardSummary {
   netWorth: number;
 }
 
+export type AggregatePricingState = "FRESH" | "STALE" | "PARTIAL";
+
+export interface AggregatePricingStatus {
+  state: AggregatePricingState;
+  refreshSuggested: boolean;
+  hasStaleQuotes: boolean;
+  hasStaleFx: boolean;
+  hasMissingFx: boolean;
+}
+
 export interface DashboardResponse {
-  baseCurrency: string;
+  reportingCurrency: string;
+  baseCurrency?: string;
   assets: DashboardAssetResponse[];
   summary: DashboardSummary;
+  pricingStatus: AggregatePricingStatus;
   assetKindOrder: string[];
   lastRefreshAt: string | null;
   latestSnapshotDate: string | null;
   latestSnapshotCapturedAt: string | null;
   latestSnapshotIsPartial: boolean | null;
+}
+
+export interface DashboardPageDataResponse {
+  dashboard: DashboardResponse;
+  budgetView: MonthlyBudgetResponse | null;
+  accounts: AccountResponse[];
+  setup: SetupStatusResponse | null;
+}
+
+export interface DashboardSupportDataResponse {
+  budgetView: MonthlyBudgetResponse | null;
+  setup: SetupStatusResponse | null;
 }
 
 export interface ReorderAssetsRequest {

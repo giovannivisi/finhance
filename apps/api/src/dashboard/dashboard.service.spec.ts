@@ -1,5 +1,5 @@
 import { DashboardService } from '@/dashboard/dashboard.service';
-import type { DashboardResponse } from '@finhance/shared';
+import type { DashboardResponse, SetupStatusResponse } from '@finhance/shared';
 import { Prisma } from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
@@ -8,6 +8,7 @@ function createDashboard(
   overrides: Partial<DashboardResponse> = {},
 ): DashboardResponse {
   return {
+    reportingCurrency: 'EUR',
     baseCurrency: 'EUR',
     assets: [
       {
@@ -16,6 +17,7 @@ function createDashboard(
         type: 'ASSET',
         accountId: null,
         accountName: null,
+        accountType: null,
         kind: 'CASH',
         liabilityKind: null,
         ticker: null,
@@ -42,6 +44,13 @@ function createDashboard(
       liabilities: 25,
       netWorth: 75,
     },
+    pricingStatus: {
+      state: 'FRESH',
+      refreshSuggested: false,
+      hasStaleQuotes: false,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    },
     assetKindOrder: [],
     lastRefreshAt: '2026-04-17T10:00:00.000Z',
     latestSnapshotDate: null,
@@ -51,97 +60,111 @@ function createDashboard(
   };
 }
 
-function createSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
-  const now = new Date('2026-04-17T10:00:00.000Z');
-
-  return {
-    id: 'snapshot-1',
-    userId: OWNER_ID,
-    snapshotDate: new Date('2026-04-17T00:00:00.000Z'),
-    capturedAt: now,
-    baseCurrency: 'EUR',
-    assetsTotal: new Prisma.Decimal('100'),
-    liabilitiesTotal: new Prisma.Decimal('25'),
-    netWorthTotal: new Prisma.Decimal('75'),
-    unavailableCount: 0,
-    isPartial: false,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
 describe('DashboardService', () => {
   let service: DashboardService;
+  let accounts: {
+    findAll: jest.Mock;
+  };
   let assets: {
     getDashboard: jest.Mock;
   };
-  let snapshots: {
-    findLatest: jest.Mock;
-    hasSnapshotForDate: jest.Mock;
-    captureFromDashboard: jest.Mock;
+  let budgets: {
+    findMonthly: jest.Mock;
+  };
+  let setup: {
+    getStatus: jest.Mock;
   };
 
   beforeEach(() => {
+    accounts = {
+      findAll: jest.fn(),
+    };
     assets = {
       getDashboard: jest.fn(),
     };
-
-    snapshots = {
-      findLatest: jest.fn(),
-      hasSnapshotForDate: jest.fn(),
-      captureFromDashboard: jest.fn().mockResolvedValue(createSnapshot()),
+    budgets = {
+      findMonthly: jest.fn(),
+    };
+    setup = {
+      getStatus: jest.fn(),
     };
 
-    service = new DashboardService(assets as never, snapshots as never);
-  });
-
-  it('auto-captures a snapshot in the background when today is missing', async () => {
-    const dashboard = createDashboard();
-    const latestSnapshot = createSnapshot({
-      snapshotDate: new Date('2026-04-16T00:00:00.000Z'),
-      capturedAt: new Date('2026-04-16T21:15:00.000Z'),
-      isPartial: true,
-    });
-    assets.getDashboard.mockResolvedValue(dashboard);
-    snapshots.findLatest.mockResolvedValue(latestSnapshot);
-    snapshots.hasSnapshotForDate.mockResolvedValue(false);
-
-    const result = await service.getDashboard(OWNER_ID);
-
-    expect(result.latestSnapshotDate).toBe('2026-04-16');
-    expect(result.latestSnapshotCapturedAt).toBe('2026-04-16T21:15:00.000Z');
-    expect(result.latestSnapshotIsPartial).toBe(true);
-    expect(snapshots.captureFromDashboard).toHaveBeenCalledWith(
-      OWNER_ID,
-      dashboard,
+    service = new DashboardService(
+      accounts as never,
+      assets as never,
+      budgets as never,
+      setup as never,
     );
   });
 
-  it('does not trigger background capture when a same-day snapshot already exists', async () => {
+  it('keeps snapshot metadata out of the dashboard critical path', async () => {
     const dashboard = createDashboard();
-    const latestSnapshot = createSnapshot();
     assets.getDashboard.mockResolvedValue(dashboard);
-    snapshots.findLatest.mockResolvedValue(latestSnapshot);
-    snapshots.hasSnapshotForDate.mockResolvedValue(true);
-
-    const result = await service.getDashboard(OWNER_ID);
-
-    expect(result.latestSnapshotDate).toBe('2026-04-17');
-    expect(result.latestSnapshotCapturedAt).toBe('2026-04-17T10:00:00.000Z');
-    expect(result.latestSnapshotIsPartial).toBe(false);
-    expect(snapshots.captureFromDashboard).not.toHaveBeenCalled();
-  });
-
-  it('returns null snapshot metadata when no snapshot exists yet', async () => {
-    assets.getDashboard.mockResolvedValue(createDashboard());
-    snapshots.findLatest.mockResolvedValue(null);
-    snapshots.hasSnapshotForDate.mockResolvedValue(false);
 
     const result = await service.getDashboard(OWNER_ID);
 
     expect(result.latestSnapshotDate).toBeNull();
     expect(result.latestSnapshotCapturedAt).toBeNull();
     expect(result.latestSnapshotIsPartial).toBeNull();
+  });
+
+  it('returns combined dashboard page data in one service call', async () => {
+    const dashboard = createDashboard();
+    const account = {
+      id: 'acct-1',
+      name: 'Broker',
+      type: 'BROKER',
+      currency: 'EUR',
+      institution: null,
+      notes: null,
+      order: 0,
+      openingBalance: new Prisma.Decimal('0'),
+      openingBalanceDate: null,
+      archivedAt: null,
+      createdAt: new Date('2026-04-17T10:00:00.000Z'),
+      updatedAt: new Date('2026-04-17T10:00:00.000Z'),
+    };
+    const budgetView = {
+      month: '2026-04',
+      currencies: [],
+    };
+    const setupStatus: SetupStatusResponse = {
+      isComplete: true,
+      currentMonth: '2026-04',
+      requiredCompletedCount: 3,
+      requiredTotalCount: 3,
+      requiredSteps: [],
+      recommendedSteps: [],
+      warnings: [],
+      handoff: [],
+      activeAccountCount: 1,
+      activeIncomeCategoryCount: 1,
+      activeExpenseCategoryCount: 1,
+      activeRecurringRuleCount: 0,
+      currentMonthBudgetCount: 0,
+      hasAppliedImportBatch: false,
+      hasSnapshot: false,
+      hasReportingCurrencyConfigured: true,
+    };
+
+    jest.spyOn(service, 'getDashboard').mockResolvedValue(dashboard);
+    accounts.findAll.mockResolvedValue([account]);
+    budgets.findMonthly.mockResolvedValue(budgetView);
+    setup.getStatus.mockResolvedValue(setupStatus);
+
+    const result = await service.getPageData(OWNER_ID);
+
+    expect(result).toEqual({
+      dashboard,
+      budgetView,
+      accounts: [
+        expect.objectContaining({
+          id: 'acct-1',
+          type: 'BROKER',
+          currency: 'EUR',
+        }),
+      ],
+      setup: setupStatus,
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { OperationType } from '@finhance/db';
 import { AssetsService } from '@assets/assets.service';
 import { PrismaService } from '@prisma/prisma.service';
@@ -57,17 +57,22 @@ export class SnapshotsService {
         userId_snapshotDate_baseCurrency: {
           userId: ownerId,
           snapshotDate,
-          baseCurrency: dashboard.baseCurrency,
+          baseCurrency: dashboard.reportingCurrency,
         },
       },
       create: {
         userId: ownerId,
         snapshotDate,
         capturedAt,
-        baseCurrency: dashboard.baseCurrency,
+        baseCurrency: dashboard.reportingCurrency,
         assetsTotal: this.toDecimal(dashboard.summary.assets),
         liabilitiesTotal: this.toDecimal(dashboard.summary.liabilities),
         netWorthTotal: this.toDecimal(dashboard.summary.netWorth),
+        nativeAssetTotals: this.buildNativeTotals(dashboard.assets, 'ASSET'),
+        nativeLiabilityTotals: this.buildNativeTotals(
+          dashboard.assets,
+          'LIABILITY',
+        ),
         unavailableCount,
         isPartial,
       },
@@ -76,6 +81,11 @@ export class SnapshotsService {
         assetsTotal: this.toDecimal(dashboard.summary.assets),
         liabilitiesTotal: this.toDecimal(dashboard.summary.liabilities),
         netWorthTotal: this.toDecimal(dashboard.summary.netWorth),
+        nativeAssetTotals: this.buildNativeTotals(dashboard.assets, 'ASSET'),
+        nativeLiabilityTotals: this.buildNativeTotals(
+          dashboard.assets,
+          'LIABILITY',
+        ),
         unavailableCount,
         isPartial,
       },
@@ -138,7 +148,9 @@ export class SnapshotsService {
     const day = parts.find((part) => part.type === 'day')?.value;
 
     if (!year || !month || !day) {
-      throw new Error('Unable to derive Europe/Rome snapshot date.');
+      throw new InternalServerErrorException(
+        'Unable to derive Europe/Rome snapshot date.',
+      );
     }
 
     return `${year}-${month}-${day}`;
@@ -150,5 +162,34 @@ export class SnapshotsService {
 
   private toDecimal(value: number): Prisma.Decimal {
     return new Prisma.Decimal(value.toString());
+  }
+
+  private buildNativeTotals(
+    assets: DashboardResponse['assets'],
+    type: 'ASSET' | 'LIABILITY',
+  ): Prisma.InputJsonValue {
+    const totals = new Map<string, number>();
+
+    for (const asset of assets) {
+      if (asset.type !== type) {
+        continue;
+      }
+
+      const nativeValue =
+        type === 'ASSET' &&
+        asset.kind !== 'CASH' &&
+        asset.quantity !== null &&
+        asset.lastPrice !== null
+          ? asset.quantity * asset.lastPrice
+          : (asset.balance ?? 0);
+      totals.set(
+        asset.currency,
+        (totals.get(asset.currency) ?? 0) + nativeValue,
+      );
+    }
+
+    return Object.fromEntries(
+      [...totals.entries()].map(([currency, total]) => [currency, total]),
+    );
   }
 }

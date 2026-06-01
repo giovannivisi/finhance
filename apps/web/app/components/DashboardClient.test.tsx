@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DashboardAssetResponse } from "@finhance/shared";
 import DashboardClient from "@components/DashboardClient";
 import { apiMutation } from "@lib/api";
+import { requestDashboardRefresh } from "@lib/dashboard-refresh";
 
 const refreshMock = vi.fn();
 
@@ -42,11 +43,8 @@ vi.mock("@/components/CreateAssetModal", () => ({
 }));
 
 vi.mock("@components/EditAssetModal", () => ({
-  default: ({
-    open,
-  }: {
-    open: boolean;
-  }) => (open ? <div role="dialog" aria-label="Edit asset" /> : null),
+  default: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog" aria-label="Edit asset" /> : null,
 }));
 
 vi.mock("@components/CooldownNotice", () => ({
@@ -138,6 +136,7 @@ function buildAsset(
     notes: overrides.notes ?? null,
     accountId: overrides.accountId ?? "broker-1",
     accountName: overrides.accountName ?? "Broker account",
+    accountType: overrides.accountType ?? "BROKER",
     liabilityKind: overrides.liabilityKind ?? null,
     exchange: overrides.exchange ?? null,
     order: overrides.order ?? 0,
@@ -152,17 +151,29 @@ describe("DashboardClient", () => {
   beforeEach(() => {
     refreshMock.mockReset();
     vi.mocked(apiMutation).mockReset();
+    vi.mocked(requestDashboardRefresh).mockReset();
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({ ok: true });
     document.documentElement.setAttribute("data-theme", "dark");
     document.documentElement.setAttribute("data-hide-money", "false");
   });
 
-  function renderDashboard() {
+  function renderDashboard(options?: {
+    pricingStatus?: {
+      state: "FRESH" | "STALE" | "PARTIAL";
+      refreshSuggested: boolean;
+      hasStaleQuotes: boolean;
+      hasStaleFx: boolean;
+      hasMissingFx: boolean;
+    };
+    assetOverrides?: Partial<DashboardAssetResponse>;
+  }) {
     const assetWithBrokerage = buildAsset({
       id: "asset-brokerage",
       name: "VWCE",
       accountId: "broker-1",
       currentValue: 120,
       referenceValue: 110,
+      ...options?.assetOverrides,
     });
     const liability = buildAsset({
       id: "liability-1",
@@ -190,6 +201,15 @@ describe("DashboardClient", () => {
           { kind: "Debts", total: -80 },
         ]}
         baseCurrency="EUR"
+        pricingStatus={
+          options?.pricingStatus ?? {
+            state: "FRESH",
+            refreshSuggested: false,
+            hasStaleQuotes: false,
+            hasStaleFx: false,
+            hasMissingFx: false,
+          }
+        }
         lastRefreshAt="2026-05-20T10:00:00.000Z"
         summary={{ assets: 120, liabilities: 80, netWorth: 40 }}
         assetKindOrder={["ETFs", "Debts"]}
@@ -202,10 +222,14 @@ describe("DashboardClient", () => {
     const user = userEvent.setup();
     renderDashboard();
 
-    const actionButtons = screen.getAllByRole("button", { name: "Asset actions" });
+    const actionButtons = screen.getAllByRole("button", {
+      name: "Asset actions",
+    });
 
     await user.click(actionButtons[0] as HTMLButtonElement);
-    expect(screen.getByRole("menuitem", { name: "Brokerage" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Brokerage" }),
+    ).toBeInTheDocument();
 
     await user.click(actionButtons[1] as HTMLButtonElement);
     await waitFor(() =>
@@ -217,24 +241,85 @@ describe("DashboardClient", () => {
     const user = userEvent.setup();
     renderDashboard();
 
-    await user.click(screen.getAllByRole("button", { name: "Asset actions" })[0]!);
+    await user.click(
+      screen.getAllByRole("button", { name: "Asset actions" })[0]!,
+    );
     await user.click(screen.getByRole("menuitem", { name: "Edit" }));
 
     await waitFor(() =>
       expect(screen.queryByRole("menu", { name: "Asset actions" })).toBeNull(),
     );
-    expect(screen.getByRole("dialog", { name: "Edit asset" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Edit asset" }),
+    ).toBeInTheDocument();
   });
 
   it("opens the delete confirmation from the overflow menu", async () => {
     const user = userEvent.setup();
     renderDashboard();
 
-    await user.click(screen.getAllByRole("button", { name: "Asset actions" })[0]!);
+    await user.click(
+      screen.getAllByRole("button", { name: "Asset actions" })[0]!,
+    );
     await user.click(screen.getByRole("menuitem", { name: "Delete asset" }));
 
     expect(
       await screen.findByRole("dialog", { name: "Delete asset" }),
     ).toBeInTheDocument();
+  });
+
+  it("does not auto-refresh stale pricing on hydration", () => {
+    renderDashboard({
+      pricingStatus: {
+        state: "STALE",
+        refreshSuggested: true,
+        hasStaleQuotes: true,
+        hasStaleFx: false,
+        hasMissingFx: false,
+      },
+    });
+
+    expect(requestDashboardRefresh).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        /Latest stored values shown\. Refresh when you want live quotes/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows latest labels for stale stored valuations", () => {
+    renderDashboard({
+      pricingStatus: {
+        state: "STALE",
+        refreshSuggested: true,
+        hasStaleQuotes: true,
+        hasStaleFx: true,
+        hasMissingFx: false,
+      },
+      assetOverrides: {
+        valuationSource: "LAST_QUOTE",
+        isStale: true,
+        currentValue: 120,
+        referenceValue: 120,
+      },
+    });
+
+    expect(screen.getByText("LATEST")).toBeInTheDocument();
+    expect(screen.getByText("Latest quote")).toBeInTheDocument();
+  });
+
+  it("does not show latest badges for average-cost fallback values", () => {
+    renderDashboard({
+      assetOverrides: {
+        valuationSource: "AVG_COST",
+        isStale: true,
+        currentValue: 120,
+        referenceValue: 120,
+      },
+    });
+
+    expect(screen.queryByText("LATEST")).not.toBeInTheDocument();
+    expect(screen.getByText("Reference avg cost")).toBeInTheDocument();
   });
 });

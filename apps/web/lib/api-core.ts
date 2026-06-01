@@ -81,7 +81,8 @@ function collectStructuredErrorMessages(
   const constraints =
     error.constraints && typeof error.constraints === "object"
       ? Object.values(error.constraints as Record<string, unknown>).filter(
-          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+          (entry): entry is string =>
+            typeof entry === "string" && entry.trim().length > 0,
         )
       : [];
 
@@ -89,7 +90,10 @@ function collectStructuredErrorMessages(
     nextPath.length > 0 ? `${nextPath.join(".")}: ${message}` : message,
   );
 
-  const childMessages = collectStructuredErrorMessages(error.children, nextPath);
+  const childMessages = collectStructuredErrorMessages(
+    error.children,
+    nextPath,
+  );
   if (messages.length > 0 || childMessages.length > 0) {
     return [...messages, ...childMessages];
   }

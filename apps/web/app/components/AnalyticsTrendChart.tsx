@@ -29,7 +29,9 @@ export default function AnalyticsTrendChart({
   const router = useRouter();
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
-  const hasClickableMonths = data.some((point) => typeof point.href === "string");
+  const hasClickableMonths = data.some(
+    (point) => typeof point.href === "string",
+  );
 
   return (
     <div className="w-full min-w-0">
@@ -39,7 +41,9 @@ export default function AnalyticsTrendChart({
           margin={{ top: 16, right: 16, left: 8, bottom: 0 }}
           onClick={(state) => {
             const raw = (
-              state as { activeTooltipIndex?: number | string | null } | undefined
+              state as
+                | { activeTooltipIndex?: number | string | null }
+                | undefined
             )?.activeTooltipIndex;
             const index =
               typeof raw === "number"

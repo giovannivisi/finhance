@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import AnalyticsCategoryBarChart from "@components/AnalyticsCategoryBarChart";
 
 const push = vi.fn();
-const ChartDataContext = createContext<Array<{ href?: string; selectionKey?: string }>>(
-  [],
-);
+const ChartDataContext = createContext<
+  Array<{ href?: string; selectionKey?: string }>
+>([]);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -94,9 +94,7 @@ describe("AnalyticsCategoryBarChart", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Bar 1" }));
 
-    expect(push).toHaveBeenCalledWith(
-      "/transactions?primaryCategoryId=rent",
-    );
+    expect(push).toHaveBeenCalledWith("/transactions?primaryCategoryId=rent");
   });
 
   it("uses local bar selection instead of navigation when a selection key is provided", () => {

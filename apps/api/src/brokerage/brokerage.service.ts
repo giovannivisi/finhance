@@ -7,10 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
 import { AccountsService } from '@accounts/accounts.service';
-import {
-  toAccountResponse,
-  toAccountReconciliationResponse,
-} from '@accounts/accounts.mapper';
+import { toAccountResponse } from '@accounts/accounts.mapper';
 import { AssetsService } from '@assets/assets.service';
 import { TransactionsService } from '@transactions/transactions.service';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
@@ -43,6 +40,10 @@ import type {
   PortfolioAllocationTargetsResponse,
   UpdatePortfolioAllocationTargetsRequest,
 } from '@finhance/shared';
+import {
+  isSupportedCurrencyCode,
+  isSupportedExchangeValue,
+} from '@/common/catalogues';
 
 const ZERO = new Prisma.Decimal(0);
 const HUNDRED = new Prisma.Decimal(100);
@@ -106,26 +107,16 @@ export class BrokerageService {
   ): Promise<BrokerageWorkspaceResponse> {
     const brokerAccountsPromise = this.listActiveBrokerAccounts(ownerId);
     const dashboardPromise = this.assetsService.getDashboard(ownerId);
-    const deletionStatesPromise = brokerAccountsPromise.then((brokerAccounts) =>
-      this.accountsService.getDeletionStates(
-        ownerId,
-        brokerAccounts.map((account) => account.id),
-      ),
-    );
 
     const [
       brokerAccounts,
       dashboard,
-      deletionStates,
-      reconciliations,
       operations,
       assetKindTargets,
       securityTargets,
     ] = await Promise.all([
       brokerAccountsPromise,
       dashboardPromise,
-      deletionStatesPromise,
-      this.accountsService.findReconciliation(ownerId),
       this.findBrokerageOperationsSafe(
         ownerId,
         accountId,
@@ -137,7 +128,7 @@ export class BrokerageService {
 
     const summaries = this.buildBrokerageSummariesFromDashboard(
       brokerAccounts,
-      deletionStates,
+      new Map(),
       dashboard,
     );
     const selectedBroker = summaries.find(
@@ -150,9 +141,6 @@ export class BrokerageService {
       );
     }
 
-    const cashReconciliation = reconciliations.find(
-      (entry) => entry.account.id === accountId,
-    );
     const allAssets = dashboard.assets.filter(
       (asset) => asset.type === 'ASSET',
     );
@@ -169,7 +157,7 @@ export class BrokerageService {
     const totalBrokerageValue = this.sumEffectiveValues(selectedAssets);
     const allocation = this.buildAllocationSnapshot({
       assets: allAssets,
-      baseCurrency: dashboard.baseCurrency,
+      reportingCurrency: dashboard.reportingCurrency,
       portfolioTotal,
       assetKindTargets,
       securityTargets,
@@ -180,7 +168,7 @@ export class BrokerageService {
         totalBrokerageValue,
         portfolioTotal,
         securityTargets,
-        baseCurrency: dashboard.baseCurrency,
+        reportingCurrency: dashboard.reportingCurrency,
       }),
     );
     const mirroredTransactionIds = new Set(
@@ -207,12 +195,11 @@ export class BrokerageService {
     );
 
     return {
-      baseCurrency: dashboard.baseCurrency,
+      reportingCurrency: dashboard.reportingCurrency,
+      pricingStatus: dashboard.pricingStatus,
       brokers: summaries,
       selectedBroker,
-      cashReconciliation: cashReconciliation
-        ? toAccountReconciliationResponse(cashReconciliation)
-        : null,
+      cashReconciliation: null,
       positions,
       activity: activity.slice(0, BROKERAGE_ACTIVITY_LIMIT),
       allocation,
@@ -595,17 +582,11 @@ export class BrokerageService {
     ownerId: string,
   ): Promise<BrokerageAccountSummaryResponse[]> {
     const brokerAccounts = await this.listActiveBrokerAccounts(ownerId);
-    const [deletionStates, dashboard] = await Promise.all([
-      this.accountsService.getDeletionStates(
-        ownerId,
-        brokerAccounts.map((account) => account.id),
-      ),
-      this.assetsService.getDashboard(ownerId),
-    ]);
+    const dashboard = await this.assetsService.getDashboard(ownerId);
 
     return this.buildBrokerageSummariesFromDashboard(
       brokerAccounts,
-      deletionStates,
+      new Map(),
       dashboard,
     );
   }
@@ -656,7 +637,7 @@ export class BrokerageService {
 
   private buildAllocationSnapshot(input: {
     assets: DashboardAssetView[];
-    baseCurrency: string;
+    reportingCurrency: string;
     portfolioTotal: number;
     assetKindTargets: { kind: AssetKind; targetPercent: Prisma.Decimal }[];
     securityTargets: SecurityTargetModel[];
@@ -854,7 +835,7 @@ export class BrokerageService {
     totalBrokerageValue: number;
     portfolioTotal: number;
     securityTargets: SecurityTargetModel[];
-    baseCurrency: string;
+    reportingCurrency: string;
   }): BrokeragePositionResponse {
     const asset = input.asset;
     const currentValue = asset.currentValue ?? asset.referenceValue ?? null;
@@ -1133,6 +1114,10 @@ export class BrokerageService {
       return false;
     }
 
+    if (entry.entryType === 'SPLIT') {
+      return entry.rows.some((row) => mirroredTransactionIds.has(row.id));
+    }
+
     return mirroredTransactionIds.has(entry.row.id);
   }
 
@@ -1262,11 +1247,20 @@ export class BrokerageService {
       );
     }
 
+    if (!isSupportedExchangeValue(normalized, kind)) {
+      throw new BadRequestException('Unsupported exchange.');
+    }
+
     return normalized;
   }
 
   private normalizeCurrency(currency: string): string {
-    return currency.trim().toUpperCase();
+    const normalized = currency.trim().toUpperCase();
+    if (!isSupportedCurrencyCode(normalized)) {
+      throw new BadRequestException(`Unsupported currency code "${currency}".`);
+    }
+
+    return normalized;
   }
 
   private parsePostedAt(value: string): Date {

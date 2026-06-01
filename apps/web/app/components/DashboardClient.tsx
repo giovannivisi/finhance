@@ -1,17 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Eye, EyeOff, MoreHorizontal } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { DashboardAssetResponse } from "@finhance/shared";
+import type {
+  AggregatePricingStatus,
+  DashboardAssetResponse,
+} from "@finhance/shared";
 import {
   DndContext,
   closestCenter,
@@ -61,17 +57,29 @@ function getKindDotColor(kind: string): string {
 function getValuationLabel(asset: DashboardAssetResponse): string {
   switch (asset.valuationSource) {
     case "LIVE":
-      return asset.isStale ? "Live quote (stale)" : "Live quote";
+      return "Live quote";
     case "LAST_QUOTE":
-      return "Last saved quote";
+      return "Latest quote";
     case "AVG_COST":
       return "Reference avg cost";
     case "DIRECT_BALANCE":
-      return "Stored balance";
+      return asset.isStale ? "Latest balance" : "Stored balance";
     case "UNAVAILABLE":
       return "Unavailable in dashboard currency";
     default:
       return "Stored value";
+  }
+}
+
+function getPricingStatusLabel(pricingStatus: AggregatePricingStatus): string {
+  switch (pricingStatus.state) {
+    case "PARTIAL":
+      return "Latest stored values shown.";
+    case "STALE":
+      return "Latest stored values shown. Refresh when you want live quotes.";
+    case "FRESH":
+    default:
+      return "Price snapshot is current.";
   }
 }
 
@@ -165,6 +173,13 @@ function SortableAssetRow({
       : asset.quantity != null
         ? `${asset.quantity} × ${formatCurrency(liveUnitPrice ?? Number(asset.unitPrice), asset.currency ?? baseCurrency)}`
         : (asset.accountName ?? "Stored balance");
+    const valuationBadgeText =
+      asset.valuationSource === "LIVE"
+        ? "LIVE"
+        : asset.valuationSource === "LAST_QUOTE" ||
+            (asset.valuationSource === "DIRECT_BALANCE" && asset.isStale)
+          ? "LATEST"
+          : null;
 
     return (
       <li
@@ -182,8 +197,14 @@ function SortableAssetRow({
           </div>
           <div className="asset-row-meta">
             <p className="asset-row-meta-text">{quantityDisplay}</p>
-            {liveUnitPrice != null ? (
-              <span className="asset-row-live-badge">LIVE</span>
+            {valuationBadgeText ? (
+              <span
+                className={`asset-row-live-badge${
+                  valuationBadgeText === "LATEST" ? " is-warning" : ""
+                }`}
+              >
+                {valuationBadgeText}
+              </span>
             ) : null}
             {asset.notes ? (
               <>
@@ -379,6 +400,7 @@ export default function DashboardClient({
   grouped,
   kindTotalsArray,
   baseCurrency,
+  pricingStatus,
   lastRefreshAt,
   summary,
   assetKindOrder: savedKindOrder,
@@ -387,6 +409,7 @@ export default function DashboardClient({
   grouped: Record<string, DashboardAssetResponse[]>;
   kindTotalsArray: { kind: string; total: number }[];
   baseCurrency: string;
+  pricingStatus: AggregatePricingStatus;
   lastRefreshAt?: string | null;
   summary: { assets: number; liabilities: number; netWorth: number };
   assetKindOrder: string[];
@@ -409,15 +432,7 @@ export default function DashboardClient({
   const [lastDataRefreshMs, setLastDataRefreshMs] = useState(Date.now());
   const [isEditing, setIsEditing] = useState(false);
   const actions = useSingleFlightActions<"refresh">();
-  const {
-    hideMoney,
-    isHydrated,
-    toggleHideMoney,
-    hasAttemptedDashboardRefresh,
-    markDashboardRefreshAttempted,
-  } = useAppPreferences();
-  const autoRefreshStartedRef = useRef(false);
-
+  const { hideMoney, isHydrated, toggleHideMoney } = useAppPreferences();
   const allCategories = useMemo(() => Object.keys(grouped), [grouped]);
 
   const [assetKindOrderState, setAssetKindOrderState] = useState<string[]>(() =>
@@ -481,10 +496,6 @@ export default function DashboardClient({
   );
 
   const shouldHideMoney = !isHydrated || hideMoney;
-  const runAutoRefresh = useEffectEvent(() => {
-    void handleRefresh();
-  });
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, {
@@ -541,20 +552,6 @@ export default function DashboardClient({
       }
     });
   }
-
-  useEffect(() => {
-    if (!isHydrated || autoRefreshStartedRef.current) {
-      return;
-    }
-
-    autoRefreshStartedRef.current = true;
-    if (hasAttemptedDashboardRefresh()) {
-      return;
-    }
-
-    markDashboardRefreshAttempted();
-    runAutoRefresh();
-  }, [hasAttemptedDashboardRefresh, isHydrated, markDashboardRefreshAttempted]);
 
   const handleKindDragEnd = useCallback(
     (event: DragEndEvent, type: "ASSET" | "LIABILITY") => {
@@ -644,11 +641,11 @@ export default function DashboardClient({
     });
   }
 
-  const refreshStatus =
+  const refreshStatusDetail =
     lastRefreshAt == null
-      ? "No quote snapshot yet"
+      ? "No stored price snapshot yet"
       : nowMs == null
-        ? "Quote snapshot available"
+        ? "Stored price snapshot available"
         : `Last refresh ${Math.max(
             0,
             Math.floor(
@@ -656,9 +653,15 @@ export default function DashboardClient({
                 60_000,
             ),
           )} min ago`;
+  const refreshStatus = isRefreshing
+    ? "Refreshing latest prices..."
+    : `${getPricingStatusLabel(pricingStatus)} ${refreshStatusDetail}`;
 
-  const refreshToneClass =
-    lastRefreshAt == null ? "is-warning" : refreshError ? "is-error" : "";
+  const refreshToneClass = refreshError
+    ? "is-error"
+    : pricingStatus.state === "FRESH" && lastRefreshAt != null
+      ? ""
+      : "is-warning";
 
   return (
     <>

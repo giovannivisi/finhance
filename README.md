@@ -21,6 +21,8 @@ The current app includes:
 - account and category management, including archive and safe delete flows
 - transactions and transfers
 - assets and liabilities with quote-aware valuation support
+- multi-currency reporting with native-currency storage and per-user reporting
+  currency
 - dedicated brokerage workspaces for broker accounts, including positions,
   operations, activity, and allocation targets
 - recurring transaction rules, month overrides, and manual materialization
@@ -129,6 +131,11 @@ Practical guidance:
 - dividends and brokerage fees should be recorded from the brokerage workspace,
   not as ordinary ad hoc manual transactions, so the investment history stays
   coherent
+- if a purchase was settled in one currency but charged to an account in
+  another, keep the account-side settled amount as the real transaction amount
+  and use the optional original-currency fields for the merchant-side amount
+- if money moved between two of your own accounts with different currencies,
+  use a cross-currency `TRANSFER` instead of faking it as two unrelated rows
 
 ### Budgets and recurring rules
 
@@ -150,6 +157,73 @@ Practical guidance:
 - mortgage balance: use a `LOAN` account plus a liability, usually `DEBT`
 - taxes owed but not yet paid: create a liability with kind `TAX`
 
+## Multi-currency model
+
+`finhance` now treats currency in two layers:
+
+- `native currency` is the real currency of the account, asset, liability, or
+  transaction
+- `reporting currency` is the currency used for aggregate totals such as net
+  worth and portfolio-level summaries
+
+Important rules:
+
+- never use reporting currency to overwrite native truth
+- row-level records stay in their native currency
+- converted totals are a reporting layer on top, not a replacement for source
+  data
+
+### Currently supported currencies
+
+There are two answers here:
+
+- at the product/settings level, the current reporting-currency selector offers:
+  `EUR`, `USD`, `GBP`, and `CHF`
+- at the API/data-validation level, the system accepts any valid 3-letter
+  uppercase currency code
+
+That means:
+
+- accounts, assets, liabilities, imports, and transactions can technically use
+  currencies beyond the four reporting presets, as long as they are valid
+  3-letter codes
+- the user-facing reporting-currency choice is currently limited to the four
+  curated options above
+
+### FX source
+
+- FX conversion uses Yahoo Finance, through the same quote service family used
+  for market prices
+- live FX can be used by default
+- manual FX overrides can be saved for manual transactions and cross-currency
+  transfers
+- dated FX records are persisted so historical reporting does not blindly reuse
+  today's rates
+
+### How multi-currency shows up in the app
+
+- `Dashboard`: summary totals are shown in reporting currency, while asset and
+  liability rows stay native
+- `Brokerage`: workspace-level totals use reporting currency, while positions,
+  cash, and activity remain native/account-currency first
+- `History`: snapshots store reporting metadata plus native per-currency totals
+  for newer captures
+- `Monthly close`: top-level explanation uses reporting-currency language, but
+  diagnostics and warnings still reflect native-currency reality
+- `Transactions` and `Activity`: the canonical booked amount remains the
+  settled account-side amount; optional native/original-currency fields add
+  merchant-side context
+- `Budgets` and `Analytics`: per-currency sections remain authoritative; the
+  reporting-currency overview layer is only partially implemented at the moment
+
+### Current limitations
+
+- historical snapshots captured before the new native-currency snapshot format
+  cannot be recomputed perfectly for arbitrary reporting-currency changes
+- reporting-currency overview strips are not yet fully realised across all
+  budgets and analytics surfaces
+- split-funded expenses remain same-currency settlement only for now
+
 ## Monorepo layout
 
 ```text
@@ -157,14 +231,9 @@ apps/
   api/        NestJS + Prisma API
   web/        Next.js App Router frontend
 packages/
+  db/         Prisma schema, migrations, and generated client
   shared/     shared DTOs, response types, and import template contracts
 ```
-
-Useful entry points:
-
-- [apps/api](/Users/giovannivisi/Code/finhance/apps/api)
-- [apps/web](/Users/giovannivisi/Code/finhance/apps/web)
-- [packages/shared](/Users/giovannivisi/Code/finhance/packages/shared)
 
 ## Stack
 
@@ -183,6 +252,8 @@ Install dependencies from the repo root:
 
 ```bash
 pnpm install
+pre-commit install
+pre-commit install --hook-type commit-msg
 ```
 
 Run the repo in development:
@@ -227,7 +298,18 @@ Only run migrations when you are intentionally changing the schema:
 pnpm --filter @finhance/db run prisma:migrate:dev
 ```
 
-If you need more API detail, inspect [apps/api/package.json](/Users/giovannivisi/Code/finhance/apps/api/package.json) and the shared Prisma schema at [packages/db/prisma/schema.prisma](/Users/giovannivisi/Code/finhance/packages/db/prisma/schema.prisma).
+If you pull code that includes new Prisma migrations, apply them before
+starting or exercising the API:
+
+```bash
+pnpm db:migrate:deploy
+```
+
+For normal local development, `pnpm db:migrate:dev` is also acceptable. If you
+skip this step, Prisma will fail with missing-column errors such as
+`Transaction.splitGroupId`.
+
+If you need more API detail, inspect `apps/api/package.json` and the shared Prisma schema at `packages/db/prisma/schema.prisma`.
 
 ### Web
 
@@ -243,8 +325,7 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:3000
 If this points at the Next.js server instead, the app will receive HTML instead
 of API JSON and many pages will fail with API reachability errors.
 
-More web-specific setup notes live in
-[apps/web/README.md](/Users/giovannivisi/Code/finhance/apps/web/README.md).
+More web-specific setup notes live in `apps/web/README.md`.
 
 ## Private hosted deployment
 
@@ -256,8 +337,8 @@ The intended private hosted shape is:
 
 Hosted deployment details live in:
 
-- [docs/deploy/private-hosted.md](/Users/giovannivisi/Code/finhance/docs/deploy/private-hosted.md)
-- [render.yaml](/Users/giovannivisi/Code/finhance/render.yaml)
+- `docs/deploy/private-hosted.md`
+- `render.yaml`
 
 The hosted rollout depends on the Phase 1 auth foundation:
 
@@ -320,9 +401,7 @@ The import/export workflow is intentionally domain-aware:
 - budgets and budget overrides are part of the round-trip package
 - import preview batches are short-lived and must be applied explicitly
 
-Template CSVs are served from:
-
-- [apps/web/public/import-templates](/Users/giovannivisi/Code/finhance/apps/web/public/import-templates)
+Template CSVs are served from `apps/web/public/import-templates`.
 
 ## Privacy notice configuration
 
@@ -330,9 +409,7 @@ The `/privacy` page is backed by server-side configuration and can render
 built-in defaults for strictly local self-hosted work, but managed or mixed
 deployments should set explicit privacy configuration.
 
-See the detailed guide in:
-
-- [apps/web/README.md](/Users/giovannivisi/Code/finhance/apps/web/README.md)
+See the detailed guide in `apps/web/README.md`.
 
 ## Workflow overview
 
@@ -345,16 +422,11 @@ The app works best when used as a connected loop:
 5. zoom out with analytics
 6. capture snapshots to preserve historical net worth boundaries
 
-## Notes for contributors
+## Contributing
 
-- prefer `pnpm` for all workspace commands
-- keep web and API contracts aligned through `@finhance/shared`
-- preserve the current redesign direction while favoring readability over
-  decorative effects
-- treat Neon as the intended local database target unless an explicit decision
-  changes that
-- run lint/build/tests for the surfaces you touch before merging
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branch conventions, commit prefixes,
+pre-commit hooks, and PR guidelines.
 
 ## License
 
-Private project. All rights reserved.
+AGPL-3.0 — see [LICENSE](LICENSE.md).

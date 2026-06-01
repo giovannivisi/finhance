@@ -361,6 +361,7 @@ describe('Account routes (e2e)', () => {
           accountName: account.name,
           accountType: account.type,
           currency: account.currency,
+          reconciliationScope: 'FULL_BALANCE',
           trackedBalance: 100,
           expectedBalance: 100,
           delta: 0,

@@ -50,10 +50,10 @@ export function getWorkflowCards(input: {
   if (input.currentPage !== "review") {
     cards.push({
       code: "REVIEW",
-      title: "Review this month",
-      detail: `Explain what happened in ${input.month}, what still needs attention, and which warnings are worth acting on first.`,
+      title: "Monthly close",
+      detail: `Check whether ${input.month} is trustworthy, clear the warnings that still matter, and hand deeper analysis off to the right page.`,
       href: `/review?month=${encodeURIComponent(input.month)}`,
-      actionLabel: "Open review",
+      actionLabel: "Open monthly close",
     });
   }
 

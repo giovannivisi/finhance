@@ -4,6 +4,8 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -78,6 +80,7 @@ import type {
   RecurringRuleImportRow,
   TransactionImportRow,
 } from '@imports/imports.types';
+import { isSupportedExchangeValue } from '@/common/catalogues';
 type ImportDbClient = PrismaService | Prisma.TransactionClient;
 
 interface StoredPreviewPayload {
@@ -88,6 +91,7 @@ interface StoredPreviewPayload {
 
 interface AccountImportRef {
   id: string;
+  type: AccountType;
   currency: string;
   archived: boolean;
   openingBalanceDate: string | null;
@@ -113,6 +117,7 @@ interface BudgetImportRef {
 const CSV_IMPORT_SOURCE = ImportSource.CSV_TEMPLATE;
 const RECENT_BATCH_LIMIT = 20;
 const IMPORT_PREVIEW_TTL_MS = 15 * 60 * 1000;
+const IMPORT_PREVIEW_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const IMPORT_APPLY_TRANSACTION_MAX_WAIT_MS = 15_000;
 const IMPORT_APPLY_TRANSACTION_TIMEOUT_MS = 120_000;
 const MAX_UPLOAD_FILE_BYTES = 1024 * 1024;
@@ -134,15 +139,33 @@ const ZERO = new Prisma.Decimal(0);
 type CsvRecord = Record<string, string>;
 
 @Injectable()
-export class ImportsService {
+export class ImportsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ImportsService.name);
   private readonly previewPayloads = new Map<string, StoredPreviewPayload>();
+  private cleanupTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricesService: PricesService,
     private readonly recurringService: RecurringService,
   ) {}
+
+  onModuleInit(): void {
+    this.schedulePersistedPreviewCleanup();
+    this.cleanupTimer = setInterval(() => {
+      this.schedulePersistedPreviewCleanup();
+    }, IMPORT_PREVIEW_CLEANUP_INTERVAL_MS);
+    this.cleanupTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (!this.cleanupTimer) {
+      return;
+    }
+
+    clearInterval(this.cleanupTimer);
+    this.cleanupTimer = null;
+  }
 
   async listRecent(ownerId: string): Promise<ImportBatchResponse[]> {
     await this.clearExpiredPersistedPreviewPayloads(ownerId);
@@ -1579,6 +1602,7 @@ export class ImportsService {
     for (const [key, account] of state.importedAccountsByKey.entries()) {
       refs.set(key, {
         id: account.id,
+        type: account.type,
         currency: account.currency,
         archived: account.archivedAt !== null,
         openingBalanceDate:
@@ -1597,6 +1621,7 @@ export class ImportsService {
 
       refs.set(row.importKey, {
         id: existing?.id ?? row.importKey,
+        type: row.type,
         currency: row.currency,
         archived: row.archived,
         openingBalanceDate: row.openingBalanceDate,
@@ -2044,6 +2069,29 @@ export class ImportsService {
         row.ticker &&
         row.exchange !== null
       ) {
+        if (!row.accountImportKey) {
+          issues.push(
+            this.issue(
+              'assets',
+              row.rowNumber,
+              'accountImportKey',
+              'Market assets must belong to a BROKER account.',
+            ),
+          );
+        } else {
+          const account = accountRefs.get(row.accountImportKey);
+          if (account && account.type !== AccountType.BROKER) {
+            issues.push(
+              this.issue(
+                'assets',
+                row.rowNumber,
+                'accountImportKey',
+                'Market assets must belong to a BROKER account.',
+              ),
+            );
+          }
+        }
+
         const marketKey = this.marketAssetKey(
           row.kind,
           row.ticker,
@@ -3486,6 +3534,7 @@ export class ImportsService {
     for (const [key, account] of state.importedAccountsByKey.entries()) {
       accountRefs.set(key, {
         id: account.id,
+        type: account.type,
         currency: account.currency,
         archived: account.archivedAt !== null,
         openingBalanceDate:
@@ -3601,6 +3650,7 @@ export class ImportsService {
 
       accountRefs.set(row.importKey, {
         id: saved.id,
+        type: saved.type,
         currency: saved.currency,
         archived: saved.archivedAt !== null,
         openingBalanceDate:
@@ -4082,9 +4132,10 @@ export class ImportsService {
 
     for (const row of payload.assets) {
       const existing = state.importedAssetsByKey.get(row.importKey);
-      const accountId = row.accountImportKey
-        ? (accountRefs.get(row.accountImportKey)?.id ?? null)
+      const accountRef = row.accountImportKey
+        ? (accountRefs.get(row.accountImportKey) ?? null)
         : null;
+      const accountId = accountRef?.id ?? null;
       const shouldClearQuote =
         !existing ||
         !this.isExistingMarketAsset(existing) ||
@@ -4098,6 +4149,17 @@ export class ImportsService {
         ? new Prisma.Decimal(row.unitPrice)
         : null;
       const targetOrder = row.order ?? existing?.order ?? 0;
+
+      if (
+        row.type === AssetType.ASSET &&
+        row.kind &&
+        this.isMarketKind(row.kind) &&
+        accountRef?.type !== AccountType.BROKER
+      ) {
+        throw new ConflictException(
+          `Asset import ${row.importKey} must assign market assets to a BROKER account.`,
+        );
+      }
 
       const data: Prisma.AssetUncheckedCreateInput = {
         userId: ownerId,
@@ -4958,16 +5020,18 @@ export class ImportsService {
       return null;
     }
 
+    let decimal: Prisma.Decimal;
     try {
-      const decimal = new Prisma.Decimal(normalized);
-      if (decimal.lte(ZERO)) {
-        throw new Error('non-positive');
-      }
-
-      return decimal.toString();
+      decimal = new Prisma.Decimal(normalized);
     } catch {
       throw new BadRequestException('Expected a positive decimal value.');
     }
+
+    if (decimal.lte(ZERO)) {
+      throw new BadRequestException('Expected a positive decimal value.');
+    }
+
+    return decimal.toString();
   }
 
   private requiredDecimal(
@@ -5240,6 +5304,10 @@ export class ImportsService {
       throw new BadRequestException(
         'Only crypto assets may use the crypto exchange sentinel.',
       );
+    }
+
+    if (!isSupportedExchangeValue(normalized, kind)) {
+      throw new BadRequestException('Unsupported exchange.');
     }
 
     return normalized;
@@ -5634,6 +5702,14 @@ export class ImportsService {
       data: {
         payloadJson: Prisma.DbNull,
       },
+    });
+  }
+
+  private schedulePersistedPreviewCleanup(): void {
+    void this.clearExpiredPersistedPreviewPayloads().catch((error) => {
+      this.logger.warn(
+        `Import preview cleanup failed: ${this.describeError(error)}`,
+      );
     });
   }
 

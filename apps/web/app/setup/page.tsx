@@ -65,8 +65,8 @@ export default async function SetupPage() {
                 <p className="page-kicker">Trust</p>
                 <h1 className="page-title is-compact">Setup</h1>
                 <p className="page-description">
-                  Build a trustworthy starting point, then move into review,
-                  analytics, budgets, and recurring workflows.
+                  Build a trustworthy starting point, then move into monthly
+                  close, analytics, budgets, and recurring workflows.
                 </p>
               </div>
               <div className="page-pill">

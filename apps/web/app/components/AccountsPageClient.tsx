@@ -424,7 +424,9 @@ export default function AccountsPageClient({
                         <div className="metric-strip is-relaxed">
                           <div className="detail-panel is-roomy">
                             <p className="detail-metric-label">
-                              {account.type === "BROKER" ? "Tracked cash" : "Tracked"}
+                              {account.type === "BROKER"
+                                ? "Tracked cash"
+                                : "Tracked"}
                             </p>
                             <p className="detail-metric-value">
                               {reconciliation.trackedBalance === null
@@ -438,7 +440,9 @@ export default function AccountsPageClient({
 
                           <div className="detail-panel is-roomy">
                             <p className="detail-metric-label">
-                              {account.type === "BROKER" ? "Expected cash" : "Expected"}
+                              {account.type === "BROKER"
+                                ? "Expected cash"
+                                : "Expected"}
                             </p>
                             <p className="detail-metric-value">
                               {reconciliation.expectedBalance === null
@@ -492,10 +496,12 @@ export default function AccountsPageClient({
                               className="account-reconciliation-details"
                             >
                               <div className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-                                {account.type === "BROKER" ? (
+                                {reconciliation.reconciliationScope ===
+                                "CASH_ONLY" ? (
                                   <p>
-                                    Brokerage reconciliation tracks cash movements only.
-                                    Open positions are excluded from this balance check.
+                                    Brokerage reconciliation tracks cash
+                                    movements only. Open positions are excluded
+                                    from this balance check.
                                   </p>
                                 ) : null}
                                 <p>

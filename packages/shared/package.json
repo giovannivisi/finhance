@@ -6,15 +6,36 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "imports": {
+    "#accounts": "./src/accounts.ts",
+    "#assets": "./src/assets.ts",
+    "#brokerage": "./src/brokerage.ts",
+    "#budgets": "./src/budgets.ts",
+    "#currencies": "./src/currencies.ts",
+    "#exchanges": "./src/exchanges.ts",
+    "#expense-validation": "./src/expense-validation.ts",
+    "#imports": "./src/imports.ts",
+    "#recurring": "./src/recurring.ts",
+    "#setup": "./src/setup.ts",
+    "#snapshots": "./src/snapshots.ts",
+    "#transactions": "./src/transactions.ts",
+    "#users": "./src/users.ts"
+  },
   "exports": {
     ".": "./src/index.ts",
-    "./assets": "./src/assets.ts",
     "./accounts": "./src/accounts.ts",
+    "./assets": "./src/assets.ts",
     "./brokerage": "./src/brokerage.ts",
     "./budgets": "./src/budgets.ts",
+    "./currencies": "./src/currencies.ts",
+    "./exchanges": "./src/exchanges.ts",
+    "./expense-validation": "./src/expense-validation.ts",
     "./imports": "./src/imports.ts",
+    "./recurring": "./src/recurring.ts",
+    "./setup": "./src/setup.ts",
     "./snapshots": "./src/snapshots.ts",
-    "./transactions": "./src/transactions.ts"
+    "./transactions": "./src/transactions.ts",
+    "./users": "./src/users.ts"
   },
   "license": "MIT",
   "author": "giovisi"
