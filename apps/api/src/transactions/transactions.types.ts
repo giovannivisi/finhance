@@ -23,9 +23,16 @@ export interface TransferTransactionEntry {
   inflow: TransactionRecord;
 }
 
+export interface SplitTransactionEntry {
+  entryType: 'SPLIT';
+  splitGroupId: string;
+  rows: TransactionRecord[];
+}
+
 export type LogicalTransactionEntry =
   | StandardTransactionEntry
-  | TransferTransactionEntry;
+  | TransferTransactionEntry
+  | SplitTransactionEntry;
 
 export interface TransactionFilters {
   from?: string;

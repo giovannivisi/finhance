@@ -1,52 +1,67 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { AccountsService } from '@accounts/accounts.service';
+import { toAccountResponse } from '@accounts/accounts.mapper';
 import { AssetsService } from '@assets/assets.service';
-import { SnapshotsService } from '@snapshots/snapshots.service';
-import type { DashboardResponse } from '@finhance/shared';
-import type { NetWorthSnapshot } from '@finhance/db';
+import { BudgetsService } from '@budgets/budgets.service';
+import { SetupService } from '@/setup/setup.service';
+import type {
+  DashboardPageDataResponse,
+  DashboardResponse,
+  DashboardSupportDataResponse,
+} from '@finhance/shared';
+import { utcDateToRomeMonth } from '@transactions/transactions.dates';
 
 @Injectable()
 export class DashboardService {
-  private readonly logger = new Logger(DashboardService.name);
-
   constructor(
+    private readonly accountsService: AccountsService,
     private readonly assetsService: AssetsService,
-    private readonly snapshotsService: SnapshotsService,
+    private readonly budgetsService: BudgetsService,
+    private readonly setupService: SetupService,
   ) {}
 
   async getDashboard(ownerId: string): Promise<DashboardResponse> {
     const dashboard = await this.assetsService.getDashboard(ownerId);
-    const [latestSnapshot, hasTodaySnapshot] = await Promise.all([
-      this.snapshotsService.findLatest(ownerId, dashboard.baseCurrency),
-      this.snapshotsService.hasSnapshotForDate(ownerId, dashboard.baseCurrency),
-    ]);
-
-    if (!hasTodaySnapshot) {
-      // Auto-capture today's snapshot in the background so monthly reviews
-      // always have data points without requiring manual action.
-      this.snapshotsService
-        .captureFromDashboard(ownerId, dashboard)
-        .catch((error: unknown) => {
-          this.logger.warn(
-            `Auto-capture snapshot failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        });
-    }
 
     return {
       ...dashboard,
-      latestSnapshotDate:
-        hasTodaySnapshot || latestSnapshot !== null
-          ? this.serializeSnapshotDate(latestSnapshot)
-          : null,
-      latestSnapshotCapturedAt:
-        latestSnapshot?.capturedAt.toISOString() ?? null,
-      latestSnapshotIsPartial: latestSnapshot?.isPartial ?? null,
+      latestSnapshotDate: null,
+      latestSnapshotCapturedAt: null,
+      latestSnapshotIsPartial: null,
     };
   }
 
-  private serializeSnapshotDate(
-    snapshot: NetWorthSnapshot | null,
-  ): string | null {
-    return snapshot?.snapshotDate.toISOString().slice(0, 10) ?? null;
+  async getPageData(ownerId: string): Promise<DashboardPageDataResponse> {
+    const currentMonth = utcDateToRomeMonth(new Date());
+    const [dashboard, budgetView, accounts, setup] = await Promise.all([
+      this.getDashboard(ownerId),
+      this.budgetsService.findMonthly(ownerId, currentMonth).catch(() => null),
+      this.accountsService.findAll(ownerId).catch(() => []),
+      this.setupService
+        .getStatus(ownerId, { includeWarnings: false })
+        .catch(() => null),
+    ]);
+
+    return {
+      dashboard,
+      budgetView,
+      accounts: accounts.map((account) => toAccountResponse(account)),
+      setup,
+    };
+  }
+
+  async getSupportData(ownerId: string): Promise<DashboardSupportDataResponse> {
+    const currentMonth = utcDateToRomeMonth(new Date());
+    const [budgetView, setup] = await Promise.all([
+      this.budgetsService.findMonthly(ownerId, currentMonth).catch(() => null),
+      this.setupService
+        .getStatus(ownerId, { includeWarnings: false })
+        .catch(() => null),
+    ]);
+
+    return {
+      budgetView,
+      setup,
+    };
   }
 }

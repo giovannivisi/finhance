@@ -83,9 +83,12 @@ describe('AssetsService', () => {
     buildMarketSymbol: jest.Mock;
     getMarketPrice: jest.Mock;
     getFxRate: jest.Mock;
+    getStoredFxRateSnapshot: jest.Mock;
+    getFxRateForDate: jest.Mock;
   };
   let accounts: {
     assertAccountAssignmentAllowed: jest.Mock;
+    getAssignableAccount: jest.Mock;
   };
   let operationLocks: {
     runExclusive: jest.Mock;
@@ -139,10 +142,23 @@ describe('AssetsService', () => {
       ),
       getMarketPrice: jest.fn(),
       getFxRate: jest.fn(),
+      getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
+        rate: new Prisma.Decimal('0.9'),
+        status: 'EXACT',
+        source: 'LIVE',
+        rateDate: new Date('2026-05-20T00:00:00.000Z'),
+        updatedAt: new Date('2026-05-20T10:00:00.000Z'),
+      }),
+      getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('0.9')),
     };
 
     accounts = {
       assertAccountAssignmentAllowed: jest.fn(),
+      getAssignableAccount: jest.fn().mockResolvedValue({
+        id: 'account-1',
+        type: 'BROKER',
+        archivedAt: null,
+      }),
     };
     operationLocks = {
       runExclusive: jest.fn((_options: unknown, work: () => unknown) => work()),
@@ -195,6 +211,7 @@ describe('AssetsService', () => {
       quantity: 3,
       unitPrice: 13.125,
       currency: 'usd',
+      accountId: 'account-1',
     });
 
     const findFirstArgs = firstCallArg<{
@@ -216,6 +233,7 @@ describe('AssetsService', () => {
     const now = new Date();
     prisma.asset.findMany.mockResolvedValue([
       createAsset({
+        accountId: 'account-1',
         quantity: new Prisma.Decimal('2'),
         balance: new Prisma.Decimal('80'),
         lastPrice: new Prisma.Decimal('50'),
@@ -224,6 +242,13 @@ describe('AssetsService', () => {
         lastFxRateAt: now,
       }),
     ]);
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'EXACT',
+      source: 'LIVE',
+      rateDate: now,
+      updatedAt: now,
+    });
 
     const dashboard = await service.getDashboard(OWNER_ID);
 
@@ -239,16 +264,57 @@ describe('AssetsService', () => {
     expect(dashboard.summary.netWorth).toBe(90);
   });
 
+  it('marks the dashboard stale when it falls back to an older stored FX rate', async () => {
+    const quoteTime = new Date('2026-05-27T10:00:00.000Z');
+    const staleFxTime = new Date('2026-05-26T18:00:00.000Z');
+    prisma.asset.findMany.mockResolvedValue([
+      createAsset({
+        accountId: 'account-1',
+        quantity: new Prisma.Decimal('2'),
+        balance: new Prisma.Decimal('80'),
+        lastPrice: new Prisma.Decimal('50'),
+        lastPriceAt: quoteTime,
+      }),
+    ]);
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'STALE',
+      source: 'LIVE',
+      rateDate: new Date('2026-05-26T00:00:00.000Z'),
+      updatedAt: staleFxTime,
+    });
+
+    const dashboard = await service.getDashboard(OWNER_ID);
+
+    expect(dashboard.pricingStatus).toEqual({
+      state: 'STALE',
+      refreshSuggested: true,
+      hasStaleQuotes: true,
+      hasStaleFx: true,
+      hasMissingFx: false,
+    });
+    expect(dashboard.assets[0].valuationSource).toBe('LAST_QUOTE');
+    expect(dashboard.assets[0].isStale).toBe(true);
+  });
+
   it('falls back to average cost when no quote is available', async () => {
     const now = new Date();
     prisma.asset.findMany.mockResolvedValue([
       createAsset({
+        accountId: 'account-1',
         lastPrice: null,
         lastPriceAt: null,
         lastFxRate: new Prisma.Decimal('0.9'),
         lastFxRateAt: now,
       }),
     ]);
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'EXACT',
+      source: 'LIVE',
+      rateDate: now,
+      updatedAt: now,
+    });
 
     const dashboard = await service.getDashboard(OWNER_ID);
 
@@ -291,6 +357,28 @@ describe('AssetsService', () => {
     }>(prisma.asset.create);
 
     expect(createCall.data.accountId).toBe('account-1');
+  });
+
+  it('rejects market assets assigned to non-broker accounts', async () => {
+    accounts.getAssignableAccount.mockResolvedValueOnce({
+      id: 'account-1',
+      type: 'BANK',
+      archivedAt: null,
+    });
+
+    await expect(
+      service.create(OWNER_ID, {
+        name: 'VWCE',
+        type: AssetType.ASSET,
+        kind: AssetKind.STOCK,
+        ticker: 'VWCE',
+        exchange: '.MI',
+        quantity: 2,
+        unitPrice: 100,
+        currency: 'EUR',
+        accountId: 'account-1',
+      }),
+    ).rejects.toThrow('Market assets must belong to a BROKER account.');
   });
 
   it('passes the current account context during asset updates', async () => {
@@ -345,6 +433,7 @@ describe('AssetsService', () => {
 
   it('deduplicates FX refresh work and returns stale count for one owner', async () => {
     const refreshAsset = createAsset({
+      accountId: 'account-1',
       lastPrice: null,
       lastPriceAt: null,
       lastFxRate: null,
@@ -353,6 +442,7 @@ describe('AssetsService', () => {
     const usdCash = createAsset({
       id: 'asset-2',
       name: 'Cash',
+      accountId: 'account-1',
       kind: AssetKind.CASH,
       ticker: null,
       exchange: null,
@@ -369,6 +459,7 @@ describe('AssetsService', () => {
       .mockResolvedValueOnce([refreshAsset, usdCash])
       .mockResolvedValueOnce([
         createAsset({
+          accountId: 'account-1',
           lastPrice: new Prisma.Decimal('50'),
           lastPriceAt: new Date(),
           lastFxRate: new Prisma.Decimal('0.9'),
@@ -377,6 +468,7 @@ describe('AssetsService', () => {
         createAsset({
           id: 'asset-2',
           name: 'Cash',
+          accountId: 'account-1',
           kind: AssetKind.CASH,
           ticker: null,
           exchange: null,
@@ -391,7 +483,14 @@ describe('AssetsService', () => {
       ]);
     prisma.asset.update.mockResolvedValue(createAsset());
     prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
-    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
+    prices.getFxRateForDate.mockResolvedValue(new Prisma.Decimal('0.9'));
+    prices.getStoredFxRateSnapshot.mockResolvedValue({
+      rate: new Prisma.Decimal('0.9'),
+      status: 'EXACT',
+      source: 'LIVE',
+      rateDate: new Date(),
+      updatedAt: new Date(),
+    });
 
     const response = await service.refreshAssets(OWNER_ID);
 
@@ -408,7 +507,7 @@ describe('AssetsService', () => {
       }),
     );
     expect(prices.getMarketPrice).toHaveBeenCalledTimes(1);
-    expect(prices.getFxRate).toHaveBeenCalledTimes(1);
+    expect(prices.getFxRateForDate).toHaveBeenCalledTimes(1);
     expect(prisma.asset.update).toHaveBeenCalledTimes(2);
     expect(response.updatedCount).toBe(2);
     expect(response.staleCount).toBe(0);
@@ -447,10 +546,12 @@ describe('AssetsService', () => {
 
   it('uses the shared operation lock before refreshing asset quotes', async () => {
     const refreshAsset = createAsset();
+    prices.getFxRateForDate.mockResolvedValue(new Prisma.Decimal('0.9'));
     prisma.asset.findMany
       .mockResolvedValueOnce([refreshAsset])
       .mockResolvedValueOnce([
         createAsset({
+          accountId: 'account-1',
           lastPrice: new Prisma.Decimal('50'),
           lastPriceAt: new Date(),
           lastFxRate: new Prisma.Decimal('0.9'),
@@ -459,7 +560,7 @@ describe('AssetsService', () => {
       ]);
     prisma.asset.update.mockResolvedValue(createAsset());
     prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
-    prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
+    prices.getFxRateForDate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
     await service.refreshAssets(OWNER_ID);
 
@@ -482,6 +583,7 @@ describe('AssetsService', () => {
         quantity: 2,
         unitPrice: 40,
         currency: 'USD',
+        accountId: 'account-1',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
 
@@ -506,7 +608,9 @@ describe('AssetsService', () => {
     );
 
     await expect(service.remove(OWNER_ID, 'asset-1')).rejects.toThrow(
-      new ConflictException('Assets with brokerage activity cannot be deleted.'),
+      new ConflictException(
+        'Assets with brokerage activity cannot be deleted.',
+      ),
     );
   });
 });

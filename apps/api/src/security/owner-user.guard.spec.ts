@@ -30,7 +30,7 @@ describe('OwnerUserGuard', () => {
     process.env.AUTH_MODE = originalAuthMode;
   });
 
-  it('creates the default local owner record outside hosted mode', async () => {
+  it('creates the default local owner outside hosted mode', async () => {
     delete process.env.AUTH_MODE;
     const upsert = jest.fn().mockResolvedValue(undefined);
     const guard = new OwnerUserGuard(

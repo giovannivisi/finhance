@@ -9,6 +9,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { IsSupportedCurrencyCode } from '@/common/catalog-validators';
 
 const LOCAL_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -29,6 +30,7 @@ export class CreateCategoryBudgetDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(16)
+  @IsSupportedCurrencyCode()
   @Transform(trimStringValue)
   currency!: string;
 

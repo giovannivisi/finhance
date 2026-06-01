@@ -208,7 +208,7 @@ describe("BudgetsPageClient", () => {
     const amountInput = within(dialog).getByLabelText(/monthly budget/i);
 
     expect(categorySelect).toHaveValue("category-groceries");
-    expect(currencyInput).toHaveValue("EUR");
+    expect(currencyInput).toHaveTextContent("EUR");
     expect(
       within(dialog).getByText(/quick-fill from recent spending/i),
     ).toBeInTheDocument();

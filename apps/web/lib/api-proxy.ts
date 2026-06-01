@@ -2,7 +2,10 @@ function hasRequestBody(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
 }
 
-export function stripForwardedHeaders(headers: Headers): Headers {
+export function stripForwardedHeaders(
+  headers: Headers,
+  options?: { stripBrowserContext?: boolean },
+): Headers {
   const forwardedHeaders = new Headers(headers);
 
   forwardedHeaders.delete("accept-encoding");
@@ -15,6 +18,11 @@ export function stripForwardedHeaders(headers: Headers): Headers {
   forwardedHeaders.delete("x-forwarded-host");
   forwardedHeaders.delete("x-forwarded-port");
   forwardedHeaders.delete("x-forwarded-proto");
+
+  if (options?.stripBrowserContext) {
+    forwardedHeaders.delete("origin");
+    forwardedHeaders.delete("referer");
+  }
 
   return forwardedHeaders;
 }

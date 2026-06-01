@@ -14,6 +14,7 @@ import { BrokerageModule } from '@brokerage/brokerage.module';
 import { SetupModule } from '@/setup/setup.module';
 import { SnapshotsModule } from '@snapshots/snapshots.module';
 import { TransactionsModule } from '@transactions/transactions.module';
+import { UsersModule } from '@/users/users.module';
 import { LocalOnlyGuard } from '@/security/local-only.guard';
 import { ApiJwtGuard } from '@/security/api-jwt.guard';
 import { OwnerUserGuard } from '@/security/owner-user.guard';
@@ -38,6 +39,7 @@ import { createThrottlerOptions } from '@/config/throttle.config';
     SetupModule,
     SnapshotsModule,
     TransactionsModule,
+    UsersModule,
   ],
   providers: [
     AppService,

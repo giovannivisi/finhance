@@ -24,6 +24,21 @@ test("stripForwardedHeaders removes hop-by-hop and credential headers", () => {
   assert.equal(headers.get("content-type"), "application/json");
 });
 
+test("stripForwardedHeaders can remove browser context headers for hosted proxying", () => {
+  const headers = stripForwardedHeaders(
+    new Headers({
+      origin: "https://preview.example",
+      referer: "https://preview.example/settings/user",
+      "content-type": "application/json",
+    }),
+    { stripBrowserContext: true },
+  );
+
+  assert.equal(headers.get("origin"), null);
+  assert.equal(headers.get("referer"), null);
+  assert.equal(headers.get("content-type"), "application/json");
+});
+
 test("buildUpstreamRequest preserves streaming request bodies", async () => {
   const request = new Request("https://finhance.test/api/proxy/imports", {
     method: "POST",

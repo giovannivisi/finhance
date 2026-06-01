@@ -1,13 +1,14 @@
-import type { AccountReconciliationResponse } from "./accounts.js";
+import type { AccountReconciliationResponse } from "#accounts";
 import type {
   MonthlyBudgetCurrencySummaryResponse,
   MonthlyBudgetItemResponse,
-} from "./budgets.js";
+} from "#budgets";
+import type { SetupStatusResponse } from "#setup";
 import type {
   CashflowSummaryResponse,
   TransactionDirection,
   TransactionKind,
-} from "./transactions.js";
+} from "#transactions";
 
 export interface UpsertRecurringTransactionRuleRequest {
   name: string;
@@ -127,7 +128,7 @@ export type MonthlyReviewWarningCode =
   | "MISSING_CLOSING_SNAPSHOT"
   | "PARTIAL_OPENING_SNAPSHOT"
   | "PARTIAL_CLOSING_SNAPSHOT"
-  | "NON_EUR_CASHFLOW_NOT_COMPARABLE"
+  | "NON_REPORTING_CURRENCY_CASHFLOW_NOT_COMPARABLE"
   | "UNCATEGORIZED_EXPENSES"
   | "UNCATEGORIZED_INCOME"
   | "OVER_BUDGET_CATEGORIES"
@@ -148,9 +149,10 @@ export interface MonthlyReviewWarningResponse {
 }
 
 export interface MonthlyReviewNetWorthExplanationResponse {
-  isComparableInEur: boolean;
-  cashflowContributionEur: number | null;
-  valuationMovementEur: number | null;
+  reportingCurrency: string;
+  isComparableInReportingCurrency: boolean;
+  cashflowContribution: number | null;
+  marketAndFxMovement: number | null;
   note: string | null;
 }
 
@@ -197,6 +199,7 @@ export interface MonthlyReviewCurrencyInsightResponse {
 
 export interface MonthlyReviewResponse {
   month: string;
+  reportingCurrency: string;
   cashflow: CashflowSummaryResponse;
   openingNetWorth: number | null;
   closingNetWorth: number | null;
@@ -211,4 +214,10 @@ export interface MonthlyReviewResponse {
   budgetHighlights: MonthlyBudgetItemResponse[];
   reconciliationHighlights: AccountReconciliationResponse[];
   recurringExceptions: RecurringOccurrenceResponse[];
+}
+
+export interface MonthlyReviewPageDataResponse {
+  review: MonthlyReviewResponse;
+  setup: SetupStatusResponse | null;
+  hasPendingSync: boolean;
 }

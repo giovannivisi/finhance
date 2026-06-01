@@ -6,10 +6,7 @@ import type {
 import BudgetsPageClient from "@components/BudgetsPageClient";
 import Container from "@components/Container";
 import { api } from "@lib/server-api";
-import {
-  buildBudgetsQueryString,
-  getBudgetFilters,
-} from "@lib/budgets";
+import { buildBudgetsQueryString, getBudgetFilters } from "@lib/budgets";
 import { getWorkflowCards } from "@lib/workflow";
 
 export const dynamic = "force-dynamic";

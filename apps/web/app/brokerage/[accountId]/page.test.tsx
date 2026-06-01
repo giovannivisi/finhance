@@ -16,7 +16,9 @@ vi.mock("@components/BrokeragePageClient", () => ({
     workspace,
   }: {
     workspace: { selectedBroker: { account: { name: string } } };
-  }) => <div>Brokerage account client: {workspace.selectedBroker.account.name}</div>,
+  }) => (
+    <div>Brokerage account client: {workspace.selectedBroker.account.name}</div>
+  ),
 }));
 
 describe("BrokerageAccountPage", () => {
@@ -27,6 +29,7 @@ describe("BrokerageAccountPage", () => {
   it("loads the selected brokerage workspace and categories", async () => {
     apiMock
       .mockResolvedValueOnce({
+        reportingCurrency: "EUR",
         baseCurrency: "EUR",
         brokers: [],
         selectedBroker: {
@@ -65,6 +68,8 @@ describe("BrokerageAccountPage", () => {
       }),
     );
 
-    expect(screen.getByText("Brokerage account client: IBKR")).toBeInTheDocument();
+    expect(
+      screen.getByText("Brokerage account client: IBKR"),
+    ).toBeInTheDocument();
   });
 });

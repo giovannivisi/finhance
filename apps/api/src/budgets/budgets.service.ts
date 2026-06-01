@@ -253,6 +253,7 @@ export class BudgetsService {
     return {
       month: monthKey,
       includeArchivedCategories,
+      reportingOverview: null,
       currencies: [...currencies]
         .sort((left, right) => left.localeCompare(right))
         .map((currency) => {

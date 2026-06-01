@@ -1,9 +1,10 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import BrokeragePageClient from "@components/BrokeragePageClient";
 import { apiMutation } from "@lib/api";
+import { requestDashboardRefresh } from "@lib/dashboard-refresh";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -40,6 +41,11 @@ vi.mock("@lib/api", () => ({
   apiMutation: vi.fn(),
 }));
 
+vi.mock("@lib/dashboard-refresh", () => ({
+  getDashboardRefreshNotice: vi.fn(),
+  requestDashboardRefresh: vi.fn(),
+}));
+
 vi.mock("@components/Modal", () => ({
   default: ({
     open,
@@ -59,7 +65,15 @@ vi.mock("@components/Modal", () => ({
 
 function buildWorkspace() {
   return {
+    reportingCurrency: "EUR",
     baseCurrency: "EUR",
+    pricingStatus: {
+      state: "FRESH" as "FRESH" | "STALE" | "PARTIAL",
+      refreshSuggested: false,
+      hasStaleQuotes: false,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    },
     brokers: [
       {
         account: {
@@ -137,6 +151,7 @@ function buildWorkspace() {
       accountName: "IBKR",
       accountType: "BROKER" as const,
       currency: "EUR",
+      reconciliationScope: "CASH_ONLY" as const,
       baselineMode: "FULL_HISTORY" as const,
       trackedBalance: 900,
       expectedBalance: 900,
@@ -326,19 +341,29 @@ describe("BrokeragePageClient", () => {
     refreshMock.mockReset();
     prefetchMock.mockReset();
     vi.mocked(apiMutation).mockReset();
+    vi.mocked(requestDashboardRefresh).mockReset();
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({ ok: true });
   });
 
   it("renders the brokerage workspace and routes account switching through the deep link", async () => {
     const user = userEvent.setup();
 
-    render(<BrokeragePageClient workspace={buildWorkspace()} categories={categories} />);
+    render(
+      <BrokeragePageClient
+        workspace={buildWorkspace()}
+        categories={categories}
+      />,
+    );
 
     expect(
       screen.getByRole("heading", { name: "Brokerage" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Cash reconciliation")).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText("Broker account"), "broker-2");
+    await user.selectOptions(
+      screen.getByLabelText("Broker account"),
+      "broker-2",
+    );
 
     expect(pushMock).toHaveBeenCalledWith("/brokerage/broker-2");
   });
@@ -347,19 +372,31 @@ describe("BrokeragePageClient", () => {
     const user = userEvent.setup();
     vi.mocked(apiMutation).mockResolvedValue(undefined);
 
-    render(<BrokeragePageClient workspace={buildWorkspace()} categories={categories} />);
+    render(
+      <BrokeragePageClient
+        workspace={buildWorkspace()}
+        categories={categories}
+      />,
+    );
 
     await user.click(screen.getByRole("button", { name: "Operations" }));
     await user.click(screen.getByRole("menuitem", { name: "Dividend" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Record dividend" });
-    await user.selectOptions(within(dialog).getByLabelText("Holding"), "asset-stock");
+    const dialog = await screen.findByRole("dialog", {
+      name: "Record dividend",
+    });
+    await user.selectOptions(
+      within(dialog).getByLabelText("Holding"),
+      "asset-stock",
+    );
     await user.type(within(dialog).getByLabelText("Amount"), "12.5");
     await user.selectOptions(
       within(dialog).getByLabelText("Category"),
       "income-dividend",
     );
-    await user.click(within(dialog).getByRole("button", { name: "Record dividend" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Record dividend" }),
+    );
 
     expect(apiMutation).toHaveBeenCalledTimes(1);
     const dividendCall = vi.mocked(apiMutation).mock.calls[0];
@@ -399,7 +436,12 @@ describe("BrokeragePageClient", () => {
   it("blocks invalid target totals before calling the API", async () => {
     const user = userEvent.setup();
 
-    render(<BrokeragePageClient workspace={buildWorkspace()} categories={categories} />);
+    render(
+      <BrokeragePageClient
+        workspace={buildWorkspace()}
+        categories={categories}
+      />,
+    );
 
     await user.click(screen.getByRole("button", { name: "Edit targets" }));
 
@@ -409,9 +451,13 @@ describe("BrokeragePageClient", () => {
     const stockInput = within(dialog).getByDisplayValue("60");
     await user.clear(stockInput);
     await user.type(stockInput, "50");
-    await user.click(within(dialog).getByRole("button", { name: "Save targets" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save targets" }),
+    );
 
-    expect(await within(dialog).findByText("Asset-class targets must sum to 100%.")).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText("Asset-class targets must sum to 100%."),
+    ).toBeInTheDocument();
     expect(apiMutation).not.toHaveBeenCalled();
   });
 
@@ -419,7 +465,12 @@ describe("BrokeragePageClient", () => {
     const user = userEvent.setup();
     vi.mocked(apiMutation).mockResolvedValue(undefined);
 
-    render(<BrokeragePageClient workspace={buildWorkspace()} categories={categories} />);
+    render(
+      <BrokeragePageClient
+        workspace={buildWorkspace()}
+        categories={categories}
+      />,
+    );
 
     await user.click(screen.getByRole("button", { name: "Edit targets" }));
 
@@ -442,7 +493,9 @@ describe("BrokeragePageClient", () => {
     });
     const stockInput = within(dialog).getByLabelText("Stocks target percent");
 
-    await user.click(within(cashToggleGroup).getByRole("button", { name: "Off" }));
+    await user.click(
+      within(cashToggleGroup).getByRole("button", { name: "Off" }),
+    );
     expect(cashRowInput).toBeDisabled();
     expect(
       within(dialog).getByText((content, node) => {
@@ -464,7 +517,9 @@ describe("BrokeragePageClient", () => {
       }),
     ).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("button", { name: "Save targets" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save targets" }),
+    );
 
     expect(apiMutation).toHaveBeenCalledTimes(1);
     const targetsCall = vi.mocked(apiMutation).mock.calls[0];
@@ -480,12 +535,19 @@ describe("BrokeragePageClient", () => {
   it("filters brokerage activity by month and source with month groups matching the activity pattern", async () => {
     const user = userEvent.setup();
 
-    render(<BrokeragePageClient workspace={buildWorkspace()} categories={categories} />);
+    render(
+      <BrokeragePageClient
+        workspace={buildWorkspace()}
+        categories={categories}
+      />,
+    );
 
     await user.click(screen.getByText("Activity"));
     await user.click(screen.getByText("Filter"));
 
-    expect(screen.getByRole("option", { name: "May 2026" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "May 2026" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: "April 2026" }),
     ).toBeInTheDocument();
@@ -494,7 +556,9 @@ describe("BrokeragePageClient", () => {
     await user.selectOptions(screen.getByLabelText("Source"), "TRANSACTION");
 
     expect(screen.getByText("2 active")).toBeInTheDocument();
-    expect(screen.getByText("Dividend mirrored transaction")).toBeInTheDocument();
+    expect(
+      screen.getByText("Dividend mirrored transaction"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Sell")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "April 2026" }),
@@ -525,7 +589,9 @@ describe("BrokeragePageClient", () => {
       },
     ];
 
-    render(<BrokeragePageClient workspace={workspace} categories={categories} />);
+    render(
+      <BrokeragePageClient workspace={workspace} categories={categories} />,
+    );
 
     await user.click(screen.getByText("Activity"));
     await user.click(screen.getByText("Filter"));
@@ -533,5 +599,25 @@ describe("BrokeragePageClient", () => {
 
     expect(screen.getByText("Boundary dividend")).toBeInTheDocument();
     expect(screen.getByText("1 active")).toBeInTheDocument();
+  });
+
+  it("refreshes brokerage prices once after hydration when stored pricing is stale", async () => {
+    const workspace = buildWorkspace();
+    workspace.pricingStatus = {
+      state: "STALE",
+      refreshSuggested: true,
+      hasStaleQuotes: true,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    };
+
+    render(
+      <BrokeragePageClient workspace={workspace} categories={categories} />,
+    );
+
+    await waitFor(() => {
+      expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
+    });
+    expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 });

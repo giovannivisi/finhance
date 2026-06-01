@@ -77,11 +77,7 @@ export default function AnalyticsCategoryBarChart({
       typeof item.href === "string" || typeof item.selectionKey === "string",
   );
   const resolvedTone =
-    tone === "auto"
-      ? mode === "breakdown"
-        ? "expense"
-        : "neutral"
-      : tone;
+    tone === "auto" ? (mode === "breakdown" ? "expense" : "neutral") : tone;
   const barColor =
     resolvedTone === "income"
       ? "#10b981"

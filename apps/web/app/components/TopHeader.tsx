@@ -1,10 +1,20 @@
 import Link from "next/link";
 import Image from "next/image";
+import ShellAccountMenu from "@components/ShellAccountMenu";
+import { isHostedAuthMode } from "@lib/auth-mode";
 
 export default function TopHeader() {
+  const hostedAuthMode = isHostedAuthMode();
+  const identity = {
+    title: hostedAuthMode ? "Hosted workspace" : "Local workspace",
+    subtitle: hostedAuthMode
+      ? "Account and app actions"
+      : "Private on this device",
+  };
+
   return (
     <header className="top-header">
-      <Link href="/" className="top-header-brand">
+      <Link href="/" prefetch={false} className="top-header-brand">
         <Image
           src="/logo-dark.svg"
           alt="finhance logo dark"
@@ -25,6 +35,9 @@ export default function TopHeader() {
         />
         <span className="top-header-wordmark">finhance</span>
       </Link>
+      <div className="top-header-actions">
+        <ShellAccountMenu identity={identity} />
+      </div>
     </header>
   );
 }

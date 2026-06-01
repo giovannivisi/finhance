@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isRedundantTabNavigation } from "./navigation.ts";
+import { isRedundantTabNavigation, SECONDARY_NAV_ITEMS } from "./navigation.ts";
 
 test("isRedundantTabNavigation blocks navigation to the current page", () => {
   assert.equal(
@@ -41,5 +41,12 @@ test("isRedundantTabNavigation treats trailing slashes as equivalent", () => {
       targetPath: "/accounts",
     }),
     true,
+  );
+});
+
+test("secondary navigation exposes monthly close by label", () => {
+  assert.equal(
+    SECONDARY_NAV_ITEMS.find((item) => item.href === "/review")?.label,
+    "Monthly close",
   );
 });

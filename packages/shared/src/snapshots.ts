@@ -2,12 +2,15 @@ export interface NetWorthSnapshotResponse {
   id: string;
   snapshotDate: string;
   capturedAt: string;
-  baseCurrency: string;
+  reportingCurrency: string;
+  baseCurrency?: string;
+  storedReportingCurrency: string;
   assetsTotal: number;
   liabilitiesTotal: number;
   netWorthTotal: number;
   unavailableCount: number;
   isPartial: boolean;
+  canRecomputeForReportingCurrency: boolean;
   createdAt: string;
   updatedAt: string;
 }

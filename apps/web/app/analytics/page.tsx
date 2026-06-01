@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type {
   AccountResponse,
+  CashflowAnalyticsPageDataResponse,
   CashflowAnalyticsResponse,
   CategoryResponse,
   RecurringPendingStatusResponse,
@@ -15,6 +16,7 @@ import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import Sparkline from "@components/Sparkline";
 
 import WorkflowSection from "@components/WorkflowSection";
+import { isMissingPageDataRouteError } from "@lib/api-fallback";
 import { api } from "@lib/server-api";
 import {
   buildAnalyticsQueryString,
@@ -93,31 +95,51 @@ export default async function AnalyticsPage({
   let setup: SetupStatusResponse | null = null;
   let hasPendingSync = false;
   let errorMessage: string | null = null;
+  const pendingStatusPromise = api<RecurringPendingStatusResponse>(
+    "/recurring-rules/has-pending",
+  ).catch(() => null);
 
   try {
-    [analytics, accounts, categories] = await Promise.all([
-      api<CashflowAnalyticsResponse>(`/cashflow/analytics?${queryString}`),
-      api<AccountResponse[]>("/accounts?includeArchived=true"),
-      api<CategoryResponse[]>("/categories?includeArchived=true"),
-    ]);
-  } catch (error) {
-    errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Analytics data is currently unavailable.";
-  }
-
-  if (analytics) {
-    const [resolvedSetup, pendingStatus] = await Promise.all([
-      api<SetupStatusResponse>("/setup/status?includeWarnings=false").catch(
-        () => null,
+    const [pageData, pendingStatus] = await Promise.all([
+      api<CashflowAnalyticsPageDataResponse>(
+        `/cashflow/page-data?${queryString}`,
       ),
-      api<RecurringPendingStatusResponse>("/recurring-rules/has-pending").catch(
-        () => null,
-      ),
+      pendingStatusPromise,
     ]);
-    setup = resolvedSetup;
+    analytics = pageData.analytics;
+    accounts = pageData.accounts;
+    categories = pageData.categories;
+    setup = pageData.setup;
     hasPendingSync = pendingStatus?.hasPending ?? false;
+  } catch (error) {
+    if (isMissingPageDataRouteError(error)) {
+      try {
+        const [legacyAnalytics, legacyAccounts, legacyCategories, pendingStatus] =
+          await Promise.all([
+            api<CashflowAnalyticsResponse>(`/cashflow/analytics?${queryString}`),
+            api<AccountResponse[]>("/accounts?includeArchived=true"),
+            api<CategoryResponse[]>("/categories?includeArchived=true"),
+            pendingStatusPromise,
+          ]);
+        analytics = legacyAnalytics;
+        accounts = legacyAccounts;
+        categories = legacyCategories;
+        hasPendingSync = pendingStatus?.hasPending ?? false;
+        setup = await api<SetupStatusResponse>(
+          "/setup/status?includeWarnings=false",
+        ).catch(() => null);
+      } catch (fallbackError) {
+        errorMessage =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Analytics data is currently unavailable.";
+      }
+    } else {
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Analytics data is currently unavailable.";
+    }
   }
 
   const visibleExpensePrimaries = categories
@@ -335,18 +357,24 @@ export default async function AnalyticsPage({
                 <div className="mt-4 flex flex-wrap gap-3">
                   <Link
                     href={!setup?.isComplete ? "/setup" : "/import"}
+                    prefetch={false}
                     className="btn-secondary"
                   >
                     {!setup?.isComplete ? "Open setup" : "Open import"}
                   </Link>
-                  <Link href="/analytics" className="btn-secondary">
+                  <Link
+                    href="/analytics"
+                    prefetch={false}
+                    className="btn-secondary"
+                  >
                     Clear filters
                   </Link>
                   <Link
                     href={`/review?month=${encodeURIComponent(analytics.focusMonth)}`}
+                    prefetch={false}
                     className="btn-secondary"
                   >
-                    Open review
+                    Open monthly close
                   </Link>
                 </div>
               </section>
@@ -761,7 +789,7 @@ export default async function AnalyticsPage({
 
                 <WorkflowSection
                   title="Turn the focus month into action"
-                  description={`Use ${analytics.focusMonth} as the bridge between trend analysis, monthly review, and budgets.`}
+                  description={`Use ${analytics.focusMonth} as the bridge between trend analysis, monthly close, and budgets.`}
                   className="is-roomy"
                   cards={getWorkflowCards({
                     currentPage: "analytics",

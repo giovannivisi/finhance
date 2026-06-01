@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import type { AccountResponse } from "@finhance/shared";
 import {
   ASSET_KIND_OPTIONS,
-  EXCHANGE_SUFFIXES,
   LIABILITY_KIND_OPTIONS,
   formatKindLabel,
+  getExchangeSuffixesForKind,
 } from "@lib/asset-ui";
 import { formatAccountOptionLabel } from "@lib/accounts";
 import {
@@ -18,6 +18,8 @@ import {
   type AssetFormValues,
 } from "@lib/asset-form";
 import { api, apiMutation } from "@lib/api";
+import SearchablePicker from "@components/SearchablePicker";
+import { getCurrencyPickerOptions } from "@lib/currency-ui";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 interface AssetFormProps {
@@ -47,6 +49,21 @@ export default function AssetForm({
   const isCreateMode = mode === "create";
   const kindOptions =
     form.type === "LIABILITY" ? LIABILITY_KIND_OPTIONS : ASSET_KIND_OPTIONS;
+  const exchangeOptions = isAsset
+    ? getExchangeSuffixesForKind(
+        form.kind as (typeof ASSET_KIND_OPTIONS)[number],
+      )
+    : [];
+  const currencyOptions = getCurrencyPickerOptions();
+  const isMarketKind =
+    form.type === "ASSET" &&
+    (form.kind === "STOCK" || form.kind === "BOND" || form.kind === "CRYPTO");
+  const selectableAccounts = accounts.filter(
+    (account) =>
+      !isMarketKind ||
+      account.type === "BROKER" ||
+      account.id === form.accountId.trim(),
+  );
 
   useEffect(() => {
     setForm(initialValues);
@@ -293,17 +310,14 @@ export default function AssetForm({
               <span>Exchange</span>
               <span>Optional</span>
             </label>
-            <select
+            <SearchablePicker
               id={`${fieldPrefix}-exchange`}
               value={form.exchange}
-              onChange={(event) => updateField("exchange", event.target.value)}
-            >
-              {EXCHANGE_SUFFIXES.map((exchange) => (
-                <option key={exchange.value} value={exchange.value}>
-                  {exchange.label}
-                </option>
-              ))}
-            </select>
+              onChange={(nextValue) => updateField("exchange", nextValue)}
+              options={exchangeOptions}
+              placeholder="Choose an exchange"
+              searchPlaceholder="Search exchanges…"
+            />
           </div>
         </div>
       ) : null}
@@ -314,10 +328,13 @@ export default function AssetForm({
             <span>Currency</span>
             <span>Optional</span>
           </label>
-          <input
+          <SearchablePicker
             id={`${fieldPrefix}-currency`}
             value={form.currency}
-            onChange={(event) => updateField("currency", event.target.value)}
+            onChange={(nextValue) => updateField("currency", nextValue)}
+            options={currencyOptions}
+            placeholder="Choose a currency"
+            searchPlaceholder="Search currencies…"
           />
         </div>
 
@@ -332,7 +349,7 @@ export default function AssetForm({
             onChange={(event) => updateField("accountId", event.target.value)}
           >
             <option value="">No account</option>
-            {accounts.map((account) => (
+            {selectableAccounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {formatAccountOptionLabel(account)}
               </option>

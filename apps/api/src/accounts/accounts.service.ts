@@ -4,12 +4,14 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
 import { PricesService } from '@prices/prices.service';
+import type { StoredFxRateSnapshot } from '@prices/prices.service';
 import { CreateAccountDto } from '@accounts/dto/create-account.dto';
 import { UpdateAccountDto } from '@accounts/dto/update-account.dto';
 import { TransactionsService } from '@transactions/transactions.service';
@@ -32,6 +34,7 @@ import type {
   AccountReconciliationBaselineMode,
   AccountReconciliationDiagnosticResponse,
   AccountReconciliationIssueCode,
+  AccountReconciliationScope,
   AccountReconciliationStatus,
 } from '@finhance/shared';
 
@@ -55,6 +58,7 @@ export interface AccountDeletionState {
 export interface AccountReconciliationModel {
   account: Account;
   status: AccountReconciliationStatus;
+  reconciliationScope: AccountReconciliationScope;
   baselineMode: AccountReconciliationBaselineMode;
   trackedBalance: Prisma.Decimal | null;
   expectedBalance: Prisma.Decimal | null;
@@ -71,6 +75,7 @@ export interface AccountReconciliationModel {
 
 type AccountTransactionClient = Prisma.TransactionClient;
 type ReconciliationReadClient = PrismaService | Prisma.TransactionClient;
+type ReconciliationFxMap = Map<string, StoredFxRateSnapshot>;
 const ZERO = new Prisma.Decimal(0);
 
 @Injectable()
@@ -166,6 +171,7 @@ export class AccountsService {
     ]);
 
     return this.buildReconciliation(
+      ownerId,
       accounts,
       assets,
       transactions,
@@ -613,6 +619,7 @@ export class AccountsService {
   }
 
   private async buildReconciliation(
+    ownerId: string,
     accounts: Account[],
     assets: Asset[],
     transactions: Transaction[],
@@ -704,7 +711,7 @@ export class AccountsService {
       }
     }
 
-    const fxRates = await this.resolveFxRates(fxPairKeys);
+    const fxRates = await this.resolveFxRates(ownerId, new Date(), fxPairKeys);
 
     return accounts.map((account) =>
       this.buildAccountReconciliationEntry(
@@ -724,7 +731,7 @@ export class AccountsService {
     transactions: Transaction[],
     brokerageOperations: BrokerageOperation[],
     transferIssueAccountIds: Set<string>,
-    fxRates: Map<string, Prisma.Decimal | null>,
+    fxRates: ReconciliationFxMap,
   ): AccountReconciliationModel {
     const issueCodes = new Set<AccountReconciliationIssueCode>();
     const baselineMode: AccountReconciliationBaselineMode =
@@ -747,12 +754,16 @@ export class AccountsService {
         const fxRate =
           fxRates.get(this.fxPairKey(asset.currency, account.currency)) ?? null;
 
-        if (!fxRate) {
+        if (!fxRate?.rate) {
           issueCodes.add('FX_UNAVAILABLE');
           continue;
         }
 
-        signedBalance = signedBalance.mul(fxRate);
+        if (fxRate.status === 'STALE') {
+          issueCodes.add('FX_STALE');
+        }
+
+        signedBalance = signedBalance.mul(fxRate.rate);
       }
 
       trackedBalance = trackedBalance.add(signedBalance);
@@ -792,6 +803,8 @@ export class AccountsService {
       return {
         account,
         status: 'UNSUPPORTED',
+        reconciliationScope:
+          account.type === AccountType.BROKER ? 'CASH_ONLY' : 'FULL_BALANCE',
         baselineMode,
         trackedBalance: null,
         expectedBalance: null,
@@ -838,16 +851,20 @@ export class AccountsService {
       account.archivedAt === null &&
       status === 'MISMATCH' &&
       !delta.eq(ZERO) &&
-      !issueCodes.has('TRANSFER_GROUP_INCOMPLETE');
+      !issueCodes.has('TRANSFER_GROUP_INCOMPLETE') &&
+      !issueCodes.has('FX_STALE');
     const canEstablishOpeningBalanceBaseline =
       account.archivedAt === null &&
       baselineMode === 'FULL_HISTORY' &&
       status === 'CLEAN' &&
+      !issueCodes.has('FX_STALE') &&
       assets.length + transactions.length > 0;
 
     return {
       account,
       status,
+      reconciliationScope:
+        account.type === AccountType.BROKER ? 'CASH_ONLY' : 'FULL_BALANCE',
       baselineMode,
       trackedBalance,
       expectedBalance,
@@ -964,6 +981,18 @@ export class AccountsService {
       });
     }
 
+    if (issueCodes.has('FX_STALE')) {
+      diagnostics.push({
+        code: 'FX_STALE',
+        severity: 'WARNING',
+        summary: 'Cross-currency assets are using the latest stored FX.',
+        likelyCause:
+          'Today’s FX rate is not stored yet, so reconciliation is relying on an older saved rate.',
+        recommendedAction:
+          'Refresh prices before trusting this reconciliation result or creating an adjustment.',
+      });
+    }
+
     if (issueCodes.has('TRANSFER_GROUP_INCOMPLETE')) {
       diagnostics.push({
         code: 'TRANSFER_GROUP_INCOMPLETE',
@@ -981,6 +1010,7 @@ export class AccountsService {
       input.delta !== null &&
       !input.delta.eq(ZERO) &&
       !issueCodes.has('FX_UNAVAILABLE') &&
+      !issueCodes.has('FX_STALE') &&
       !issueCodes.has('TRANSFER_GROUP_INCOMPLETE')
     ) {
       diagnostics.push({
@@ -1035,6 +1065,14 @@ export class AccountsService {
       };
     }
 
+    if (input.issueCodes.includes('FX_STALE')) {
+      return {
+        status: 'BLOCKED',
+        message:
+          'Refresh prices before creating a reconciliation adjustment for a cross-currency account.',
+      };
+    }
+
     if (input.account.openingBalanceDate === null) {
       return {
         status: 'SUSPICIOUS',
@@ -1082,6 +1120,10 @@ export class AccountsService {
       return 'Resolve missing FX rates before establishing an opening-balance baseline.';
     }
 
+    if (input.issueCodes.includes('FX_STALE')) {
+      return 'Refresh prices before establishing an opening-balance baseline for a cross-currency account.';
+    }
+
     if (input.issueCodes.includes('TRANSFER_GROUP_INCOMPLETE')) {
       return 'Fix broken transfer pairs before establishing an opening-balance baseline.';
     }
@@ -1098,14 +1140,21 @@ export class AccountsService {
   }
 
   private async resolveFxRates(
+    ownerId: string,
+    date: Date,
     pairKeys: Set<string>,
-  ): Promise<Map<string, Prisma.Decimal | null>> {
+  ): Promise<ReconciliationFxMap> {
     const entries = await Promise.all(
       [...pairKeys].map(async (pairKey) => {
         const [fromCurrency, toCurrency] = pairKey.split(':');
         return [
           pairKey,
-          await this.pricesService.getFxRate(fromCurrency, toCurrency),
+          await this.pricesService.getStoredFxRateSnapshot(
+            ownerId,
+            date,
+            fromCurrency,
+            toCurrency,
+          ),
         ] as const;
       }),
     );
@@ -1347,7 +1396,9 @@ export class AccountsService {
     const day = parts.find((part) => part.type === 'day')?.value;
 
     if (!year || !month || !day) {
-      throw new Error('Unable to derive the current Europe/Rome day.');
+      throw new InternalServerErrorException(
+        'Unable to derive the current Europe/Rome day.',
+      );
     }
 
     const nextDay = new Date(

@@ -29,6 +29,9 @@ html[data-theme="dark"] {
   --bg-modal: rgba(15, 15, 15, 0.9);
   --bg-control: rgba(255, 255, 255, 0.045);
   --bg-control-hover: rgba(255, 255, 255, 0.07);
+  --nav-overlay-backdrop: rgba(5, 5, 5, 0.34);
+  --nav-overlay-card-bg: rgba(12, 12, 14, 0.88);
+  --nav-overlay-card-border: rgba(255, 255, 255, 0.1);
 
   /* Borders */
   --border-glass: rgba(255, 255, 255, 0.08);
@@ -127,6 +130,9 @@ html[data-theme="light"] {
   --bg-modal: rgba(255, 255, 255, 0.9);
   --bg-control: rgba(255, 255, 255, 0.82);
   --bg-control-hover: rgba(255, 255, 255, 0.92);
+  --nav-overlay-backdrop: rgba(244, 244, 245, 0.36);
+  --nav-overlay-card-bg: rgba(255, 255, 255, 0.9);
+  --nav-overlay-card-border: rgba(0, 0, 0, 0.08);
 
   /* Borders */
   --border-glass: rgba(0, 0, 0, 0.08);
@@ -3703,6 +3709,14 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   margin-top: 0;
 }
 
+.review-highlights-details {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 20px 20px;
+  border-top: 1px solid var(--border-glass);
+}
+
 .brokerage-activity-details {
   display: flex;
   flex-direction: column;
@@ -4170,8 +4184,196 @@ html[data-theme="light"] .brokerage-account-switcher::after {
 }
 
 .app-form-field.has-error select,
-.app-form-field.has-error input {
+.app-form-field.has-error input,
+.app-form-field.has-error .searchable-picker-trigger {
   border-color: var(--color-expense);
+}
+
+.searchable-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 10px 18px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-control);
+  background: var(--bg-control);
+  color: var(--text-primary);
+  text-align: left;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.searchable-picker-trigger:hover {
+  background: var(--bg-control-hover);
+}
+
+.searchable-picker-trigger.is-disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.searchable-picker-placeholder {
+  color: var(--text-tertiary);
+}
+
+.searchable-picker-chevron {
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.searchable-picker-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+/* When the popover API is available the panel lives in the browser top layer.
+   The :not(:popover-open) rule keeps it hidden until showPopover() is called,
+   because our `display: flex` would otherwise override the UA `display: none`. */
+.searchable-picker-panel[popover]:not(:popover-open) {
+  display: none;
+}
+
+.searchable-picker-panel {
+  /* Override default popover UA styles */
+  margin: 0;
+  inset: unset;
+
+  /* Portal fallback (jsdom / older browsers) needs a z-index above modals */
+  z-index: 100000;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(420px, calc(100vh - 32px));
+  padding: 14px;
+  border-radius: 24px;
+  border: 1px solid var(--border-glass-strong);
+  background: var(--bg-popover-solid);
+  box-shadow: var(--shadow-glass);
+}
+
+.searchable-picker-panel[popover]::backdrop {
+  background: transparent;
+}
+
+.searchable-picker-search-row {
+  position: relative;
+}
+
+.searchable-picker-search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.searchable-picker-search {
+  padding-left: 42px;
+}
+
+.searchable-picker-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.searchable-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 18px;
+  color: var(--text-primary);
+  text-align: left;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.searchable-picker-option:hover,
+.searchable-picker-option:focus-visible {
+  background: var(--bg-card-hover);
+  outline: none;
+}
+
+.searchable-picker-option.is-clear {
+  color: var(--text-secondary);
+}
+
+.searchable-picker-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.searchable-picker-prefix,
+.searchable-picker-clear-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+}
+
+.searchable-picker-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0 10px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-card-muted);
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.searchable-picker-option-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.searchable-picker-option-label {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.searchable-picker-option-meta {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.searchable-picker-check {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.searchable-picker-empty {
+  padding: 14px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
 }
 
 .app-form-field-error {
@@ -4187,6 +4389,48 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   background: var(--surface-danger-bg);
   color: var(--color-expense);
   font-size: 0.875rem;
+}
+
+.app-form-success {
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--color-income) 22%, transparent);
+  background: color-mix(in srgb, var(--color-income) 10%, transparent);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.app-form-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 18px 20px;
+  border-radius: 20px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-card-muted);
+}
+
+.app-form-toggle input[type="checkbox"] {
+  inline-size: 20px;
+  block-size: 20px;
+  margin-top: 2px;
+  accent-color: var(--color-primary);
+}
+
+.app-form-toggle-label {
+  display: block;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.app-form-toggle-copy {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
 }
 
 .app-form-actions {
@@ -5469,6 +5713,7 @@ html[data-theme="dark"] .text-red-800 {
   z-index: 40;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   min-height: var(--top-header-height);
   padding:
     calc(18px + env(safe-area-inset-top, 0px))
@@ -5482,6 +5727,14 @@ html[data-theme="dark"] .text-red-800 {
   display: inline-flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
+}
+
+.top-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .top-header-wordmark {
@@ -5489,6 +5742,226 @@ html[data-theme="dark"] .text-red-800 {
   font-weight: 800;
   color: var(--text-primary);
   letter-spacing: -0.04em;
+}
+
+.shell-account-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 56px;
+  min-height: 48px;
+  padding: 4px 6px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border-glass);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-card-hover) 55%, transparent), transparent),
+    var(--bg-card);
+  color: var(--text-primary);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.shell-account-menu-trigger:hover,
+.shell-account-menu-trigger.is-open {
+  border-color: var(--border-glass-strong);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-card-hover) 88%, transparent), transparent),
+    var(--bg-card-hover);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+}
+
+.shell-account-menu-trigger:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.shell-account-menu-avatar {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.26), transparent 52%),
+    linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 20%, transparent), color-mix(in srgb, var(--color-income) 30%, transparent));
+  border: 1px solid color-mix(in srgb, var(--border-glass-strong) 88%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 16px rgba(0, 0, 0, 0.16);
+}
+
+.shell-account-menu-avatar-copy {
+  font-size: 0.79rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shell-account-menu-trigger-mark {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-card-hover) 76%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-glass) 90%, transparent);
+  color: var(--text-secondary);
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease,
+    background 0.2s ease;
+}
+
+.shell-account-menu-trigger.is-open .shell-account-menu-trigger-mark {
+  transform: rotate(180deg);
+  color: var(--text-primary);
+}
+
+.shell-account-menu-panel {
+  width: min(312px, calc(100vw - 40px));
+  padding: 10px;
+}
+
+.shell-account-menu-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shell-account-menu-identity {
+  padding: 14px;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--color-income) 16%, transparent), transparent 52%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-card-hover) 82%, transparent), transparent),
+    var(--bg-card);
+  border: 1px solid var(--border-glass);
+}
+
+.shell-account-menu-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shell-account-menu-identity-avatar {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.24), transparent 52%),
+    linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 22%, transparent), color-mix(in srgb, var(--color-income) 34%, transparent));
+  border: 1px solid color-mix(in srgb, var(--border-glass-strong) 88%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 10px 20px rgba(0, 0, 0, 0.16);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shell-account-menu-identity-copy {
+  min-width: 0;
+}
+
+.shell-account-menu-kicker,
+.shell-account-menu-section-title {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.shell-account-menu-title {
+  margin: 4px 0 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.15;
+}
+
+.shell-account-menu-subtitle {
+  margin: 12px 0 0;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.shell-account-menu-section {
+  padding: 0;
+}
+
+.shell-account-menu-section-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.shell-account-menu-item {
+  min-height: 48px;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  color: var(--text-primary);
+}
+
+.shell-account-menu-item:hover:not(:disabled),
+.shell-account-menu-item:focus-visible {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.shell-account-menu-icon-frame {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bg-card-hover) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-glass) 90%, transparent);
+}
+
+.shell-account-menu-icon {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.shell-account-menu-item:hover .shell-account-menu-icon,
+.shell-account-menu-item:focus-visible .shell-account-menu-icon {
+  color: inherit;
+}
+
+.shell-account-menu-item:disabled .shell-account-menu-icon-frame {
+  opacity: 0.72;
+}
+
+[data-theme="light"] .shell-account-menu-item {
+  color: rgba(0, 0, 0, 0.86);
+}
+
+[data-theme="light"] .shell-account-menu-item:hover:not(:disabled),
+[data-theme="light"] .shell-account-menu-item:focus-visible {
+  color: rgba(0, 0, 0, 0.92);
+}
+
+[data-theme="light"] .shell-account-menu-icon {
+  color: rgba(0, 0, 0, 0.62);
 }
 
 .desktop-nav {
@@ -5573,6 +6046,78 @@ html[data-theme="dark"] .text-red-800 {
   text-align: left;
 }
 
+.navigation-transition-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    calc(24px + env(safe-area-inset-top, 0px))
+    24px
+    calc(24px + env(safe-area-inset-bottom, 0px));
+  background: var(--nav-overlay-backdrop);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.navigation-transition-card {
+  width: min(320px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid var(--nav-overlay-card-border);
+  background: var(--nav-overlay-card-bg);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16);
+}
+
+.navigation-transition-kicker {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.navigation-transition-title {
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.navigation-transition-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.navigation-transition-bar {
+  height: 12px;
+  width: 100%;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--bg-card-hover) 82%, transparent) 0%,
+      color-mix(in srgb, var(--bg-card-hover) 94%, white 6%) 50%,
+      color-mix(in srgb, var(--bg-card-hover) 82%, transparent) 100%
+    );
+  background-size: 200% 100%;
+  animation: navigation-transition-pulse 1.2s ease-in-out infinite;
+}
+
+.navigation-transition-bar.is-wide {
+  width: 100%;
+}
+
+.navigation-transition-bar.is-short {
+  width: 62%;
+}
+
 .tab-bar-nav {
   position: fixed;
   left: 0;
@@ -5582,6 +6127,23 @@ html[data-theme="dark"] .text-red-800 {
   display: none;
   justify-content: center;
   pointer-events: none;
+}
+
+@keyframes navigation-transition-pulse {
+  0% {
+    background-position: 100% 50%;
+    opacity: 0.72;
+  }
+
+  50% {
+    background-position: 0% 50%;
+    opacity: 1;
+  }
+
+  100% {
+    background-position: -100% 50%;
+    opacity: 0.72;
+  }
 }
 
 .tab-bar-menu-anchor {
@@ -5739,6 +6301,11 @@ html[data-theme="dark"] .text-red-800 {
   text-align: left;
 }
 
+.tab-menu-link.is-disabled {
+  opacity: 0.54;
+  cursor: not-allowed;
+}
+
 .tab-menu-icon {
   color: rgba(255, 255, 255, 0.82);
   flex-shrink: 0;
@@ -5767,6 +6334,15 @@ html[data-theme="dark"] .text-red-800 {
   height: 1px;
   background: var(--tab-border);
   opacity: 0.5;
+}
+
+.tab-more-section-title {
+  margin: 6px 12px 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }
 
 [data-theme="light"] .tab-menu-icon,
@@ -5841,6 +6417,32 @@ html[data-theme="dark"] .text-red-800 {
       var(--layout-padding-inline)
       16px;
     min-height: var(--top-header-height);
+  }
+
+  .top-header-brand {
+    gap: 12px;
+  }
+
+  .top-header-wordmark {
+    font-size: 1.55rem;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-header-actions {
+    margin-left: 12px;
+  }
+
+  .shell-account-menu-trigger {
+    min-width: 52px;
+    min-height: 44px;
+  }
+
+  .shell-account-menu-avatar {
+    width: 34px;
+    height: 34px;
   }
 
   .layout-shell {
