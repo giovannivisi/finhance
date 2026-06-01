@@ -453,6 +453,7 @@ describe('AccountsService', () => {
     prices.getStoredFxRateSnapshot.mockResolvedValue({
       rate: new Prisma.Decimal('0.9'),
       status: 'EXACT',
+      source: 'LIVE',
       rateDate: new Date('2026-05-27T00:00:00.000Z'),
       updatedAt: new Date('2026-05-27T10:00:00.000Z'),
     });
@@ -526,6 +527,7 @@ describe('AccountsService', () => {
     prices.getStoredFxRateSnapshot.mockResolvedValue({
       rate: null,
       status: 'MISSING',
+      source: null,
       rateDate: null,
       updatedAt: null,
     });
@@ -557,6 +559,7 @@ describe('AccountsService', () => {
     prices.getStoredFxRateSnapshot.mockResolvedValue({
       rate: new Prisma.Decimal('0.9'),
       status: 'STALE',
+      source: 'LIVE',
       rateDate: new Date('2026-05-26T00:00:00.000Z'),
       updatedAt: new Date('2026-05-26T18:00:00.000Z'),
     });

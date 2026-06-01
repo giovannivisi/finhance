@@ -141,6 +141,7 @@ describe('TransactionsService', () => {
   };
   let prices: {
     getFxRateForDate: jest.Mock;
+    getStoredFxRateSnapshot: jest.Mock;
     saveManualFxRate: jest.Mock;
   };
 
@@ -198,6 +199,13 @@ describe('TransactionsService', () => {
 
     prices = {
       getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
+      getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
+        rate: new Prisma.Decimal('1'),
+        status: 'EXACT',
+        source: 'LIVE',
+        rateDate: new Date('2026-04-17T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-17T08:00:00.000Z'),
+      }),
       saveManualFxRate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
     };
 
@@ -412,13 +420,19 @@ describe('TransactionsService', () => {
     ).rejects.toThrow('same currency');
   });
 
-  it('creates cross-currency transfers with live FX by default', async () => {
+  it('creates cross-currency transfers with a stored FX rate by default', async () => {
     accounts.getAssignableAccount
       .mockResolvedValueOnce(createAccount({ id: 'source', currency: 'EUR' }))
       .mockResolvedValueOnce(
         createAccount({ id: 'destination', currency: 'USD' }),
       );
-    prices.getFxRateForDate.mockResolvedValueOnce(new Prisma.Decimal('1.2'));
+    prices.getStoredFxRateSnapshot.mockResolvedValueOnce({
+      rate: new Prisma.Decimal('1.2'),
+      status: 'EXACT',
+      source: 'LIVE',
+      rateDate: new Date('2026-04-17T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-17T08:00:00.000Z'),
+    });
     prisma.transaction.findMany.mockResolvedValue([
       createTransactionRow({
         id: 'row-1',
@@ -460,12 +474,13 @@ describe('TransactionsService', () => {
     });
 
     expect(result.entryType).toBe('TRANSFER');
-    expect(prices.getFxRateForDate).toHaveBeenCalledWith(
+    expect(prices.getStoredFxRateSnapshot).toHaveBeenCalledWith(
       OWNER_ID,
       new Date('2026-04-17T09:00:00.000Z'),
       'EUR',
       'USD',
     );
+    expect(prices.getFxRateForDate).not.toHaveBeenCalled();
   });
 
   it('creates dual-currency standard transactions with a manual FX override', async () => {

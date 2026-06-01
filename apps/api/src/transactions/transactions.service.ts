@@ -1456,13 +1456,14 @@ export class TransactionsService {
           fxRateUsed,
         );
       } else {
-        fxRateUsed = await this.pricesService.getFxRateForDate(
+        const storedRate = await this.pricesService.getStoredFxRateSnapshot(
           ownerId,
           postedAt,
           nativeCurrency,
           account.currency,
         );
-        fxRateSource = fxRateUsed ? FxRateSource.LIVE : null;
+        fxRateUsed = storedRate.rate;
+        fxRateSource = storedRate.source;
       }
 
       if (!fxRateUsed) {
@@ -1704,13 +1705,14 @@ export class TransactionsService {
           fxRateUsed,
         );
       } else {
-        fxRateUsed = await this.pricesService.getFxRateForDate(
+        const storedRate = await this.pricesService.getStoredFxRateSnapshot(
           ownerId,
           postedAt,
           sourceCurrency,
           destinationCurrency,
         );
-        fxRateSource = fxRateUsed ? FxRateSource.LIVE : null;
+        fxRateUsed = storedRate.rate;
+        fxRateSource = storedRate.source;
       }
 
       if (!fxRateUsed) {

@@ -3,8 +3,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { AccountsService } from '@accounts/accounts.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { SetupService } from '@/setup/setup.service';
 import { CategoriesService } from '@transactions/categories.service';
 import { CashflowController } from '@transactions/cashflow.controller';
+import { ExpenseValidationService } from '@transactions/expense-validation.service';
 import { PricesService } from '@prices/prices.service';
 import { TransactionsController } from '@transactions/transactions.controller';
 import { TransactionsService } from '@transactions/transactions.service';
@@ -117,6 +119,14 @@ describe('Transaction routes (e2e)', () => {
       delete: jest.Mock;
       deleteMany: jest.Mock;
     };
+    account: {
+      findFirst: jest.Mock;
+    };
+    asset: {
+      findFirst: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
   let accounts: {
@@ -125,8 +135,15 @@ describe('Transaction routes (e2e)', () => {
   let categories: {
     getAssignableCategory: jest.Mock;
   };
+  let expenseValidation: {
+    list: jest.Mock;
+  };
+  let setup: {
+    getStatus: jest.Mock;
+  };
   let prices: {
     getFxRateForDate: jest.Mock;
+    getStoredFxRateSnapshot: jest.Mock;
     saveManualFxRate: jest.Mock;
   };
 
@@ -144,6 +161,18 @@ describe('Transaction routes (e2e)', () => {
         delete: jest.fn(),
         deleteMany: jest.fn(),
       },
+      account: {
+        findFirst: jest.fn().mockResolvedValue({ type: 'BANK' }),
+      },
+      asset: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'cash-asset-1',
+          balance: new Prisma.Decimal('1000'),
+          currency: 'EUR',
+        }),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
       $transaction: jest.fn(),
     };
 
@@ -151,10 +180,14 @@ describe('Transaction routes (e2e)', () => {
       async (
         callback: (tx: {
           transaction: typeof prisma.transaction;
+          account: typeof prisma.account;
+          asset: typeof prisma.asset;
         }) => Promise<unknown>,
       ) =>
         callback({
           transaction: prisma.transaction,
+          account: prisma.account,
+          asset: prisma.asset,
         }),
     );
 
@@ -165,8 +198,21 @@ describe('Transaction routes (e2e)', () => {
     categories = {
       getAssignableCategory: jest.fn().mockResolvedValue(createCategory()),
     };
+    expenseValidation = {
+      list: jest.fn().mockResolvedValue([]),
+    };
+    setup = {
+      getStatus: jest.fn().mockResolvedValue(null),
+    };
     prices = {
       getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
+      getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
+        rate: new Prisma.Decimal('1'),
+        status: 'EXACT',
+        source: 'LIVE',
+        rateDate: new Date('2026-04-17T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-17T08:00:00.000Z'),
+      }),
       saveManualFxRate: jest.fn().mockResolvedValue(new Prisma.Decimal('1')),
     };
 
@@ -177,7 +223,9 @@ describe('Transaction routes (e2e)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AccountsService, useValue: accounts },
         { provide: CategoriesService, useValue: categories },
+        { provide: ExpenseValidationService, useValue: expenseValidation },
         { provide: PricesService, useValue: prices },
+        { provide: SetupService, useValue: setup },
         {
           provide: RequestOwnerResolver,
           useValue: {
@@ -693,6 +741,10 @@ describe('Transaction routes (e2e)', () => {
               {
                 categoryId: 'category-expense',
                 name: 'Rent',
+                primaryCategoryId: null,
+                primaryCategoryName: null,
+                secondaryCategoryId: null,
+                secondaryCategoryName: null,
                 total: 40,
               },
             ],
@@ -712,6 +764,10 @@ describe('Transaction routes (e2e)', () => {
                   {
                     categoryId: 'category-expense',
                     name: 'Rent',
+                    primaryCategoryId: null,
+                    primaryCategoryName: null,
+                    secondaryCategoryId: null,
+                    secondaryCategoryName: null,
                     total: 40,
                   },
                 ],
@@ -719,6 +775,10 @@ describe('Transaction routes (e2e)', () => {
                   {
                     categoryId: 'category-1',
                     name: 'Salary',
+                    primaryCategoryId: null,
+                    primaryCategoryName: null,
+                    secondaryCategoryId: null,
+                    secondaryCategoryName: null,
                     total: 100,
                   },
                 ],
@@ -786,6 +846,7 @@ describe('Transaction routes (e2e)', () => {
           from: '2026-04',
           to: '2026-05',
           focusMonth: '2026-05',
+          reportingOverview: null,
           currencies: [
             {
               currency: 'EUR',
@@ -817,6 +878,10 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-expense',
                   name: 'Rent',
+                  primaryCategoryId: null,
+                  primaryCategoryName: null,
+                  secondaryCategoryId: null,
+                  secondaryCategoryName: null,
                   total: 40,
                 },
               ],
@@ -825,6 +890,10 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-expense',
                   name: 'Rent',
+                  primaryCategoryId: null,
+                  primaryCategoryName: null,
+                  secondaryCategoryId: null,
+                  secondaryCategoryName: null,
                   total: 40,
                   series: [
                     { month: '2026-04', total: 0 },
@@ -836,6 +905,10 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-income',
                   name: 'Salary',
+                  primaryCategoryId: null,
+                  primaryCategoryName: null,
+                  secondaryCategoryId: null,
+                  secondaryCategoryName: null,
                   total: 100,
                   series: [
                     { month: '2026-04', total: 100 },
@@ -847,6 +920,10 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-expense',
                   name: 'Rent',
+                  primaryCategoryId: null,
+                  primaryCategoryName: null,
+                  secondaryCategoryId: null,
+                  secondaryCategoryName: null,
                   previousTotal: 0,
                   currentTotal: 40,
                   delta: 40,
@@ -856,6 +933,10 @@ describe('Transaction routes (e2e)', () => {
                 {
                   categoryId: 'category-income',
                   name: 'Salary',
+                  primaryCategoryId: null,
+                  primaryCategoryName: null,
+                  secondaryCategoryId: null,
+                  secondaryCategoryName: null,
                   previousTotal: 100,
                   currentTotal: 0,
                   delta: -100,

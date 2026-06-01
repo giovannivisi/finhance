@@ -23,6 +23,7 @@ export type StoredFxRateStatus = 'EXACT' | 'STALE' | 'MISSING';
 export interface StoredFxRateSnapshot {
   rate: Prisma.Decimal | null;
   status: StoredFxRateStatus;
+  source: FxRateSource | null;
   rateDate: Date | null;
   updatedAt: Date | null;
 }
@@ -160,6 +161,7 @@ export class PricesService {
       return {
         rate: new Prisma.Decimal(1),
         status: 'EXACT',
+        source: null,
         rateDate: this.toRomeDateValue(date),
         updatedAt: date,
       };
@@ -181,6 +183,7 @@ export class PricesService {
       return {
         rate: stored.rate,
         status: 'EXACT',
+        source: stored.source,
         rateDate: stored.rateDate,
         updatedAt: stored.updatedAt,
       };
@@ -199,6 +202,7 @@ export class PricesService {
       return {
         rate: latestStored.rate,
         status: 'STALE',
+        source: latestStored.source,
         rateDate: latestStored.rateDate,
         updatedAt: latestStored.updatedAt,
       };
@@ -207,6 +211,7 @@ export class PricesService {
     return {
       rate: null,
       status: 'MISSING',
+      source: null,
       rateDate: null,
       updatedAt: null,
     };

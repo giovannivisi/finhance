@@ -145,6 +145,7 @@ describe('AssetsService', () => {
       getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
         rate: new Prisma.Decimal('0.9'),
         status: 'EXACT',
+        source: 'LIVE',
         rateDate: new Date('2026-05-20T00:00:00.000Z'),
         updatedAt: new Date('2026-05-20T10:00:00.000Z'),
       }),
@@ -244,6 +245,7 @@ describe('AssetsService', () => {
     prices.getStoredFxRateSnapshot.mockResolvedValue({
       rate: new Prisma.Decimal('0.9'),
       status: 'EXACT',
+      source: 'LIVE',
       rateDate: now,
       updatedAt: now,
     });
@@ -277,6 +279,7 @@ describe('AssetsService', () => {
     prices.getStoredFxRateSnapshot.mockResolvedValue({
       rate: new Prisma.Decimal('0.9'),
       status: 'STALE',
+      source: 'LIVE',
       rateDate: new Date('2026-05-26T00:00:00.000Z'),
       updatedAt: staleFxTime,
     });
@@ -308,6 +311,7 @@ describe('AssetsService', () => {
     prices.getStoredFxRateSnapshot.mockResolvedValue({
       rate: new Prisma.Decimal('0.9'),
       status: 'EXACT',
+      source: 'LIVE',
       rateDate: now,
       updatedAt: now,
     });
@@ -483,6 +487,7 @@ describe('AssetsService', () => {
     prices.getStoredFxRateSnapshot.mockResolvedValue({
       rate: new Prisma.Decimal('0.9'),
       status: 'EXACT',
+      source: 'LIVE',
       rateDate: new Date(),
       updatedAt: new Date(),
     });

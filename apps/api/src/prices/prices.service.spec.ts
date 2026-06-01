@@ -54,6 +54,7 @@ describe('PricesService', () => {
     const updatedAt = new Date('2026-05-27T10:00:00.000Z');
     prisma.fxRate.findUnique.mockResolvedValue({
       rate: { toString: () => '0.91' },
+      source: 'LIVE',
       rateDate: new Date('2026-05-27T00:00:00.000Z'),
       updatedAt,
     });
@@ -67,6 +68,7 @@ describe('PricesService', () => {
 
     expect(result.status).toBe('EXACT');
     expect(result.rate?.toString()).toBe('0.91');
+    expect(result.source).toBe('LIVE');
     expect(result.updatedAt).toEqual(updatedAt);
     expect(prisma.fxRate.findFirst).not.toHaveBeenCalled();
   });
@@ -76,6 +78,7 @@ describe('PricesService', () => {
     prisma.fxRate.findUnique.mockResolvedValue(null);
     prisma.fxRate.findFirst.mockResolvedValue({
       rate: { toString: () => '0.89' },
+      source: 'MANUAL',
       rateDate: new Date('2026-05-26T00:00:00.000Z'),
       updatedAt,
     });
@@ -89,6 +92,7 @@ describe('PricesService', () => {
 
     expect(result.status).toBe('STALE');
     expect(result.rate?.toString()).toBe('0.89');
+    expect(result.source).toBe('MANUAL');
     expect(result.updatedAt).toEqual(updatedAt);
   });
 
@@ -106,6 +110,7 @@ describe('PricesService', () => {
     expect(result).toEqual({
       rate: null,
       status: 'MISSING',
+      source: null,
       rateDate: null,
       updatedAt: null,
     });
