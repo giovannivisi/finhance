@@ -1,0 +1,37 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+.pnpm-store
+pnpm-store
+
+# Local env files
+.env
+.env.*
+
+# Local build and cache output
+.next
+apps/*/.next
+out
+apps/*/out
+build
+apps/*/build
+dist
+apps/*/dist
+.turbo
+coverage
+apps/*/coverage
+*.tsbuildinfo
+
+# Local tooling and editor state
+.git
+.idea
+.vscode
+.claude
+.DS_Store
+
+# Local captures and temporary artefacts
+tmp
+*.har
+*.mov
+*.mp4

@@ -2,13 +2,24 @@
 
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import type { AccountResponse, CategoryResponse } from "@finhance/shared";
+import type {
+  AccountResponse,
+  CategoryResponse,
+  ExpenseValidationRuleResponse,
+} from "@finhance/shared";
 import {
   buildRecurringRulePayload,
   type RecurringRuleFormValues,
 } from "@lib/recurring-rule-form";
 import { formatAccountOptionLabel } from "@lib/accounts";
 import { formatCategoryOptionLabel } from "@lib/categories";
+import {
+  deriveExpensePrimaryId,
+  expensePrimaryCategories,
+  expenseSecondaryCategories,
+  findMatchingExpenseValidationRule,
+  incomeCategories,
+} from "@lib/hierarchical-categories";
 import {
   TRANSACTION_DIRECTION_LABELS,
   TRANSACTION_DIRECTION_OPTIONS,
@@ -24,6 +35,7 @@ interface RecurringRuleFormProps {
   initialValues: RecurringRuleFormValues;
   accounts: AccountResponse[];
   categories: CategoryResponse[];
+  expenseValidationRules: ExpenseValidationRuleResponse[];
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -37,38 +49,41 @@ function selectableAccounts(
   );
 }
 
-function selectableCategories(
-  categories: CategoryResponse[],
-  type: CategoryResponse["type"],
-  selectedId: string,
-): CategoryResponse[] {
-  return categories.filter(
-    (category) =>
-      category.type === type &&
-      (category.archivedAt === null || category.id === selectedId),
-  );
-}
-
 export default function RecurringRuleForm({
   mode,
   ruleId,
   initialValues,
   accounts,
   categories,
+  expenseValidationRules,
   onSuccess,
   onCancel,
 }: RecurringRuleFormProps) {
   const router = useRouter();
   const fieldPrefix = useId();
   const [form, setForm] = useState<RecurringRuleFormValues>(initialValues);
+  const [selectedExpensePrimaryId, setSelectedExpensePrimaryId] = useState(
+    deriveExpensePrimaryId(categories, initialValues.categoryId),
+  );
+  const [
+    hasManualExpenseCategoryOverride,
+    setHasManualExpenseCategoryOverride,
+  ] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
+  const isTransfer = form.kind === "TRANSFER";
+  const isAdjustment = form.kind === "ADJUSTMENT";
+  const isExpense = form.kind === "EXPENSE";
 
   useEffect(() => {
     setForm(initialValues);
-  }, [initialValues]);
+    setSelectedExpensePrimaryId(
+      deriveExpensePrimaryId(categories, initialValues.categoryId),
+    );
+    setHasManualExpenseCategoryOverride(false);
+  }, [categories, initialValues]);
 
   const standardAccounts = useMemo(
     () => selectableAccounts(accounts, form.accountId),
@@ -82,17 +97,25 @@ export default function RecurringRuleForm({
     () => selectableAccounts(accounts, form.destinationAccountId),
     [accounts, form.destinationAccountId],
   );
-  const visibleCategories = useMemo(() => {
-    if (form.kind === "INCOME") {
-      return selectableCategories(categories, "INCOME", form.categoryId);
-    }
-
-    if (form.kind === "EXPENSE") {
-      return selectableCategories(categories, "EXPENSE", form.categoryId);
-    }
-
-    return [];
-  }, [categories, form.categoryId, form.kind]);
+  const visibleIncomeCategories = useMemo(
+    () => incomeCategories(categories, form.categoryId),
+    [categories, form.categoryId],
+  );
+  const visibleExpensePrimaries = useMemo(
+    () => expensePrimaryCategories(categories, selectedExpensePrimaryId),
+    [categories, selectedExpensePrimaryId],
+  );
+  const visibleExpenseSecondaries = useMemo(
+    () =>
+      selectedExpensePrimaryId
+        ? expenseSecondaryCategories(
+            categories,
+            selectedExpensePrimaryId,
+            form.categoryId,
+          )
+        : [],
+    [categories, form.categoryId, selectedExpensePrimaryId],
+  );
 
   function updateField<Field extends keyof RecurringRuleFormValues>(
     field: Field,
@@ -102,6 +125,43 @@ export default function RecurringRuleForm({
       ...previous,
       [field]: value,
     }));
+  }
+
+  function handleDescriptionChange(value: string) {
+    setForm((previous) => ({
+      ...previous,
+      description: value,
+    }));
+
+    if (form.kind !== "EXPENSE" || hasManualExpenseCategoryOverride) {
+      return;
+    }
+
+    const matchingRule = findMatchingExpenseValidationRule(
+      expenseValidationRules,
+      value,
+    );
+    if (!matchingRule) {
+      return;
+    }
+
+    setSelectedExpensePrimaryId(matchingRule.primaryCategoryId);
+    setForm((previous) => ({
+      ...previous,
+      description: value,
+      categoryId: matchingRule.secondaryCategoryId,
+    }));
+  }
+
+  function handleExpensePrimaryChange(primaryCategoryId: string) {
+    setSelectedExpensePrimaryId(primaryCategoryId);
+    setHasManualExpenseCategoryOverride(primaryCategoryId !== "");
+    updateField("categoryId", "");
+  }
+
+  function handleExpenseSecondaryChange(categoryId: string) {
+    updateField("categoryId", categoryId);
+    setHasManualExpenseCategoryOverride(categoryId !== "");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -147,9 +207,6 @@ export default function RecurringRuleForm({
     });
   }
 
-  const isTransfer = form.kind === "TRANSFER";
-  const isAdjustment = form.kind === "ADJUSTMENT";
-
   return (
     <form onSubmit={handleSubmit} className="app-form">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -168,12 +225,19 @@ export default function RecurringRuleForm({
           <select
             id={`${fieldPrefix}-kind`}
             value={form.kind}
-            onChange={(event) =>
-              updateField(
-                "kind",
-                event.target.value as RecurringRuleFormValues["kind"],
-              )
-            }
+            onChange={(event) => {
+              const nextKind = event.target
+                .value as RecurringRuleFormValues["kind"];
+              updateField("kind", nextKind);
+              if (nextKind === "EXPENSE") {
+                setSelectedExpensePrimaryId(
+                  deriveExpensePrimaryId(categories, form.categoryId),
+                );
+              } else {
+                setSelectedExpensePrimaryId("");
+                setHasManualExpenseCategoryOverride(false);
+              }
+            }}
           >
             {TRANSACTION_KIND_OPTIONS.map((kind) => (
               <option key={kind} value={kind}>
@@ -325,26 +389,70 @@ export default function RecurringRuleForm({
             </select>
           </div>
 
-          <div className="app-form-field">
-            <label htmlFor={`${fieldPrefix}-category`}>Category</label>
-            <select
-              id={`${fieldPrefix}-category`}
-              value={form.categoryId}
-              onChange={(event) =>
-                updateField("categoryId", event.target.value)
-              }
-              disabled={isAdjustment}
-            >
-              <option value="">
-                {isAdjustment ? "Not used for adjustments" : "No category"}
-              </option>
-              {visibleCategories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {formatCategoryOptionLabel(category)}
+          {isExpense ? (
+            <>
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-primary-category`}>
+                  Primary
+                </label>
+                <select
+                  id={`${fieldPrefix}-primary-category`}
+                  value={selectedExpensePrimaryId}
+                  onChange={(event) =>
+                    handleExpensePrimaryChange(event.target.value)
+                  }
+                >
+                  <option value="">No primary</option>
+                  {visibleExpensePrimaries.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-secondary-category`}>
+                  Secondary
+                </label>
+                <select
+                  id={`${fieldPrefix}-secondary-category`}
+                  value={form.categoryId}
+                  onChange={(event) =>
+                    handleExpenseSecondaryChange(event.target.value)
+                  }
+                >
+                  <option value="">No secondary</option>
+                  {visibleExpenseSecondaries.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {formatCategoryOptionLabel(category)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <div className="app-form-field">
+              <label htmlFor={`${fieldPrefix}-category`}>Category</label>
+              <select
+                id={`${fieldPrefix}-category`}
+                value={form.categoryId}
+                onChange={(event) =>
+                  updateField("categoryId", event.target.value)
+                }
+                disabled={isAdjustment}
+              >
+                <option value="">
+                  {isAdjustment ? "Not used for adjustments" : "No category"}
                 </option>
-              ))}
-            </select>
-          </div>
+                {visibleIncomeCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {formatCategoryOptionLabel(category)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -353,7 +461,7 @@ export default function RecurringRuleForm({
         <input
           id={`${fieldPrefix}-description`}
           value={form.description}
-          onChange={(event) => updateField("description", event.target.value)}
+          onChange={(event) => handleDescriptionChange(event.target.value)}
           required
         />
       </div>

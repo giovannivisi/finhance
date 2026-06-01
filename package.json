@@ -10,6 +10,10 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "db:generate": "pnpm --filter @finhance/db run prisma:generate",
+    "db:migrate:deploy": "pnpm --filter @finhance/db run prisma:migrate:deploy",
+    "db:migrate:dev": "pnpm --filter @finhance/db run prisma:migrate:dev",
+    "db:migrate:reset": "pnpm --filter @finhance/db run prisma:migrate:reset",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
   },
@@ -20,7 +24,7 @@
   },
   "packageManager": "pnpm@9.0.0",
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9.0 <23"
   },
   "pnpm": {
     "overrides": {
@@ -39,7 +43,8 @@
       "multer@2.1.0": "2.1.1",
       "path-to-regexp@8.3.0": "8.4.0",
       "postcss": "8.5.10",
-      "qs@6.14.0": "6.15.1"
+      "qs@6.14.0": "6.15.2",
+      "qs@6.15.1": "6.15.2"
     }
   }
 }

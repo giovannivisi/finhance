@@ -1,6 +1,6 @@
-import { AssetKind } from '@prisma/client';
+import { AssetKind } from '@finhance/db';
 
-export const BASE_CURRENCY = 'EUR';
+export const DEFAULT_REPORTING_CURRENCY = 'EUR';
 export const MARKET_KINDS = new Set<AssetKind>([
   AssetKind.STOCK,
   AssetKind.BOND,

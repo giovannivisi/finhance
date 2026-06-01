@@ -1,0 +1,78 @@
+import { Injectable } from '@nestjs/common';
+import { Prisma } from '@finhance/db';
+import type {
+  UpdateUserSettingsRequest,
+  UserSettingsResponse,
+} from '@finhance/shared';
+import { isSupportedReportingCurrencyCode } from '@/common/catalogues';
+import { PrismaService } from '@prisma/prisma.service';
+import { buildOwnerPlaceholderEmail } from '@/security/owner-user';
+import { isUserStartPage, normalizeUserSettings } from '@/users/users.settings';
+
+@Injectable()
+export class UsersService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async getSettings(ownerId: string): Promise<UserSettingsResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: ownerId },
+      select: { userSettings: true },
+    });
+
+    return normalizeUserSettings(
+      toUserSettingsRecord(user?.userSettings ?? null),
+    );
+  }
+
+  async updateSettings(
+    ownerId: string,
+    input: UpdateUserSettingsRequest,
+  ): Promise<UserSettingsResponse> {
+    const existing = await this.getSettings(ownerId);
+    const next = normalizeUserSettings({
+      ...existing,
+      ...input,
+    });
+
+    const user = await this.prisma.user.upsert({
+      where: { id: ownerId },
+      update: {
+        userSettings: next as unknown as Prisma.InputJsonValue,
+      },
+      create: {
+        id: ownerId,
+        email: buildOwnerPlaceholderEmail(ownerId),
+        userSettings: next as unknown as Prisma.InputJsonValue,
+      },
+      select: {
+        userSettings: true,
+      },
+    });
+
+    return normalizeUserSettings(toUserSettingsRecord(user.userSettings));
+  }
+}
+
+function toUserSettingsRecord(
+  value: Prisma.JsonValue | null,
+): Partial<UserSettingsResponse> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return {
+    showTransactionTimes:
+      typeof candidate.showTransactionTimes === 'boolean'
+        ? candidate.showTransactionTimes
+        : undefined,
+    startPage: isUserStartPage(candidate.startPage)
+      ? candidate.startPage
+      : undefined,
+    reportingCurrency:
+      typeof candidate.reportingCurrency === 'string' &&
+      isSupportedReportingCurrencyCode(candidate.reportingCurrency)
+        ? candidate.reportingCurrency.trim().toUpperCase()
+        : undefined,
+  };
+}

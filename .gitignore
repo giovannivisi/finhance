@@ -53,13 +53,8 @@ yarn-error.log*
 .DS_Store
 *.pem
 
-# Security checks
-check-best-practices.md
-security-audit.md
-secure-prompts.md
-
-# Agents rules
-AGENTS.md
+# Local handoffs / planning docs
+docs/handoffs/
 
 # Claude folders
 .claude/
@@ -67,3 +62,8 @@ AGENTS.md
 # videos
 *.mp4
 *.mov
+.env*
+
+# temporary files and directories
+tmp/
+temp/

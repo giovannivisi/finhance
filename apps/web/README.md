@@ -22,6 +22,9 @@ pnpm dev
 
 Then open [http://localhost:3001](http://localhost:3001).
 
+`AUTH_MODE=local` is intentionally loopback-only. Do not expose the web app to
+non-loopback traffic unless you switch to the hosted auth flow.
+
 If you prefer to start services separately:
 
 ```bash
@@ -49,10 +52,33 @@ If the dashboard says it could not reach the API:
 If `NEXT_PUBLIC_API_URL` points at the web app, the frontend may receive an
 HTML page instead of API JSON.
 
-## Deploy
+Local example env lives in
+[.env.local.example](/Users/giovannivisi/Code/finhance/apps/web/.env.local.example).
 
-This README only documents the local development contract between the Next.js
-frontend and the local Nest API.
+## Hosted deployment
+
+The hosted shape for this repo is:
+
+- `apps/web` on Vercel
+- `apps/api` on Render
+- Neon as the database
+
+The browser authenticates with Auth.js on the web app. Browser-side mutations
+then go through the same-origin proxy route in the web app, which mints
+short-lived ES256 JWTs for the API.
+
+The detailed deployment guide lives in:
+
+- [docs/deploy/private-hosted.md](/Users/giovannivisi/Code/finhance/docs/deploy/private-hosted.md)
+
+Key hosted requirements:
+
+- Vercel project Root Directory set to `apps/web`
+- `AUTH_MODE=hosted`
+- `AUTH_URL` set to the public web URL
+- `NEXT_PUBLIC_API_URL` set to the public API URL
+- provider credentials for both Google and GitHub
+- ES256 private key configured on the web side
 
 ## Privacy Notice Configuration
 

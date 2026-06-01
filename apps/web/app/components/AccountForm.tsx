@@ -6,6 +6,8 @@ import type { AccountFormValues } from "@lib/account-form";
 import { buildAccountPayload } from "@lib/account-form";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_OPTIONS } from "@lib/accounts";
 import { apiMutation } from "@lib/api";
+import SearchablePicker from "@components/SearchablePicker";
+import { getCurrencyPickerOptions } from "@lib/currency-ui";
 import { useSingleFlightActions } from "@lib/single-flight";
 
 interface AccountFormProps {
@@ -30,6 +32,7 @@ export default function AccountForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
+  const currencyOptions = getCurrencyPickerOptions();
 
   useEffect(() => {
     setForm(initialValues);
@@ -127,10 +130,13 @@ export default function AccountForm({
             <span>Currency</span>
             <span>Optional</span>
           </label>
-          <input
+          <SearchablePicker
             id={`${fieldPrefix}-currency`}
             value={form.currency}
-            onChange={(event) => updateField("currency", event.target.value)}
+            onChange={(nextValue) => updateField("currency", nextValue)}
+            options={currencyOptions}
+            placeholder="Choose a currency"
+            searchPlaceholder="Search currencies…"
           />
         </div>
       </div>

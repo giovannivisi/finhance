@@ -1,11 +1,19 @@
 import { isLoopbackIp, resolveClientIp } from '@/security/client-ip';
 
 describe('resolveClientIp', () => {
-  it('prefers the first trusted proxy address when present', () => {
+  it('prefers req.ip when Express already resolved the client address', () => {
     expect(
       resolveClientIp({
         ips: ['203.0.113.10', '10.0.0.5'],
         ip: '10.0.0.5',
+      }),
+    ).toBe('10.0.0.5');
+  });
+
+  it('falls back to the proxy chain when req.ip is unavailable', () => {
+    expect(
+      resolveClientIp({
+        ips: ['203.0.113.10', '10.0.0.5'],
       }),
     ).toBe('203.0.113.10');
   });

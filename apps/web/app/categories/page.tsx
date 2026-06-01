@@ -1,6 +1,6 @@
 import Container from "@components/Container";
 import CategoriesPageClient from "@components/CategoriesPageClient";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 import type { CategoryResponse } from "@finhance/shared";
 
 export const dynamic = "force-dynamic";

@@ -1,7 +1,7 @@
 import { SnapshotsService } from '@snapshots/snapshots.service';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
 import type { DashboardResponse } from '@finhance/shared';
-import { Prisma } from '@prisma/client';
+import { LiabilityKind, Prisma } from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 
@@ -16,10 +16,14 @@ type SnapshotUpsertCall = {
   create: {
     unavailableCount: number;
     isPartial: boolean;
+    nativeAssetTotals: Record<string, number>;
+    nativeLiabilityTotals: Record<string, number>;
   };
   update: {
     unavailableCount: number;
     isPartial: boolean;
+    nativeAssetTotals: Record<string, number>;
+    nativeLiabilityTotals: Record<string, number>;
   };
 };
 
@@ -27,6 +31,7 @@ function createDashboard(
   overrides: Partial<DashboardResponse> = {},
 ): DashboardResponse {
   return {
+    reportingCurrency: 'EUR',
     baseCurrency: 'EUR',
     assets: [
       {
@@ -34,6 +39,8 @@ function createDashboard(
         name: 'Cash',
         type: 'ASSET',
         accountId: null,
+        accountName: null,
+        accountType: null,
         kind: 'CASH',
         liabilityKind: null,
         ticker: null,
@@ -60,6 +67,14 @@ function createDashboard(
       liabilities: 25,
       netWorth: 75,
     },
+    pricingStatus: {
+      state: 'FRESH',
+      refreshSuggested: false,
+      hasStaleQuotes: false,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    },
+    assetKindOrder: [],
     lastRefreshAt: '2026-04-17T10:00:00.000Z',
     latestSnapshotDate: null,
     latestSnapshotCapturedAt: null,
@@ -80,6 +95,8 @@ function createSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     assetsTotal: new Prisma.Decimal('100'),
     liabilitiesTotal: new Prisma.Decimal('25'),
     netWorthTotal: new Prisma.Decimal('75'),
+    nativeAssetTotals: null,
+    nativeLiabilityTotals: null,
     unavailableCount: 0,
     isPartial: false,
     createdAt: now,
@@ -165,6 +182,10 @@ describe('SnapshotsService', () => {
       unavailableCount: 0,
       isPartial: false,
     });
+    expect(upsertCall.create.nativeAssetTotals).toEqual({ EUR: 100 });
+    expect(upsertCall.create.nativeLiabilityTotals).toEqual({});
+    expect(upsertCall.update.nativeAssetTotals).toEqual({ EUR: 100 });
+    expect(upsertCall.update.nativeLiabilityTotals).toEqual({});
   });
 
   it('uses the same Europe/Rome date key for repeated captures within one day', async () => {
@@ -298,6 +319,65 @@ describe('SnapshotsService', () => {
           baseCurrency: 'EUR',
         },
       },
+    });
+  });
+
+  it('persists per-currency native totals for mixed-currency dashboards', async () => {
+    jest.setSystemTime(new Date('2026-04-17T10:15:00.000Z'));
+    assets.getDashboard.mockResolvedValue(
+      createDashboard({
+        assets: [
+          {
+            ...createDashboard().assets[0],
+            id: 'asset-eur',
+            currency: 'EUR',
+            type: 'ASSET',
+            balance: 100,
+            currentValue: 100,
+            referenceValue: 100,
+          },
+          {
+            ...createDashboard().assets[0],
+            id: 'asset-usd',
+            currency: 'USD',
+            type: 'ASSET',
+            balance: 50,
+            currentValue: 45,
+            referenceValue: 45,
+          },
+          {
+            ...createDashboard().assets[0],
+            id: 'liability-gbp',
+            name: 'Card',
+            type: 'LIABILITY',
+            liabilityKind: LiabilityKind.DEBT,
+            currency: 'GBP',
+            balance: 10,
+            currentValue: 8,
+            referenceValue: 8,
+          },
+        ],
+        summary: {
+          assets: 145,
+          liabilities: 8,
+          netWorth: 137,
+        },
+      }),
+    );
+    prisma.netWorthSnapshot.upsert.mockResolvedValue(createSnapshot());
+
+    await service.capture(OWNER_ID);
+
+    const upsertCall = nthCallArg<SnapshotUpsertCall>(
+      prisma.netWorthSnapshot.upsert,
+      0,
+    );
+    expect(upsertCall.create.nativeAssetTotals).toEqual({
+      EUR: 100,
+      USD: 50,
+    });
+    expect(upsertCall.create.nativeLiabilityTotals).toEqual({
+      GBP: 10,
     });
   });
 });

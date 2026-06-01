@@ -5,14 +5,25 @@ import { useRouter } from "next/navigation";
 import type {
   AccountResponse,
   CategoryResponse,
+  ExpenseValidationRuleResponse,
   TransactionResponse,
 } from "@finhance/shared";
+import SearchablePicker from "@components/SearchablePicker";
+import { getCurrencyPickerOptions } from "@lib/currency-ui";
 import {
   buildTransactionPayload,
+  createEmptyFundingLegs,
   type TransactionFormValues,
 } from "@lib/transaction-form";
 import { formatAccountOptionLabel } from "@lib/accounts";
 import { formatCategoryOptionLabel } from "@lib/categories";
+import {
+  deriveExpensePrimaryId,
+  expensePrimaryCategories,
+  expenseSecondaryCategories,
+  findMatchingExpenseValidationRule,
+  incomeCategories,
+} from "@lib/hierarchical-categories";
 import {
   TRANSACTION_DIRECTION_LABELS,
   TRANSACTION_DIRECTION_OPTIONS,
@@ -26,8 +37,10 @@ interface TransactionFormProps {
   transactionId?: string;
   initialValues: TransactionFormValues;
   mode: "create" | "edit";
+  showTransactionTimes?: boolean;
   accounts: AccountResponse[];
   categories: CategoryResponse[];
+  expenseValidationRules: ExpenseValidationRuleResponse[];
   editingTransaction?: TransactionResponse | null;
   onSuccess?: () => void;
   onCancel?: () => void;
@@ -42,24 +55,14 @@ function selectableAccounts(
   );
 }
 
-function selectableCategories(
-  categories: CategoryResponse[],
-  type: CategoryResponse["type"],
-  selectedId: string,
-): CategoryResponse[] {
-  return categories.filter(
-    (category) =>
-      category.type === type &&
-      (category.archivedAt === null || category.id === selectedId),
-  );
-}
-
 export default function TransactionForm({
   transactionId,
   initialValues,
   mode,
+  showTransactionTimes = true,
   accounts,
   categories,
+  expenseValidationRules,
   editingTransaction,
   onSuccess,
   onCancel,
@@ -67,14 +70,32 @@ export default function TransactionForm({
   const router = useRouter();
   const fieldPrefix = useId();
   const [form, setForm] = useState<TransactionFormValues>(initialValues);
+  const [selectedExpensePrimaryId, setSelectedExpensePrimaryId] = useState(
+    deriveExpensePrimaryId(categories, initialValues.categoryId),
+  );
+  const [
+    hasManualExpenseCategoryOverride,
+    setHasManualExpenseCategoryOverride,
+  ] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const actions = useSingleFlightActions<"submit">();
   const isCreateMode = mode === "create";
+  const isTransfer = form.kind === "TRANSFER";
+  const isAdjustment = form.kind === "ADJUSTMENT";
+  const isExpense = form.kind === "EXPENSE";
+  const isIncome = form.kind === "INCOME";
+  const isSplitExpense = isExpense && form.fundingMode === "SPLIT";
+  const currencyOptions = getCurrencyPickerOptions();
 
   useEffect(() => {
     setForm(initialValues);
-  }, [initialValues]);
+    setSelectedExpensePrimaryId(
+      deriveExpensePrimaryId(categories, initialValues.categoryId),
+    );
+    setHasManualExpenseCategoryOverride(false);
+  }, [categories, initialValues]);
 
   const standardAccounts = useMemo(
     () => selectableAccounts(accounts, form.accountId),
@@ -88,17 +109,47 @@ export default function TransactionForm({
     () => selectableAccounts(accounts, form.destinationAccountId),
     [accounts, form.destinationAccountId],
   );
-  const visibleCategories = useMemo(() => {
-    if (form.kind === "INCOME") {
-      return selectableCategories(categories, "INCOME", form.categoryId);
-    }
-
-    if (form.kind === "EXPENSE") {
-      return selectableCategories(categories, "EXPENSE", form.categoryId);
-    }
-
-    return [];
-  }, [categories, form.categoryId, form.kind]);
+  const fundingLegAccounts = useMemo(
+    () =>
+      form.fundingLegs.map((leg) =>
+        selectableAccounts(accounts, leg.accountId),
+      ),
+    [accounts, form.fundingLegs],
+  );
+  const visibleIncomeCategories = useMemo(
+    () => incomeCategories(categories, form.categoryId),
+    [categories, form.categoryId],
+  );
+  const visibleExpensePrimaries = useMemo(
+    () => expensePrimaryCategories(categories, selectedExpensePrimaryId),
+    [categories, selectedExpensePrimaryId],
+  );
+  const visibleExpenseSecondaries = useMemo(
+    () =>
+      selectedExpensePrimaryId
+        ? expenseSecondaryCategories(
+            categories,
+            selectedExpensePrimaryId,
+            form.categoryId,
+          )
+        : [],
+    [categories, form.categoryId, selectedExpensePrimaryId],
+  );
+  const selectedStandardAccount = useMemo(
+    () => accounts.find((account) => account.id === form.accountId) ?? null,
+    [accounts, form.accountId],
+  );
+  const selectedSourceAccount = useMemo(
+    () =>
+      accounts.find((account) => account.id === form.sourceAccountId) ?? null,
+    [accounts, form.sourceAccountId],
+  );
+  const selectedDestinationAccount = useMemo(
+    () =>
+      accounts.find((account) => account.id === form.destinationAccountId) ??
+      null,
+    [accounts, form.destinationAccountId],
+  );
 
   function updateField<Field extends keyof TransactionFormValues>(
     field: Field,
@@ -110,12 +161,131 @@ export default function TransactionForm({
     }));
   }
 
+  function handleDescriptionChange(value: string) {
+    setForm((previous) => ({
+      ...previous,
+      description: value,
+    }));
+
+    if (form.kind !== "EXPENSE" || hasManualExpenseCategoryOverride) {
+      return;
+    }
+
+    const matchingRule = findMatchingExpenseValidationRule(
+      expenseValidationRules,
+      value,
+    );
+    if (!matchingRule) {
+      return;
+    }
+
+    setSelectedExpensePrimaryId(matchingRule.primaryCategoryId);
+    setForm((previous) => ({
+      ...previous,
+      description: value,
+      categoryId: matchingRule.secondaryCategoryId,
+    }));
+  }
+
+  function handleExpensePrimaryChange(primaryCategoryId: string) {
+    setSelectedExpensePrimaryId(primaryCategoryId);
+    setHasManualExpenseCategoryOverride(primaryCategoryId !== "");
+    updateField("categoryId", "");
+  }
+
+  function handleExpenseSecondaryChange(categoryId: string) {
+    updateField("categoryId", categoryId);
+    setHasManualExpenseCategoryOverride(categoryId !== "");
+  }
+
+  function handleFundingModeChange(nextMode: "SINGLE" | "SPLIT") {
+    setForm((previous) => {
+      if (nextMode === "SPLIT") {
+        const seededLegs = previous.fundingLegs.some(
+          (leg) => leg.accountId || leg.amount,
+        )
+          ? previous.fundingLegs
+          : [
+              {
+                accountId: previous.accountId,
+                amount: previous.amount,
+              },
+              { accountId: "", amount: "" },
+            ];
+
+        return {
+          ...previous,
+          fundingMode: nextMode,
+          fundingLegs: seededLegs,
+        };
+      }
+
+      return {
+        ...previous,
+        fundingMode: nextMode,
+        fundingLegs: createEmptyFundingLegs(),
+      };
+    });
+  }
+
+  function updateFundingLeg(
+    index: number,
+    field: "accountId" | "amount",
+    value: string,
+  ) {
+    setForm((previous) => ({
+      ...previous,
+      fundingLegs: previous.fundingLegs.map((leg, legIndex) =>
+        legIndex === index ? { ...leg, [field]: value } : leg,
+      ),
+    }));
+    setAccountError(null);
+  }
+
+  function addFundingLeg() {
+    setForm((previous) => ({
+      ...previous,
+      fundingLegs: [...previous.fundingLegs, { accountId: "", amount: "" }],
+    }));
+  }
+
+  function removeFundingLeg(index: number) {
+    setForm((previous) => ({
+      ...previous,
+      fundingLegs:
+        previous.fundingLegs.length <= 2
+          ? previous.fundingLegs
+          : previous.fundingLegs.filter((_, legIndex) => legIndex !== index),
+    }));
+    setAccountError(null);
+  }
+
+  const splitFundingTotal = form.fundingLegs.reduce((sum, leg) => {
+    const amount = Number(leg.amount);
+    return Number.isFinite(amount) ? sum + amount : sum;
+  }, 0);
+  const transactionAmount = Number(form.amount);
+  const splitFundingDifference = Number.isFinite(transactionAmount)
+    ? transactionAmount - splitFundingTotal
+    : null;
+
+  function isAccountCashError(message: string): boolean {
+    return (
+      message.includes("no cash holding") ||
+      message.includes("Insufficient cash balance")
+    );
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await actions.run("submit", async () => {
       setError(null);
+      setAccountError(null);
 
-      const result = buildTransactionPayload(form);
+      const result = buildTransactionPayload(form, {
+        showTransactionTimes,
+        existingPostedAt: editingTransaction?.postedAt ?? null,
+      });
       if (!result.payload) {
         setError(result.error ?? "Unable to validate this transaction.");
         return;
@@ -140,30 +310,42 @@ export default function TransactionForm({
         onSuccess?.();
         router.refresh();
       } catch (submitError) {
-        setError(
+        const message =
           submitError instanceof Error
             ? submitError.message
             : isCreateMode
               ? "Error creating transaction."
-              : "Error updating transaction.",
-        );
+              : "Error updating transaction.";
+
+        if (isAccountCashError(message)) {
+          setAccountError(message);
+        } else {
+          setError(message);
+        }
       } finally {
         setIsSubmitting(false);
       }
     });
   }
 
-  const isTransfer = form.kind === "TRANSFER";
-  const isAdjustment = form.kind === "ADJUSTMENT";
-
   return (
     <form onSubmit={handleSubmit} className="app-form">
+      <div className="app-form-field">
+        <label htmlFor={`${fieldPrefix}-description`}>Description</label>
+        <input
+          id={`${fieldPrefix}-description`}
+          value={form.description}
+          onChange={(event) => handleDescriptionChange(event.target.value)}
+          required
+        />
+      </div>
+
       <div className="app-form-grid is-relaxed">
         <div className="app-form-field">
           <label htmlFor={`${fieldPrefix}-posted-at`}>Posted at</label>
           <input
             id={`${fieldPrefix}-posted-at`}
-            type="datetime-local"
+            type={showTransactionTimes ? "datetime-local" : "date"}
             value={form.postedAt}
             onChange={(event) => updateField("postedAt", event.target.value)}
             required
@@ -176,12 +358,28 @@ export default function TransactionForm({
             id={`${fieldPrefix}-kind`}
             value={form.kind}
             disabled={!isCreateMode}
-            onChange={(event) =>
-              updateField(
-                "kind",
-                event.target.value as TransactionFormValues["kind"],
-              )
-            }
+            onChange={(event) => {
+              const nextKind = event.target
+                .value as TransactionFormValues["kind"];
+              setForm((previous) => ({
+                ...previous,
+                kind: nextKind,
+                fundingMode:
+                  nextKind === "EXPENSE" ? previous.fundingMode : "SINGLE",
+                fundingLegs:
+                  nextKind === "EXPENSE"
+                    ? previous.fundingLegs
+                    : createEmptyFundingLegs(),
+              }));
+              if (nextKind === "EXPENSE") {
+                setSelectedExpensePrimaryId(
+                  deriveExpensePrimaryId(categories, form.categoryId),
+                );
+              } else {
+                setSelectedExpensePrimaryId("");
+                setHasManualExpenseCategoryOverride(false);
+              }
+            }}
           >
             {TRANSACTION_KIND_OPTIONS.map((kind) => (
               <option key={kind} value={kind}>
@@ -205,13 +403,36 @@ export default function TransactionForm({
           />
         </div>
 
-        {!isTransfer ? (
+        {isTransfer ? (
+          <div className="app-form-note">
+            Transfers create one outflow row and one inflow row underneath.
+          </div>
+        ) : isExpense ? (
           <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-funding-mode`}>Funding</label>
+            <select
+              id={`${fieldPrefix}-funding-mode`}
+              value={form.fundingMode}
+              onChange={(event) =>
+                handleFundingModeChange(
+                  event.target.value as "SINGLE" | "SPLIT",
+                )
+              }
+            >
+              <option value="SINGLE">Single account</option>
+              <option value="SPLIT">Split across accounts</option>
+            </select>
+          </div>
+        ) : (
+          <div className={`app-form-field${accountError ? " has-error" : ""}`}>
             <label htmlFor={`${fieldPrefix}-account`}>Account</label>
             <select
               id={`${fieldPrefix}-account`}
               value={form.accountId}
-              onChange={(event) => updateField("accountId", event.target.value)}
+              onChange={(event) => {
+                updateField("accountId", event.target.value);
+                setAccountError(null);
+              }}
               required
             >
               <option value="">Select an account</option>
@@ -221,58 +442,287 @@ export default function TransactionForm({
                 </option>
               ))}
             </select>
-          </div>
-        ) : (
-          <div className="app-form-note">
-            Transfers create one outflow row and one inflow row underneath.
+            {accountError ? (
+              <p className="app-form-field-error">{accountError}</p>
+            ) : null}
           </div>
         )}
       </div>
 
-      {isTransfer ? (
-        <div className="app-form-grid is-relaxed">
-          <div className="app-form-field">
-            <label htmlFor={`${fieldPrefix}-source-account`}>
-              Source account
-            </label>
-            <select
-              id={`${fieldPrefix}-source-account`}
-              value={form.sourceAccountId}
-              onChange={(event) =>
-                updateField("sourceAccountId", event.target.value)
-              }
-              required
+      {!isTransfer && isExpense && !isSplitExpense ? (
+        <div className={`app-form-field${accountError ? " has-error" : ""}`}>
+          <label htmlFor={`${fieldPrefix}-account`}>Account</label>
+          <select
+            id={`${fieldPrefix}-account`}
+            value={form.accountId}
+            onChange={(event) => {
+              updateField("accountId", event.target.value);
+              setAccountError(null);
+            }}
+            required
+          >
+            <option value="">Select an account</option>
+            {standardAccounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {formatAccountOptionLabel(account)}
+              </option>
+            ))}
+          </select>
+          {accountError ? (
+            <p className="app-form-field-error">{accountError}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!isTransfer && isSplitExpense ? (
+        <div className={`detail-panel${accountError ? " has-error" : ""}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+                Funding legs
+              </h3>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Split one expense across multiple accounts.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={addFundingLeg}
+              className="btn-secondary"
             >
-              <option value="">Select a source account</option>
-              {sourceAccounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {formatAccountOptionLabel(account)}
-                </option>
-              ))}
-            </select>
+              Add leg
+            </button>
           </div>
 
+          <div className="mt-4 list-stack">
+            {form.fundingLegs.map((leg, index) => (
+              <div
+                key={`${fieldPrefix}-leg-${index}`}
+                className="app-form-grid is-relaxed"
+              >
+                <div className="app-form-field">
+                  <label htmlFor={`${fieldPrefix}-funding-account-${index}`}>
+                    Account {index + 1}
+                  </label>
+                  <select
+                    id={`${fieldPrefix}-funding-account-${index}`}
+                    value={leg.accountId}
+                    onChange={(event) =>
+                      updateFundingLeg(index, "accountId", event.target.value)
+                    }
+                  >
+                    <option value="">Select an account</option>
+                    {fundingLegAccounts[index]?.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {formatAccountOptionLabel(account)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="app-form-field">
+                  <label htmlFor={`${fieldPrefix}-funding-amount-${index}`}>
+                    Leg amount
+                  </label>
+                  <input
+                    id={`${fieldPrefix}-funding-amount-${index}`}
+                    type="number"
+                    step="0.01"
+                    value={leg.amount}
+                    onChange={(event) =>
+                      updateFundingLeg(index, "amount", event.target.value)
+                    }
+                  />
+                </div>
+
+                <div className="app-form-field">
+                  <label className="is-optional">
+                    <span>Remove</span>
+                    <span>Optional</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeFundingLeg(index)}
+                    disabled={form.fundingLegs.length <= 2}
+                    className="btn-secondary"
+                  >
+                    Remove leg
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-[var(--text-secondary)]">
+            <span>Total funded: {splitFundingTotal.toFixed(2)}</span>
+            {splitFundingDifference === null ? null : (
+              <span>Difference: {splitFundingDifference.toFixed(2)}</span>
+            )}
+          </div>
+
+          {accountError ? (
+            <p className="mt-3 app-form-field-error">{accountError}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!isTransfer && !isSplitExpense && !isAdjustment ? (
+        <div className="app-form-grid is-relaxed">
           <div className="app-form-field">
-            <label htmlFor={`${fieldPrefix}-destination-account`}>
-              Destination account
+            <label htmlFor={`${fieldPrefix}-native-amount`}>
+              Original amount
             </label>
-            <select
-              id={`${fieldPrefix}-destination-account`}
-              value={form.destinationAccountId}
+            <input
+              id={`${fieldPrefix}-native-amount`}
+              type="number"
+              step="0.01"
+              value={form.nativeAmount}
               onChange={(event) =>
-                updateField("destinationAccountId", event.target.value)
+                updateField("nativeAmount", event.target.value)
               }
-              required
-            >
-              <option value="">Select a destination account</option>
-              {destinationAccounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {formatAccountOptionLabel(account)}
-                </option>
-              ))}
-            </select>
+              placeholder="Optional"
+            />
+          </div>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-native-currency`}>
+              Original currency
+            </label>
+            <SearchablePicker
+              id={`${fieldPrefix}-native-currency`}
+              value={form.nativeCurrency ?? ""}
+              onChange={(nextValue) => updateField("nativeCurrency", nextValue)}
+              options={currencyOptions}
+              placeholder={selectedStandardAccount?.currency ?? "EUR"}
+              searchPlaceholder="Search currencies…"
+              allowClear
+              clearLabel={`Use ${selectedStandardAccount?.currency ?? "account currency"}`}
+            />
+          </div>
+          <div className="app-form-field">
+            <label htmlFor={`${fieldPrefix}-fx-rate`}>FX rate override</label>
+            <input
+              id={`${fieldPrefix}-fx-rate`}
+              type="number"
+              step="0.000001"
+              value={form.fxRateUsed}
+              onChange={(event) =>
+                updateField("fxRateUsed", event.target.value)
+              }
+              placeholder="Leave blank for live FX"
+            />
           </div>
         </div>
+      ) : null}
+
+      {isTransfer ? (
+        <>
+          <div className="app-form-grid is-relaxed">
+            <div
+              className={`app-form-field${accountError ? " has-error" : ""}`}
+            >
+              <label htmlFor={`${fieldPrefix}-source-account`}>
+                Source account
+              </label>
+              <select
+                id={`${fieldPrefix}-source-account`}
+                value={form.sourceAccountId}
+                onChange={(event) => {
+                  updateField("sourceAccountId", event.target.value);
+                  setAccountError(null);
+                }}
+                required
+              >
+                <option value="">Select a source account</option>
+                {sourceAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {formatAccountOptionLabel(account)}
+                  </option>
+                ))}
+              </select>
+              {accountError ? (
+                <p className="app-form-field-error">{accountError}</p>
+              ) : null}
+            </div>
+
+            <div className="app-form-field">
+              <label htmlFor={`${fieldPrefix}-destination-account`}>
+                Destination account
+              </label>
+              <select
+                id={`${fieldPrefix}-destination-account`}
+                value={form.destinationAccountId}
+                onChange={(event) =>
+                  updateField("destinationAccountId", event.target.value)
+                }
+                required
+              >
+                <option value="">Select a destination account</option>
+                {destinationAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {formatAccountOptionLabel(account)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="app-form-grid is-relaxed">
+            <div className="app-form-field">
+              <label htmlFor={`${fieldPrefix}-source-amount`}>
+                Source amount
+              </label>
+              <input
+                id={`${fieldPrefix}-source-amount`}
+                type="number"
+                step="0.01"
+                value={form.sourceAmount}
+                onChange={(event) =>
+                  updateField("sourceAmount", event.target.value)
+                }
+                placeholder={form.amount || "Optional"}
+              />
+              {selectedSourceAccount ? (
+                <p className="text-xs text-[var(--text-tertiary)]">
+                  {selectedSourceAccount.currency}
+                </p>
+              ) : null}
+            </div>
+            <div className="app-form-field">
+              <label htmlFor={`${fieldPrefix}-destination-amount`}>
+                Destination amount
+              </label>
+              <input
+                id={`${fieldPrefix}-destination-amount`}
+                type="number"
+                step="0.01"
+                value={form.destinationAmount}
+                onChange={(event) =>
+                  updateField("destinationAmount", event.target.value)
+                }
+                placeholder="Leave blank for live FX"
+              />
+              {selectedDestinationAccount ? (
+                <p className="text-xs text-[var(--text-tertiary)]">
+                  {selectedDestinationAccount.currency}
+                </p>
+              ) : null}
+            </div>
+            <div className="app-form-field">
+              <label htmlFor={`${fieldPrefix}-transfer-fx-rate`}>
+                FX rate override
+              </label>
+              <input
+                id={`${fieldPrefix}-transfer-fx-rate`}
+                type="number"
+                step="0.000001"
+                value={form.fxRateUsed}
+                onChange={(event) =>
+                  updateField("fxRateUsed", event.target.value)
+                }
+                placeholder="Leave blank for live FX"
+              />
+            </div>
+          </div>
+        </>
       ) : null}
 
       {!isTransfer && isAdjustment ? (
@@ -299,14 +749,60 @@ export default function TransactionForm({
 
       {!isTransfer ? (
         <div className="app-form-grid is-relaxed">
-          {!isAdjustment ? (
+          {!isAdjustment && isExpense ? (
+            <>
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-primary-category`}>
+                  <span>Primary</span>
+                </label>
+                <select
+                  id={`${fieldPrefix}-primary-category`}
+                  value={selectedExpensePrimaryId}
+                  onChange={(event) =>
+                    handleExpensePrimaryChange(event.target.value)
+                  }
+                >
+                  <option value="">Select primary…</option>
+                  {visibleExpensePrimaries.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="app-form-field">
+                <label htmlFor={`${fieldPrefix}-secondary-category`}>
+                  <span>Secondary</span>
+                </label>
+                <select
+                  id={`${fieldPrefix}-secondary-category`}
+                  value={form.categoryId}
+                  onChange={(event) =>
+                    handleExpenseSecondaryChange(event.target.value)
+                  }
+                >
+                  <option value="">Select secondary…</option>
+                  {visibleExpenseSecondaries.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {formatCategoryOptionLabel(category)}
+                    </option>
+                  ))}
+                </select>
+                {selectedExpensePrimaryId &&
+                !visibleExpenseSecondaries.length ? (
+                  <p className="text-xs text-[var(--text-tertiary)]">
+                    No secondary categories under this primary.
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+
+          {!isAdjustment && isIncome ? (
             <div className="app-form-field">
-              <label
-                htmlFor={`${fieldPrefix}-category`}
-                className="is-optional"
-              >
+              <label htmlFor={`${fieldPrefix}-category`}>
                 <span>Category</span>
-                <span>Optional</span>
               </label>
               <select
                 id={`${fieldPrefix}-category`}
@@ -315,14 +811,14 @@ export default function TransactionForm({
                   updateField("categoryId", event.target.value)
                 }
               >
-                <option value="">No category</option>
-                {visibleCategories.map((category) => (
+                <option value="">Select category…</option>
+                {visibleIncomeCategories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {formatCategoryOptionLabel(category)}
                   </option>
                 ))}
               </select>
-              {!visibleCategories.length ? (
+              {!visibleIncomeCategories.length ? (
                 <p className="text-xs text-[var(--text-tertiary)]">
                   No matching categories available.
                 </p>
@@ -348,16 +844,6 @@ export default function TransactionForm({
           </div>
         </div>
       ) : null}
-
-      <div className="app-form-field">
-        <label htmlFor={`${fieldPrefix}-description`}>Description</label>
-        <input
-          id={`${fieldPrefix}-description`}
-          value={form.description}
-          onChange={(event) => updateField("description", event.target.value)}
-          required
-        />
-      </div>
 
       <div className="app-form-field">
         <label htmlFor={`${fieldPrefix}-notes`} className="is-optional">

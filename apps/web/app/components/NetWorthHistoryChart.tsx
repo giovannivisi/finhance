@@ -24,10 +24,10 @@ function formatSnapshotDate(snapshotDate: string): string {
 
 export default function NetWorthHistoryChart({
   snapshots,
-  baseCurrency,
+  reportingCurrency,
 }: {
   snapshots: NetWorthSnapshotResponse[];
-  baseCurrency: string;
+  reportingCurrency: string;
 }) {
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
@@ -52,17 +52,17 @@ export default function NetWorthHistoryChart({
             tickLine={false}
             axisLine={false}
             tickFormatter={(value: number) =>
-              formatSensitiveCurrency(value, baseCurrency, shouldHideMoney)
+              formatSensitiveCurrency(value, reportingCurrency, shouldHideMoney)
             }
             width={110}
           />
           <Tooltip
             formatter={(value: number) =>
-              formatSensitiveCurrency(value, baseCurrency, shouldHideMoney)
+              formatSensitiveCurrency(value, reportingCurrency, shouldHideMoney)
             }
             labelFormatter={(label) => formatSnapshotDate(String(label))}
             contentStyle={{
-              borderRadius: "1rem",
+              borderRadius: "var(--radius-sm)",
               border: "1px solid var(--chart-tooltip-border)",
               background: "var(--chart-tooltip-bg)",
               color: "var(--text-primary)",

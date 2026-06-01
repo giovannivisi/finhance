@@ -2,7 +2,7 @@ import type { NetWorthSnapshotResponse } from "@finhance/shared";
 import Container from "@components/Container";
 
 import HistoryPageClient from "@components/HistoryPageClient";
-import { api } from "@lib/api";
+import { api } from "@lib/server-api";
 
 export const dynamic = "force-dynamic";
 

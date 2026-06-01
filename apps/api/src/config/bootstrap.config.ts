@@ -1,4 +1,10 @@
 import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
+import {
+  AUTH_MODE_HOSTED,
+  type AuthMode,
+  resolveAuthMode,
+} from '@/config/auth-mode';
+import { resolveHostedApiJwtConfig } from '@/security/api-jwt.config';
 
 const DEFAULT_API_HOST = '127.0.0.1';
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -8,9 +14,20 @@ const DEFAULT_ALLOWED_ORIGINS = [
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
 export interface BootstrapRuntimeConfig {
+  authMode: AuthMode;
   host: string;
   allowedOrigins: string[];
   trustProxy: boolean | number;
+}
+
+function readRequiredHostedValue(key: string, env: NodeJS.ProcessEnv): string {
+  const value = env[key]?.trim();
+
+  if (!value) {
+    throw new Error(`${key} must be configured in hosted auth mode.`);
+  }
+
+  return value;
 }
 
 export function normalizeHost(rawHost?: string): string {
@@ -31,8 +48,17 @@ export function isLoopbackHost(host: string): boolean {
   return LOOPBACK_HOSTS.has(normalizeHost(host).toLowerCase());
 }
 
-export function parseAllowedOrigins(rawOrigins?: string): string[] {
+export function parseAllowedOrigins(
+  rawOrigins?: string,
+  options?: { requireExplicitValue?: boolean },
+): string[] {
   if (!rawOrigins || !rawOrigins.trim()) {
+    if (options?.requireExplicitValue) {
+      throw new Error(
+        'API_ALLOWED_ORIGINS must be configured in hosted auth mode.',
+      );
+    }
+
     return [...DEFAULT_ALLOWED_ORIGINS];
   }
 
@@ -49,8 +75,17 @@ export function parseAllowedOrigins(rawOrigins?: string): string[] {
   return Array.from(new Set(origins));
 }
 
-export function parseTrustProxy(rawTrustProxy?: string): boolean | number {
+export function parseTrustProxy(
+  rawTrustProxy?: string,
+  options?: { requireExplicitValue?: boolean },
+): boolean | number {
   if (!rawTrustProxy || !rawTrustProxy.trim()) {
+    if (options?.requireExplicitValue) {
+      throw new Error(
+        'API_TRUST_PROXY must be configured in hosted auth mode.',
+      );
+    }
+
     return false;
   }
 
@@ -108,17 +143,31 @@ export function createCorsOptions(
 export function resolveBootstrapRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): BootstrapRuntimeConfig {
-  const host = normalizeHost(env.API_HOST);
+  const authMode = resolveAuthMode(env);
+  const rawHost =
+    authMode === AUTH_MODE_HOSTED
+      ? readRequiredHostedValue('API_HOST', env)
+      : env.API_HOST;
+  const host = normalizeHost(rawHost);
 
-  if (!isLoopbackHost(host)) {
+  if (authMode !== AUTH_MODE_HOSTED && !isLoopbackHost(host)) {
     throw new Error(
       `Refusing to bind API_HOST=${host} while authentication is disabled.`,
     );
   }
 
+  if (authMode === AUTH_MODE_HOSTED) {
+    resolveHostedApiJwtConfig(env);
+  }
+
   return {
+    authMode,
     host,
-    allowedOrigins: parseAllowedOrigins(env.API_ALLOWED_ORIGINS),
-    trustProxy: parseTrustProxy(env.API_TRUST_PROXY),
+    allowedOrigins: parseAllowedOrigins(env.API_ALLOWED_ORIGINS, {
+      requireExplicitValue: authMode === AUTH_MODE_HOSTED,
+    }),
+    trustProxy: parseTrustProxy(env.API_TRUST_PROXY, {
+      requireExplicitValue: authMode === AUTH_MODE_HOSTED,
+    }),
   };
 }

@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
 import { BudgetsService } from '@budgets/budgets.service';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@finhance/db';
 import {
   CategoryType,
   NetWorthSnapshot,
@@ -9,7 +9,7 @@ import {
   RecurringTransactionRule,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import type { MonthlyCashflowResponse } from '@finhance/shared';
 import { RecurringService } from '@recurring/recurring.service';
 import { CategoriesService } from '@transactions/categories.service';
@@ -65,6 +65,8 @@ function createRecurringRule(
   return {
     id: 'rule-1',
     userId: OWNER_ID,
+    importSource: null,
+    importKey: null,
     name: 'Salary',
     isActive: true,
     kind: TransactionKind.INCOME,
@@ -102,6 +104,8 @@ function createSnapshot(
     assetsTotal: new Prisma.Decimal('1200'),
     liabilitiesTotal: new Prisma.Decimal('200'),
     netWorthTotal: new Prisma.Decimal('1000'),
+    nativeAssetTotals: null,
+    nativeLiabilityTotals: null,
     unavailableCount: 0,
     isPartial: false,
     createdAt: now,
@@ -171,6 +175,7 @@ describe('RecurringService', () => {
   };
   let categories: {
     getAssignableCategory: jest.Mock;
+    findMatchingExpenseSecondaryCategory: jest.Mock;
   };
   let transactions: {
     getCashflowSummary: jest.Mock;
@@ -218,6 +223,14 @@ describe('RecurringService', () => {
 
     categories = {
       getAssignableCategory: jest.fn().mockResolvedValue(createCategory()),
+      findMatchingExpenseSecondaryCategory: jest.fn().mockResolvedValue(
+        createCategory({
+          id: 'category-expense',
+          name: 'Rent',
+          type: CategoryType.EXPENSE,
+          parentCategoryId: 'category-primary',
+        }),
+      ),
     };
 
     transactions = {
@@ -413,6 +426,127 @@ describe('RecurringService', () => {
         lastMaterializationError: USER_VISIBLE_MATERIALIZATION_ERROR,
       },
     });
+  });
+
+  it('returns true when any due recurring month is neither skipped nor materialized', async () => {
+    const rule = createRecurringRule();
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([rule]);
+    prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([]);
+    prisma.transaction.findMany.mockResolvedValue([]);
+
+    await expect(service.hasPendingMaterializations(OWNER_ID)).resolves.toBe(
+      true,
+    );
+
+    expect(prisma.recurringTransactionOccurrence.findMany).toHaveBeenCalledWith(
+      {
+        where: {
+          userId: OWNER_ID,
+          recurringRuleId: { in: [rule.id] },
+          occurrenceMonth: {
+            in: [new Date('2026-04-01T00:00:00.000Z')],
+          },
+          status: 'SKIPPED',
+        },
+        select: {
+          recurringRuleId: true,
+          occurrenceMonth: true,
+        },
+      },
+    );
+    expect(prisma.transaction.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: OWNER_ID,
+        recurringRuleId: { in: [rule.id] },
+        recurringOccurrenceMonth: {
+          in: [new Date('2026-04-01T00:00:00.000Z')],
+        },
+      },
+      select: {
+        recurringRuleId: true,
+        recurringOccurrenceMonth: true,
+      },
+    });
+  });
+
+  it('returns false when every due recurring month is already skipped or materialized', async () => {
+    const skippedRule = createRecurringRule({
+      id: 'rule-skipped',
+      startDate: new Date('2026-03-01T00:00:00.000Z'),
+    });
+    const materializedRule = createRecurringRule({
+      id: 'rule-materialized',
+    });
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([
+      skippedRule,
+      materializedRule,
+    ]);
+    prisma.recurringTransactionOccurrence.findMany.mockResolvedValue([
+      {
+        recurringRuleId: 'rule-skipped',
+        occurrenceMonth: new Date('2026-03-01T00:00:00.000Z'),
+      },
+      {
+        recurringRuleId: 'rule-skipped',
+        occurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([
+      {
+        recurringRuleId: 'rule-materialized',
+        recurringOccurrenceMonth: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+
+    await expect(service.hasPendingMaterializations(OWNER_ID)).resolves.toBe(
+      false,
+    );
+    expect(
+      prisma.recurringTransactionOccurrence.findMany,
+    ).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses an in-flight pending status lookup for the same owner', async () => {
+    const rule = createRecurringRule();
+    prisma.recurringTransactionRule.findMany.mockResolvedValue([rule]);
+    let resolveSkippedOccurrences: (() => void) | null = null;
+    prisma.recurringTransactionOccurrence.findMany.mockImplementation(
+      () =>
+        new Promise<Array<{ recurringRuleId: string; occurrenceMonth: Date }>>(
+          (resolve) => {
+            resolveSkippedOccurrences = () => resolve([]);
+          },
+        ),
+    );
+    prisma.transaction.findMany.mockResolvedValue([]);
+
+    const firstPendingCheck = service.hasPendingMaterializations(OWNER_ID);
+    const secondPendingCheck = service.hasPendingMaterializations(OWNER_ID);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prisma.recurringTransactionRule.findMany).toHaveBeenCalledTimes(1);
+    expect(
+      prisma.recurringTransactionOccurrence.findMany,
+    ).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction.findMany).toHaveBeenCalledTimes(1);
+
+    if (!resolveSkippedOccurrences) {
+      throw new Error('Expected the pending status query to be in flight.');
+    }
+
+    const releasePendingStatusCheck = resolveSkippedOccurrences as () => void;
+    releasePendingStatusCheck();
+
+    const [first, second] = await Promise.all([
+      firstPendingCheck,
+      secondPendingCheck,
+    ]);
+
+    expect(first).toBe(true);
+    expect(second).toBe(true);
   });
 
   it('rejects recurring rules whose start date exceeds the backfill window', async () => {
@@ -695,10 +829,11 @@ describe('RecurringService', () => {
     expect(review.closingNetWorth).toBe(1300);
     expect(review.netWorthDelta).toBe(300);
     expect(review.netWorthExplanation).toEqual({
-      isComparableInEur: true,
-      cashflowContributionEur: 1200,
-      valuationMovementEur: -900,
-      note: 'Valuation movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
+      reportingCurrency: 'EUR',
+      isComparableInReportingCurrency: true,
+      cashflowContribution: 1200,
+      marketAndFxMovement: -900,
+      note: 'Market and FX movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
     });
     expect(review.reconciliationHighlights).toHaveLength(1);
     expect(review.reconciliationHighlights[0]?.accountName).toBe('Broker');
@@ -822,11 +957,19 @@ describe('RecurringService', () => {
               {
                 categoryId: 'category-rent',
                 name: 'Rent',
+                primaryCategoryId: 'category-primary',
+                primaryCategoryName: 'Housing',
+                secondaryCategoryId: 'category-rent',
+                secondaryCategoryName: 'Rent',
                 total: 30,
               },
               {
                 categoryId: null,
                 name: 'Uncategorized',
+                primaryCategoryId: null,
+                primaryCategoryName: null,
+                secondaryCategoryId: null,
+                secondaryCategoryName: null,
                 total: 10,
               },
             ],
@@ -851,9 +994,10 @@ describe('RecurringService', () => {
     const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
 
     expect(review.netWorthExplanation).toEqual({
-      isComparableInEur: false,
-      cashflowContributionEur: null,
-      valuationMovementEur: null,
+      reportingCurrency: 'EUR',
+      isComparableInReportingCurrency: false,
+      cashflowContribution: null,
+      marketAndFxMovement: null,
       note: 'Add both opening and closing snapshot boundaries to explain the month in EUR.',
     });
     expect(review.currencyInsights).toEqual([
@@ -875,11 +1019,19 @@ describe('RecurringService', () => {
           {
             categoryId: 'category-rent',
             name: 'Rent',
+            primaryCategoryId: 'category-primary',
+            primaryCategoryName: 'Housing',
+            secondaryCategoryId: 'category-rent',
+            secondaryCategoryName: 'Rent',
             total: 30,
           },
           {
             categoryId: null,
             name: 'Uncategorized',
+            primaryCategoryId: null,
+            primaryCategoryName: null,
+            secondaryCategoryId: null,
+            secondaryCategoryName: null,
             total: 10,
           },
         ],
@@ -919,7 +1071,7 @@ describe('RecurringService', () => {
         currency: null,
       },
       {
-        code: 'NON_EUR_CASHFLOW_NOT_COMPARABLE',
+        code: 'NON_REPORTING_CURRENCY_CASHFLOW_NOT_COMPARABLE',
         severity: 'INFO',
         title: 'USD cashflow excluded from EUR explanation',
         detail:
@@ -1000,9 +1152,10 @@ describe('RecurringService', () => {
     const review = await service.getMonthlyReview(OWNER_ID, '2026-04');
 
     expect(review.netWorthExplanation).toEqual({
-      isComparableInEur: false,
-      cashflowContributionEur: null,
-      valuationMovementEur: null,
+      reportingCurrency: 'EUR',
+      isComparableInReportingCurrency: false,
+      cashflowContribution: null,
+      marketAndFxMovement: null,
       note: 'Snapshot boundaries are partial, so the EUR net worth delta cannot be decomposed safely.',
     });
     expect(review.budgetSummary).toEqual([]);

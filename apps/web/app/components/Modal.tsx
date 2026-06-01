@@ -170,7 +170,7 @@ export default function Modal({
             background: "var(--bg-app)", // Added slight background for visibility over content
             width: "32px",
             height: "32px",
-            borderRadius: "50%",
+            borderRadius: "999px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",

@@ -1,4 +1,4 @@
-import { IdempotencyRequestStatus, Prisma } from '@prisma/client';
+import { IdempotencyRequestStatus, Prisma } from '@finhance/db';
 import {
   IDEMPOTENCY_MAX_CACHED_BODY_BYTES,
   IdempotencyService,
@@ -14,6 +14,7 @@ describe('IdempotencyService', () => {
       deleteMany: jest.Mock;
     };
     $transaction: jest.Mock;
+    recoverConnection: jest.Mock;
   };
 
   beforeEach(() => {
@@ -25,6 +26,7 @@ describe('IdempotencyService', () => {
         deleteMany: jest.fn(),
       },
       $transaction: jest.fn(),
+      recoverConnection: jest.fn().mockResolvedValue(undefined),
     };
 
     prisma.$transaction.mockImplementation(
@@ -34,6 +36,19 @@ describe('IdempotencyService', () => {
 
     service = new IdempotencyService(prisma as never);
   });
+
+  function retryableTransactionStartTimeoutError() {
+    return new Prisma.PrismaClientKnownRequestError(
+      'Transaction API error: Unable to start a transaction in the given time.',
+      {
+        code: 'P2028',
+        clientVersion: '6.19.0',
+        meta: {
+          error: 'Unable to start a transaction in the given time.',
+        },
+      },
+    );
+  }
 
   function nthCallArg<T>(mockFn: jest.Mock, index: number): T {
     const calls = mockFn.mock.calls as unknown[][];
@@ -85,19 +100,21 @@ describe('IdempotencyService', () => {
     const firstResult = await service.executeJson({
       ...requestKey,
       fingerprint: { files: ['accounts.csv'] },
-      handler: () => ({
-        statusCode: 201,
-        body,
-      }),
+      handler: () =>
+        Promise.resolve({
+          statusCode: 201,
+          body,
+        }),
     });
 
     const secondResult = await service.executeJson({
       ...requestKey,
       fingerprint: { files: ['accounts.csv'] },
-      handler: () => ({
-        statusCode: 201,
-        body: { payload: 'should not run' },
-      }),
+      handler: () =>
+        Promise.resolve({
+          statusCode: 201,
+          body: { payload: 'should not run' },
+        }),
     });
 
     expect(firstResult).toEqual({
@@ -116,5 +133,50 @@ describe('IdempotencyService', () => {
       };
     }>(prisma.idempotencyRequest.update, 0);
     expect(updateCall.data.responseJson).toEqual(body);
+  });
+
+  it('recovers and retries when reserving an idempotent request times out starting a transaction', async () => {
+    const requestKey = {
+      userId: 'local-dev',
+      method: 'POST',
+      routePath: '/imports/csv/preview',
+      idempotencyKey: 'key-2',
+    };
+
+    prisma.$transaction
+      .mockRejectedValueOnce(retryableTransactionStartTimeoutError())
+      .mockImplementationOnce(
+        async (callback: (tx: typeof prisma) => Promise<unknown>) =>
+          callback(prisma),
+      );
+    prisma.idempotencyRequest.findUnique.mockResolvedValue(null);
+    prisma.idempotencyRequest.create.mockResolvedValue({
+      ...requestKey,
+      status: IdempotencyRequestStatus.IN_PROGRESS,
+    });
+    prisma.idempotencyRequest.update.mockResolvedValue({
+      ...requestKey,
+      status: IdempotencyRequestStatus.COMPLETED,
+      responseStatusCode: 201,
+      responseJson: { ok: true },
+    });
+
+    const result = await service.executeJson({
+      ...requestKey,
+      fingerprint: { files: ['categories.csv'] },
+      handler: () =>
+        Promise.resolve({
+          statusCode: 201,
+          body: { ok: true },
+        }),
+    });
+
+    expect(result).toEqual({
+      statusCode: 201,
+      body: { ok: true },
+      replayed: false,
+    });
+    expect(prisma.recoverConnection).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 });

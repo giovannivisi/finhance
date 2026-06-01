@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
@@ -8,6 +9,10 @@ import type { AccountReconciliationModel } from '@accounts/accounts.service';
 import { BudgetsService } from '@budgets/budgets.service';
 import { PrismaService } from '@prisma/prisma.service';
 import { CategoriesService } from '@transactions/categories.service';
+import {
+  normalizeExpenseValidationEntry,
+  type HierarchicalCategoryRecord,
+} from '@transactions/category-hierarchy';
 import { TransactionsService } from '@transactions/transactions.service';
 import { romeDateTimeToUtc } from '@transactions/transactions.dates';
 import {
@@ -20,7 +25,7 @@ import {
   RecurringTransactionOccurrence,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import type {
   CashflowSummaryResponse,
   MaterializeRecurringRulesResponse,
@@ -45,6 +50,7 @@ const ROME_TIME_ZONE = 'Europe/Rome';
 const ZERO = new Prisma.Decimal(0);
 const MAX_RECURRING_BACKFILL_MONTHS = 24;
 const RECURRING_MATERIALIZE_COOLDOWN_MS = 1000 * 15;
+const RECURRING_PENDING_STATUS_TTL_MS = 1000 * 10;
 const USER_VISIBLE_MATERIALIZATION_ERROR =
   'Unable to materialize this recurring rule. Review the rule configuration and try again.';
 const MONTH_KEY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
@@ -102,12 +108,39 @@ interface ExistingOccurrenceMapEntry {
 type TransactionWriteClient = PrismaService | Prisma.TransactionClient;
 type RecurringMaterializationClient = PrismaService | Prisma.TransactionClient;
 
-type RecurringOccurrenceModel =
+type RawRecurringOccurrenceModel =
   Prisma.RecurringTransactionOccurrenceGetPayload<{
     include: {
-      recurringRule: true;
+      recurringRule: {
+        include: {
+          category: {
+            include: {
+              parentCategory: true;
+            };
+          };
+        };
+      };
     };
   }>;
+
+type RecurringOccurrenceModel = RawRecurringOccurrenceModel & {
+  resolvedCategory: HierarchicalCategoryRecord | null;
+};
+
+type RecurringRuleModel = Prisma.RecurringTransactionRuleGetPayload<{
+  include: {
+    category: {
+      include: {
+        parentCategory: true;
+      };
+    };
+  };
+}>;
+
+type RecurringRuleSchedule = Pick<
+  RecurringTransactionRule,
+  'dayOfMonth' | 'startDate' | 'endDate'
+>;
 
 interface SkippedOccurrenceInput {
   status: 'SKIPPED';
@@ -181,8 +214,20 @@ interface RecurringComparisonBucket {
   transferRulesExcludedCount: number;
 }
 
+interface CachedRecurringPendingStatus {
+  hasPending: boolean;
+  expiresAt: number;
+}
+
 @Injectable()
 export class RecurringService {
+  private readonly pendingStatusCache = new Map<
+    string,
+    CachedRecurringPendingStatus
+  >();
+  private readonly pendingStatusInFlight = new Map<string, Promise<boolean>>();
+  private readonly pendingStatusGeneration = new Map<string, number>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly accountsService: AccountsService,
@@ -192,9 +237,16 @@ export class RecurringService {
     private readonly operationLockService: OperationLockService,
   ) {}
 
-  async findAll(ownerId: string): Promise<RecurringTransactionRule[]> {
+  async findAll(ownerId: string): Promise<RecurringRuleModel[]> {
     return this.prisma.recurringTransactionRule.findMany({
       where: { userId: ownerId },
+      include: {
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
       orderBy: [
         { isActive: 'desc' },
         { dayOfMonth: 'asc' },
@@ -203,12 +255,16 @@ export class RecurringService {
     });
   }
 
-  async findOne(
-    ownerId: string,
-    id: string,
-  ): Promise<RecurringTransactionRule> {
+  async findOne(ownerId: string, id: string): Promise<RecurringRuleModel> {
     const rule = await this.prisma.recurringTransactionRule.findFirst({
       where: { userId: ownerId, id },
+      include: {
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
     });
 
     if (!rule) {
@@ -221,38 +277,78 @@ export class RecurringService {
   async create(
     ownerId: string,
     dto: CreateRecurringTransactionRuleDto,
-  ): Promise<RecurringTransactionRule> {
+  ): Promise<RecurringRuleModel> {
     const prepared = await this.prepareRuleInput(ownerId, dto);
 
-    return this.prisma.recurringTransactionRule.create({
+    const rule = await this.prisma.recurringTransactionRule.create({
       data: prepared,
+      include: {
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
     });
+
+    this.invalidatePendingMaterializationStatus(ownerId);
+    return rule;
   }
 
   async update(
     ownerId: string,
     id: string,
     dto: UpdateRecurringTransactionRuleDto,
-  ): Promise<RecurringTransactionRule> {
+  ): Promise<RecurringRuleModel> {
     await this.findOne(ownerId, id);
     const prepared = await this.prepareRuleInput(ownerId, dto);
 
-    return this.prisma.recurringTransactionRule.update({
+    const rule = await this.prisma.recurringTransactionRule.update({
       where: { id },
       data: {
         ...prepared,
         lastMaterializationError: null,
         lastMaterializationErrorAt: null,
       },
+      include: {
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
     });
+
+    this.invalidatePendingMaterializationStatus(ownerId);
+    return rule;
   }
 
   async remove(ownerId: string, id: string): Promise<void> {
-    await this.findOne(ownerId, id);
-    await this.prisma.recurringTransactionRule.update({
-      where: { id },
-      data: { isActive: false },
-    });
+    const rule = await this.findOne(ownerId, id);
+
+    if (rule.isActive) {
+      // Soft-delete: deactivate the rule
+      await this.prisma.recurringTransactionRule.update({
+        where: { id },
+        data: { isActive: false },
+      });
+    } else {
+      // Already inactive: detach transactions (keep them) and delete rule + occurrences
+      await this.prisma.$transaction([
+        this.prisma.transaction.updateMany({
+          where: { recurringRuleId: id, userId: ownerId },
+          data: { recurringRuleId: null, recurringOccurrenceMonth: null },
+        }),
+        this.prisma.recurringTransactionOccurrence.deleteMany({
+          where: { recurringRuleId: id, userId: ownerId },
+        }),
+        this.prisma.recurringTransactionRule.delete({
+          where: { id },
+        }),
+      ]);
+    }
+
+    this.invalidatePendingMaterializationStatus(ownerId);
   }
 
   async findOccurrences(
@@ -263,29 +359,44 @@ export class RecurringService {
       to?: string;
     },
   ): Promise<RecurringOccurrenceModel[]> {
-    await this.findOne(ownerId, ruleId);
+    const rule = await this.findOne(ownerId, ruleId);
     const range = this.resolveOptionalMonthRange(filters?.from, filters?.to);
 
-    return this.prisma.recurringTransactionOccurrence.findMany({
-      where: {
-        userId: ownerId,
-        recurringRuleId: ruleId,
-        ...(range.from || range.to
-          ? {
-              occurrenceMonth: {
-                ...(range.from
-                  ? { gte: this.monthKeyToValue(range.from) }
-                  : {}),
-                ...(range.to ? { lte: this.monthKeyToValue(range.to) } : {}),
+    const occurrences =
+      await this.prisma.recurringTransactionOccurrence.findMany({
+        where: {
+          userId: ownerId,
+          recurringRuleId: ruleId,
+          ...(range.from || range.to
+            ? {
+                occurrenceMonth: {
+                  ...(range.from
+                    ? { gte: this.monthKeyToValue(range.from) }
+                    : {}),
+                  ...(range.to ? { lte: this.monthKeyToValue(range.to) } : {}),
+                },
+              }
+            : {}),
+        },
+        include: {
+          recurringRule: {
+            include: {
+              category: {
+                include: {
+                  parentCategory: true,
+                },
               },
-            }
-          : {}),
-      },
-      include: {
-        recurringRule: true,
-      },
-      orderBy: [{ occurrenceMonth: 'desc' }, { createdAt: 'desc' }],
-    });
+            },
+          },
+        },
+        orderBy: [{ occurrenceMonth: 'desc' }, { createdAt: 'desc' }],
+      });
+
+    return this.attachResolvedOccurrenceCategories(
+      ownerId,
+      occurrences,
+      rule.category ?? null,
+    );
   }
 
   async upsertOccurrence(
@@ -333,7 +444,7 @@ export class RecurringService {
             overrideNotes: null,
           };
 
-    return this.prisma.$transaction(async (tx) => {
+    const occurrence = await this.prisma.$transaction(async (tx) => {
       const occurrence = await tx.recurringTransactionOccurrence.upsert({
         where: {
           recurringRuleId_occurrenceMonth: {
@@ -353,7 +464,15 @@ export class RecurringService {
           ...overrideData,
         },
         include: {
-          recurringRule: true,
+          recurringRule: {
+            include: {
+              category: {
+                include: {
+                  parentCategory: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -375,8 +494,18 @@ export class RecurringService {
         },
       });
 
-      return occurrence;
+      const [resolvedOccurrence] =
+        await this.attachResolvedOccurrenceCategories(
+          ownerId,
+          [occurrence],
+          rule.category ?? null,
+        );
+
+      return resolvedOccurrence;
     });
+
+    this.invalidatePendingMaterializationStatus(ownerId);
+    return occurrence;
   }
 
   async clearOccurrence(
@@ -437,94 +566,254 @@ export class RecurringService {
         },
       });
     });
+
+    this.invalidatePendingMaterializationStatus(ownerId);
   }
 
   async materialize(
     ownerId: string,
   ): Promise<MaterializeRecurringRulesResponse> {
-    return this.operationLockService.runExclusive(
-      {
-        userId: ownerId,
-        type: OperationType.RECURRING_MATERIALIZE,
-        inProgressMessage: 'Recurring materialization already in progress.',
-        cooldownMs: RECURRING_MATERIALIZE_COOLDOWN_MS,
-        cooldownMessage: (remainingSeconds) =>
-          `Recurring materialization is cooling down. Try again in ${remainingSeconds}s.`,
-      },
-      async () => {
-        const rules = await this.prisma.recurringTransactionRule.findMany({
-          where: {
-            userId: ownerId,
-            isActive: true,
-          },
-          orderBy: [{ dayOfMonth: 'asc' }, { createdAt: 'asc' }],
-        });
+    try {
+      return await this.operationLockService.runExclusive(
+        {
+          userId: ownerId,
+          type: OperationType.RECURRING_MATERIALIZE,
+          inProgressMessage: 'Recurring materialization already in progress.',
+          cooldownMs: RECURRING_MATERIALIZE_COOLDOWN_MS,
+          cooldownMessage: (remainingSeconds) =>
+            `Recurring materialization is cooling down. Try again in ${remainingSeconds}s.`,
+        },
+        async () => {
+          const rules = await this.prisma.recurringTransactionRule.findMany({
+            where: {
+              userId: ownerId,
+              isActive: true,
+            },
+            orderBy: [{ dayOfMonth: 'asc' }, { createdAt: 'asc' }],
+          });
 
-        if (rules.length === 0) {
-          return {
-            createdCount: 0,
-            processedRuleCount: 0,
-            failedRuleCount: 0,
-          };
-        }
-
-        const currentMonthKey = this.formatMonthKey(new Date());
-        let createdCount = 0;
-        let failedRuleCount = 0;
-
-        for (const rule of rules) {
-          try {
-            const targets = await this.resolveRuleTargets(ownerId, {
-              kind: rule.kind,
-              accountId: rule.accountId,
-              direction: rule.direction,
-              categoryId: rule.categoryId,
-              counterparty: rule.counterparty,
-              sourceAccountId: rule.sourceAccountId,
-              destinationAccountId: rule.destinationAccountId,
-              description: rule.description,
-              notes: rule.notes,
-              dayOfMonth: rule.dayOfMonth,
-              startDate: rule.startDate,
-              endDate: rule.endDate,
-            });
-            const dueMonthKeys = this.listApplicableMonthKeys(
-              rule,
-              currentMonthKey,
-            );
-            let createdForRule = 0;
-
-            for (const monthKey of dueMonthKeys) {
-              createdForRule += await this.prisma.$transaction(
-                async (tx) =>
-                  this.materializeRuleMonth(
-                    tx,
-                    ownerId,
-                    rule,
-                    monthKey,
-                    targets,
-                  ),
-                {
-                  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-                },
-              );
-            }
-
-            createdCount += createdForRule;
-            await this.clearMaterializationError(rule.id);
-          } catch (error) {
-            failedRuleCount += 1;
-            void error;
-            await this.persistMaterializationError(rule.id);
+          if (rules.length === 0) {
+            return {
+              createdCount: 0,
+              processedRuleCount: 0,
+              failedRuleCount: 0,
+            };
           }
+
+          const currentMonthKey = this.formatMonthKey(new Date());
+          let createdCount = 0;
+          let failedRuleCount = 0;
+
+          for (const rule of rules) {
+            try {
+              const targets = await this.resolveRuleTargets(ownerId, {
+                kind: rule.kind,
+                accountId: rule.accountId,
+                direction: rule.direction,
+                categoryId: rule.categoryId,
+                counterparty: rule.counterparty,
+                sourceAccountId: rule.sourceAccountId,
+                destinationAccountId: rule.destinationAccountId,
+                description: rule.description,
+                notes: rule.notes,
+                dayOfMonth: rule.dayOfMonth,
+                startDate: rule.startDate,
+                endDate: rule.endDate,
+              });
+              const dueMonthKeys = this.listApplicableMonthKeys(
+                rule,
+                currentMonthKey,
+              );
+              let createdForRule = 0;
+
+              for (const monthKey of dueMonthKeys) {
+                createdForRule += await this.prisma.$transaction(
+                  async (tx) =>
+                    this.materializeRuleMonth(
+                      tx,
+                      ownerId,
+                      rule,
+                      monthKey,
+                      targets,
+                    ),
+                  {
+                    isolationLevel:
+                      Prisma.TransactionIsolationLevel.Serializable,
+                  },
+                );
+              }
+
+              createdCount += createdForRule;
+              await this.clearMaterializationError(rule.id);
+            } catch (error) {
+              failedRuleCount += 1;
+              void error;
+              await this.persistMaterializationError(rule.id);
+            }
+          }
+
+          return {
+            createdCount,
+            processedRuleCount: rules.length,
+            failedRuleCount,
+          };
+        },
+      );
+    } finally {
+      this.invalidatePendingMaterializationStatus(ownerId);
+    }
+  }
+
+  async hasPendingMaterializations(ownerId: string): Promise<boolean> {
+    const cached = this.pendingStatusCache.get(ownerId);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      return cached.hasPending;
+    }
+
+    const inFlight = this.pendingStatusInFlight.get(ownerId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const generation = this.getPendingStatusGeneration(ownerId);
+    const pendingCheck = this.computePendingMaterializationStatus(ownerId)
+      .then((hasPending) => {
+        if (generation === this.getPendingStatusGeneration(ownerId)) {
+          this.pendingStatusCache.set(ownerId, {
+            hasPending,
+            expiresAt: Date.now() + RECURRING_PENDING_STATUS_TTL_MS,
+          });
         }
 
-        return {
-          createdCount,
-          processedRuleCount: rules.length,
-          failedRuleCount,
-        };
+        return hasPending;
+      })
+      .finally(() => {
+        if (this.pendingStatusInFlight.get(ownerId) === pendingCheck) {
+          this.pendingStatusInFlight.delete(ownerId);
+        }
+      });
+
+    this.pendingStatusInFlight.set(ownerId, pendingCheck);
+    return pendingCheck;
+  }
+
+  private async computePendingMaterializationStatus(
+    ownerId: string,
+  ): Promise<boolean> {
+    const rules = await this.prisma.recurringTransactionRule.findMany({
+      where: { userId: ownerId, isActive: true },
+      select: {
+        id: true,
+        dayOfMonth: true,
+        startDate: true,
+        endDate: true,
       },
+    });
+
+    if (rules.length === 0) {
+      return false;
+    }
+
+    const currentMonthKey = this.formatMonthKey(new Date());
+    const dueMonthsByRule = new Map<string, Set<number>>();
+    const dueMonthLookup = new Map<number, Date>();
+
+    for (const rule of rules) {
+      const dueMonthKeys = this.listApplicableMonthKeys(rule, currentMonthKey);
+
+      if (dueMonthKeys.length === 0) {
+        continue;
+      }
+
+      const dueTimes = new Set<number>();
+      for (const monthKey of dueMonthKeys) {
+        const dueMonth = this.monthKeyToValue(monthKey);
+        const time = dueMonth.getTime();
+        dueTimes.add(time);
+        dueMonthLookup.set(time, dueMonth);
+      }
+
+      dueMonthsByRule.set(rule.id, dueTimes);
+    }
+
+    if (dueMonthsByRule.size === 0) {
+      return false;
+    }
+
+    const dueRuleIds = Array.from(dueMonthsByRule.keys());
+    const dueMonths = Array.from(dueMonthLookup.values());
+    const [skipped, materialized] = await Promise.all([
+      this.prisma.recurringTransactionOccurrence.findMany({
+        where: {
+          userId: ownerId,
+          recurringRuleId: { in: dueRuleIds },
+          occurrenceMonth: { in: dueMonths },
+          status: 'SKIPPED',
+        },
+        select: { recurringRuleId: true, occurrenceMonth: true },
+      }),
+      this.prisma.transaction.findMany({
+        where: {
+          userId: ownerId,
+          recurringRuleId: { in: dueRuleIds },
+          recurringOccurrenceMonth: { in: dueMonths },
+        },
+        select: { recurringRuleId: true, recurringOccurrenceMonth: true },
+      }),
+    ]);
+
+    const skippedKeys = new Set(
+      skipped.map(
+        (occurrence) =>
+          `${occurrence.recurringRuleId}:${occurrence.occurrenceMonth.getTime()}`,
+      ),
+    );
+    const materializedKeys = new Set(
+      materialized
+        .filter(
+          (
+            transaction,
+          ): transaction is {
+            recurringRuleId: string;
+            recurringOccurrenceMonth: Date;
+          } =>
+            transaction.recurringRuleId !== null &&
+            transaction.recurringOccurrenceMonth !== null,
+        )
+        .map(
+          (transaction) =>
+            `${transaction.recurringRuleId}:${transaction.recurringOccurrenceMonth.getTime()}`,
+        ),
+    );
+
+    for (const [ruleId, monthTimes] of dueMonthsByRule.entries()) {
+      for (const monthTime of monthTimes) {
+        const occurrenceKey = `${ruleId}:${monthTime}`;
+
+        if (
+          !skippedKeys.has(occurrenceKey) &&
+          !materializedKeys.has(occurrenceKey)
+        ) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private getPendingStatusGeneration(ownerId: string): number {
+    return this.pendingStatusGeneration.get(ownerId) ?? 0;
+  }
+
+  private invalidatePendingMaterializationStatus(ownerId: string): void {
+    this.pendingStatusCache.delete(ownerId);
+    this.pendingStatusInFlight.delete(ownerId);
+    this.pendingStatusGeneration.set(
+      ownerId,
+      this.getPendingStatusGeneration(ownerId) + 1,
     );
   }
 
@@ -595,7 +884,9 @@ export class RecurringService {
 
     if (defaultSpec.kind === 'TRANSFER') {
       if (targets.kind !== 'TRANSFER') {
-        throw new Error('Transfer materialization requires transfer targets.');
+        throw new InternalServerErrorException(
+          'Transfer materialization requires transfer targets.',
+        );
       }
 
       const { sourceAccount, destinationAccount } = targets;
@@ -651,7 +942,9 @@ export class RecurringService {
     }
 
     if (targets.kind !== 'STANDARD') {
-      throw new Error('Standard materialization requires standard targets.');
+      throw new InternalServerErrorException(
+        'Standard materialization requires standard targets.',
+      );
     }
 
     const { account, category } = targets;
@@ -707,7 +1000,7 @@ export class RecurringService {
       closingSnapshot,
       accounts,
       reconciliations,
-      recurringExceptions,
+      rawRecurringExceptions,
       recurringRules,
       recurringRows,
     ] = await Promise.all([
@@ -734,7 +1027,15 @@ export class RecurringService {
           occurrenceMonth,
         },
         include: {
-          recurringRule: true,
+          recurringRule: {
+            include: {
+              category: {
+                include: {
+                  parentCategory: true,
+                },
+              },
+            },
+          },
         },
         orderBy: [{ createdAt: 'asc' }],
       }),
@@ -761,13 +1062,24 @@ export class RecurringService {
         },
       }),
     ]);
+    const recurringExceptions = await this.attachResolvedOccurrenceCategories(
+      ownerId,
+      rawRecurringExceptions,
+      null,
+    );
+
+    // For future months snapshots are meaningless — force "Unavailable"
+    const isFutureMonth = month > this.formatMonthKey(new Date());
+    const effectiveOpeningSnapshot = isFutureMonth ? null : openingSnapshot;
+    const effectiveClosingSnapshot = isFutureMonth ? null : closingSnapshot;
+
     const reconciliationHighlights = reconciliations.filter(
       (reconciliation) => reconciliation.status !== 'CLEAN',
     );
     const netWorthExplanation = this.buildMonthlyReviewNetWorthExplanation(
       cashflow,
-      openingSnapshot,
-      closingSnapshot,
+      effectiveOpeningSnapshot,
+      effectiveClosingSnapshot,
     );
     const recurringComparison = this.buildRecurringComparison(
       month,
@@ -797,9 +1109,10 @@ export class RecurringService {
       budgetView.currencies,
     );
     const warnings = this.buildMonthlyReviewWarnings({
+      month,
       cashflow,
-      openingSnapshot,
-      closingSnapshot,
+      openingSnapshot: effectiveOpeningSnapshot,
+      closingSnapshot: effectiveClosingSnapshot,
       netWorthExplanation,
       reconciliationHighlights,
       recurringExceptions,
@@ -810,8 +1123,8 @@ export class RecurringService {
     return toMonthlyReviewResponse({
       month,
       cashflow,
-      openingSnapshot,
-      closingSnapshot,
+      openingSnapshot: effectiveOpeningSnapshot,
+      closingSnapshot: effectiveClosingSnapshot,
       warnings,
       netWorthExplanation,
       recurringComparison,
@@ -828,47 +1141,55 @@ export class RecurringService {
     openingSnapshot: NetWorthSnapshot | null,
     closingSnapshot: NetWorthSnapshot | null,
   ): MonthlyReviewNetWorthExplanationResponse {
+    const reportingCurrency =
+      closingSnapshot?.baseCurrency ?? openingSnapshot?.baseCurrency ?? 'EUR';
+
     if (!openingSnapshot || !closingSnapshot) {
       return {
-        isComparableInEur: false,
-        cashflowContributionEur: null,
-        valuationMovementEur: null,
-        note: 'Add both opening and closing snapshot boundaries to explain the month in EUR.',
+        reportingCurrency,
+        isComparableInReportingCurrency: false,
+        cashflowContribution: null,
+        marketAndFxMovement: null,
+        note: `Add both opening and closing snapshot boundaries to explain the month in ${reportingCurrency}.`,
       };
     }
 
     if (openingSnapshot.isPartial || closingSnapshot.isPartial) {
       return {
-        isComparableInEur: false,
-        cashflowContributionEur: null,
-        valuationMovementEur: null,
-        note: 'Snapshot boundaries are partial, so the EUR net worth delta cannot be decomposed safely.',
+        reportingCurrency,
+        isComparableInReportingCurrency: false,
+        cashflowContribution: null,
+        marketAndFxMovement: null,
+        note: `Snapshot boundaries are partial, so the ${reportingCurrency} net worth delta cannot be decomposed safely.`,
       };
     }
 
-    const nonEurBuckets = cashflow.filter(
-      (bucket) => bucket.currency !== 'EUR',
+    const nonReportingBuckets = cashflow.filter(
+      (bucket) => bucket.currency !== reportingCurrency,
     );
-    if (nonEurBuckets.length > 0) {
+    if (nonReportingBuckets.length > 0) {
       return {
-        isComparableInEur: false,
-        cashflowContributionEur: null,
-        valuationMovementEur: null,
-        note: 'Cashflow includes non-EUR currencies, so the EUR net worth delta cannot be decomposed safely.',
+        reportingCurrency,
+        isComparableInReportingCurrency: false,
+        cashflowContribution: null,
+        marketAndFxMovement: null,
+        note: `Cashflow includes non-${reportingCurrency} currencies, so the ${reportingCurrency} net worth delta cannot be decomposed safely.`,
       };
     }
 
     const openingNetWorth = openingSnapshot.netWorthTotal.toNumber();
     const closingNetWorth = closingSnapshot.netWorthTotal.toNumber();
-    const cashflowContributionEur =
-      cashflow.find((bucket) => bucket.currency === 'EUR')?.netCashflow ?? 0;
+    const cashflowContribution =
+      cashflow.find((bucket) => bucket.currency === reportingCurrency)
+        ?.netCashflow ?? 0;
 
     return {
-      isComparableInEur: true,
-      cashflowContributionEur,
-      valuationMovementEur:
-        closingNetWorth - openingNetWorth - cashflowContributionEur,
-      note: 'Valuation movement is the portion of the EUR net worth delta not explained by EUR cashflow.',
+      reportingCurrency,
+      isComparableInReportingCurrency: true,
+      cashflowContribution,
+      marketAndFxMovement:
+        closingNetWorth - openingNetWorth - cashflowContribution,
+      note: `Market and FX movement is the portion of the ${reportingCurrency} net worth delta not explained by ${reportingCurrency} cashflow.`,
     };
   }
 
@@ -1094,7 +1415,45 @@ export class RecurringService {
         categoryId: item.categoryId,
         name: item.name,
         total: item.total,
+        primaryCategoryId: item.primaryCategoryId,
+        primaryCategoryName: item.primaryCategoryName,
+        secondaryCategoryId: item.secondaryCategoryId,
+        secondaryCategoryName: item.secondaryCategoryName,
       }));
+  }
+
+  private async attachResolvedOccurrenceCategories(
+    ownerId: string,
+    occurrences: RawRecurringOccurrenceModel[],
+    fallbackRuleCategory: HierarchicalCategoryRecord | null,
+  ): Promise<RecurringOccurrenceModel[]> {
+    const overrideCategoryIds = Array.from(
+      new Set(
+        occurrences
+          .map((occurrence) => occurrence.overrideCategoryId)
+          .filter((categoryId): categoryId is string => Boolean(categoryId)),
+      ),
+    );
+    const overrideCategories =
+      overrideCategoryIds.length > 0
+        ? await this.categoriesService.findManyByIds(
+            ownerId,
+            overrideCategoryIds,
+          )
+        : [];
+    const overrideById = new Map(
+      overrideCategories.map((category) => [category.id, category]),
+    );
+
+    return occurrences.map((occurrence) => ({
+      ...occurrence,
+      resolvedCategory:
+        (occurrence.overrideCategoryId
+          ? (overrideById.get(occurrence.overrideCategoryId) ?? null)
+          : null) ??
+        occurrence.recurringRule.category ??
+        fallbackRuleCategory,
+    }));
   }
 
   private sortAndLimitAccountDrivers(
@@ -1116,6 +1475,7 @@ export class RecurringService {
   }
 
   private buildMonthlyReviewWarnings(input: {
+    month: string;
     cashflow: CashflowSummaryResponse;
     openingSnapshot: NetWorthSnapshot | null;
     closingSnapshot: NetWorthSnapshot | null;
@@ -1126,64 +1486,72 @@ export class RecurringService {
     budgetSummary: MonthlyBudgetCurrencySummaryResponse[];
   }): MonthlyReviewWarningResponse[] {
     const warnings: MonthlyReviewWarningResponse[] = [];
+    const isCurrentMonth = this.isCurrentMonth(input.month);
+    const isFutureMonth = input.month > this.formatMonthKey(new Date());
 
-    if (!input.openingSnapshot) {
-      warnings.push(
-        this.createMonthlyReviewWarning({
-          code: 'MISSING_OPENING_SNAPSHOT',
-          severity: 'WARNING',
-          title: 'Opening snapshot missing',
-          detail:
-            'Add a snapshot before this month to anchor the opening net worth boundary.',
-        }),
-      );
-    } else if (input.openingSnapshot.isPartial) {
-      warnings.push(
-        this.createMonthlyReviewWarning({
-          code: 'PARTIAL_OPENING_SNAPSHOT',
-          severity: 'WARNING',
-          title: 'Opening snapshot is partial',
-          detail:
-            'The opening boundary excludes unavailable valuations, so month-over-month comparisons are incomplete.',
-          count: input.openingSnapshot.unavailableCount,
-        }),
-      );
+    // Skip snapshot warnings for future months — they are expected to be unavailable
+    if (!isFutureMonth) {
+      if (!input.openingSnapshot) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'MISSING_OPENING_SNAPSHOT',
+            severity: isCurrentMonth ? 'WARNING' : 'INFO',
+            title: 'Opening snapshot missing',
+            detail: isCurrentMonth
+              ? 'Add a snapshot before this month to anchor the opening net worth boundary.'
+              : 'No snapshot was captured before this month. Snapshots are now captured automatically on each dashboard visit.',
+          }),
+        );
+      } else if (input.openingSnapshot.isPartial) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'PARTIAL_OPENING_SNAPSHOT',
+            severity: 'WARNING',
+            title: 'Opening snapshot is partial',
+            detail:
+              'The opening boundary excludes unavailable valuations, so month-over-month comparisons are incomplete.',
+            count: input.openingSnapshot.unavailableCount,
+          }),
+        );
+      }
+
+      if (!input.closingSnapshot) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'MISSING_CLOSING_SNAPSHOT',
+            severity: isCurrentMonth ? 'WARNING' : 'INFO',
+            title: 'Closing snapshot missing',
+            detail: isCurrentMonth
+              ? 'Capture a snapshot in this month to anchor the closing net worth boundary.'
+              : 'No snapshot was captured during this month. Snapshots are now captured automatically on each dashboard visit.',
+          }),
+        );
+      } else if (input.closingSnapshot.isPartial) {
+        warnings.push(
+          this.createMonthlyReviewWarning({
+            code: 'PARTIAL_CLOSING_SNAPSHOT',
+            severity: 'WARNING',
+            title: 'Closing snapshot is partial',
+            detail:
+              'The closing boundary excludes unavailable valuations, so the ending net worth is incomplete.',
+            count: input.closingSnapshot.unavailableCount,
+          }),
+        );
+      }
     }
 
-    if (!input.closingSnapshot) {
-      warnings.push(
-        this.createMonthlyReviewWarning({
-          code: 'MISSING_CLOSING_SNAPSHOT',
-          severity: 'WARNING',
-          title: 'Closing snapshot missing',
-          detail:
-            'Capture a snapshot in this month to anchor the closing net worth boundary.',
-        }),
-      );
-    } else if (input.closingSnapshot.isPartial) {
-      warnings.push(
-        this.createMonthlyReviewWarning({
-          code: 'PARTIAL_CLOSING_SNAPSHOT',
-          severity: 'WARNING',
-          title: 'Closing snapshot is partial',
-          detail:
-            'The closing boundary excludes unavailable valuations, so the ending net worth is incomplete.',
-          count: input.closingSnapshot.unavailableCount,
-        }),
-      );
-    }
-
-    if (!input.netWorthExplanation.isComparableInEur) {
+    if (!input.netWorthExplanation.isComparableInReportingCurrency) {
       for (const bucket of input.cashflow.filter(
-        (cashflowBucket) => cashflowBucket.currency !== 'EUR',
+        (cashflowBucket) =>
+          cashflowBucket.currency !==
+          input.netWorthExplanation.reportingCurrency,
       )) {
         warnings.push(
           this.createMonthlyReviewWarning({
-            code: 'NON_EUR_CASHFLOW_NOT_COMPARABLE',
+            code: 'NON_REPORTING_CURRENCY_CASHFLOW_NOT_COMPARABLE',
             severity: 'INFO',
-            title: `${bucket.currency} cashflow excluded from EUR explanation`,
-            detail:
-              'This month includes non-EUR cashflow, so the net worth delta cannot be decomposed into one EUR story.',
+            title: `${bucket.currency} cashflow excluded from ${input.netWorthExplanation.reportingCurrency} explanation`,
+            detail: `This month includes non-${input.netWorthExplanation.reportingCurrency} cashflow, so the net worth delta cannot be decomposed into one ${input.netWorthExplanation.reportingCurrency} story.`,
             amount: bucket.netCashflow,
             currency: bucket.currency,
           }),
@@ -1464,6 +1832,12 @@ export class RecurringService {
         dto.categoryId,
         rule.kind,
       );
+    } else if (rule.kind === TransactionKind.EXPENSE) {
+      category =
+        await this.categoriesService.findMatchingExpenseSecondaryCategory(
+          ownerId,
+          normalizeExpenseValidationEntry(description),
+        );
     }
 
     const counterparty = this.optionalText(dto.counterparty);
@@ -1699,7 +2073,7 @@ export class RecurringService {
   }
 
   private isOccurrenceMonthApplicable(
-    rule: RecurringTransactionRule,
+    rule: RecurringRuleSchedule,
     monthKey: string,
   ): boolean {
     const startDateKey = this.dateKeyFromValue(rule.startDate);
@@ -1932,6 +2306,12 @@ export class RecurringService {
         dto.categoryId,
         dto.kind,
       );
+    } else if (dto.kind === TransactionKind.EXPENSE) {
+      category =
+        await this.categoriesService.findMatchingExpenseSecondaryCategory(
+          ownerId,
+          normalizeExpenseValidationEntry(dto.description),
+        );
     }
 
     return {
@@ -1964,7 +2344,7 @@ export class RecurringService {
   }
 
   private listApplicableMonthKeys(
-    rule: RecurringTransactionRule,
+    rule: RecurringRuleSchedule,
     currentMonthKey: string,
   ): string[] {
     const months: string[] = [];
@@ -2100,6 +2480,10 @@ export class RecurringService {
 
   private formatMonthKey(value: Date): string {
     return MONTH_KEY_FORMATTER.format(value);
+  }
+
+  private isCurrentMonth(month: string): boolean {
+    return this.formatMonthKey(new Date()) === month;
   }
 
   private monthValueToKey(value: Date): string {

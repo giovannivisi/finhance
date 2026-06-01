@@ -1,12 +1,12 @@
 import type {
-  AccountResponse,
-  CashflowSummaryResponse,
-  CategoryResponse,
-  TransactionResponse,
+  RecurringPendingStatusResponse,
+  TransactionsPageDataResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
 import TransactionsPageClient from "@components/TransactionsPageClient";
-import { api } from "@lib/api";
+import { getDefaultActivityFilters, type ActivityFilters } from "@lib/activity";
+import { api } from "@lib/server-api";
+import { getUserSettingsOrDefaults } from "@lib/server-user-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -16,17 +16,7 @@ function getSingleValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 }
 
-function buildFilterQueryString(
-  filters: {
-    from: string;
-    to: string;
-    accountId: string;
-    categoryId: string;
-    kind: string;
-    includeArchivedAccounts: boolean;
-  },
-  options?: { includeKind?: boolean },
-) {
+function buildPageDataQueryString(filters: ActivityFilters) {
   const params = new URLSearchParams();
 
   if (filters.from) {
@@ -45,7 +35,15 @@ function buildFilterQueryString(
     params.set("categoryId", filters.categoryId);
   }
 
-  if ((options?.includeKind ?? true) && filters.kind) {
+  if (filters.primaryCategoryId) {
+    params.set("primaryCategoryId", filters.primaryCategoryId);
+  }
+
+  if (filters.secondaryCategoryId) {
+    params.set("secondaryCategoryId", filters.secondaryCategoryId);
+  }
+
+  if (filters.kind) {
     params.set("kind", filters.kind);
   }
 
@@ -63,35 +61,49 @@ export default async function TransactionsPage({
   searchParams?: RawSearchParams;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
-  const filters = {
-    from: getSingleValue(resolvedSearchParams.from),
-    to: getSingleValue(resolvedSearchParams.to),
-    accountId: getSingleValue(resolvedSearchParams.accountId),
-    categoryId: getSingleValue(resolvedSearchParams.categoryId),
-    kind: getSingleValue(resolvedSearchParams.kind),
-    includeArchivedAccounts:
-      getSingleValue(resolvedSearchParams.includeArchivedAccounts) === "true",
-  };
-  const transactionsQueryString = buildFilterQueryString(filters, {
-    includeKind: true,
-  });
-  const cashflowQueryString = buildFilterQueryString(filters, {
-    includeKind: false,
-  });
+  const hasExplicitFilters = Object.keys(resolvedSearchParams).length > 0;
+  const defaultFilters = getDefaultActivityFilters();
+  const filters: ActivityFilters = hasExplicitFilters
+    ? {
+        from: getSingleValue(resolvedSearchParams.from),
+        to: getSingleValue(resolvedSearchParams.to),
+        accountId: getSingleValue(resolvedSearchParams.accountId),
+        categoryId: getSingleValue(resolvedSearchParams.categoryId),
+        primaryCategoryId: getSingleValue(
+          resolvedSearchParams.primaryCategoryId,
+        ),
+        secondaryCategoryId:
+          getSingleValue(resolvedSearchParams.secondaryCategoryId) ||
+          getSingleValue(resolvedSearchParams.categoryId),
+        kind: getSingleValue(resolvedSearchParams.kind),
+        includeArchivedAccounts:
+          getSingleValue(resolvedSearchParams.includeArchivedAccounts) ===
+          "true",
+      }
+    : defaultFilters;
 
-  let transactions: TransactionResponse[] | null = null;
-  let cashflow: CashflowSummaryResponse | null = null;
-  let accounts: AccountResponse[] | null = null;
-  let categories: CategoryResponse[] | null = null;
+  let pageData: TransactionsPageDataResponse | null = null;
+  let showTransactionTimes = true;
+  let hasPendingSync = false;
   let errorMessage: string | null = null;
 
   try {
-    [transactions, cashflow, accounts, categories] = await Promise.all([
-      api<TransactionResponse[]>(`/transactions${transactionsQueryString}`),
-      api<CashflowSummaryResponse>(`/cashflow/summary${cashflowQueryString}`),
-      api<AccountResponse[]>("/accounts?includeArchived=true"),
-      api<CategoryResponse[]>("/categories?includeArchived=true"),
+    const settingsPromise = getUserSettingsOrDefaults();
+    const pendingStatusPromise = api<RecurringPendingStatusResponse>(
+      "/recurring-rules/has-pending",
+    ).catch(() => null);
+
+    const [settings, nextPageData, pendingStatus] = await Promise.all([
+      settingsPromise,
+      api<TransactionsPageDataResponse>(
+        `/transactions/page-data${buildPageDataQueryString(filters)}`,
+      ),
+      pendingStatusPromise,
     ]);
+
+    showTransactionTimes = settings.showTransactionTimes;
+    pageData = nextPageData;
+    hasPendingSync = pendingStatus?.hasPending ?? false;
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -100,33 +112,32 @@ export default async function TransactionsPage({
   }
 
   return (
-    <>
-      <Container>
-        {!transactions || !cashflow || !accounts || !categories ? (
-          <section className="page-shell">
-            <div className="page-hero">
-              <p className="page-kicker">Cashflow</p>
-              <h1 className="page-title is-compact">Transactions</h1>
-            </div>
-            <div className="page-inline-notice surface-warning">
-              <p className="font-medium">
-                The web app could not reach the API.
-              </p>
-              <p className="mt-2 text-sm">
-                {errorMessage ?? "Start the API and refresh the page."}
-              </p>
-            </div>
-          </section>
-        ) : (
-          <TransactionsPageClient
-            transactions={transactions}
-            cashflow={cashflow}
-            accounts={accounts}
-            categories={categories}
-            initialFilters={filters}
-          />
-        )}
-      </Container>
-    </>
+    <Container>
+      {!pageData ? (
+        <section className="page-shell">
+          <div className="page-hero">
+            <p className="page-kicker">Cashflow</p>
+            <h1 className="page-title is-compact">Transactions</h1>
+          </div>
+          <div className="page-inline-notice surface-warning">
+            <p className="font-medium">The web app could not reach the API.</p>
+            <p className="mt-2 text-sm">
+              {errorMessage ?? "Start the API and refresh the page."}
+            </p>
+          </div>
+        </section>
+      ) : (
+        <TransactionsPageClient
+          transactions={pageData.transactions}
+          cashflow={pageData.cashflow}
+          accounts={pageData.accounts}
+          categories={pageData.categories}
+          expenseValidationRules={pageData.expenseValidationRules}
+          initialFilters={filters}
+          initialHasPendingSync={hasPendingSync}
+          showTransactionTimes={showTransactionTimes}
+        />
+      )}
+    </Container>
   );
 }

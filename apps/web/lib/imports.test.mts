@@ -32,10 +32,21 @@ test("groupImportSummaries arranges files into foundation, activity, and plannin
   );
 });
 
-test("getImportReadiness prioritizes blocked, then warnings, then ready", () => {
+test("getImportReadiness prioritizes applied, then blocked, then warnings, then ready", () => {
   assert.equal(
     getImportReadiness({
       canApply: false,
+      status: "APPLIED",
+      appliedAt: "2026-05-10T12:00:00.000Z",
+      summary: { files: [], errorCount: 0, warningCount: 0 },
+    }).tone,
+    "success",
+  );
+  assert.equal(
+    getImportReadiness({
+      canApply: false,
+      status: "PREVIEW",
+      appliedAt: null,
       summary: { files: [], errorCount: 2, warningCount: 1 },
     }).tone,
     "blocked",
@@ -43,6 +54,8 @@ test("getImportReadiness prioritizes blocked, then warnings, then ready", () => 
   assert.equal(
     getImportReadiness({
       canApply: true,
+      status: "PREVIEW",
+      appliedAt: null,
       summary: { files: [], errorCount: 0, warningCount: 3 },
     }).tone,
     "warning",
@@ -50,6 +63,8 @@ test("getImportReadiness prioritizes blocked, then warnings, then ready", () => 
   assert.equal(
     getImportReadiness({
       canApply: true,
+      status: "PREVIEW",
+      appliedAt: null,
       summary: { files: [], errorCount: 0, warningCount: 0 },
     }).tone,
     "ready",
