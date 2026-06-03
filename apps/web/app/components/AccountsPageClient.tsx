@@ -343,7 +343,7 @@ export default function AccountsPageClient({
                         ) : null}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-4">
+                      <div className="account-actions">
                         {reconciliation?.canCreateAdjustment ? (
                           <button
                             type="button"
@@ -351,7 +351,7 @@ export default function AccountsPageClient({
                               void handleCreateAdjustment(account.id)
                             }
                             disabled={adjustingAccountId === account.id}
-                            className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                            className="link-button account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {adjustingAccountId === account.id
                               ? "Adjusting..."
@@ -362,7 +362,7 @@ export default function AccountsPageClient({
                         <button
                           type="button"
                           onClick={() => setEditingAccountId(account.id)}
-                          className="link-button mobile-hit-target"
+                          className="link-button account-action mobile-hit-target"
                         >
                           Edit
                         </button>
@@ -370,7 +370,7 @@ export default function AccountsPageClient({
                         {account.type === "BROKER" && !account.archivedAt ? (
                           <Link
                             href={`/brokerage/${account.id}`}
-                            className="link-button mobile-hit-target"
+                            className="link-button account-action mobile-hit-target"
                           >
                             Open brokerage
                           </Link>
@@ -381,7 +381,7 @@ export default function AccountsPageClient({
                             type="button"
                             onClick={() => void handleArchive(account.id)}
                             disabled={pendingArchiveAccountId === account.id}
-                            className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                            className="link-button is-danger account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {pendingArchiveAccountId === account.id
                               ? "Archiving..."
@@ -395,7 +395,7 @@ export default function AccountsPageClient({
                               disabled={
                                 pendingUnarchiveAccountId === account.id
                               }
-                              className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                              className="link-button account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {pendingUnarchiveAccountId === account.id
                                 ? "Unarchiving..."
@@ -408,7 +408,7 @@ export default function AccountsPageClient({
                                   void handleDeletePermanently(account.id)
                                 }
                                 disabled={pendingDeleteAccountId === account.id}
-                                className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                                className="link-button is-danger account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {pendingDeleteAccountId === account.id
                                   ? "Deleting..."
