@@ -282,9 +282,12 @@ describe("DashboardClient", () => {
     expect(requestDashboardRefresh).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
     expect(
-      screen.getByText(
+      screen.queryByText(
         /Latest stored values shown\. Refresh when you want live quotes/,
       ),
+    ).toBeNull();
+    expect(
+      screen.getByText(/Last refresh \d+ min ago/),
     ).toBeInTheDocument();
   });
 
@@ -305,7 +308,7 @@ describe("DashboardClient", () => {
       },
     });
 
-    expect(screen.getByText("LATEST")).toBeInTheDocument();
+    expect(screen.getByText("LATEST")).toHaveClass("is-warning");
     expect(screen.getByText("Latest quote")).toBeInTheDocument();
   });
 

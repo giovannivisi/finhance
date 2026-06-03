@@ -3,7 +3,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Modal from "@components/Modal";
+import ConfirmActionModal from "@components/ConfirmActionModal";
 import { apiMutation } from "@lib/api";
 import { useSingleFlightActions } from "@lib/single-flight";
 
@@ -73,42 +73,17 @@ export default function DeleteAssetButton({
       >
         {children ?? "✕"}
       </button>
-      <Modal
+      <ConfirmActionModal
         open={isConfirmOpen}
         onClose={closeModal}
+        onConfirm={() => void handleDelete()}
         title="Delete asset"
-        maxWidth={520}
-      >
-        <div className="section-stack-tight">
-          <p className="section-subtitle">
-            Are you sure you want to delete this asset? This action cannot be
-            undone.
-          </p>
-          {error ? (
-            <p role="alert" className="page-inline-notice surface-danger">
-              {error}
-            </p>
-          ) : null}
-          <div className="app-form-actions">
-            <button
-              type="button"
-              onClick={closeModal}
-              disabled={actions.isRunning("delete")}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleDelete()}
-              disabled={actions.isRunning("delete")}
-              className="btn-primary"
-            >
-              {actions.isRunning("delete") ? "Deleting..." : "Delete asset"}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        description="Are you sure you want to delete this asset? This action cannot be undone."
+        confirmLabel="Delete asset"
+        pendingLabel="Deleting..."
+        error={error}
+        isPending={actions.isRunning("delete")}
+      />
       {error ? (
         <span className="sr-only" role="alert">
           {error}

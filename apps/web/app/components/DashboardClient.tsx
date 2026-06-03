@@ -73,13 +73,11 @@ function getValuationLabel(asset: DashboardAssetResponse): string {
 
 function getPricingStatusLabel(pricingStatus: AggregatePricingStatus): string {
   switch (pricingStatus.state) {
-    case "PARTIAL":
-      return "Latest stored values shown.";
-    case "STALE":
-      return "Latest stored values shown. Refresh when you want live quotes.";
     case "FRESH":
+    case "PARTIAL":
+    case "STALE":
     default:
-      return "Price snapshot is current.";
+      return "";
   }
 }
 
@@ -655,7 +653,9 @@ export default function DashboardClient({
           )} min ago`;
   const refreshStatus = isRefreshing
     ? "Refreshing latest prices..."
-    : `${getPricingStatusLabel(pricingStatus)} ${refreshStatusDetail}`;
+    : [getPricingStatusLabel(pricingStatus), refreshStatusDetail]
+        .filter(Boolean)
+        .join(" ");
 
   const refreshToneClass = refreshError
     ? "is-error"

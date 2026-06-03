@@ -1,8 +1,10 @@
 import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CategoryResponse } from "@finhance/shared";
 import CategoriesPageClient from "@components/CategoriesPageClient";
+import { apiMutation } from "@lib/api";
 
 const refresh = vi.fn();
 
@@ -16,14 +18,25 @@ vi.mock("@components/Modal", () => ({
   default: ({
     open,
     children,
+    title,
   }: {
     open: boolean;
     children: React.ReactNode;
-  }) => (open ? <div>{children}</div> : null),
+    title: string;
+  }) =>
+    open ? (
+      <div role="dialog" aria-label={title}>
+        {children}
+      </div>
+    ) : null,
 }));
 
 vi.mock("@components/CategoryForm", () => ({
   default: () => <div>Category form</div>,
+}));
+
+vi.mock("@lib/api", () => ({
+  apiMutation: vi.fn(),
 }));
 
 function buildCategory(overrides: Partial<CategoryResponse>): CategoryResponse {
@@ -140,5 +153,47 @@ describe("CategoriesPageClient", () => {
         name: "Archive",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("uses the shared confirmation modal for permanent delete", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiMutation).mockResolvedValue(undefined);
+    const archivedCategory = buildCategory({
+      id: "secondary-archived",
+      name: "Archived",
+      parentCategoryId: "primary-food",
+      parentCategoryName: "Food",
+      isPrimary: false,
+      isSecondary: true,
+      archivedAt: "2026-05-20T10:00:00.000Z",
+    });
+
+    render(
+      <CategoriesPageClient categories={[...categories, archivedCategory]} />,
+    );
+
+    await user.click(screen.getByLabelText(/show archived/i));
+    await user.click(
+      screen.getByRole("button", { name: /Secondary categories/i }),
+    );
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete category",
+    });
+    expect(
+      within(dialog).getByText(/delete this archived category permanently/i),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Delete category" }),
+    );
+
+    expect(apiMutation).toHaveBeenCalledWith(
+      "/categories/secondary-archived/permanent",
+      {
+        method: "DELETE",
+      },
+    );
   });
 });

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -156,10 +156,6 @@ describe("AccountsPageClient", () => {
   beforeEach(() => {
     refreshMock.mockReset();
     mockedApiMutation.mockReset();
-    vi.stubGlobal(
-      "confirm",
-      vi.fn(() => true),
-    );
   });
 
   it("hides archived accounts by default and shows them when requested", async () => {
@@ -235,6 +231,13 @@ describe("AccountsPageClient", () => {
     await user.click(screen.getByRole("button", { name: "Unarchive" }));
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete account",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Delete account" }),
+    );
+
     await waitFor(() => {
       expect(mockedApiMutation).toHaveBeenCalledWith("/accounts/broker-1", {
         method: "DELETE",
@@ -248,9 +251,6 @@ describe("AccountsPageClient", () => {
         { method: "DELETE" },
       );
     });
-    expect(globalThis.confirm).toHaveBeenCalledWith(
-      "Delete this archived account permanently? This cannot be undone.",
-    );
     expect(refreshMock).toHaveBeenCalledTimes(3);
   });
 });
