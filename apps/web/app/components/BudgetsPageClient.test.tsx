@@ -170,6 +170,113 @@ const budgetViewWithWarning: MonthlyBudgetResponse = {
   ],
 };
 
+const budgetViewWithPrimaryBudget: MonthlyBudgetResponse = {
+  month: "2026-04",
+  includeArchivedCategories: false,
+  currencies: [
+    {
+      currency: "EUR",
+      budgetTotal: 200,
+      spentTotal: 180,
+      remainingTotal: 20,
+      overBudgetTotal: 0,
+      overBudgetCount: 0,
+      budgetedCategoryCount: 1,
+      unbudgetedExpenseTotal: 0,
+      uncategorizedExpenseTotal: 0,
+      items: [
+        {
+          budgetId: "budget-food",
+          categoryId: "category-food",
+          categoryName: "Food",
+          primaryCategoryId: "category-food",
+          primaryCategoryName: "Food",
+          secondaryCategoryId: null,
+          secondaryCategoryName: null,
+          categoryArchivedAt: null,
+          currency: "EUR",
+          budgetAmount: 200,
+          spentAmount: 180,
+          remainingAmount: 20,
+          usageRatio: 0.9,
+          status: "WITHIN_BUDGET",
+          previousMonthExpense: 170,
+          averageExpenseLast3Months: 165,
+          startMonth: "2026-01",
+          endMonth: null,
+          override: null,
+        },
+      ],
+      overBudgetHighlights: [],
+      unbudgetedCategories: [],
+    },
+  ],
+};
+
+const budgetViewWithPrimaryAndSecondaryBudgets: MonthlyBudgetResponse = {
+  month: "2026-04",
+  includeArchivedCategories: false,
+  currencies: [
+    {
+      currency: "EUR",
+      budgetTotal: 200,
+      spentTotal: 180,
+      remainingTotal: 20,
+      overBudgetTotal: 0,
+      overBudgetCount: 0,
+      budgetedCategoryCount: 2,
+      unbudgetedExpenseTotal: 0,
+      uncategorizedExpenseTotal: 0,
+      items: [
+        {
+          budgetId: "budget-food",
+          categoryId: "category-food",
+          categoryName: "Food",
+          primaryCategoryId: "category-food",
+          primaryCategoryName: "Food",
+          secondaryCategoryId: null,
+          secondaryCategoryName: null,
+          categoryArchivedAt: null,
+          currency: "EUR",
+          budgetAmount: 200,
+          spentAmount: 180,
+          remainingAmount: 20,
+          usageRatio: 0.9,
+          status: "WITHIN_BUDGET",
+          previousMonthExpense: 170,
+          averageExpenseLast3Months: 165,
+          startMonth: "2026-01",
+          endMonth: null,
+          override: null,
+        },
+        {
+          budgetId: "budget-groceries",
+          categoryId: "category-groceries",
+          categoryName: "Groceries",
+          primaryCategoryId: "category-food",
+          primaryCategoryName: "Food",
+          secondaryCategoryId: "category-groceries",
+          secondaryCategoryName: "Groceries",
+          categoryArchivedAt: null,
+          currency: "EUR",
+          budgetAmount: 120,
+          spentAmount: 110,
+          remainingAmount: 10,
+          usageRatio: 110 / 120,
+          status: "WITHIN_BUDGET",
+          previousMonthExpense: 95,
+          averageExpenseLast3Months: 100,
+          startMonth: "2026-01",
+          endMonth: null,
+          override: null,
+        },
+      ],
+      overBudgetHighlights: [],
+      unbudgetedCategories: [],
+    },
+  ],
+};
+
 const filters: BudgetFilters = {
   month: "2026-04",
   includeArchivedCategories: false,
@@ -250,6 +357,35 @@ describe("BudgetsPageClient", () => {
     ).toBeInTheDocument();
   });
 
+  it("lets the create-budget form select a primary expense category", async () => {
+    const user = userEvent.setup();
+    render(
+      <BudgetsPageClient
+        budgetView={budgetView}
+        categories={categories}
+        filters={filters}
+        budgetMonthPillLabel="April 2026"
+        workflowCards={workflowCards}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "New budget" }));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: /create budget/i,
+    });
+    const categorySelect = within(dialog).getByLabelText(/expense category/i);
+
+    expect(
+      within(categorySelect).getByRole("option", {
+        name: "Food (Expense, Primary)",
+      }),
+    ).toBeInTheDocument();
+
+    await user.selectOptions(categorySelect, "category-food");
+    expect(categorySelect).toHaveValue("category-food");
+  });
+
   it("treats unbudgeted spend as info instead of warning", () => {
     render(
       <BudgetsPageClient
@@ -313,6 +449,26 @@ describe("BudgetsPageClient", () => {
     expect(screen.getByText(/over-budget category/i)).toBeInTheDocument();
   });
 
+  it("shows both budgets in a group while keeping the primary budget first", () => {
+    render(
+      <BudgetsPageClient
+        budgetView={budgetViewWithPrimaryAndSecondaryBudgets}
+        categories={categories}
+        filters={filters}
+        budgetMonthPillLabel="April 2026"
+        workflowCards={workflowCards}
+      />,
+    );
+
+    expect(screen.getAllByText("2 budgets")).toHaveLength(2);
+
+    const headings = screen
+      .getAllByRole("heading", { level: 5 })
+      .map((heading) => heading.textContent);
+
+    expect(headings.slice(0, 2)).toEqual(["Food", "Groceries"]);
+  });
+
   it("opens the budget actions menu, renders the divider, and closes on action", async () => {
     const user = userEvent.setup();
     render(
@@ -346,6 +502,38 @@ describe("BudgetsPageClient", () => {
 
     await waitFor(() =>
       expect(screen.queryByRole("menu", { name: "Budget actions" })).toBeNull(),
+    );
+  });
+
+  it("links a primary budget back to transactions without forcing a secondary filter", async () => {
+    const user = userEvent.setup();
+    render(
+      <BudgetsPageClient
+        budgetView={budgetViewWithPrimaryBudget}
+        categories={categories}
+        filters={filters}
+        budgetMonthPillLabel="April 2026"
+        workflowCards={workflowCards}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Options" }));
+
+    const menu = screen.getByRole("menu", { name: "Budget actions" });
+    const transactionsLink = within(menu).getByRole("menuitem", {
+      name: "Transactions",
+    });
+
+    expect(transactionsLink).toHaveAttribute(
+      "href",
+      expect.stringContaining("primaryCategoryId=category-food"),
+    );
+    expect(transactionsLink).toHaveAttribute(
+      "href",
+      expect.stringContaining("kind=EXPENSE"),
+    );
+    expect(transactionsLink.getAttribute("href")).not.toContain(
+      "secondaryCategoryId=",
     );
   });
 });

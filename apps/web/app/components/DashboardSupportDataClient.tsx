@@ -124,7 +124,8 @@ export default function DashboardSupportDataClient({
                       {currency.currency}
                     </h4>
                     <span className="home-budget-count">
-                      {currency.budgetedCategoryCount} budgeted
+                      {currency.budgetedCategoryCount} budget
+                      {currency.budgetedCategoryCount === 1 ? "" : "s"}
                     </span>
                   </div>
 

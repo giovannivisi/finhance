@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
-import { Prisma, TransactionKind } from '@finhance/db';
+import { CategoryType, Prisma, TransactionKind } from '@finhance/db';
 import type {
   CategoryBudgetOverrideResponse,
   CategoryBudgetResponse,
@@ -14,7 +14,10 @@ import type {
   MonthlyBudgetUnbudgetedCategoryResponse,
 } from '@finhance/shared';
 import { CategoriesService } from '@transactions/categories.service';
-import { getCategoryHierarchyMetadata } from '@transactions/category-hierarchy';
+import {
+  getCategoryHierarchyMetadata,
+  type HierarchicalCategoryRecord,
+} from '@transactions/category-hierarchy';
 import {
   addMonthsToRomeMonth,
   diffRomeMonths,
@@ -64,6 +67,11 @@ interface HistoricalCategoryContext {
 
 interface MonthlyBudgetQueryOptions {
   includeArchivedCategories?: boolean;
+}
+
+interface BudgetSummaryGroup {
+  primary: MonthlyBudgetItemResponse | null;
+  secondaries: MonthlyBudgetItemResponse[];
 }
 
 @Injectable()
@@ -131,6 +139,10 @@ export class BudgetsService {
     const currentRows = expenseRows.filter(
       (row) => utcDateToRomeMonth(row.postedAt) === monthKey,
     );
+    const budgetCoverageByCategoryId = await this.buildBudgetCoverageByCategoryId(
+      ownerId,
+      activeBudgets.map((budget) => budget.category),
+    );
 
     const spendByKey = new Map<string, number>();
     const uncategorizedByCurrency = new Map<string, number>();
@@ -150,9 +162,18 @@ export class BudgetsService {
     }
 
     const budgetRowsByKey = new Map<string, CategoryBudgetModel>();
+    const coveredBudgetKeys = new Set<string>();
     for (const budget of activeBudgets) {
       const key = this.categoryCurrencyKey(budget.categoryId, budget.currency);
       const existing = budgetRowsByKey.get(key);
+      const coverageIds =
+        budgetCoverageByCategoryId.get(budget.categoryId) ?? [budget.categoryId];
+
+      for (const coverageId of coverageIds) {
+        coveredBudgetKeys.add(
+          this.categoryCurrencyKey(coverageId, budget.currency),
+        );
+      }
 
       if (!existing || existing.startMonth < budget.startMonth) {
         budgetRowsByKey.set(key, budget);
@@ -160,48 +181,57 @@ export class BudgetsService {
     }
 
     const itemBuckets = new Map<string, MonthlyBudgetItemResponse[]>();
-    const summaryTotals = new Map<
+    const summaryGroupsByCurrency = new Map<
       string,
-      Omit<
-        MonthlyBudgetCurrencySummaryResponse,
-        'items' | 'overBudgetHighlights' | 'unbudgetedCategories'
-      >
+      Map<string, BudgetSummaryGroup>
     >();
 
     for (const budget of [...budgetRowsByKey.values()].sort((left, right) =>
       this.compareBudgetRows(left, right),
     )) {
+      const coverageIds =
+        budgetCoverageByCategoryId.get(budget.categoryId) ?? [budget.categoryId];
       const budgetAmount =
         budget.overrides[0]?.amount.toNumber() ?? budget.amount.toNumber();
-      const spentAmount =
-        spendByKey.get(
-          this.categoryCurrencyKey(budget.categoryId, budget.currency),
-        ) ?? 0;
+      const spentAmount = coverageIds.reduce(
+        (sum, coverageId) =>
+          sum +
+          (spendByKey.get(
+            this.categoryCurrencyKey(coverageId, budget.currency),
+          ) ?? 0),
+        0,
+      );
       const item = this.createMonthlyBudgetItem(
         budget,
         budgetAmount,
         spentAmount,
-        historicalContext.get(
-          this.categoryCurrencyKey(budget.categoryId, budget.currency),
-        ) ?? null,
+        this.combineHistoricalContexts(
+          coverageIds.map((coverageId) =>
+            this.categoryCurrencyKey(coverageId, budget.currency),
+          ),
+          historicalContext,
+        ),
       );
       const bucket = itemBuckets.get(budget.currency) ?? [];
       bucket.push(item);
       itemBuckets.set(budget.currency, bucket);
 
-      const summary =
-        summaryTotals.get(budget.currency) ??
-        this.createEmptyCurrencyTotals(budget.currency);
-      summary.budgetTotal += item.budgetAmount;
-      summary.spentTotal += item.spentAmount;
-      summary.remainingTotal += item.remainingAmount;
-      summary.overBudgetTotal += Math.max(
-        0,
-        item.spentAmount - item.budgetAmount,
-      );
-      summary.overBudgetCount += item.status === 'OVER_BUDGET' ? 1 : 0;
-      summary.budgetedCategoryCount += 1;
-      summaryTotals.set(budget.currency, summary);
+      const summaryGroups =
+        summaryGroupsByCurrency.get(budget.currency) ?? new Map();
+      const groupKey = this.budgetGroupKey(item);
+      const group = summaryGroups.get(groupKey) ?? {
+        primary: null,
+        secondaries: [],
+      };
+
+      if (this.isPrimaryBudgetItem(item)) {
+        group.primary = item;
+      } else {
+        group.secondaries.push(item);
+      }
+
+      summaryGroups.set(groupKey, group);
+      summaryGroupsByCurrency.set(budget.currency, summaryGroups);
     }
 
     const unbudgetedCategoriesByCurrency = new Map<
@@ -215,7 +245,7 @@ export class BudgetsService {
       }
 
       const key = this.categoryCurrencyKey(row.categoryId, row.currency);
-      if (budgetRowsByKey.has(key)) {
+      if (coveredBudgetKeys.has(key)) {
         continue;
       }
 
@@ -257,10 +287,13 @@ export class BudgetsService {
       currencies: [...currencies]
         .sort((left, right) => left.localeCompare(right))
         .map((currency) => {
-          const items = (itemBuckets.get(currency) ?? []).sort((left, right) =>
-            left.categoryName.localeCompare(right.categoryName),
+          const items = itemBuckets.get(currency) ?? [];
+          const summaryOwnerItems = [
+            ...(summaryGroupsByCurrency.get(currency)?.values() ?? []),
+          ].flatMap((group) =>
+            group.primary ? [group.primary] : group.secondaries,
           );
-          const overBudgetHighlights = [...items]
+          const overBudgetHighlights = [...summaryOwnerItems]
             .filter((item) => item.status === 'OVER_BUDGET')
             .sort(
               (left, right) =>
@@ -272,9 +305,11 @@ export class BudgetsService {
           const unbudgetedCategories = (
             unbudgetedCategoriesByCurrency.get(currency) ?? []
           ).sort((left, right) => right.spentAmount - left.spentAmount);
-          const baseSummary =
-            summaryTotals.get(currency) ??
-            this.createEmptyCurrencyTotals(currency);
+          const baseSummary = this.summarizeCurrencyOwners(
+            currency,
+            summaryOwnerItems,
+            items.length,
+          );
 
           return {
             ...baseSummary,
@@ -309,7 +344,6 @@ export class BudgetsService {
           const currency = this.requireCurrency(dto.currency);
           const startMonth = this.requireMonthKey(dto.startMonth, 'startMonth');
           const endMonth = this.optionalMonthKey(dto.endMonth, 'endMonth');
-
           this.assertMonthRange(startMonth, endMonth, 'startMonth', 'endMonth');
           await this.assertNoOverlappingBudgets(
             {
@@ -649,14 +683,28 @@ export class BudgetsService {
     categoryId: string,
     options?: { requireActive?: boolean; currentCategoryId?: string },
   ) {
-    const category = await this.categoriesService.getAssignableCategory(
-      ownerId,
-      categoryId,
-      TransactionKind.EXPENSE,
-      options?.currentCategoryId,
-    );
+    let category: HierarchicalCategoryRecord;
 
-    if (options?.requireActive && category.archivedAt) {
+    try {
+      category = await this.categoriesService.findOne(ownerId, categoryId);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new BadRequestException(`Category ${categoryId} is invalid.`);
+      }
+
+      throw error;
+    }
+
+    if (category.type !== CategoryType.EXPENSE) {
+      throw new BadRequestException(
+        'Budgets can only be assigned to expense categories.',
+      );
+    }
+
+    if (
+      options?.requireActive &&
+      (category.archivedAt || category.parentCategory?.archivedAt)
+    ) {
       throw new BadRequestException(
         'Archived categories cannot receive new budgets.',
       );
@@ -799,13 +847,52 @@ export class BudgetsService {
     );
   }
 
+  private combineHistoricalContexts(
+    keys: string[],
+    historicalContext: Map<string, HistoricalCategoryContext>,
+  ): HistoricalCategoryContext | null {
+    let previousMonthExpense = 0;
+    let averageExpenseLast3Months = 0;
+    let hasPreviousMonthData = false;
+    let hasAverageData = false;
+
+    for (const key of keys) {
+      const entry = historicalContext.get(key);
+      if (!entry) {
+        continue;
+      }
+
+      if (entry.previousMonthExpense !== null) {
+        previousMonthExpense += entry.previousMonthExpense;
+        hasPreviousMonthData = true;
+      }
+
+      if (entry.averageExpenseLast3Months !== null) {
+        averageExpenseLast3Months += entry.averageExpenseLast3Months;
+        hasAverageData = true;
+      }
+    }
+
+    if (!hasPreviousMonthData && !hasAverageData) {
+      return null;
+    }
+
+    return {
+      previousMonthExpense: hasPreviousMonthData ? previousMonthExpense : null,
+      averageExpenseLast3Months: hasAverageData
+        ? averageExpenseLast3Months
+        : null,
+    };
+  }
+
   private createMonthlyBudgetItem(
     budget: CategoryBudgetModel,
     budgetAmount: number,
     spentAmount: number,
     historicalContext: HistoricalCategoryContext | null,
   ): MonthlyBudgetItemResponse {
-    const categoryHierarchy = getCategoryHierarchyMetadata(budget.category);
+    const categoryHierarchy =
+      this.getBudgetHierarchyMetadata(budget.category);
     const remainingAmount = budgetAmount - spentAmount;
     const usageRatio =
       budgetAmount > 0
@@ -872,6 +959,68 @@ export class BudgetsService {
       unbudgetedExpenseTotal: 0,
       uncategorizedExpenseTotal: 0,
     };
+  }
+
+  private summarizeCurrencyOwners(
+    currency: string,
+    ownerItems: MonthlyBudgetItemResponse[],
+    budgetedItemCount: number,
+  ): Omit<
+    MonthlyBudgetCurrencySummaryResponse,
+    'items' | 'overBudgetHighlights' | 'unbudgetedCategories'
+  > {
+    const summary = this.createEmptyCurrencyTotals(currency);
+    summary.budgetedCategoryCount = budgetedItemCount;
+
+    for (const item of ownerItems) {
+      summary.budgetTotal += item.budgetAmount;
+      summary.spentTotal += item.spentAmount;
+      summary.remainingTotal += item.remainingAmount;
+      summary.overBudgetTotal += Math.max(
+        0,
+        item.spentAmount - item.budgetAmount,
+      );
+      summary.overBudgetCount += item.status === 'OVER_BUDGET' ? 1 : 0;
+    }
+
+    return summary;
+  }
+
+  private getBudgetHierarchyMetadata(category: HierarchicalCategoryRecord) {
+    const categoryHierarchy = getCategoryHierarchyMetadata(category);
+
+    if (
+      category.type === CategoryType.EXPENSE &&
+      !category.parentCategoryId &&
+      !categoryHierarchy.primaryCategoryId
+    ) {
+      return {
+        primaryCategoryId: category.id,
+        primaryCategoryName: category.name,
+        secondaryCategoryId: null,
+        secondaryCategoryName: null,
+      };
+    }
+
+    return categoryHierarchy;
+  }
+
+  private budgetGroupKey(
+    item: Pick<MonthlyBudgetItemResponse, 'categoryId' | 'primaryCategoryId'>,
+  ): string {
+    return item.primaryCategoryId ?? item.categoryId;
+  }
+
+  private isPrimaryBudgetItem(
+    item: Pick<
+      MonthlyBudgetItemResponse,
+      'categoryId' | 'primaryCategoryId' | 'secondaryCategoryId'
+    >,
+  ): boolean {
+    return (
+      item.primaryCategoryId === item.categoryId &&
+      item.secondaryCategoryId === null
+    );
   }
 
   private compareBudgetRows(
@@ -1003,6 +1152,63 @@ export class BudgetsService {
 
   private toOptionalMonthKey(value: Date | null): string | null {
     return value ? this.toMonthKey(value) : null;
+  }
+
+  private async buildBudgetCoverageByCategoryId(
+    ownerId: string,
+    categories: HierarchicalCategoryRecord[],
+  ): Promise<Map<string, string[]>> {
+    const primaryIds = [
+      ...new Set(
+        categories
+          .filter((category) => this.isExpensePrimaryCategory(category))
+          .map((category) => category.id),
+      ),
+    ];
+    const secondaryRows =
+      primaryIds.length === 0
+        ? []
+        : await this.prisma.category.findMany({
+            where: {
+              userId: ownerId,
+              type: CategoryType.EXPENSE,
+              parentCategoryId: {
+                in: primaryIds,
+              },
+            },
+            select: {
+              id: true,
+              parentCategoryId: true,
+            },
+          });
+    const secondaryIdsByPrimary = new Map<string, string[]>();
+
+    for (const row of secondaryRows) {
+      if (!row.parentCategoryId) {
+        continue;
+      }
+
+      const bucket = secondaryIdsByPrimary.get(row.parentCategoryId) ?? [];
+      bucket.push(row.id);
+      secondaryIdsByPrimary.set(row.parentCategoryId, bucket);
+    }
+
+    return new Map(
+      categories.map((category) => [
+        category.id,
+        this.isExpensePrimaryCategory(category)
+          ? [category.id, ...(secondaryIdsByPrimary.get(category.id) ?? [])]
+          : [category.id],
+      ]),
+    );
+  }
+
+  private isExpensePrimaryCategory(
+    category: Pick<HierarchicalCategoryRecord, 'type' | 'parentCategoryId'>,
+  ): boolean {
+    return (
+      category.type === CategoryType.EXPENSE && category.parentCategoryId === null
+    );
   }
 
   private categoryCurrencyKey(categoryId: string, currency: string): string {
