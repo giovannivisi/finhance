@@ -65,6 +65,26 @@ describe("Sidebar", () => {
     expect(pushMock).toHaveBeenCalledWith("/analytics");
   });
 
+  it("clears a completed pending route so returning via a normal link is not blocked", async () => {
+    const user = userEvent.setup();
+    usePathnameMock.mockReturnValue("/analytics");
+    const { rerender } = render(<Sidebar />);
+
+    await user.click(screen.getByRole("link", { name: "Dashboard" }));
+
+    expect(pushMock).toHaveBeenNthCalledWith(1, "/dashboard");
+
+    usePathnameMock.mockReturnValue("/dashboard");
+    rerender(<Sidebar />);
+
+    usePathnameMock.mockReturnValue("/categories");
+    rerender(<Sidebar />);
+
+    await user.click(screen.getByRole("link", { name: "Dashboard" }));
+
+    expect(pushMock).toHaveBeenNthCalledWith(2, "/dashboard");
+  });
+
   it("prefetches selected routes on hover intent", async () => {
     const user = userEvent.setup();
     render(<Sidebar />);

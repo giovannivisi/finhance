@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  useEffect,
   type MouseEvent as ReactMouseEvent,
   useCallback,
   useState,
@@ -81,6 +82,12 @@ export default function Sidebar() {
   const currentPath = pathname ?? "/";
   const activePendingPath =
     pendingPath && !isActivePath(currentPath, pendingPath) ? pendingPath : null;
+
+  useEffect(() => {
+    if (pendingPath && isActivePath(currentPath, pendingPath)) {
+      setPendingPath(null);
+    }
+  }, [currentPath, pendingPath]);
 
   const handleNavigate = useCallback(
     (nextPath: string) => {

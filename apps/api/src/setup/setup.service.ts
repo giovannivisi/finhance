@@ -88,6 +88,10 @@ export class SetupService {
     const activeExpenseCategoryCount = activeCategories.filter(
       (category) => category.type === CategoryType.EXPENSE,
     ).length;
+    const categoryStep = this.buildCategoryStep(
+      activeIncomeCategoryCount,
+      activeExpenseCategoryCount,
+    );
 
     const requiredSteps: SetupStepResponse[] = [
       {
@@ -115,20 +119,11 @@ export class SetupService {
       },
       {
         code: 'CATEGORIES',
-        title: 'Set up income and expense categories',
-        detail:
-          activeIncomeCategoryCount > 0 && activeExpenseCategoryCount > 0
-            ? `${activeIncomeCategoryCount} income and ${activeExpenseCategoryCount} expense categories ready.`
-            : 'Create at least one income category and one expense category so review, analytics, and budgets can work.',
-        status:
-          activeIncomeCategoryCount > 0 && activeExpenseCategoryCount > 0
-            ? 'COMPLETE'
-            : 'INCOMPLETE',
+        title: categoryStep.title,
+        detail: categoryStep.detail,
+        status: categoryStep.status,
         href: '/categories',
-        actionLabel:
-          activeIncomeCategoryCount > 0 && activeExpenseCategoryCount > 0
-            ? 'Open categories'
-            : 'Add categories',
+        actionLabel: categoryStep.actionLabel,
       },
     ];
 
@@ -187,6 +182,46 @@ export class SetupService {
       hasAppliedImportBatch: appliedImportCount > 0,
       hasSnapshot: latestSnapshot !== null,
       hasReportingCurrencyConfigured,
+    };
+  }
+
+  private buildCategoryStep(
+    activeIncomeCategoryCount: number,
+    activeExpenseCategoryCount: number,
+  ): Pick<SetupStepResponse, 'title' | 'detail' | 'status' | 'actionLabel'> {
+    if (activeIncomeCategoryCount > 0 && activeExpenseCategoryCount > 0) {
+      return {
+        title: 'Set up income and expense categories',
+        detail: `${activeIncomeCategoryCount} income and ${activeExpenseCategoryCount} expense categories ready.`,
+        status: 'COMPLETE',
+        actionLabel: 'Open categories',
+      };
+    }
+
+    if (activeIncomeCategoryCount === 0 && activeExpenseCategoryCount > 0) {
+      return {
+        title: 'Add at least one income category',
+        detail: `${activeExpenseCategoryCount} expense categor${activeExpenseCategoryCount === 1 ? 'y is' : 'ies are'} already available. Add an income category so inflows can be classified cleanly in review and analytics.`,
+        status: 'INCOMPLETE',
+        actionLabel: 'Add income category',
+      };
+    }
+
+    if (activeIncomeCategoryCount > 0 && activeExpenseCategoryCount === 0) {
+      return {
+        title: 'Add at least one expense category',
+        detail: `${activeIncomeCategoryCount} income categor${activeIncomeCategoryCount === 1 ? 'y is' : 'ies are'} already available. Add an expense category so spending, budgets, and monthly review can work.`,
+        status: 'INCOMPLETE',
+        actionLabel: 'Add expense category',
+      };
+    }
+
+    return {
+      title: 'Set up income and expense categories',
+      detail:
+        'Create at least one income category and one expense category so review, analytics, and budgets can work.',
+      status: 'INCOMPLETE',
+      actionLabel: 'Add categories',
     };
   }
 

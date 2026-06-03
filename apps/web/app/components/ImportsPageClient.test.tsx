@@ -14,6 +14,13 @@ import type {
   ImportPreviewResponse,
 } from "@finhance/shared";
 
+const refreshMock = vi.fn();
+const reloadMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: refreshMock }),
+}));
+
 vi.mock("next/link", () => ({
   default: ({
     children,
@@ -30,6 +37,13 @@ vi.mock("@lib/api", () => ({
   apiMutation: vi.fn(),
   fetchApiMutation: vi.fn(),
   readApiError: vi.fn(),
+}));
+
+vi.mock("@lib/page-reload", () => ({
+  reloadPage: () => {
+    reloadMock();
+    return true;
+  },
 }));
 
 const mockedApiMutation = vi.mocked(apiMutation);
@@ -90,6 +104,8 @@ function renderPage() {
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
+  refreshMock.mockReset();
+  reloadMock.mockReset();
 });
 
 describe("ImportsPageClient", () => {
@@ -411,5 +427,52 @@ describe("ImportsPageClient", () => {
 
     URL.createObjectURL = originalCreateObjectUrl;
     URL.revokeObjectURL = originalRevokeObjectUrl;
+  });
+
+  it("refreshes the app router after a successful apply", async () => {
+    mockedApiMutation
+      .mockResolvedValueOnce(buildPreviewResponse())
+      .mockResolvedValueOnce(
+        buildPreviewResponse({
+          status: "APPLIED",
+          canApply: false,
+          appliedAt: "2026-05-14T17:19:00.000Z",
+        }),
+      );
+
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText("Import CSV files"), {
+      target: {
+        files: [
+          csvFile(
+            "transactions.csv",
+            "importKey,postedAt,kind,amount,description,notes,accountImportKey,direction,categoryImportKey,counterparty,sourceAccountImportKey,destinationAccountImportKey\n",
+          ),
+        ],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
+
+    await waitFor(() =>
+      expect(mockedApiMutation).toHaveBeenNthCalledWith(
+        1,
+        "/imports/csv/preview",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply changes" }));
+
+    await waitFor(() =>
+      expect(mockedApiMutation).toHaveBeenNthCalledWith(
+        2,
+        "/imports/batch-1/apply",
+        { method: "POST" },
+      ),
+    );
+
+    expect(reloadMock).toHaveBeenCalledTimes(1);
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 });

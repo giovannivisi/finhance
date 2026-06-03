@@ -176,6 +176,12 @@ export default function TabBar() {
   );
 
   useEffect(() => {
+    if (pendingPath && isActivePath(currentPath, pendingPath)) {
+      setPendingPath(null);
+    }
+  }, [currentPath, pendingPath]);
+
+  useEffect(() => {
     if (!showMore) {
       return;
     }
