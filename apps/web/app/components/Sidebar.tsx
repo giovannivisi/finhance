@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import {
-  useEffect,
   type MouseEvent as ReactMouseEvent,
   useCallback,
   useState,
@@ -17,6 +16,11 @@ import {
 } from "@lib/navigation";
 import { recordNavigationPrefetch } from "@lib/navigation-prefetch";
 import { startNavigationProgress } from "@lib/navigation-progress";
+
+interface PendingNavigationState {
+  originPath: string;
+  targetPath: string;
+}
 
 function DesktopNavLink({
   item,
@@ -78,16 +82,13 @@ function DesktopNavLink({
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] =
+    useState<PendingNavigationState | null>(null);
   const currentPath = pathname ?? "/";
   const activePendingPath =
-    pendingPath && !isActivePath(currentPath, pendingPath) ? pendingPath : null;
-
-  useEffect(() => {
-    if (pendingPath && isActivePath(currentPath, pendingPath)) {
-      setPendingPath(null);
-    }
-  }, [currentPath, pendingPath]);
+    pendingNavigation?.originPath === currentPath
+      ? pendingNavigation.targetPath
+      : null;
 
   const handleNavigate = useCallback(
     (nextPath: string) => {
@@ -101,7 +102,10 @@ export default function Sidebar() {
         return;
       }
 
-      setPendingPath(nextPath);
+      setPendingNavigation({
+        originPath: currentPath,
+        targetPath: nextPath,
+      });
       startNavigationProgress(nextPath);
       router.push(nextPath);
     },

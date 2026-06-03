@@ -161,6 +161,10 @@ const initialFilters: ActivityFilters = {
   includeArchivedAccounts: false,
 };
 
+const defaultFilters: ActivityFilters = {
+  ...initialFilters,
+};
+
 const baseCashflow: CashflowSummaryResponse = [
   {
     currency: "EUR",
@@ -207,6 +211,8 @@ function renderPage(
   cashflow = baseCashflow,
   entries: TransactionResponse[] = transactions,
   showTransactionTimes = true,
+  filters = initialFilters,
+  clearedFilters = defaultFilters,
 ) {
   return render(
     <TransactionsPageClient
@@ -215,7 +221,8 @@ function renderPage(
       accounts={accounts}
       categories={categories}
       expenseValidationRules={rules}
-      initialFilters={initialFilters}
+      initialFilters={filters}
+      defaultFilters={clearedFilters}
       initialHasPendingSync={false}
       showTransactionTimes={showTransactionTimes}
     />,
@@ -282,6 +289,31 @@ describe("TransactionsPageClient cashflow drill-down", () => {
 
     expect(push).toHaveBeenCalledWith(
       "/transactions?from=2026-05-01&to=2026-05-31&primaryCategoryId=primary-food",
+    );
+  });
+
+  it("clears filters back to the server-provided default month", () => {
+    renderPage(
+      baseCashflow,
+      transactions,
+      true,
+      {
+        ...initialFilters,
+        from: "2026-06-01",
+        to: "2026-06-30",
+        accountId: "account-main",
+      },
+      {
+        ...defaultFilters,
+        from: "2026-05-01",
+        to: "2026-05-31",
+      },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+
+    expect(push).toHaveBeenCalledWith(
+      "/transactions?from=2026-05-01&to=2026-05-31",
     );
   });
 

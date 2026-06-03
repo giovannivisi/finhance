@@ -1,10 +1,15 @@
 import type {
   RecurringPendingStatusResponse,
+  TransactionResponse,
   TransactionsPageDataResponse,
 } from "@finhance/shared";
 import Container from "@components/Container";
 import TransactionsPageClient from "@components/TransactionsPageClient";
-import { getDefaultActivityFilters, type ActivityFilters } from "@lib/activity";
+import {
+  getDefaultActivityFilters,
+  getLatestAvailableMonthActivityFilters,
+  type ActivityFilters,
+} from "@lib/activity";
 import { api } from "@lib/server-api";
 import { getUserSettingsOrDefaults } from "@lib/server-user-settings";
 
@@ -62,7 +67,24 @@ export default async function TransactionsPage({
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const hasExplicitFilters = Object.keys(resolvedSearchParams).length > 0;
-  const defaultFilters = getDefaultActivityFilters();
+  let defaultFilters = getDefaultActivityFilters();
+
+  if (!hasExplicitFilters) {
+    try {
+      const [latestTransaction] = await api<TransactionResponse[]>(
+        "/transactions?limit=1",
+      );
+
+      if (latestTransaction) {
+        defaultFilters = getLatestAvailableMonthActivityFilters(
+          new Date(latestTransaction.postedAt),
+        );
+      }
+    } catch {
+      defaultFilters = getDefaultActivityFilters();
+    }
+  }
+
   const filters: ActivityFilters = hasExplicitFilters
     ? {
         from: getSingleValue(resolvedSearchParams.from),
@@ -134,6 +156,7 @@ export default async function TransactionsPage({
           categories={pageData.categories}
           expenseValidationRules={pageData.expenseValidationRules}
           initialFilters={filters}
+          defaultFilters={defaultFilters}
           initialHasPendingSync={hasPendingSync}
           showTransactionTimes={showTransactionTimes}
         />
