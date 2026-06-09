@@ -1,6 +1,7 @@
 import { auth } from "@lib/auth";
 import {
   buildUpstreamRequest,
+  resolveCrossOriginRejection,
   stripForwardedHeaders,
   toUpstreamResponse,
 } from "@lib/api-proxy";
@@ -55,6 +56,12 @@ async function forwardRequest(
         { message: localRequestRejection.message },
         { status: localRequestRejection.status },
       );
+    }
+
+    const crossOriginRejection = resolveCrossOriginRejection(request);
+
+    if (crossOriginRejection) {
+      return crossOriginRejection;
     }
 
     const params = await context.params;

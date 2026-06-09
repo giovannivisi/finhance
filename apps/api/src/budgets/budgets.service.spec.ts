@@ -10,7 +10,9 @@ import { BudgetsService } from '@budgets/budgets.service';
 const OWNER_ID = 'local-dev';
 const NOW = new Date('2026-04-23T10:00:00.000Z');
 
-function createPrimaryCategory(overrides: Partial<Record<string, unknown>> = {}) {
+function createPrimaryCategory(
+  overrides: Partial<Record<string, unknown>> = {},
+) {
   return {
     id: 'category-primary',
     userId: OWNER_ID,
@@ -58,8 +60,7 @@ function createBudget(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'budget-1',
     userId: OWNER_ID,
-    categoryId:
-      (overrides.categoryId as string | undefined) ?? (category.id as string),
+    categoryId: (overrides.categoryId as string | undefined) ?? category.id,
     currency: 'EUR',
     amount: new Prisma.Decimal('100'),
     startMonth: new Date('2026-04-01T00:00:00.000Z'),
@@ -95,7 +96,7 @@ function createExpenseRow(overrides: Partial<Record<string, unknown>> = {}) {
   const categoryId =
     overrides.categoryId !== undefined
       ? (overrides.categoryId as string | null)
-      : category?.id ?? null;
+      : (category?.id ?? null);
 
   return {
     id: 'transaction-1',
@@ -263,13 +264,14 @@ describe('BudgetsService', () => {
     });
 
     expect(created.categoryId).toBe('category-primary');
-    expect(prisma.categoryBudget.findFirst).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        userId: OWNER_ID,
-        categoryId: 'category-primary',
-        currency: 'EUR',
-      }),
-    });
+    const callArg = (
+      prisma.categoryBudget.findFirst.mock.calls[0] as [
+        { where: { userId: string; categoryId: string; currency: string } },
+      ]
+    )[0];
+    expect(callArg.where.userId).toBe(OWNER_ID);
+    expect(callArg.where.categoryId).toBe('category-primary');
+    expect(callArg.where.currency).toBe('EUR');
   });
 
   it('builds monthly budgets with overrides, unbudgeted expense, and uncategorized expense kept separate', async () => {

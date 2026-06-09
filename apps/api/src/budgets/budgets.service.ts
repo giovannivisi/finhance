@@ -139,10 +139,11 @@ export class BudgetsService {
     const currentRows = expenseRows.filter(
       (row) => utcDateToRomeMonth(row.postedAt) === monthKey,
     );
-    const budgetCoverageByCategoryId = await this.buildBudgetCoverageByCategoryId(
-      ownerId,
-      activeBudgets.map((budget) => budget.category),
-    );
+    const budgetCoverageByCategoryId =
+      await this.buildBudgetCoverageByCategoryId(
+        ownerId,
+        activeBudgets.map((budget) => budget.category),
+      );
 
     const spendByKey = new Map<string, number>();
     const uncategorizedByCurrency = new Map<string, number>();
@@ -166,8 +167,9 @@ export class BudgetsService {
     for (const budget of activeBudgets) {
       const key = this.categoryCurrencyKey(budget.categoryId, budget.currency);
       const existing = budgetRowsByKey.get(key);
-      const coverageIds =
-        budgetCoverageByCategoryId.get(budget.categoryId) ?? [budget.categoryId];
+      const coverageIds = budgetCoverageByCategoryId.get(budget.categoryId) ?? [
+        budget.categoryId,
+      ];
 
       for (const coverageId of coverageIds) {
         coveredBudgetKeys.add(
@@ -189,8 +191,9 @@ export class BudgetsService {
     for (const budget of [...budgetRowsByKey.values()].sort((left, right) =>
       this.compareBudgetRows(left, right),
     )) {
-      const coverageIds =
-        budgetCoverageByCategoryId.get(budget.categoryId) ?? [budget.categoryId];
+      const coverageIds = budgetCoverageByCategoryId.get(budget.categoryId) ?? [
+        budget.categoryId,
+      ];
       const budgetAmount =
         budget.overrides[0]?.amount.toNumber() ?? budget.amount.toNumber();
       const spentAmount = coverageIds.reduce(
@@ -216,10 +219,11 @@ export class BudgetsService {
       bucket.push(item);
       itemBuckets.set(budget.currency, bucket);
 
-      const summaryGroups =
-        summaryGroupsByCurrency.get(budget.currency) ?? new Map();
+      const summaryGroups: Map<string, BudgetSummaryGroup> =
+        summaryGroupsByCurrency.get(budget.currency) ??
+        new Map<string, BudgetSummaryGroup>();
       const groupKey = this.budgetGroupKey(item);
-      const group = summaryGroups.get(groupKey) ?? {
+      const group: BudgetSummaryGroup = summaryGroups.get(groupKey) ?? {
         primary: null,
         secondaries: [],
       };
@@ -891,8 +895,7 @@ export class BudgetsService {
     spentAmount: number,
     historicalContext: HistoricalCategoryContext | null,
   ): MonthlyBudgetItemResponse {
-    const categoryHierarchy =
-      this.getBudgetHierarchyMetadata(budget.category);
+    const categoryHierarchy = this.getBudgetHierarchyMetadata(budget.category);
     const remainingAmount = budgetAmount - spentAmount;
     const usageRatio =
       budgetAmount > 0
@@ -1207,7 +1210,8 @@ export class BudgetsService {
     category: Pick<HierarchicalCategoryRecord, 'type' | 'parentCategoryId'>,
   ): boolean {
     return (
-      category.type === CategoryType.EXPENSE && category.parentCategoryId === null
+      category.type === CategoryType.EXPENSE &&
+      category.parentCategoryId === null
     );
   }
 

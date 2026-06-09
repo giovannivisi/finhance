@@ -2,6 +2,55 @@ function hasRequestBody(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
 }
 
+function resolveAllowedRequestOrigins(request: Request): Set<string> {
+  const origins = new Set<string>();
+
+  try {
+    origins.add(new URL(request.url).origin.toLowerCase());
+  } catch {
+    // An unparsable request URL contributes no allowed origin.
+  }
+
+  const forwardedHost = request.headers
+    .get("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+
+  if (forwardedHost) {
+    const forwardedProto =
+      request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+      "https";
+    origins.add(`${forwardedProto}://${forwardedHost}`);
+  }
+
+  return origins;
+}
+
+export function resolveCrossOriginRejection(request: Request): Response | null {
+  if (!hasRequestBody(request.method)) {
+    return null;
+  }
+
+  // Non-browser clients send no Origin header; SameSite=Lax session cookies
+  // remain the primary CSRF defence. This check only has to fail closed for
+  // browser-issued cross-site requests, which always carry Origin.
+  const origin = request.headers.get("origin")?.trim().toLowerCase();
+
+  if (!origin) {
+    return null;
+  }
+
+  if (resolveAllowedRequestOrigins(request).has(origin)) {
+    return null;
+  }
+
+  return Response.json(
+    { message: "Cross-origin requests are not allowed." },
+    { status: 403 },
+  );
+}
+
 export function stripForwardedHeaders(
   headers: Headers,
   options?: { stripBrowserContext?: boolean },

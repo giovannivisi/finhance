@@ -216,8 +216,7 @@ describe('Setup routes (e2e)', () => {
           actionLabel: 'Add income category',
         });
         expect(
-          body.requiredSteps.find((step) => step.code === 'CATEGORIES')
-            ?.detail,
+          body.requiredSteps.find((step) => step.code === 'CATEGORIES')?.detail,
         ).toContain('expense category is already available');
       });
   });

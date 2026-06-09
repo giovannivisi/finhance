@@ -669,9 +669,9 @@ describe('ImportsService', () => {
 
     const createdCategories: Array<Record<string, unknown>> = [];
     let createdCategoryCount = 0;
-    prisma.category.findMany.mockImplementation(async () => createdCategories);
+    prisma.category.findMany.mockImplementation(() => createdCategories);
     prisma.category.create.mockImplementation(
-      async ({ data }: { data: Record<string, unknown> }) => {
+      ({ data }: { data: Record<string, unknown> }) => {
         createdCategoryCount += 1;
         const created = createImportedCategory({
           id: `category-${createdCategoryCount}`,
@@ -689,10 +689,10 @@ describe('ImportsService', () => {
 
     const createdExpenseValidationRules: Array<Record<string, unknown>> = [];
     prisma.expenseValidationRule.findMany.mockImplementation(
-      async () => createdExpenseValidationRules,
+      () => createdExpenseValidationRules,
     );
     prisma.expenseValidationRule.create.mockImplementation(
-      async ({ data }: { data: Record<string, unknown> }) => {
+      ({ data }: { data: Record<string, unknown> }) => {
         const created = createImportedExpenseValidationRule({
           id: `expense-validation-rule-${createdExpenseValidationRules.length + 1}`,
           entry: data.entry,
@@ -705,7 +705,7 @@ describe('ImportsService', () => {
     );
 
     prisma.transaction.create.mockImplementation(
-      async ({ data }: { data: Record<string, unknown> }) =>
+      ({ data }: { data: Record<string, unknown> }) =>
         createImportedTransaction({
           id: 'transaction-groceries',
           importKey: data.importKey,
