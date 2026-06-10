@@ -36,6 +36,11 @@ export function normalizeServerUrl(raw: string): string | null {
   }
 
   if (!/^https?:\/\//i.test(candidate)) {
+    if (candidate.includes("://")) {
+      // A non-HTTP scheme was given explicitly; don't silently rewrite it.
+      return null;
+    }
+
     candidate = `http://${candidate}`;
   }
 

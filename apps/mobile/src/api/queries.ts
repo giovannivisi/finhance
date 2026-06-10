@@ -91,6 +91,31 @@ export function useCategories(includeArchived = false) {
   });
 }
 
+export function useAccountsList(includeArchived = false) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["accounts", "list", includeArchived] as const,
+    queryFn: () => api.accounts.list(client, includeArchived),
+  });
+}
+
+export function useTransaction(id: string | null) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.transaction(id ?? "none"),
+    queryFn: () => api.transactions.get(client, id ?? ""),
+    enabled: Boolean(id),
+  });
+}
+
+export function useExpenseValidationRules() {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["expense-validation"] as const,
+    queryFn: () => api.expenseValidation.list(client),
+  });
+}
+
 export function useTransactionsPage(filters: TransactionFilters) {
   const client = useApiClient();
   return useQuery({
@@ -140,11 +165,12 @@ export function useRecurringRules() {
   });
 }
 
-export function useRecurringRule(id: string) {
+export function useRecurringRule(id: string | null) {
   const client = useApiClient();
   return useQuery({
-    queryKey: queryKeys.recurringRule(id),
-    queryFn: () => api.recurring.get(client, id),
+    queryKey: queryKeys.recurringRule(id ?? "none"),
+    queryFn: () => api.recurring.get(client, id ?? ""),
+    enabled: Boolean(id),
   });
 }
 

@@ -17,6 +17,7 @@ import type {
   CreateCategoryBudgetRequest,
   DashboardPageDataResponse,
   DashboardResponse,
+  ExpenseValidationRuleResponse,
   MaterializeRecurringRulesResponse,
   MonthlyBudgetResponse,
   MonthlyCashflowResponse,
@@ -384,6 +385,11 @@ export const api = {
         `/brokerage/${accountId}/fee`,
         mutation("POST", body),
       ),
+  },
+
+  expenseValidation: {
+    list: (client: ApiClient) =>
+      client.request<ExpenseValidationRuleResponse[]>("/expense-validation"),
   },
 
   user: {

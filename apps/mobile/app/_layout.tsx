@@ -6,11 +6,11 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo } from "react";
 import { View } from "react-native";
 
 import { ApiError } from "@/api/client";
@@ -38,29 +38,6 @@ function createQueryClient(): QueryClient {
   });
 }
 
-/** Redirects to the connect screen until a server is configured. */
-function ConnectionGate({ children }: { children: ReactNode }) {
-  const { serverUrl, isHydrated } = useServerConnection();
-  const segments = useSegments();
-  const router = useRouter();
-
-  const onConnectScreen = segments[0] === "connect";
-
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
-    if (!serverUrl && !onConnectScreen) {
-      router.replace("/connect");
-    } else if (serverUrl && onConnectScreen) {
-      router.replace("/");
-    }
-  }, [isHydrated, serverUrl, onConnectScreen, router]);
-
-  return <>{children}</>;
-}
-
 function ThemedApp() {
   const { colors, scheme } = useTheme();
   const { serverUrl, isHydrated } = useServerConnection();
@@ -82,19 +59,26 @@ function ThemedApp() {
     }
   }, [isHydrated]);
 
+  // Keep the splash up until we know whether a server is configured; screens
+  // assume a connected API client once they mount.
+  if (!isHydrated) {
+    return null;
+  }
+
+  const connected = Boolean(serverUrl);
+
   return (
     <QueryClientProvider client={queryClient}>
-      <ConnectionGate>
-        <View style={{ flex: 1, backgroundColor: colors.bgApp }}>
-          <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.bgApp },
-            }}
-          >
+      <View style={{ flex: 1, backgroundColor: colors.bgApp }}>
+        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.bgApp },
+          }}
+        >
+          <Stack.Protected guard={connected}>
             <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="connect" options={{ gestureEnabled: false }} />
             <Stack.Screen
               name="transactions/upsert"
               options={{ presentation: "modal" }}
@@ -119,9 +103,12 @@ function ThemedApp() {
               name="categories/upsert"
               options={{ presentation: "modal" }}
             />
-          </Stack>
-        </View>
-      </ConnectionGate>
+          </Stack.Protected>
+          <Stack.Protected guard={!connected}>
+            <Stack.Screen name="connect" options={{ gestureEnabled: false }} />
+          </Stack.Protected>
+        </Stack>
+      </View>
     </QueryClientProvider>
   );
 }

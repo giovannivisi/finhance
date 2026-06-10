@@ -44,9 +44,25 @@ export function ServerConnectionProvider({
 
     AsyncStorage.getItem(SERVER_URL_KEY)
       .then((stored) => {
-        if (!cancelled) {
-          setServerUrl(stored ?? "");
+        if (cancelled) {
+          return;
         }
+
+        // Developer convenience: pre-connect simulators/dev builds to a known
+        // server (e.g. the mock API) without typing the URL each install.
+        const defaultUrl = normalizeServerUrl(
+          process.env.EXPO_PUBLIC_DEFAULT_SERVER_URL ?? "",
+        );
+
+        if (!stored && defaultUrl && __DEV__) {
+          AsyncStorage.setItem(SERVER_URL_KEY, defaultUrl).catch(
+            () => undefined,
+          );
+          setServerUrl(defaultUrl);
+          return;
+        }
+
+        setServerUrl(stored ?? "");
       })
       .catch(() => {
         if (!cancelled) {

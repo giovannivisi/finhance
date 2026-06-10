@@ -97,28 +97,46 @@ export function formatSignedMoney(
  * a decimal part.
  */
 export function parseAmountInput(raw: string): number | null {
-  const trimmed = raw.trim();
+  const compact = raw.trim().replace(/\s+/g, "");
 
-  if (!trimmed) {
+  if (!compact) {
     return null;
   }
 
-  let normalized = trimmed.replace(/\s+/g, "");
+  let normalized: string;
 
-  const lastComma = normalized.lastIndexOf(",");
-  const lastDot = normalized.lastIndexOf(".");
-
-  if (lastComma > -1 && lastDot > -1) {
-    if (lastComma > lastDot) {
-      normalized = normalized.replace(/\./g, "").replace(",", ".");
+  if (compact.includes(",") && compact.includes(".")) {
+    // Mixed separators: the rightmost one is the decimal mark, the other must
+    // form valid groups of three.
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(compact)) {
+      normalized = compact.replace(/\./g, "").replace(",", ".");
+    } else if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(compact)) {
+      normalized = compact.replace(/,/g, "");
     } else {
-      normalized = normalized.replace(/,/g, "");
+      return null;
     }
-  } else if (lastComma > -1) {
-    normalized = normalized.replace(",", ".");
+  } else if (compact.includes(",")) {
+    if (/^-?\d{1,3}(,\d{3})+$/.test(compact)) {
+      normalized = compact.replace(/,/g, "");
+    } else if (/^-?\d*,\d*$/.test(compact)) {
+      normalized = compact.replace(",", ".");
+    } else {
+      return null;
+    }
+  } else if (compact.includes(".")) {
+    if (/^-?\d{1,3}(\.\d{3}){2,}$/.test(compact)) {
+      // Repeated dot groups can only be thousands separators.
+      normalized = compact.replace(/\./g, "");
+    } else if (/^-?\d*\.\d*$/.test(compact)) {
+      normalized = compact;
+    } else {
+      return null;
+    }
+  } else {
+    normalized = compact;
   }
 
-  if (!/^-?\d*(\.\d*)?$/.test(normalized)) {
+  if (!/^-?\d+(\.\d+)?$/.test(normalized) && !/^-?\d+\.$/.test(normalized)) {
     return null;
   }
 

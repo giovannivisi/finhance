@@ -1,9 +1,511 @@
-import { Screen, AppText } from "@/components/ui";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useMemo } from "react";
+import { View } from "react-native";
+import type { DashboardAssetResponse } from "@finhance/shared";
+
+import { useDashboard, useRefreshAssets } from "@/api/queries";
+import {
+  AppText,
+  Card,
+  Chip,
+  Divider,
+  ErrorState,
+  IconButton,
+  ListRow,
+  MoneyText,
+  ProgressBar,
+  Screen,
+  Section,
+  SkeletonCard,
+  Stat,
+} from "@/components/ui";
+import {
+  deriveDashboardHoldings,
+  holdingValue,
+} from "@/features/dashboard/derive";
+import { formatTimestampLabel, localDateOf } from "@/lib/dates";
+import { formatMoney } from "@/lib/money";
+import { spacing, useTheme } from "@/theme";
+
+function PricingStatusChip({
+  state,
+}: {
+  state: "FRESH" | "STALE" | "PARTIAL";
+}) {
+  if (state === "FRESH") {
+    return <Chip label="Prices fresh" tone="success" />;
+  }
+
+  if (state === "PARTIAL") {
+    return <Chip label="Prices partial" tone="warning" />;
+  }
+
+  return <Chip label="Prices stale" tone="warning" />;
+}
+
+function HoldingRow({
+  asset,
+  reportingCurrency,
+  onPress,
+  showDivider,
+}: {
+  asset: DashboardAssetResponse;
+  reportingCurrency: string;
+  onPress: () => void;
+  showDivider: boolean;
+}) {
+  const { hideMoney } = useTheme();
+  const value = holdingValue(asset);
+  const isLiability = asset.type === "LIABILITY";
+  const nativeDiffers =
+    asset.currency.toUpperCase() !== reportingCurrency.toUpperCase();
+
+  const subtitleParts: string[] = [];
+
+  if (asset.accountName) {
+    subtitleParts.push(asset.accountName);
+  }
+
+  if (asset.ticker) {
+    subtitleParts.push(asset.ticker);
+  }
+
+  if (nativeDiffers) {
+    subtitleParts.push(
+      formatMoney(asset.balance, asset.currency, { hide: hideMoney }),
+    );
+  }
+
+  return (
+    <ListRow
+      title={asset.name}
+      subtitle={subtitleParts.join(" • ") || null}
+      onPress={onPress}
+      showDivider={showDivider}
+      right={
+        <View style={{ alignItems: "flex-end", gap: 2 }}>
+          {value === null ? (
+            <AppText variant="bodyMedium" tone="tertiary">
+              —
+            </AppText>
+          ) : (
+            <MoneyText
+              amount={isLiability ? -value : value}
+              currency={reportingCurrency}
+              variant="bodyMedium"
+              tone={isLiability ? "expense" : "primary"}
+            />
+          )}
+          {asset.isStale ? (
+            <AppText variant="caption" tone="warning">
+              stale
+            </AppText>
+          ) : null}
+        </View>
+      }
+    />
+  );
+}
 
 export default function DashboardScreen() {
+  const router = useRouter();
+  const { colors, hideMoney, setHideMoney } = useTheme();
+  const dashboardQuery = useDashboard();
+  const refreshAssets = useRefreshAssets();
+
+  const data = dashboardQuery.data;
+  const holdings = useMemo(
+    () =>
+      data
+        ? deriveDashboardHoldings(
+            data.dashboard.assets,
+            data.dashboard.assetKindOrder,
+          )
+        : null,
+    [data],
+  );
+
+  const headerRight = (
+    <>
+      <IconButton
+        accessibilityLabel={hideMoney ? "Show amounts" : "Hide amounts"}
+        icon={
+          <Ionicons
+            name={hideMoney ? "eye-off-outline" : "eye-outline"}
+            size={18}
+            color={colors.textPrimary}
+          />
+        }
+        onPress={() => setHideMoney(!hideMoney)}
+      />
+      <IconButton
+        accessibilityLabel="Add holding"
+        icon={<Ionicons name="add" size={20} color={colors.textPrimary} />}
+        onPress={() => router.push("/holdings/upsert")}
+      />
+    </>
+  );
+
+  if (dashboardQuery.isPending) {
+    return (
+      <Screen
+        kicker="Overview"
+        title="Dashboard"
+        headerRight={headerRight}
+        withTabBarClearance
+      >
+        <SkeletonCard lines={4} />
+        <SkeletonCard lines={3} />
+        <SkeletonCard lines={3} />
+      </Screen>
+    );
+  }
+
+  if (dashboardQuery.isError || !data || !holdings) {
+    return (
+      <Screen
+        kicker="Overview"
+        title="Dashboard"
+        headerRight={headerRight}
+        withTabBarClearance
+      >
+        <ErrorState
+          error={dashboardQuery.error}
+          onRetry={() => dashboardQuery.refetch()}
+        />
+      </Screen>
+    );
+  }
+
+  const { dashboard, budgetView, setup } = data;
+  const reportingCurrency = dashboard.reportingCurrency;
+  const incompleteSetup = setup && !setup.isComplete ? setup : null;
+  const nextStep = incompleteSetup?.requiredSteps.find(
+    (step) => step.status === "INCOMPLETE",
+  );
+
   return (
-    <Screen kicker="Overview" title="Dashboard" withTabBarClearance>
-      <AppText tone="secondary">Coming together…</AppText>
+    <Screen
+      kicker="Overview"
+      title="Dashboard"
+      headerRight={headerRight}
+      withTabBarClearance
+      refreshing={dashboardQuery.isRefetching}
+      onRefresh={() => dashboardQuery.refetch()}
+    >
+      <Card>
+        <View style={{ gap: spacing.lg }}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: spacing.md,
+            }}
+          >
+            <View style={{ gap: 4, flex: 1 }}>
+              <AppText variant="kicker" tone="tertiary">
+                Net worth · {reportingCurrency}
+              </AppText>
+              <MoneyText
+                amount={dashboard.summary.netWorth}
+                currency={reportingCurrency}
+                variant="display"
+              />
+            </View>
+            <IconButton
+              accessibilityLabel="Refresh prices"
+              disabled={refreshAssets.isPending}
+              icon={
+                <Ionicons
+                  name="refresh"
+                  size={18}
+                  color={
+                    refreshAssets.isPending
+                      ? colors.textTertiary
+                      : colors.textPrimary
+                  }
+                />
+              }
+              onPress={() => refreshAssets.mutate()}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: spacing.xl }}>
+            <Stat
+              label="Assets"
+              value={
+                <MoneyText
+                  amount={dashboard.summary.assets}
+                  currency={reportingCurrency}
+                  variant="title3"
+                />
+              }
+              style={{ flex: 1 }}
+            />
+            <Stat
+              label="Liabilities"
+              value={
+                <MoneyText
+                  amount={-dashboard.summary.liabilities}
+                  currency={reportingCurrency}
+                  variant="title3"
+                  tone={
+                    dashboard.summary.liabilities > 0 ? "expense" : "primary"
+                  }
+                />
+              }
+              style={{ flex: 1 }}
+            />
+          </View>
+
+          <Divider />
+
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: spacing.sm,
+              flexWrap: "wrap",
+            }}
+          >
+            <PricingStatusChip state={dashboard.pricingStatus.state} />
+            <AppText variant="caption" tone="tertiary">
+              {dashboard.lastRefreshAt
+                ? `Refreshed ${formatTimestampLabel(dashboard.lastRefreshAt)}`
+                : "Prices not refreshed yet"}
+            </AppText>
+          </View>
+
+          {dashboard.latestSnapshotDate ? (
+            <AppText variant="caption" tone="tertiary">
+              Last snapshot {localDateOf(dashboard.latestSnapshotDate)}
+              {dashboard.latestSnapshotIsPartial ? " (partial)" : ""}
+            </AppText>
+          ) : null}
+        </View>
+      </Card>
+
+      {incompleteSetup ? (
+        <Card surface="info" onPress={() => router.push("/settings/setup")}>
+          <View style={{ gap: spacing.sm }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <AppText variant="kicker" tone="info">
+                Setup · {incompleteSetup.requiredCompletedCount}/
+                {incompleteSetup.requiredTotalCount} complete
+              </AppText>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={colors.textTertiary}
+              />
+            </View>
+            <ProgressBar
+              ratio={
+                incompleteSetup.requiredTotalCount > 0
+                  ? incompleteSetup.requiredCompletedCount /
+                    incompleteSetup.requiredTotalCount
+                  : 0
+              }
+              tone="neutral"
+            />
+            {nextStep ? (
+              <AppText variant="footnote" tone="secondary">
+                Next: {nextStep.title}
+              </AppText>
+            ) : null}
+          </View>
+        </Card>
+      ) : null}
+
+      {budgetView && budgetView.currencies.length > 0 ? (
+        <Section
+          kicker={`Budgets · ${budgetView.month}`}
+          title="This month"
+          action={
+            <IconButton
+              accessibilityLabel="Open budgets"
+              icon={
+                <Ionicons
+                  name="arrow-forward"
+                  size={16}
+                  color={colors.textPrimary}
+                />
+              }
+              onPress={() => router.push("/budgets")}
+            />
+          }
+        >
+          <Card>
+            <View style={{ gap: spacing.lg }}>
+              {budgetView.currencies.map((currency, index) => {
+                const ratio =
+                  currency.budgetTotal > 0
+                    ? currency.spentTotal / currency.budgetTotal
+                    : null;
+                return (
+                  <View key={currency.currency} style={{ gap: spacing.sm }}>
+                    {index > 0 ? <Divider /> : null}
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <AppText variant="footnoteMedium" tone="secondary">
+                        {currency.currency}
+                      </AppText>
+                      {currency.overBudgetCount > 0 ? (
+                        <Chip
+                          label={`${currency.overBudgetCount} over budget`}
+                          tone="danger"
+                        />
+                      ) : (
+                        <Chip label="On track" tone="success" />
+                      )}
+                    </View>
+                    <ProgressBar
+                      ratio={ratio}
+                      tone={
+                        ratio !== null && ratio > 1
+                          ? "danger"
+                          : ratio !== null && ratio > 0.9
+                            ? "warning"
+                            : "accent"
+                      }
+                    />
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <AppText variant="caption" tone="tertiary">
+                        Spent{" "}
+                        {formatMoney(currency.spentTotal, currency.currency, {
+                          hide: hideMoney,
+                          maximumFractionDigits: 0,
+                        })}
+                      </AppText>
+                      <AppText variant="caption" tone="tertiary">
+                        of{" "}
+                        {formatMoney(currency.budgetTotal, currency.currency, {
+                          hide: hideMoney,
+                          maximumFractionDigits: 0,
+                        })}
+                      </AppText>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </Card>
+        </Section>
+      ) : null}
+
+      {holdings.assetGroups.length === 0 &&
+      holdings.liabilityGroups.length === 0 ? (
+        <Section kicker="Holdings" title="Assets & liabilities">
+          <Card surface="muted">
+            <View style={{ gap: spacing.sm, alignItems: "center" }}>
+              <AppText variant="title3">Nothing tracked yet</AppText>
+              <AppText
+                variant="footnote"
+                tone="secondary"
+                style={{ textAlign: "center" }}
+              >
+                Add your first asset or liability to see net worth here.
+              </AppText>
+            </View>
+          </Card>
+        </Section>
+      ) : null}
+
+      {holdings.assetGroups.map((group) => (
+        <Section
+          key={group.key}
+          kicker="Assets"
+          title={group.label}
+          action={
+            group.total !== null ? (
+              <MoneyText
+                amount={group.total}
+                currency={reportingCurrency}
+                variant="title3"
+                tone="secondary"
+              />
+            ) : undefined
+          }
+        >
+          <Card style={{ paddingVertical: 4 }}>
+            {group.items.map((asset, index) => (
+              <HoldingRow
+                key={asset.id}
+                asset={asset}
+                reportingCurrency={reportingCurrency}
+                showDivider={index < group.items.length - 1}
+                onPress={() => {
+                  if (asset.accountType === "BROKER" && asset.accountId) {
+                    router.push({
+                      pathname: "/brokerage/[accountId]",
+                      params: { accountId: asset.accountId },
+                    });
+                  } else {
+                    router.push({
+                      pathname: "/holdings/upsert",
+                      params: { id: asset.id },
+                    });
+                  }
+                }}
+              />
+            ))}
+          </Card>
+        </Section>
+      ))}
+
+      {holdings.liabilityGroups.map((group) => (
+        <Section
+          key={group.key}
+          kicker="Liabilities"
+          title={group.label}
+          action={
+            group.total !== null ? (
+              <MoneyText
+                amount={-group.total}
+                currency={reportingCurrency}
+                variant="title3"
+                tone="expense"
+              />
+            ) : undefined
+          }
+        >
+          <Card style={{ paddingVertical: 4 }}>
+            {group.items.map((asset, index) => (
+              <HoldingRow
+                key={asset.id}
+                asset={asset}
+                reportingCurrency={reportingCurrency}
+                showDivider={index < group.items.length - 1}
+                onPress={() =>
+                  router.push({
+                    pathname: "/holdings/upsert",
+                    params: { id: asset.id },
+                  })
+                }
+              />
+            ))}
+          </Card>
+        </Section>
+      ))}
     </Screen>
   );
 }
