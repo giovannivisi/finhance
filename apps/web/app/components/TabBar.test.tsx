@@ -16,16 +16,21 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({
-    children,
-    href,
-    onClick,
-    ...rest
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} onClick={(event) => onClick?.(event)} {...rest}>
-      {children}
-    </a>
-  ),
+  default: (
+    props: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+      href: string;
+      prefetch?: boolean;
+    },
+  ) => {
+    const { children, href, onClick, prefetch, ...rest } = props;
+    void prefetch;
+
+    return (
+      <a href={href} onClick={(event) => onClick?.(event)} {...rest}>
+        {children}
+      </a>
+    );
+  },
 }));
 
 vi.mock("framer-motion", () => ({
@@ -33,9 +38,14 @@ vi.mock("framer-motion", () => ({
     <>{children}</>
   ),
   motion: {
-    div: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-      <div {...props}>{children}</div>
-    ),
+    div: (
+      props: React.HTMLAttributes<HTMLDivElement> & { initial?: unknown },
+    ) => {
+      const { children, initial, ...rest } = props;
+      void initial;
+
+      return <div {...rest}>{children}</div>;
+    },
   },
   useAnimation: () => ({
     set: vi.fn(),
