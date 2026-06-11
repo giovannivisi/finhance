@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, View } from "react-native";
 
 import {
@@ -15,22 +15,74 @@ import { radius, spacing, useTheme } from "@/theme";
 
 export default function ConnectScreen() {
   const { colors } = useTheme();
-  const { saveServer } = useServerConnection();
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const {
+    serverUrl,
+    needsSignIn,
+    inspectServer,
+    saveLocalServer,
+    signInHosted,
+  } = useServerConnection();
 
-  const handleConnect = async () => {
-    setSaving(true);
+  const [url, setUrl] = useState("");
+  const [hostedUrl, setHostedUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // A saved hosted server whose session expired jumps straight to sign-in.
+  useEffect(() => {
+    if (needsSignIn && serverUrl) {
+      setUrl(serverUrl);
+      setHostedUrl(serverUrl);
+    }
+  }, [needsSignIn, serverUrl]);
+
+  const handleContinue = async () => {
+    setBusy(true);
     setError(null);
 
     try {
-      await saveServer(url);
-      // The connection gate redirects to the tabs once the URL is stored.
-    } catch (connectError) {
-      setError(describeError(connectError));
+      const inspection = await inspectServer(url);
+
+      switch (inspection.kind) {
+        case "local-api":
+          await saveLocalServer(inspection.normalizedUrl);
+          break;
+        case "hosted-web":
+          setHostedUrl(inspection.normalizedUrl);
+          break;
+        case "hosted-api":
+          setError(
+            "That is the API address. For hosted setups enter the web app address instead, e.g. https://finhance-web.vercel.app",
+          );
+          break;
+        case "local-web":
+          setError(
+            "That is the local web app. Point the app directly at your self-hosted API (usually port 3000).",
+          );
+          break;
+      }
+    } catch (inspectError) {
+      setError(describeError(inspectError));
     } finally {
-      setSaving(false);
+      setBusy(false);
+    }
+  };
+
+  const handleSignIn = async () => {
+    if (!hostedUrl) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      await signInHosted(hostedUrl);
+      // The connection gate flips to the tabs once the token is stored.
+    } catch (signInError) {
+      setError(describeError(signInError));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -54,15 +106,16 @@ export default function ConnectScreen() {
               Welcome to finhance
             </AppText>
             <AppText variant="title1" style={{ textAlign: "center" }}>
-              Connect your server
+              {hostedUrl ? "Sign in" : "Connect your server"}
             </AppText>
             <AppText
               variant="footnote"
               tone="secondary"
               style={{ textAlign: "center", maxWidth: 300 }}
             >
-              Point the app at your self-hosted finhance API. Your data stays on
-              your server — the app talks to it directly.
+              {hostedUrl
+                ? "Your browser opens for the usual sign-in. The app receives a private session for this device."
+                : "Enter your hosted web address or a self-hosted API address."}
             </AppText>
           </View>
         </View>
@@ -71,25 +124,41 @@ export default function ConnectScreen() {
           <View style={{ gap: spacing.lg }}>
             <TextField
               label="Server URL"
-              placeholder="http://192.168.1.10:3000"
+              placeholder="https://finhance-web.vercel.app"
               value={url}
               onChangeText={(value) => {
                 setUrl(value);
+                setHostedUrl(null);
                 setError(null);
               }}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
-              autoFocus
+              autoFocus={!needsSignIn}
               error={error}
-              hint="The API address, e.g. http://<your-machine>:3000 — not the web app URL."
+              hint={
+                hostedUrl
+                  ? "Hosted finhance detected."
+                  : "Hosted: the web app URL · Self-hosted: the API URL, e.g. http://192.168.1.10:3000"
+              }
             />
-            <Button
-              label="Test & connect"
-              onPress={handleConnect}
-              loading={saving}
-              disabled={!url.trim()}
-            />
+            {hostedUrl ? (
+              <Button
+                label="Sign in with browser"
+                onPress={handleSignIn}
+                loading={busy}
+                icon={
+                  <Ionicons name="globe-outline" size={17} color="#ffffff" />
+                }
+              />
+            ) : (
+              <Button
+                label="Continue"
+                onPress={handleContinue}
+                loading={busy}
+                disabled={!url.trim()}
+              />
+            )}
           </View>
         </Card>
 
@@ -107,8 +176,8 @@ export default function ConnectScreen() {
               color={colors.textTertiary}
             />
             <AppText variant="caption" tone="tertiary" style={{ flex: 1 }}>
-              Works with APIs running in local auth mode (the self-hosted
-              default).
+              Hosted servers use your normal Google/GitHub sign-in; the session
+              token stays in this device&apos;s keychain.
             </AppText>
           </View>
           <View
@@ -119,13 +188,14 @@ export default function ConnectScreen() {
             }}
           >
             <Ionicons
-              name="phone-portrait-outline"
+              name="home-outline"
               size={16}
               color={colors.textTertiary}
             />
             <AppText variant="caption" tone="tertiary" style={{ flex: 1 }}>
-              On a simulator use http://127.0.0.1:3000 — on a phone use your
-              machine&apos;s LAN address or a private tunnel such as Tailscale.
+              Self-hosted APIs in local mode connect directly — on a simulator
+              use http://127.0.0.1:3000, on a phone your LAN address or a
+              private tunnel such as Tailscale.
             </AppText>
           </View>
         </View>

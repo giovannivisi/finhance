@@ -8,8 +8,15 @@ client and API can never drift apart silently.
 
 ## What it covers
 
-- **Connect** — point the app at a self-hosted finhance API (local auth mode);
-  the URL is verified against `/health` before being saved
+- **Connect** — works with both deployment shapes:
+  - **Hosted** (e.g. `https://finhance-web.vercel.app`): the app detects the
+    web deployment, opens the system browser for your normal Google/GitHub
+    sign-in, and receives a long-lived mobile session token via deep link.
+    The token lives in the device keychain and every API call goes through
+    the web's `/api/proxy/*`, which exchanges it per request for the same
+    short-lived API JWTs a browser session gets.
+  - **Self-hosted** (local auth mode): enter the API address directly; the
+    URL is verified against `/health` before being saved.
 - **Dashboard** — reporting-currency net worth, assets/liabilities grouped by
   kind, pricing freshness, quote refresh, setup progress, budget pulse
 - **Activity** — month-by-month transactions with day grouping, kind/account/
@@ -35,9 +42,26 @@ client and API can never drift apart silently.
   capture + history, setup checklist, reporting currency, theme, hide-money
 
 Deliberately not in v1 (desktop workflows): CSV import/export, expense
-validation rule management, and the privacy notice page. Hosted-auth servers
-are detected at connect time and rejected with a clear message — the
-short-lived web-minted JWT flow has no mobile counterpart yet.
+validation rule management, and the privacy notice page.
+
+### Hosted sign-in details
+
+The web app exposes two small endpoints for mobile clients
+(`apps/web/app/api/mobile/`):
+
+- `GET /api/mobile/health` — public discovery (service + auth mode)
+- `GET /api/mobile/authorize?redirect=…` — after the regular Auth.js
+  sign-in, mints an HS256 mobile session token (`AUTH_SECRET`-signed,
+  audience `finhance-mobile`, default TTL 120 days, configurable via
+  `AUTH_MOBILE_TOKEN_TTL`) and hands it to the app through a strictly
+  allowlisted deep-link redirect (`finhance://auth`; Expo Go `exp://…/--/auth`
+  redirects only outside production or with
+  `AUTH_MOBILE_ALLOW_DEV_REDIRECTS=true`)
+
+The API itself never accepts mobile tokens — the proxy verifies them and
+mints the usual short-lived ES256 API JWTs upstream. Signing out in the app
+deletes the token from the keychain; a 401 from the proxy (expired/invalid
+token) automatically returns the app to the sign-in screen.
 
 ## Development
 
@@ -64,8 +88,21 @@ node scripts/mock-api.mjs 4243
 EXPO_PUBLIC_DEFAULT_SERVER_URL=http://127.0.0.1:4243 pnpm ios
 ```
 
-`EXPO_PUBLIC_DEFAULT_SERVER_URL` auto-connects dev builds on first launch; it
-is ignored in production builds and whenever a server is already stored.
+With `--hosted` it impersonates a hosted web deployment instead (data under
+`/api/proxy/*` behind a bearer token, plus the `/api/mobile/*` sign-in
+endpoints):
+
+```bash
+node scripts/mock-api.mjs 4243 --hosted
+EXPO_PUBLIC_DEFAULT_SERVER_URL=http://<your-lan-ip>:4243 \
+EXPO_PUBLIC_DEFAULT_SERVER_MODE=hosted \
+EXPO_PUBLIC_DEFAULT_SERVER_TOKEN=mock-mobile-token pnpm ios
+```
+
+`EXPO_PUBLIC_DEFAULT_SERVER_*` auto-connect dev builds on first launch; they
+are ignored in production builds and whenever a server is already stored.
+Metro inlines `EXPO_PUBLIC_*` values — restart with `--clear` after changing
+them.
 
 ### Checks
 
@@ -108,6 +145,12 @@ Conventions worth knowing:
   aggregates use the reporting currency — same model as the web app.
 - The UI follows the web design language (mint `#10b981`, glass cards, Inter,
   dark-first with a light theme).
+- **iOS uses real system chrome**: the tab bar is expo-router's `NativeTabs`
+  (a genuine `UITabBarController` with SF Symbols — translucent glass on
+  iOS 18, Liquid Glass automatically on iOS 26), and bottom sheets use a
+  system-material blur. Android keeps the custom floating pill bar. A forced
+  dark/light preference is mirrored into native chrome via
+  `Appearance.setColorScheme`.
 
 ## Building for stores
 

@@ -1209,10 +1209,15 @@ const dynamicRoutes = [
   [/^\/brokerage\/([\w-]+)$/, () => workspace],
 ];
 
-const server = createServer((req, res) => {
-  const url = new URL(req.url ?? "/", "http://localhost");
-  const path = url.pathname.replace(/\/+$/, "") || "/";
+/**
+ * With --hosted the mock impersonates a hosted finhance WEB deployment
+ * instead of a bare API: data lives under /api/proxy/* behind a bearer
+ * token, and /api/mobile/* simulates the sign-in handoff.
+ */
+const hostedMode = process.argv.includes("--hosted");
+const MOCK_MOBILE_TOKEN = "mock-mobile-token";
 
+function resolvePayload(path, method) {
   let payload = routes[path];
 
   if (payload === undefined) {
@@ -1225,23 +1230,67 @@ const server = createServer((req, res) => {
     }
   }
 
-  if (payload === undefined && req.method !== "GET") {
+  if (payload === undefined && method !== "GET") {
     // Pretend mutations succeed by echoing something sensible.
     payload = { ok: true };
   }
 
+  return payload;
+}
+
+const server = createServer((req, res) => {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  let path = url.pathname.replace(/\/+$/, "") || "/";
+
   res.setHeader("Content-Type", "application/json");
 
-  if (payload === undefined) {
-    res.statusCode = 404;
-    res.end(JSON.stringify({ message: `Mock route not found: ${path}` }));
-    return;
+  const respond = (status, payload) => {
+    console.log(`${req.method} ${path} -> ${status}`);
+    res.statusCode = status;
+    res.end(JSON.stringify(payload));
+  };
+
+  if (hostedMode) {
+    if (path === "/api/mobile/health") {
+      return respond(200, {
+        status: "ok",
+        service: "finhance-web",
+        authMode: "hosted",
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (path === "/api/mobile/authorize") {
+      const redirect = url.searchParams.get("redirect") ?? "finhance://auth";
+      res.statusCode = 302;
+      res.setHeader("location", `${redirect}#token=${MOCK_MOBILE_TOKEN}`);
+      console.log(`${req.method} ${path} -> 302 ${redirect}`);
+      res.end();
+      return;
+    }
+
+    if (!path.startsWith("/api/proxy")) {
+      return respond(404, { message: `Mock route not found: ${path}` });
+    }
+
+    if (req.headers.authorization !== `Bearer ${MOCK_MOBILE_TOKEN}`) {
+      return respond(401, { message: "Mobile session is invalid or expired." });
+    }
+
+    path = path.slice("/api/proxy".length) || "/";
   }
 
-  console.log(`${req.method} ${path} -> 200`);
-  res.end(JSON.stringify(payload));
+  const payload = resolvePayload(path, req.method);
+
+  if (payload === undefined) {
+    return respond(404, { message: `Mock route not found: ${path}` });
+  }
+
+  respond(200, payload);
 });
 
 server.listen(port, () => {
-  console.log(`finhance mock API listening on http://127.0.0.1:${port}`);
+  console.log(
+    `finhance mock ${hostedMode ? "hosted web" : "API"} listening on http://127.0.0.1:${port}`,
+  );
 });

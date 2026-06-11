@@ -127,7 +127,17 @@ export function generateIdempotencyKey(): string {
   });
 }
 
-export function createApiClient(baseUrl: string): ApiClient {
+export interface ApiClientOptions {
+  /** Mobile session token for hosted servers; sent as a Bearer header. */
+  authToken?: string | null;
+  /** Invoked on 401 responses so the app can drop a stale hosted session. */
+  onUnauthorized?: () => void;
+}
+
+export function createApiClient(
+  baseUrl: string,
+  clientOptions: ApiClientOptions = {},
+): ApiClient {
   async function request<T>(
     path: string,
     options: RequestOptions = {},
@@ -141,6 +151,10 @@ export function createApiClient(baseUrl: string): ApiClient {
     const headers: Record<string, string> = {
       Accept: "application/json",
     };
+
+    if (clientOptions.authToken) {
+      headers.Authorization = `Bearer ${clientOptions.authToken}`;
+    }
 
     if (options.body !== undefined) {
       headers["Content-Type"] = "application/json";
@@ -190,6 +204,10 @@ export function createApiClient(baseUrl: string): ApiClient {
     }
 
     if (!response.ok) {
+      if (response.status === 401) {
+        clientOptions.onUnauthorized?.();
+      }
+
       throw new ApiError(extractErrorMessage(payload, response.status), {
         status: response.status,
       });

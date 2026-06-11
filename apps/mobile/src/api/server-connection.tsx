@@ -1,4 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Linking from "expo-linking";
+import * as SecureStore from "expo-secure-store";
+import * as WebBrowser from "expo-web-browser";
 import {
   createContext,
   useCallback,
@@ -10,27 +13,97 @@ import {
 } from "react";
 
 import {
+  classifyServer,
+  parseMobileAuthCallback,
+  type ServerKind,
+} from "@/lib/auth-callback";
+
+import {
   ApiError,
   createApiClient,
   normalizeServerUrl,
   type ApiClient,
 } from "./client";
-import { api, type HealthStatusResponse } from "./endpoints";
 
 const SERVER_URL_KEY = "finhance.serverUrl";
+const SERVER_MODE_KEY = "finhance.serverMode";
+const MOBILE_TOKEN_KEY = "finhance.mobileToken";
+
+export type ServerMode = "local" | "hosted";
+
+export interface ServerInspection {
+  kind: ServerKind["kind"];
+  normalizedUrl: string;
+}
 
 interface ServerConnectionContextValue {
   /** null while loading from storage, "" when not configured. */
   serverUrl: string | null;
+  serverMode: ServerMode;
+  /** Hosted-mode mobile session token (kept in the keychain). */
+  token: string | null;
   client: ApiClient | null;
   isHydrated: boolean;
-  testServer: (rawUrl: string) => Promise<HealthStatusResponse>;
-  saveServer: (rawUrl: string) => Promise<void>;
+  /** A hosted server is saved but its session token is missing/expired. */
+  needsSignIn: boolean;
+  inspectServer: (rawUrl: string) => Promise<ServerInspection>;
+  saveLocalServer: (normalizedUrl: string) => Promise<void>;
+  signInHosted: (normalizedUrl: string) => Promise<void>;
   clearServer: () => Promise<void>;
 }
 
 const ServerConnectionContext =
   createContext<ServerConnectionContextValue | null>(null);
+
+async function fetchHealth(
+  url: string,
+): Promise<{ service?: string; authMode?: string } | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload: unknown = await response.json();
+
+    if (payload && typeof payload === "object") {
+      return payload as { service?: string; authMode?: string };
+    }
+
+    return null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readStoredToken(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(MOBILE_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+async function writeStoredToken(token: string | null): Promise<void> {
+  try {
+    if (token) {
+      await SecureStore.setItemAsync(MOBILE_TOKEN_KEY, token);
+    } else {
+      await SecureStore.deleteItemAsync(MOBILE_TOKEN_KEY);
+    }
+  } catch {
+    // Keychain unavailability should never crash the app.
+  }
+}
 
 export function ServerConnectionProvider({
   children,
@@ -38,12 +111,20 @@ export function ServerConnectionProvider({
   children: ReactNode;
 }) {
   const [serverUrl, setServerUrl] = useState<string | null>(null);
+  const [serverMode, setServerMode] = useState<ServerMode>("local");
+  const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    AsyncStorage.getItem(SERVER_URL_KEY)
-      .then((stored) => {
+    void (async () => {
+      try {
+        const [storedUrl, storedMode, storedToken] = await Promise.all([
+          AsyncStorage.getItem(SERVER_URL_KEY),
+          AsyncStorage.getItem(SERVER_MODE_KEY),
+          readStoredToken(),
+        ]);
+
         if (cancelled) {
           return;
         }
@@ -54,84 +135,163 @@ export function ServerConnectionProvider({
           process.env.EXPO_PUBLIC_DEFAULT_SERVER_URL ?? "",
         );
 
-        if (!stored && defaultUrl && __DEV__) {
+        if (!storedUrl && defaultUrl && __DEV__) {
+          const defaultMode: ServerMode =
+            process.env.EXPO_PUBLIC_DEFAULT_SERVER_MODE === "hosted"
+              ? "hosted"
+              : "local";
+          const defaultToken =
+            process.env.EXPO_PUBLIC_DEFAULT_SERVER_TOKEN?.trim() || null;
+
           AsyncStorage.setItem(SERVER_URL_KEY, defaultUrl).catch(
             () => undefined,
           );
+          AsyncStorage.setItem(SERVER_MODE_KEY, defaultMode).catch(
+            () => undefined,
+          );
+
+          if (defaultToken) {
+            void writeStoredToken(defaultToken);
+          }
+
+          setServerMode(defaultMode);
+          setToken(defaultToken);
           setServerUrl(defaultUrl);
           return;
         }
 
-        setServerUrl(stored ?? "");
-      })
-      .catch(() => {
+        setServerMode(storedMode === "hosted" ? "hosted" : "local");
+        setToken(storedToken);
+        setServerUrl(storedUrl ?? "");
+      } catch {
         if (!cancelled) {
           setServerUrl("");
         }
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const testServer = useCallback(async (rawUrl: string) => {
-    const normalized = normalizeServerUrl(rawUrl);
-
-    if (!normalized) {
-      throw new ApiError(
-        "Enter a valid server URL, e.g. http://192.168.1.10:3000",
-      );
-    }
-
-    const health = await api.health(createApiClient(normalized));
-
-    if (health?.status !== "ok" || health?.service !== "api") {
-      throw new ApiError(
-        "That URL responded, but it does not look like a finhance API. Make sure it points at the API, not the web app.",
-      );
-    }
-
-    if (health.authMode === "hosted") {
-      throw new ApiError(
-        "This server runs in hosted auth mode, which the mobile app cannot sign in to yet. Point the app at a self-hosted API in local mode.",
-      );
-    }
-
-    return health;
-  }, []);
-
-  const saveServer = useCallback(
-    async (rawUrl: string) => {
+  const inspectServer = useCallback(
+    async (rawUrl: string): Promise<ServerInspection> => {
       const normalized = normalizeServerUrl(rawUrl);
 
       if (!normalized) {
-        throw new ApiError("Enter a valid server URL.");
+        throw new ApiError(
+          "Enter a valid server URL, e.g. https://finhance-web.vercel.app or http://192.168.1.10:3000",
+        );
       }
 
-      await testServer(normalized);
-      await AsyncStorage.setItem(SERVER_URL_KEY, normalized);
-      setServerUrl(normalized);
+      const apiHealth = await fetchHealth(`${normalized}/health`);
+      const webHealth =
+        apiHealth?.service === "api"
+          ? null
+          : await fetchHealth(`${normalized}/api/mobile/health`);
+
+      const { kind } = classifyServer(apiHealth, webHealth);
+
+      if (kind === "unknown") {
+        throw new ApiError(
+          "That URL does not look like a finhance server. Enter the web app address for hosted setups, or the API address for self-hosted ones.",
+        );
+      }
+
+      return { kind, normalizedUrl: normalized };
     },
-    [testServer],
+    [],
   );
+
+  const saveLocalServer = useCallback(async (normalizedUrl: string) => {
+    await AsyncStorage.setItem(SERVER_URL_KEY, normalizedUrl);
+    await AsyncStorage.setItem(SERVER_MODE_KEY, "local");
+    await writeStoredToken(null);
+    setServerMode("local");
+    setToken(null);
+    setServerUrl(normalizedUrl);
+  }, []);
+
+  const signInHosted = useCallback(async (normalizedUrl: string) => {
+    const redirectUri = Linking.createURL("auth");
+    const authorizeUrl = `${normalizedUrl}/api/mobile/authorize?redirect=${encodeURIComponent(
+      redirectUri,
+    )}`;
+
+    const result = await WebBrowser.openAuthSessionAsync(
+      authorizeUrl,
+      redirectUri,
+    );
+
+    if (result.type !== "success") {
+      throw new ApiError("Sign-in was cancelled before it completed.");
+    }
+
+    const nextToken = parseMobileAuthCallback(result.url);
+
+    if (!nextToken) {
+      throw new ApiError(
+        "The server did not return a session token. Make sure the deployment includes mobile sign-in support.",
+      );
+    }
+
+    await AsyncStorage.setItem(SERVER_URL_KEY, normalizedUrl);
+    await AsyncStorage.setItem(SERVER_MODE_KEY, "hosted");
+    await writeStoredToken(nextToken);
+    setServerMode("hosted");
+    setToken(nextToken);
+    setServerUrl(normalizedUrl);
+  }, []);
 
   const clearServer = useCallback(async () => {
     await AsyncStorage.removeItem(SERVER_URL_KEY);
+    await AsyncStorage.removeItem(SERVER_MODE_KEY);
+    await writeStoredToken(null);
+    setServerMode("local");
+    setToken(null);
     setServerUrl("");
   }, []);
 
-  const value = useMemo<ServerConnectionContextValue>(
-    () => ({
+  const dropToken = useCallback(() => {
+    void writeStoredToken(null);
+    setToken(null);
+  }, []);
+
+  const value = useMemo<ServerConnectionContextValue>(() => {
+    const connected = Boolean(serverUrl && (serverMode === "local" || token));
+
+    return {
       serverUrl,
-      client: serverUrl ? createApiClient(serverUrl) : null,
+      serverMode,
+      token,
+      client: connected
+        ? createApiClient(
+            serverMode === "hosted"
+              ? `${serverUrl}/api/proxy`
+              : (serverUrl as string),
+            serverMode === "hosted"
+              ? { authToken: token, onUnauthorized: dropToken }
+              : {},
+          )
+        : null,
       isHydrated: serverUrl !== null,
-      testServer,
-      saveServer,
+      needsSignIn: Boolean(serverUrl && serverMode === "hosted" && !token),
+      inspectServer,
+      saveLocalServer,
+      signInHosted,
       clearServer,
-    }),
-    [serverUrl, testServer, saveServer, clearServer],
-  );
+    };
+  }, [
+    serverUrl,
+    serverMode,
+    token,
+    dropToken,
+    inspectServer,
+    saveLocalServer,
+    signInHosted,
+    clearServer,
+  ]);
 
   return (
     <ServerConnectionContext.Provider value={value}>

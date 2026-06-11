@@ -12,6 +12,7 @@ import {
 } from "@lib/api-auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
 import { resolveLocalRequestRejection } from "@lib/local-request";
+import { resolveMobileBearerUser } from "@lib/mobile-auth";
 import { resolveProxyAuthorization } from "@lib/proxy-auth";
 
 type RouteContext = {
@@ -71,9 +72,32 @@ async function forwardRequest(
       stripBrowserContext: hostedAuthMode,
     });
     const session = hostedAuthMode ? await auth() : null;
+    let actor: { id?: string | null; email?: string | null } | null =
+      session?.user ?? null;
+
+    if (hostedAuthMode && !actor?.id) {
+      // The mobile app authenticates with a web-minted bearer token instead
+      // of a session cookie; it is exchanged here for the same short-lived
+      // API JWT a browser session would get.
+      const bearer = await resolveMobileBearerUser(
+        request.headers.get("authorization"),
+      );
+
+      if (bearer.present && bearer.invalid) {
+        return Response.json(
+          { message: "Mobile session is invalid or expired." },
+          { status: 401 },
+        );
+      }
+
+      if (bearer.present && !bearer.invalid) {
+        actor = { id: bearer.user.userId, email: bearer.user.email };
+      }
+    }
+
     const authorization = await resolveProxyAuthorization({
       hostedAuthMode,
-      sessionUser: session?.user,
+      sessionUser: actor,
       mintToken: mintApiAccessToken,
     });
 

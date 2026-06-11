@@ -39,7 +39,7 @@ const START_PAGE_LABELS: Record<UserStartPage, string> = {
 export default function SettingsScreen() {
   const router = useRouter();
   const { preference, setPreference, hideMoney, setHideMoney } = useTheme();
-  const { serverUrl, clearServer } = useServerConnection();
+  const { serverUrl, serverMode, clearServer } = useServerConnection();
   const settingsQuery = useUserSettings();
   const updateSettings = useUpdateUserSettings();
   const [error, setError] = useState<string | null>(null);
@@ -157,9 +157,14 @@ export default function SettingsScreen() {
               <AppText variant="bodyMedium" numberOfLines={1}>
                 {serverUrl || "—"}
               </AppText>
+              <AppText variant="caption" tone="tertiary">
+                {serverMode === "hosted"
+                  ? "Hosted · signed in with your finhance account"
+                  : "Self-hosted · local auth mode"}
+              </AppText>
             </View>
             <Button
-              label="Disconnect"
+              label={serverMode === "hosted" ? "Sign out" : "Disconnect"}
               variant="danger"
               size="sm"
               onPress={() => setConfirmDisconnect(true)}

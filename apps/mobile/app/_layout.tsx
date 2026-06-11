@@ -5,13 +5,17 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
 import { useEffect, useMemo } from "react";
-import { View } from "react-native";
+import { AppState, Platform, View } from "react-native";
 
 import { ApiError } from "@/api/client";
 import {
@@ -21,6 +25,14 @@ import {
 import { ThemeProvider, useTheme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+// React Query cannot see native app focus by itself; bridge AppState so data
+// refetches when the app returns to the foreground.
+if (Platform.OS !== "web") {
+  AppState.addEventListener("change", (status) => {
+    focusManager.setFocused(status === "active");
+  });
+}
 
 function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -40,7 +52,7 @@ function createQueryClient(): QueryClient {
 
 function ThemedApp() {
   const { colors, scheme } = useTheme();
-  const { serverUrl, isHydrated } = useServerConnection();
+  const { serverUrl, serverMode, token, isHydrated } = useServerConnection();
 
   const queryClient = useMemo(
     () => createQueryClient(),
@@ -65,7 +77,9 @@ function ThemedApp() {
     return null;
   }
 
-  const connected = Boolean(serverUrl);
+  // Hosted servers also need a signed-in mobile session before the data
+  // screens may mount.
+  const connected = Boolean(serverUrl && (serverMode === "local" || token));
 
   return (
     <QueryClientProvider client={queryClient}>
