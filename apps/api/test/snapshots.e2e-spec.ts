@@ -73,6 +73,13 @@ function createDashboard(): DashboardResponse {
       liabilities: 0,
       netWorth: 100,
     },
+    pricingStatus: {
+      state: 'FRESH',
+      refreshSuggested: false,
+      hasStaleQuotes: false,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    },
     assetKindOrder: [],
     lastRefreshAt: '2026-04-17T10:00:00.000Z',
     latestSnapshotDate: null,
