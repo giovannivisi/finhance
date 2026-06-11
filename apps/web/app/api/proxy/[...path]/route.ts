@@ -29,10 +29,9 @@ type RouteContext = {
       };
 };
 
-const INVALID_PROXY_PATH_RESPONSE = Response.json(
-  { message: "Invalid API path." },
-  { status: 400 },
-);
+function invalidProxyPathResponse(): Response {
+  return Response.json({ message: "Invalid API path." }, { status: 400 });
+}
 
 function isMutationMethod(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
@@ -140,7 +139,7 @@ async function forwardRequest(
     return await toUpstreamResponse(upstreamResponse);
   } catch (error) {
     if (error instanceof InvalidApiPathError) {
-      return INVALID_PROXY_PATH_RESPONSE;
+      return invalidProxyPathResponse();
     }
 
     throw error;
