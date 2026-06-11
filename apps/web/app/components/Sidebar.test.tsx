@@ -85,7 +85,7 @@ describe("Sidebar", () => {
     expect(pushMock).toHaveBeenNthCalledWith(2, "/dashboard");
   });
 
-  it("prefetches selected routes on hover intent", async () => {
+  it("prefetches navigation routes on hover intent", async () => {
     const user = userEvent.setup();
     render(<Sidebar />);
 
@@ -95,6 +95,6 @@ describe("Sidebar", () => {
 
     expect(prefetchMock).toHaveBeenCalledWith("/analytics");
     expect(prefetchMock).toHaveBeenCalledWith("/brokerage");
-    expect(prefetchMock).not.toHaveBeenCalledWith("/history");
+    expect(prefetchMock).toHaveBeenCalledWith("/history");
   });
 });

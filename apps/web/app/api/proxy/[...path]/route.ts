@@ -14,6 +14,10 @@ import { isHostedAuthMode } from "@lib/auth-mode";
 import { resolveLocalRequestRejection } from "@lib/local-request";
 import { resolveMobileBearerUser } from "@lib/mobile-auth";
 import { resolveProxyAuthorization } from "@lib/proxy-auth";
+import {
+  clearServerApiCacheForUser,
+  getServerApiCacheUserKey,
+} from "@lib/server-api-cache";
 
 type RouteContext = {
   params:
@@ -29,6 +33,10 @@ const INVALID_PROXY_PATH_RESPONSE = Response.json(
   { message: "Invalid API path." },
   { status: 400 },
 );
+
+function isMutationMethod(method: string): boolean {
+  return method !== "GET" && method !== "HEAD";
+}
 
 function buildProxiedPath(
   pathSegments: string[] | undefined,
@@ -119,6 +127,15 @@ async function forwardRequest(
       duplex: upstreamRequest.duplex,
       redirect: "manual",
     } as RequestInit & { duplex: "half" });
+
+    if (upstreamResponse.ok && isMutationMethod(request.method)) {
+      clearServerApiCacheForUser(
+        getServerApiCacheUserKey({
+          hostedAuthMode,
+          userId: actor?.id,
+        }),
+      );
+    }
 
     return await toUpstreamResponse(upstreamResponse);
   } catch (error) {
