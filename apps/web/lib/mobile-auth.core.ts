@@ -18,6 +18,26 @@ export interface MobileTokenClaims {
   email: string | null;
 }
 
+export interface MobileTokenUserRecord {
+  id: string;
+  email: string | null;
+  isActive: boolean;
+}
+
+export function resolveActiveMobileTokenClaims(
+  claims: MobileTokenClaims,
+  user: MobileTokenUserRecord | null | undefined,
+): MobileTokenClaims | null {
+  if (!user?.isActive || user.id !== claims.userId) {
+    return null;
+  }
+
+  return {
+    userId: user.id,
+    email: user.email ?? claims.email,
+  };
+}
+
 function toSecretKey(authSecret: string): Uint8Array {
   return new TextEncoder().encode(authSecret);
 }

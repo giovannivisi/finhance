@@ -4,6 +4,7 @@ import {
   buildMobileTokenRedirectLocation,
   mintMobileSessionToken,
   readBearerToken,
+  resolveActiveMobileTokenClaims,
   resolveMobileRedirectTarget,
   verifyMobileSessionToken,
 } from "./mobile-auth.core.ts";
@@ -57,6 +58,32 @@ test("verification rejects expired tokens", async () => {
 
 test("verification rejects garbage tokens", async () => {
   assert.equal(await verifyMobileSessionToken("not-a-jwt", AUTH_SECRET), null);
+});
+
+test("active user resolution rejects inactive mobile token users", () => {
+  const claims = { userId: "user-123", email: "token@example.com" };
+
+  assert.equal(
+    resolveActiveMobileTokenClaims(claims, {
+      id: "user-123",
+      email: "user@example.com",
+      isActive: false,
+    }),
+    null,
+  );
+});
+
+test("active user resolution prefers the stored user email", () => {
+  const claims = { userId: "user-123", email: "token@example.com" };
+
+  assert.deepEqual(
+    resolveActiveMobileTokenClaims(claims, {
+      id: "user-123",
+      email: "user@example.com",
+      isActive: true,
+    }),
+    { userId: "user-123", email: "user@example.com" },
+  );
 });
 
 test("readBearerToken parses Authorization headers", () => {

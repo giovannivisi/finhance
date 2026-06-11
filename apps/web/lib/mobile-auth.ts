@@ -3,9 +3,11 @@ import "server-only";
 import {
   mintMobileSessionToken,
   readBearerToken,
+  resolveActiveMobileTokenClaims,
   verifyMobileSessionToken,
   type MobileTokenClaims,
 } from "./mobile-auth.core";
+import { prisma } from "./prisma";
 
 function readAuthSecret(env: NodeJS.ProcessEnv): string {
   const secret = env.AUTH_SECRET?.trim();
@@ -57,7 +59,22 @@ export async function resolveMobileBearerUser(
     return { present: true, invalid: true };
   }
 
-  return { present: true, invalid: false, user: claims };
+  const user = await prisma.user.findUnique({
+    where: { id: claims.userId },
+    select: { id: true, email: true, isActive: true },
+  });
+
+  const activeClaims = resolveActiveMobileTokenClaims(claims, user);
+
+  if (!activeClaims) {
+    return { present: true, invalid: true };
+  }
+
+  return {
+    present: true,
+    invalid: false,
+    user: activeClaims,
+  };
 }
 
 export function areDevRedirectsAllowed(
