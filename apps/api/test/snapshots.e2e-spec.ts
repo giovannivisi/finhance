@@ -119,7 +119,6 @@ function expectSnapshotResponseDto(
     snapshotDate: snapshot.snapshotDate.toISOString().slice(0, 10),
     capturedAt: snapshot.capturedAt.toISOString(),
     reportingCurrency: snapshot.baseCurrency,
-    baseCurrency: snapshot.baseCurrency,
     storedReportingCurrency: snapshot.baseCurrency,
     assetsTotal: snapshot.assetsTotal.toNumber(),
     liabilitiesTotal: snapshot.liabilitiesTotal.toNumber(),

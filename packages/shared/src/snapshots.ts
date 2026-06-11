@@ -3,7 +3,6 @@ export interface NetWorthSnapshotResponse {
   snapshotDate: string;
   capturedAt: string;
   reportingCurrency: string;
-  baseCurrency?: string;
   storedReportingCurrency: string;
   assetsTotal: number;
   liabilitiesTotal: number;
