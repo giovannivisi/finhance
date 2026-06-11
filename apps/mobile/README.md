@@ -77,7 +77,8 @@ Point the app at an API:
 
 - iOS simulator → `http://127.0.0.1:3000` (simulators share the host network)
 - Android emulator → `http://10.0.2.2:3000`
-- Physical device → your machine's LAN IP or a private tunnel (e.g. Tailscale)
+- Physical device → hosted mode, or a private tunnel (e.g. Tailscale) to the
+  loopback-only local API
 
 ### Mock API
 

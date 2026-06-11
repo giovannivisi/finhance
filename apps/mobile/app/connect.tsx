@@ -139,7 +139,7 @@ export default function ConnectScreen() {
               hint={
                 hostedUrl
                   ? "Hosted finhance detected."
-                  : "Hosted: the web app URL · Self-hosted: the API URL, e.g. http://192.168.1.10:3000"
+                  : "Hosted: the web app URL · Self-hosted: the local API URL, e.g. http://127.0.0.1:3000"
               }
             />
             {hostedUrl ? (
@@ -193,8 +193,8 @@ export default function ConnectScreen() {
               color={colors.textTertiary}
             />
             <AppText variant="caption" tone="tertiary" style={{ flex: 1 }}>
-              Self-hosted APIs in local mode connect directly — on a simulator
-              use http://127.0.0.1:3000, on a phone your LAN address or a
+              Self-hosted APIs in local mode are loopback-only. Simulators can
+              use http://127.0.0.1:3000; physical phones need hosted mode or a
               private tunnel such as Tailscale.
             </AppText>
           </View>

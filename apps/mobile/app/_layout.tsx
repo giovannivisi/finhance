@@ -56,9 +56,9 @@ function ThemedApp() {
 
   const queryClient = useMemo(
     () => createQueryClient(),
-    // A new cache per server keeps data from leaking across connections.
+    // A new cache per server/session keeps data from leaking across users.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [serverUrl],
+    [serverUrl, serverMode, token],
   );
 
   useEffect(() => {
