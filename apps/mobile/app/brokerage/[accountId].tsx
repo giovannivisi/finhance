@@ -37,6 +37,10 @@ import {
   Stat,
   TextField,
 } from "@/components/ui";
+import {
+  categoryLabel,
+  isAssignableTransactionCategory,
+} from "@/lib/categories";
 import { formatDateLabel, localDateOf, todayLocalDate } from "@/lib/dates";
 import { ASSET_KIND_LABELS } from "@/lib/labels";
 import { formatMoney, parseAmountInput } from "@/lib/money";
@@ -186,12 +190,12 @@ export default function BrokerageWorkspaceScreen() {
   const incomeCategories = useMemo(
     () =>
       (categoriesQuery.data ?? [])
-        .filter((category) => category.type === "INCOME")
+        .filter((category) =>
+          isAssignableTransactionCategory(category, "INCOME"),
+        )
         .map((category) => ({
           value: category.id,
-          label: category.parentCategoryName
-            ? `${category.parentCategoryName} · ${category.name}`
-            : category.name,
+          label: categoryLabel(category),
         })),
     [categoriesQuery.data],
   );
@@ -199,12 +203,12 @@ export default function BrokerageWorkspaceScreen() {
   const expenseCategories = useMemo(
     () =>
       (categoriesQuery.data ?? [])
-        .filter((category) => category.type === "EXPENSE")
+        .filter((category) =>
+          isAssignableTransactionCategory(category, "EXPENSE"),
+        )
         .map((category) => ({
           value: category.id,
-          label: category.parentCategoryName
-            ? `${category.parentCategoryName} · ${category.name}`
-            : category.name,
+          label: categoryLabel(category),
         })),
     [categoriesQuery.data],
   );

@@ -29,6 +29,10 @@ import {
   SwitchField,
   TextField,
 } from "@/components/ui";
+import {
+  categoryLabel,
+  isAssignableTransactionCategory,
+} from "@/lib/categories";
 import { todayLocalDate } from "@/lib/dates";
 import { parseAmountInput } from "@/lib/money";
 import { spacing } from "@/theme";
@@ -47,7 +51,7 @@ export default function RecurringUpsertScreen() {
 
   const ruleQuery = useRecurringRule(ruleId);
   const accountsQuery = useAccountsList(false);
-  const categoriesQuery = useCategories(false);
+  const categoriesQuery = useCategories(true);
 
   const createMutation = useCreateRecurringRule();
   const updateMutation = useUpdateRecurringRule();
@@ -112,17 +116,18 @@ export default function RecurringUpsertScreen() {
   const categoryOptions = useMemo(
     () =>
       (categoriesQuery.data ?? [])
-        .filter(
-          (category) =>
-            category.type === (kind === "INCOME" ? "INCOME" : "EXPENSE"),
+        .filter((category) =>
+          isAssignableTransactionCategory(
+            category,
+            kind === "INCOME" ? "INCOME" : "EXPENSE",
+            categoryId,
+          ),
         )
         .map((category) => ({
           value: category.id,
-          label: category.parentCategoryName
-            ? `${category.parentCategoryName} · ${category.name}`
-            : category.name,
+          label: categoryLabel(category),
         })),
-    [categoriesQuery.data, kind],
+    [categoriesQuery.data, kind, categoryId],
   );
 
   const submit = async () => {

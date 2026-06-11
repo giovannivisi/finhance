@@ -39,6 +39,10 @@ import {
   type TransactionFormErrors,
   type TransactionFormState,
 } from "@/features/transactions/form";
+import {
+  categoryLabel,
+  isAssignableTransactionCategory,
+} from "@/lib/categories";
 import { formatMoney, parseAmountInput } from "@/lib/money";
 import { spacing, useTheme } from "@/theme";
 
@@ -133,16 +137,16 @@ export default function TransactionUpsertScreen() {
   const categoryOptions = useMemo(
     () =>
       categories
-        .filter(
-          (category) =>
-            category.type === categoryType &&
-            (!category.archivedAt || category.id === form.categoryId),
+        .filter((category) =>
+          isAssignableTransactionCategory(
+            category,
+            categoryType,
+            form.categoryId,
+          ),
         )
         .map((category) => ({
           value: category.id,
-          label: category.parentCategoryName
-            ? `${category.parentCategoryName} · ${category.name}`
-            : category.name,
+          label: categoryLabel(category),
         })),
     [categories, categoryType, form.categoryId],
   );

@@ -31,6 +31,12 @@ import {
   transactionSubtitle,
 } from "@/features/transactions/derive";
 import {
+  activityCategoryFilterQuery,
+  activityCategoryFilterValue,
+  categoryLabel,
+  type ActivityCategoryFilterValue,
+} from "@/lib/categories";
+import {
   currentMonth,
   formatDayHeading,
   formatTimeLabel,
@@ -47,6 +53,11 @@ const KIND_FILTERS = [
 ] as const;
 
 type KindFilter = (typeof KIND_FILTERS)[number]["value"];
+type CategoryFilterOption = {
+  value: ActivityCategoryFilterValue;
+  label: string;
+  detail?: string;
+};
 
 const KIND_ICONS: Record<
   TransactionResponse["kind"],
@@ -149,7 +160,8 @@ export default function ActivityScreen() {
   const [month, setMonth] = useState(currentMonth());
   const [kindFilter, setKindFilter] = useState<KindFilter>("ALL");
   const [accountFilter, setAccountFilter] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] =
+    useState<ActivityCategoryFilterValue>("ALL");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -163,7 +175,7 @@ export default function ActivityScreen() {
       to: bounds.to,
       kind: kindFilter === "ALL" ? undefined : kindFilter,
       accountId: accountFilter ?? undefined,
-      categoryId: categoryFilter ?? undefined,
+      ...activityCategoryFilterQuery(categoryFilter),
       includeArchivedAccounts: includeArchived || undefined,
       limit: 500,
     }),
@@ -214,16 +226,14 @@ export default function ActivityScreen() {
     [data?.accounts, includeArchived],
   );
 
-  const categoryOptions = useMemo(
+  const categoryOptions = useMemo<CategoryFilterOption[]>(
     () => [
       { value: "ALL", label: "All categories" },
       ...(data?.categories ?? [])
         .filter((category) => !category.archivedAt)
         .map((category) => ({
-          value: category.id,
-          label: category.parentCategoryName
-            ? `${category.parentCategoryName} · ${category.name}`
-            : category.name,
+          value: activityCategoryFilterValue(category),
+          label: categoryLabel(category),
           detail: category.type === "EXPENSE" ? "Expense" : "Income",
         })),
     ],
@@ -232,7 +242,7 @@ export default function ActivityScreen() {
 
   const activeFilterCount =
     (accountFilter ? 1 : 0) +
-    (categoryFilter ? 1 : 0) +
+    (categoryFilter !== "ALL" ? 1 : 0) +
     (includeArchived ? 1 : 0);
 
   const monthCashflow = data?.cashflow ?? [];
@@ -468,7 +478,7 @@ export default function ActivityScreen() {
           <ListRow
             title="Category"
             subtitle={
-              categoryFilter
+              categoryFilter !== "ALL"
                 ? (categoryOptions.find(
                     (option) => option.value === categoryFilter,
                   )?.label ?? "Unknown")
@@ -494,7 +504,7 @@ export default function ActivityScreen() {
               title="Clear filters"
               onPress={() => {
                 setAccountFilter(null);
-                setCategoryFilter(null);
+                setCategoryFilter("ALL");
                 setIncludeArchived(false);
                 setFiltersOpen(false);
               }}
@@ -519,8 +529,8 @@ export default function ActivityScreen() {
         onClose={() => setCategorySheetOpen(false)}
         title="Category"
         options={categoryOptions}
-        selectedValue={categoryFilter ?? "ALL"}
-        onSelect={(value) => setCategoryFilter(value === "ALL" ? null : value)}
+        selectedValue={categoryFilter}
+        onSelect={setCategoryFilter}
       />
     </Screen>
   );
