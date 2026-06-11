@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { Tabs } from "expo-router";
+import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,6 +23,41 @@ const TAB_ICONS: Record<
   analytics: { active: "trending-up", inactive: "trending-up-outline" },
   more: { active: "grid", inactive: "grid-outline" },
 };
+
+/**
+ * The real system tab bar (UITabBarController) — translucent glass on iOS 18,
+ * Liquid Glass on iOS 26. Icons are SF Symbols.
+ */
+function IosNativeTabs() {
+  const { colors } = useTheme();
+
+  return (
+    <NativeTabs tintColor={colors.primary}>
+      <NativeTabs.Trigger name="index">
+        <Label>Home</Label>
+        <Icon sf={{ default: "house", selected: "house.fill" }} />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="activity">
+        <Label>Activity</Label>
+        <Icon sf="arrow.up.arrow.down" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="budgets">
+        <Label>Budgets</Label>
+        <Icon sf={{ default: "chart.pie", selected: "chart.pie.fill" }} />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="analytics">
+        <Label>Analytics</Label>
+        <Icon sf="chart.line.uptrend.xyaxis" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="more">
+        <Label>More</Label>
+        <Icon
+          sf={{ default: "square.grid.2x2", selected: "square.grid.2x2.fill" }}
+        />
+      </NativeTabs.Trigger>
+    </NativeTabs>
+  );
+}
 
 function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { colors, scheme } = useTheme();
@@ -129,6 +165,10 @@ function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 }
 
 export default function TabsLayout() {
+  if (Platform.OS === "ios") {
+    return <IosNativeTabs />;
+  }
+
   return (
     <Tabs
       screenOptions={{ headerShown: false }}

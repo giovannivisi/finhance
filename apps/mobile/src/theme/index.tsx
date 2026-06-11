@@ -8,9 +8,21 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useColorScheme } from "react-native";
+import { Appearance, useColorScheme } from "react-native";
 
 import { darkColors, lightColors, type ThemeColors } from "./tokens";
+
+/**
+ * Mirrors the in-app preference into the OS-level appearance of the app, so
+ * native chrome (system tab bar, sheets, pickers) matches the forced theme.
+ */
+function applyNativeColorScheme(preference: ThemePreference) {
+  try {
+    Appearance.setColorScheme(preference === "system" ? null : preference);
+  } catch {
+    // Older runtimes without setColorScheme can safely ignore this.
+  }
+}
 
 export type ThemePreference = "system" | "dark" | "light";
 
@@ -53,6 +65,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           storedPreference === "light"
         ) {
           setPreferenceState(storedPreference);
+          applyNativeColorScheme(storedPreference);
         }
 
         if (storedHideMoney === "true") {
@@ -70,6 +83,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setPreference = useCallback((next: ThemePreference) => {
     setPreferenceState(next);
+    applyNativeColorScheme(next);
     AsyncStorage.setItem(THEME_PREFERENCE_KEY, next).catch(() => undefined);
   }, []);
 

@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import {
+  Platform,
   RefreshControl,
   ScrollView,
   View,
@@ -15,7 +16,9 @@ import { spacing, useTheme } from "@/theme";
 import { IconButton } from "./button";
 import { AppText } from "./text";
 
-export const TAB_BAR_CLEARANCE = 108;
+// iOS uses the system tab bar (~49pt, content scrolls beneath its glass);
+// Android uses the taller floating pill.
+export const TAB_BAR_CLEARANCE = Platform.OS === "ios" ? 76 : 108;
 
 export interface ScreenProps {
   /** Small uppercase label above the title. */

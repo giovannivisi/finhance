@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import type { ReactNode } from "react";
 import {
   KeyboardAvoidingView,
@@ -7,12 +8,47 @@ import {
   Pressable,
   ScrollView,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { radius, spacing, useTheme } from "@/theme";
 
 import { AppText } from "./text";
+
+/** System-material glass on iOS, solid popover surface elsewhere. */
+function SheetSurface({
+  style,
+  children,
+}: {
+  style: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  const { colors, scheme } = useTheme();
+
+  if (Platform.OS === "ios") {
+    return (
+      <BlurView
+        intensity={70}
+        tint={
+          scheme === "dark"
+            ? "systemThickMaterialDark"
+            : "systemThickMaterialLight"
+        }
+        style={[style, { overflow: "hidden" }]}
+      >
+        {children}
+      </BlurView>
+    );
+  }
+
+  return (
+    <View style={[style, { backgroundColor: colors.bgPopover }]}>
+      {children}
+    </View>
+  );
+}
 
 export interface SheetProps {
   visible: boolean;
@@ -58,9 +94,8 @@ export function Sheet({
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <View
+          <SheetSurface
             style={{
-              backgroundColor: colors.bgPopover,
               borderTopLeftRadius: radius.sheet,
               borderTopRightRadius: radius.sheet,
               borderWidth: 1,
@@ -126,7 +161,7 @@ export function Sheet({
             >
               {children}
             </ScrollView>
-          </View>
+          </SheetSurface>
         </KeyboardAvoidingView>
       </View>
     </Modal>
