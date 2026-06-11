@@ -32,7 +32,7 @@ function IosNativeTabs() {
   const { colors } = useTheme();
 
   return (
-    <NativeTabs tintColor={colors.primary}>
+    <NativeTabs tintColor={colors.primary} minimizeBehavior="onScrollDown">
       <NativeTabs.Trigger name="index">
         <Label>Home</Label>
         <Icon sf={{ default: "house", selected: "house.fill" }} />

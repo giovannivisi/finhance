@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 
 import { spacing, useTheme } from "@/theme";
 
@@ -19,6 +20,43 @@ import { AppText } from "./text";
 // iOS uses the system tab bar (~49pt, content scrolls beneath its glass);
 // Android uses the taller floating pill.
 export const TAB_BAR_CLEARANCE = Platform.OS === "ios" ? 76 : 108;
+
+/**
+ * Soft brand glow behind every screen — gives the dark theme depth and the
+ * system glass something to refract. Nearly invisible in light mode.
+ */
+function ScreenGlow() {
+  const { colors, scheme } = useTheme();
+
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 560,
+        overflow: "hidden",
+      }}
+    >
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="screen-glow" cx="22%" cy="-12%" r="78%">
+            <Stop
+              offset="0%"
+              stopColor={colors.primary}
+              stopOpacity={scheme === "dark" ? 0.16 : 0.07}
+            />
+            <Stop offset="55%" stopColor={colors.primary} stopOpacity={0.04} />
+            <Stop offset="100%" stopColor={colors.primary} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#screen-glow)" />
+      </Svg>
+    </View>
+  );
+}
 
 export interface ScreenProps {
   /** Small uppercase label above the title. */
@@ -93,7 +131,12 @@ export function Screen({
             <AppText
               variant="title1"
               numberOfLines={1}
-              style={{ marginTop: kicker ? 4 : 0 }}
+              style={{
+                marginTop: kicker ? 4 : 0,
+                fontSize: 30,
+                lineHeight: 36,
+                letterSpacing: -0.8,
+              }}
             >
               {title}
             </AppText>
@@ -120,6 +163,7 @@ export function Screen({
   if (!scroll) {
     return (
       <View style={containerStyle}>
+        <ScreenGlow />
         <View style={[innerPadding, { flex: 1 }, contentStyle]}>
           {header}
           {children}
@@ -130,6 +174,7 @@ export function Screen({
 
   return (
     <View style={containerStyle}>
+      <ScreenGlow />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[

@@ -8,15 +8,15 @@ client and API can never drift apart silently.
 
 ## What it covers
 
-- **Connect** — works with both deployment shapes:
-  - **Hosted** (e.g. `https://finhance-web.vercel.app`): the app detects the
-    web deployment, opens the system browser for your normal Google/GitHub
-    sign-in, and receives a long-lived mobile session token via deep link.
-    The token lives in the device keychain and every API call goes through
-    the web's `/api/proxy/*`, which exchanges it per request for the same
-    short-lived API JWTs a browser session gets.
-  - **Self-hosted** (local auth mode): enter the API address directly; the
-    URL is verified against `/health` before being saved.
+- **One-tap onboarding** — the production deployment is baked in
+  (`https://finhance-web.vercel.app`, overridable at build time with
+  `EXPO_PUBLIC_PRODUCTION_SERVER_URL`): open the app, tap **Sign in**, finish
+  the usual Google/GitHub flow in the system browser, done. The app receives
+  a long-lived mobile session token via deep link; it lives in the device
+  keychain and every API call goes through the web's `/api/proxy/*`, which
+  exchanges it per request for the same short-lived API JWTs a browser
+  session gets. Self-hosters can still connect to a local-mode API (or a
+  different hosted deployment) behind the "Use a different server" link.
 - **Dashboard** — reporting-currency net worth, assets/liabilities grouped by
   kind, pricing freshness, quote refresh, setup progress, budget pulse
 - **Activity** — month-by-month transactions with day grouping, kind/account/
