@@ -203,10 +203,10 @@ interface RecurringMonthTransactionRow {
 
 interface RecurringComparisonBucket {
   currency: string;
-  expectedIncomeTotal: number;
-  actualIncomeTotal: number;
-  expectedExpenseTotal: number;
-  actualExpenseTotal: number;
+  expectedIncomeTotal: Prisma.Decimal;
+  actualIncomeTotal: Prisma.Decimal;
+  expectedExpenseTotal: Prisma.Decimal;
+  actualExpenseTotal: Prisma.Decimal;
   dueRuleCount: number;
   realizedRuleCount: number;
   skippedCount: number;
@@ -1177,18 +1177,19 @@ export class RecurringService {
       };
     }
 
-    const openingNetWorth = openingSnapshot.netWorthTotal.toNumber();
-    const closingNetWorth = closingSnapshot.netWorthTotal.toNumber();
-    const cashflowContribution =
+    const cashflowContribution = new Prisma.Decimal(
       cashflow.find((bucket) => bucket.currency === reportingCurrency)
-        ?.netCashflow ?? 0;
+        ?.netCashflow ?? 0,
+    );
+    const marketAndFxMovement = closingSnapshot.netWorthTotal
+      .minus(openingSnapshot.netWorthTotal)
+      .minus(cashflowContribution);
 
     return {
       reportingCurrency,
       isComparableInReportingCurrency: true,
-      cashflowContribution,
-      marketAndFxMovement:
-        closingNetWorth - openingNetWorth - cashflowContribution,
+      cashflowContribution: cashflowContribution.toNumber(),
+      marketAndFxMovement: marketAndFxMovement.toNumber(),
       note: `Market and FX movement is the portion of the ${reportingCurrency} net worth delta not explained by ${reportingCurrency} cashflow.`,
     };
   }
@@ -1263,12 +1264,12 @@ export class RecurringService {
 
       const expectedAmount =
         occurrence?.status === 'OVERRIDDEN' && occurrence.overrideAmount
-          ? occurrence.overrideAmount.toNumber()
-          : rule.amount.toNumber();
+          ? occurrence.overrideAmount
+          : rule.amount;
       const actualAmount =
         occurrence?.status === 'SKIPPED'
-          ? 0
-          : rows.reduce((sum, row) => sum + row.amount.toNumber(), 0);
+          ? ZERO
+          : rows.reduce((sum, row) => sum.plus(row.amount), ZERO);
       const direction = this.resolveRecurringComparisonDirection(
         rule,
         occurrence,
@@ -1276,11 +1277,14 @@ export class RecurringService {
       );
 
       if (direction === TransactionDirection.INFLOW) {
-        bucket.expectedIncomeTotal += expectedAmount;
-        bucket.actualIncomeTotal += actualAmount;
+        bucket.expectedIncomeTotal =
+          bucket.expectedIncomeTotal.plus(expectedAmount);
+        bucket.actualIncomeTotal = bucket.actualIncomeTotal.plus(actualAmount);
       } else {
-        bucket.expectedExpenseTotal += expectedAmount;
-        bucket.actualExpenseTotal += actualAmount;
+        bucket.expectedExpenseTotal =
+          bucket.expectedExpenseTotal.plus(expectedAmount);
+        bucket.actualExpenseTotal =
+          bucket.actualExpenseTotal.plus(actualAmount);
       }
 
       buckets.set(currency, bucket);
@@ -1290,10 +1294,10 @@ export class RecurringService {
       .sort((left, right) => left.currency.localeCompare(right.currency))
       .map((bucket) => ({
         currency: bucket.currency,
-        expectedIncomeTotal: bucket.expectedIncomeTotal,
-        actualIncomeTotal: bucket.actualIncomeTotal,
-        expectedExpenseTotal: bucket.expectedExpenseTotal,
-        actualExpenseTotal: bucket.actualExpenseTotal,
+        expectedIncomeTotal: bucket.expectedIncomeTotal.toNumber(),
+        actualIncomeTotal: bucket.actualIncomeTotal.toNumber(),
+        expectedExpenseTotal: bucket.expectedExpenseTotal.toNumber(),
+        actualExpenseTotal: bucket.actualExpenseTotal.toNumber(),
         dueRuleCount: bucket.dueRuleCount,
         realizedRuleCount: bucket.realizedRuleCount,
         skippedCount: bucket.skippedCount,
@@ -1343,10 +1347,10 @@ export class RecurringService {
   ): RecurringComparisonBucket {
     return {
       currency,
-      expectedIncomeTotal: 0,
-      actualIncomeTotal: 0,
-      expectedExpenseTotal: 0,
-      actualExpenseTotal: 0,
+      expectedIncomeTotal: ZERO,
+      actualIncomeTotal: ZERO,
+      expectedExpenseTotal: ZERO,
+      actualExpenseTotal: ZERO,
       dueRuleCount: 0,
       realizedRuleCount: 0,
       skippedCount: 0,

@@ -11,6 +11,10 @@ vi.mock("@lib/server-api", () => ({
   api: apiMock,
 }));
 
+vi.mock("@lib/auth-mode", () => ({
+  isHostedAuthMode: () => false,
+}));
+
 vi.mock("@components/Container", () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

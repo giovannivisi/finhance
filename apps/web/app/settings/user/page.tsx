@@ -1,6 +1,7 @@
 import type { UserSettingsResponse } from "@finhance/shared/users";
 import Container from "@components/Container";
 import UserSettingsPageClient from "@components/UserSettingsPageClient";
+import { isHostedAuthMode } from "@lib/auth-mode";
 import { api } from "@lib/server-api";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +35,10 @@ export default async function UserSettingsPage() {
           </div>
         </section>
       ) : (
-        <UserSettingsPageClient initialSettings={settings} />
+        <UserSettingsPageClient
+          initialSettings={settings}
+          canSignOutMobileDevices={isHostedAuthMode()}
+        />
       )}
     </Container>
   );

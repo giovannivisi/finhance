@@ -7,6 +7,7 @@ import type {
   UserSettingsResponse,
 } from "@finhance/shared/users";
 import { apiMutation } from "@lib/api";
+import ConfirmActionModal from "@components/ConfirmActionModal";
 import SearchablePicker from "@components/SearchablePicker";
 import {
   REPORTING_CURRENCY_OPTIONS,
@@ -16,8 +17,10 @@ import { useSingleFlightActions } from "@lib/single-flight";
 
 export default function UserSettingsPageClient({
   initialSettings,
+  canSignOutMobileDevices = false,
 }: {
   initialSettings: UserSettingsResponse;
+  canSignOutMobileDevices?: boolean;
 }) {
   const router = useRouter();
   const fieldPrefix = useId();
@@ -25,7 +28,38 @@ export default function UserSettingsPageClient({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMobileSignOutOpen, setIsMobileSignOutOpen] = useState(false);
+  const [mobileSignOutError, setMobileSignOutError] = useState<string | null>(
+    null,
+  );
+  const [isMobileSignOutPending, setIsMobileSignOutPending] = useState(false);
   const actions = useSingleFlightActions<"submit">();
+
+  async function handleMobileSignOut() {
+    setMobileSignOutError(null);
+    setIsMobileSignOutPending(true);
+
+    try {
+      const response = await fetch("/api/mobile/sessions", {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("The server could not sign out mobile devices.");
+      }
+
+      setIsMobileSignOutOpen(false);
+      setNotice("All mobile devices have been signed out.");
+    } catch (signOutError) {
+      setMobileSignOutError(
+        signOutError instanceof Error
+          ? signOutError.message
+          : "Unable to sign out mobile devices.",
+      );
+    } finally {
+      setIsMobileSignOutPending(false);
+    }
+  }
 
   useEffect(() => {
     setForm(initialSettings);
@@ -172,6 +206,48 @@ export default function UserSettingsPageClient({
           />
         </div>
       </section>
+
+      {canSignOutMobileDevices ? (
+        <section className="glass-card page-section">
+          <div className="page-section-heading">
+            <div>
+              <p className="section-kicker">Security</p>
+              <h2 className="section-title">Mobile devices</h2>
+            </div>
+          </div>
+
+          <div className="app-form-field">
+            <p className="section-subtitle">
+              Sign out every mobile device connected to this account. Each
+              device will need to sign in again.
+            </p>
+            <div>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setMobileSignOutError(null);
+                  setIsMobileSignOutOpen(true);
+                }}
+              >
+                Sign out mobile devices
+              </button>
+            </div>
+          </div>
+
+          <ConfirmActionModal
+            open={isMobileSignOutOpen}
+            onClose={() => setIsMobileSignOutOpen(false)}
+            onConfirm={handleMobileSignOut}
+            title="Sign out mobile devices?"
+            description="Every signed-in mobile device will lose access immediately and will need to sign in again."
+            confirmLabel="Sign out devices"
+            pendingLabel="Signing out..."
+            error={mobileSignOutError}
+            isPending={isMobileSignOutPending}
+          />
+        </section>
+      ) : null}
 
       {error ? (
         <p role="alert" className="app-form-error">

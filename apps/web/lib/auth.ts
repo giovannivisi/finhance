@@ -86,6 +86,20 @@ function createProviders() {
   ];
 }
 
+function maskEmailForLog(email: string | undefined): string {
+  if (!email) {
+    return "<no email>";
+  }
+
+  const [localPart, domain] = email.split("@");
+
+  if (!domain) {
+    return "***";
+  }
+
+  return `${localPart.slice(0, 1)}***@${domain}`;
+}
+
 function buildAuthConfig(): NextAuthConfig {
   return {
     adapter: FinhanceAuthAdapter(prisma),
@@ -123,11 +137,12 @@ function buildAuthConfig(): NextAuthConfig {
         });
 
         // Accounts auto-link across providers by verified email, so record
-        // which provider each sign-in used to keep that path auditable.
+        // which provider each sign-in used to keep that path auditable. The
+        // email is masked so platform logs do not retain the full address.
         console.info(
           `[auth] sign-in ${allowed ? "allowed" : "denied"} via ${
             account?.provider ?? "unknown"
-          } for ${normalizedEmail ?? "<no email>"}`,
+          } for ${maskEmailForLog(normalizedEmail)}`,
         );
 
         return allowed;

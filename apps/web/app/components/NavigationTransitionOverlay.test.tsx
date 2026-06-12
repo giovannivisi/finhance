@@ -41,11 +41,13 @@ describe("NavigationTransitionOverlay", () => {
     render(<NavigationTransitionOverlay />);
 
     act(() => {
-      navigationStartListener?.("/history");
+      navigationStartListener?.("/privacy");
       vi.advanceTimersByTime(600);
     });
 
-    expect(screen.getByRole("status", { name: "Loading History" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "Loading Loading" }),
+    ).toBeInTheDocument();
   });
 
   it("does not show the overlay when the target route was prefetched", () => {

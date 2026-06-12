@@ -70,4 +70,58 @@ describe("UserSettingsPageClient", () => {
     expect(await screen.findByText("User settings saved.")).toBeInTheDocument();
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
+
+  it("hides the mobile sign-out section outside hosted mode", () => {
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+        }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /sign out mobile devices/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("signs out mobile devices after confirmation", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(
+        <UserSettingsPageClient
+          initialSettings={{
+            showTransactionTimes: true,
+            startPage: "DASHBOARD",
+            reportingCurrency: "EUR",
+          }}
+          canSignOutMobileDevices
+        />,
+      );
+
+      await user.click(
+        screen.getByRole("button", { name: /sign out mobile devices/i }),
+      );
+      await user.click(
+        screen.getByRole("button", { name: /sign out devices/i }),
+      );
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith("/api/mobile/sessions", {
+          method: "DELETE",
+        });
+      });
+
+      expect(
+        await screen.findByText("All mobile devices have been signed out."),
+      ).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

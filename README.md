@@ -1,7 +1,8 @@
 # finhance
 
 `finhance` is a personal finance workspace built as a monorepo with a NestJS
-API, a Next.js web app, and shared TypeScript contracts.
+API, a Next.js web app, an Expo (React Native) mobile app, and shared
+TypeScript contracts.
 
 The product is designed around a few core ideas:
 
@@ -36,6 +37,10 @@ The current app includes:
   rules, recurring exceptions, budgets, and budget overrides
 - privacy notice support for self-hosted, managed, and mixed deployments
 - hide-money preference support in the web UI
+- a native mobile companion app (Expo/React Native) for self-hosted APIs,
+  covering dashboard, activity, transactions, wallets, brokerage, budgets,
+  analytics, monthly review, recurring, categories, snapshots, and settings —
+  see `apps/mobile/README.md`
 
 ## Product model
 
@@ -230,6 +235,7 @@ That means:
 apps/
   api/        NestJS + Prisma API
   web/        Next.js App Router frontend
+  mobile/     Expo (React Native) iOS/Android app
 packages/
   db/         Prisma schema, migrations, and generated client
   shared/     shared DTOs, response types, and import template contracts

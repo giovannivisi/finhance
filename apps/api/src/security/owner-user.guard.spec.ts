@@ -32,7 +32,7 @@ describe('OwnerUserGuard', () => {
 
   it('creates the default local owner outside hosted mode', async () => {
     delete process.env.AUTH_MODE;
-    const upsert = jest.fn().mockResolvedValue(undefined);
+    const upsert = jest.fn().mockResolvedValue({ isActive: true });
     const guard = new OwnerUserGuard(
       {
         user: {
@@ -50,12 +50,13 @@ describe('OwnerUserGuard', () => {
         id: 'local-dev',
         email: buildOwnerPlaceholderEmail('local-dev'),
       },
+      select: { isActive: true },
     });
   });
 
   it('upserts the authenticated hosted user record', async () => {
     process.env.AUTH_MODE = 'hosted';
-    const upsert = jest.fn().mockResolvedValue(undefined);
+    const upsert = jest.fn().mockResolvedValue({ isActive: true });
     const guard = new OwnerUserGuard(
       {
         user: {
@@ -84,12 +85,37 @@ describe('OwnerUserGuard', () => {
         id: 'user-123',
         email: 'person@example.com',
       },
+      select: { isActive: true },
     });
+  });
+
+  it('rejects inactive hosted users', async () => {
+    process.env.AUTH_MODE = 'hosted';
+    const upsert = jest.fn().mockResolvedValue({ isActive: false });
+    const guard = new OwnerUserGuard(
+      {
+        user: {
+          upsert,
+        },
+      } as never,
+      new Reflector(),
+    );
+
+    await expect(
+      guard.canActivate(
+        createContext({
+          authPrincipal: {
+            userId: 'user-123',
+            email: 'person@example.com',
+          },
+        }),
+      ),
+    ).rejects.toThrow('This user account is disabled.');
   });
 
   it('skips owner upserts for public routes', async () => {
     delete process.env.AUTH_MODE;
-    const upsert = jest.fn().mockResolvedValue(undefined);
+    const upsert = jest.fn().mockResolvedValue({ isActive: true });
     const handler = () => undefined;
     Reflect.defineMetadata(IS_PUBLIC_ROUTE_KEY, true, handler);
     const guard = new OwnerUserGuard(

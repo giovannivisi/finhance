@@ -1,5 +1,14 @@
-const DISPLAY_NAMES = new Intl.DisplayNames(["en"], { type: "currency" });
 const FALLBACK_CURRENCY_CODES = ["EUR", "USD", "GBP", "CHF"] as const;
+
+// Intl.DisplayNames is unavailable in some runtimes (e.g. Hermes on React
+// Native), so construct it lazily and fall back to bare currency codes.
+function createCurrencyDisplayNames(): Intl.DisplayNames | null {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "currency" });
+  } catch {
+    return null;
+  }
+}
 
 export const SUPPORTED_REPORTING_CURRENCY_CODES = [
   "EUR",
@@ -41,9 +50,17 @@ function getRuntimeCurrencyCodes(): string[] {
 }
 
 function buildCurrencyDefinitions(): CurrencyDefinition[] {
+  const displayNames = createCurrencyDisplayNames();
+
   return getRuntimeCurrencyCodes()
     .map((code) => {
-      const name = DISPLAY_NAMES.of(code) ?? code;
+      let name = code;
+
+      try {
+        name = displayNames?.of(code) ?? code;
+      } catch {
+        // Keep the bare code when the runtime rejects it.
+      }
       return {
         code,
         name,
