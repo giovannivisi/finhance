@@ -46,22 +46,27 @@ validation rule management, and the privacy notice page.
 
 ### Hosted sign-in details
 
-The web app exposes two small endpoints for mobile clients
+The web app exposes three small endpoints for mobile clients
 (`apps/web/app/api/mobile/`):
 
 - `GET /api/mobile/health` — public discovery (service + auth mode)
-- `GET /api/mobile/authorize?redirect=…` — after the regular Auth.js
-  sign-in, mints an HS256 mobile session token (`AUTH_SECRET`-signed,
+- `GET /api/mobile/authorize?redirect=…&challenge=…` — after the regular
+  Auth.js sign-in, mints a short-lived sign-in code (5 minutes) bound to the
+  app's PKCE challenge and hands it to the app through a strictly allowlisted
+  deep-link redirect (`finhance://auth`; Expo Go `exp://…/--/auth` redirects
+  only outside production or with `AUTH_MOBILE_ALLOW_DEV_REDIRECTS=true`)
+- `POST /api/mobile/token` — exchanges the sign-in code plus the app-held
+  PKCE verifier for the HS256 mobile session token (`AUTH_SECRET`-signed,
   audience `finhance-mobile`, default TTL 120 days, configurable via
-  `AUTH_MOBILE_TOKEN_TTL`) and hands it to the app through a strictly
-  allowlisted deep-link redirect (`finhance://auth`; Expo Go `exp://…/--/auth`
-  redirects only outside production or with
-  `AUTH_MOBILE_ALLOW_DEV_REDIRECTS=true`)
+  `AUTH_MOBILE_TOKEN_TTL`), so the token never travels through the browser
 
 The API itself never accepts mobile tokens — the proxy verifies them and
 mints the usual short-lived ES256 API JWTs upstream. Signing out in the app
-deletes the token from the keychain; a 401 from the proxy (expired/invalid
-token) automatically returns the app to the sign-in screen.
+deletes the token from the keychain; a 401 from the proxy carrying the
+`MOBILE_SESSION_INVALID` code (expired, revoked, or otherwise dead session)
+automatically returns the app to the sign-in screen. All mobile sessions can
+be revoked from the web app's user settings ("Sign out mobile devices").
+Hosted sign-in requires an `https://` server URL outside development builds.
 
 ## Development
 

@@ -91,8 +91,13 @@ async function forwardRequest(
       );
 
       if (bearer.present && bearer.invalid) {
+        // The stable code lets the app distinguish a dead session (drop the
+        // stored token) from other 401s, e.g. captive portals or misconfig.
         return Response.json(
-          { message: "Mobile session is invalid or expired." },
+          {
+            message: "Mobile session is invalid or expired.",
+            code: "MOBILE_SESSION_INVALID",
+          },
           { status: 401 },
         );
       }

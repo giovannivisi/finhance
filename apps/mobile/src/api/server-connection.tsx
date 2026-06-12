@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
@@ -83,6 +84,10 @@ async function fetchHealth(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function readStoredToken(): Promise<string | null> {
@@ -214,10 +219,26 @@ export function ServerConnectionProvider({
   }, []);
 
   const signInHosted = useCallback(async (normalizedUrl: string) => {
+    // The session token rides on every request; never send it in the clear.
+    if (!normalizedUrl.startsWith("https://") && !__DEV__) {
+      throw new ApiError(
+        "Hosted sign-in needs an https:// server URL so your session is never sent unencrypted.",
+      );
+    }
+
+    // PKCE: the browser handoff only ever carries a short-lived code bound to
+    // this challenge; the verifier below never leaves the app.
+    const verifier = bytesToHex(Crypto.getRandomBytes(32));
+    const challenge = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      verifier,
+    );
+
     const redirectUri = Linking.createURL("auth");
-    const authorizeUrl = `${normalizedUrl}/api/mobile/authorize?redirect=${encodeURIComponent(
-      redirectUri,
-    )}`;
+    const authorizeUrl =
+      `${normalizedUrl}/api/mobile/authorize` +
+      `?redirect=${encodeURIComponent(redirectUri)}` +
+      `&challenge=${challenge.toLowerCase()}`;
 
     const result = await WebBrowser.openAuthSessionAsync(
       authorizeUrl,
@@ -228,7 +249,21 @@ export function ServerConnectionProvider({
       throw new ApiError("Sign-in was cancelled before it completed.");
     }
 
-    const nextToken = parseMobileAuthCallback(result.url);
+    const code = parseMobileAuthCallback(result.url);
+
+    if (!code) {
+      throw new ApiError(
+        "The server did not return a sign-in code. Make sure the deployment includes mobile sign-in support.",
+      );
+    }
+
+    const exchangeClient = createApiClient(normalizedUrl);
+    const { token: nextToken } = await exchangeClient.request<{
+      token?: string;
+    }>("/api/mobile/token", {
+      method: "POST",
+      body: { code, verifier },
+    });
 
     if (!nextToken) {
       throw new ApiError(

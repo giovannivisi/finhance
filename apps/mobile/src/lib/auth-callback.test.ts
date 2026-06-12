@@ -3,28 +3,28 @@ import { describe, expect, it } from "vitest";
 import { classifyServer, parseMobileAuthCallback } from "./auth-callback";
 
 describe("parseMobileAuthCallback", () => {
-  it("reads the token from the fragment", () => {
-    expect(parseMobileAuthCallback("finhance://auth#token=abc.def")).toBe(
+  it("reads the sign-in code from the fragment", () => {
+    expect(parseMobileAuthCallback("finhance://auth#code=abc.def")).toBe(
       "abc.def",
     );
     expect(
       parseMobileAuthCallback(
-        "exp://192.168.1.19:8081/--/auth#token=tok&other=1",
+        "exp://192.168.1.19:8081/--/auth#code=cod&other=1",
       ),
-    ).toBe("tok");
+    ).toBe("cod");
   });
 
-  it("decodes encoded tokens", () => {
-    expect(parseMobileAuthCallback("finhance://auth#token=a%20b")).toBe("a b");
+  it("decodes encoded codes", () => {
+    expect(parseMobileAuthCallback("finhance://auth#code=a%20b")).toBe("a b");
   });
 
   it("falls back to a query parameter", () => {
-    expect(parseMobileAuthCallback("https://x.example/auth?token=qqq")).toBe(
+    expect(parseMobileAuthCallback("https://x.example/auth?code=qqq")).toBe(
       "qqq",
     );
   });
 
-  it("returns null when no token is present", () => {
+  it("returns null when no code is present", () => {
     expect(parseMobileAuthCallback("finhance://auth")).toBeNull();
     expect(parseMobileAuthCallback("finhance://auth#other=1")).toBeNull();
     expect(parseMobileAuthCallback("not a url")).toBeNull();

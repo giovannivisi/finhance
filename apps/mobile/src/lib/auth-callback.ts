@@ -1,7 +1,8 @@
 /**
- * Extracts the mobile session token from the authorize redirect URL.
- * The web hands the token back in the fragment (`finhance://auth#token=…`);
- * a query parameter is accepted as a defensive fallback.
+ * Extracts the sign-in code from the authorize redirect URL. The web hands
+ * the code back in the fragment (`finhance://auth#code=…`); a query parameter
+ * is accepted as a defensive fallback. The code is then exchanged together
+ * with the PKCE verifier for the actual session token.
  */
 export function parseMobileAuthCallback(url: string): string | null {
   const hashIndex = url.indexOf("#");
@@ -9,16 +10,16 @@ export function parseMobileAuthCallback(url: string): string | null {
   if (hashIndex !== -1) {
     const fragment = url.slice(hashIndex + 1);
     const params = new URLSearchParams(fragment);
-    const token = params.get("token")?.trim();
+    const code = params.get("code")?.trim();
 
-    if (token) {
-      return token;
+    if (code) {
+      return code;
     }
   }
 
   try {
-    const token = new URL(url).searchParams.get("token")?.trim();
-    return token || null;
+    const code = new URL(url).searchParams.get("code")?.trim();
+    return code || null;
   } catch {
     return null;
   }

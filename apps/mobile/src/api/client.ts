@@ -1,16 +1,37 @@
 export class ApiError extends Error {
   readonly status: number | null;
   readonly isNetworkError: boolean;
+  /** Machine-readable error code from the server, when one is provided. */
+  readonly code: string | null;
 
   constructor(
     message: string,
-    options: { status?: number | null; isNetworkError?: boolean } = {},
+    options: {
+      status?: number | null;
+      isNetworkError?: boolean;
+      code?: string | null;
+    } = {},
   ) {
     super(message);
     this.name = "ApiError";
     this.status = options.status ?? null;
     this.isNetworkError = options.isNetworkError ?? false;
+    this.code = options.code ?? null;
   }
+}
+
+export const MOBILE_SESSION_INVALID_CODE = "MOBILE_SESSION_INVALID";
+
+function extractErrorCode(payload: unknown): string | null {
+  if (payload && typeof payload === "object" && "code" in payload) {
+    const code = (payload as { code: unknown }).code;
+
+    if (typeof code === "string" && code.trim()) {
+      return code;
+    }
+  }
+
+  return null;
 }
 
 export interface ApiClient {
@@ -130,7 +151,11 @@ export function generateIdempotencyKey(): string {
 export interface ApiClientOptions {
   /** Mobile session token for hosted servers; sent as a Bearer header. */
   authToken?: string | null;
-  /** Invoked on 401 responses so the app can drop a stale hosted session. */
+  /**
+   * Invoked when the proxy explicitly reports a dead mobile session so the
+   * app can drop the stored token. Other 401s (captive portals, misconfigured
+   * servers) surface as errors without signing the user out.
+   */
   onUnauthorized?: () => void;
 }
 
@@ -204,12 +229,15 @@ export function createApiClient(
     }
 
     if (!response.ok) {
-      if (response.status === 401) {
+      const code = extractErrorCode(payload);
+
+      if (response.status === 401 && code === MOBILE_SESSION_INVALID_CODE) {
         clientOptions.onUnauthorized?.();
       }
 
       throw new ApiError(extractErrorMessage(payload, response.status), {
         status: response.status,
+        code,
       });
     }
 

@@ -1,17 +1,44 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildMobileTokenRedirectLocation,
+  buildMobileCodeRedirectLocation,
+  computePkceChallenge,
+  isValidPkceChallenge,
+  mintMobileAuthCode,
   mintMobileSessionToken,
   readBearerToken,
   resolveActiveMobileTokenClaims,
   resolveMobileRedirectTarget,
+  verifyMobileAuthCode,
   verifyMobileSessionToken,
+  verifyPkceVerifier,
 } from "./mobile-auth.core.ts";
 
 const AUTH_SECRET = "test-secret-for-mobile-tokens";
 
-test("mobile session tokens round-trip with user id and email", async () => {
+// SHA-256("abc") — FIPS 180-2 test vector.
+const ABC_CHALLENGE =
+  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+function activeUser(
+  overrides: Partial<{
+    id: string;
+    email: string | null;
+    isActive: boolean;
+    mobileTokensRevokedAt: Date | null;
+  }> = {},
+) {
+  return {
+    id: "user-123",
+    email: "user@example.com",
+    isActive: true,
+    mobileTokensRevokedAt: null,
+    ...overrides,
+  };
+}
+
+test("mobile session tokens round-trip with user id, email, and issue time", async () => {
+  const before = Date.now();
   const token = await mintMobileSessionToken({
     userId: "user-123",
     email: "user@example.com",
@@ -20,10 +47,10 @@ test("mobile session tokens round-trip with user id and email", async () => {
 
   const claims = await verifyMobileSessionToken(token, AUTH_SECRET);
 
-  assert.deepEqual(claims, {
-    userId: "user-123",
-    email: "user@example.com",
-  });
+  assert.equal(claims?.userId, "user-123");
+  assert.equal(claims?.email, "user@example.com");
+  assert.ok(claims?.issuedAt instanceof Date);
+  assert.ok(claims.issuedAt.getTime() >= Math.floor(before / 1000) * 1000);
 });
 
 test("mobile session tokens omit email when absent", async () => {
@@ -34,7 +61,8 @@ test("mobile session tokens omit email when absent", async () => {
 
   const claims = await verifyMobileSessionToken(token, AUTH_SECRET);
 
-  assert.deepEqual(claims, { userId: "user-123", email: null });
+  assert.equal(claims?.userId, "user-123");
+  assert.equal(claims?.email, null);
 });
 
 test("verification rejects the wrong secret", async () => {
@@ -60,30 +88,138 @@ test("verification rejects garbage tokens", async () => {
   assert.equal(await verifyMobileSessionToken("not-a-jwt", AUTH_SECRET), null);
 });
 
+test("sign-in codes round-trip with the bound challenge", async () => {
+  const code = await mintMobileAuthCode({
+    userId: "user-123",
+    email: "user@example.com",
+    challenge: ABC_CHALLENGE,
+    authSecret: AUTH_SECRET,
+  });
+
+  const claims = await verifyMobileAuthCode(code, AUTH_SECRET);
+
+  assert.deepEqual(claims, {
+    userId: "user-123",
+    email: "user@example.com",
+    challenge: ABC_CHALLENGE,
+  });
+});
+
+test("sign-in codes are not accepted as session tokens and vice versa", async () => {
+  const code = await mintMobileAuthCode({
+    userId: "user-123",
+    challenge: ABC_CHALLENGE,
+    authSecret: AUTH_SECRET,
+  });
+  const token = await mintMobileSessionToken({
+    userId: "user-123",
+    authSecret: AUTH_SECRET,
+  });
+
+  assert.equal(await verifyMobileSessionToken(code, AUTH_SECRET), null);
+  assert.equal(await verifyMobileAuthCode(token, AUTH_SECRET), null);
+});
+
+test("pkce challenge validation accepts only 64-char lowercase hex", () => {
+  assert.equal(isValidPkceChallenge(ABC_CHALLENGE), true);
+  assert.equal(isValidPkceChallenge(ABC_CHALLENGE.toUpperCase()), false);
+  assert.equal(isValidPkceChallenge(ABC_CHALLENGE.slice(1)), false);
+  assert.equal(isValidPkceChallenge(""), false);
+  assert.equal(isValidPkceChallenge(null), false);
+});
+
+test("pkce verifier hashing matches the known sha-256 vector", async () => {
+  assert.equal(await computePkceChallenge("abc"), ABC_CHALLENGE);
+  assert.equal(await verifyPkceVerifier("abc", ABC_CHALLENGE), true);
+  assert.equal(await verifyPkceVerifier("abd", ABC_CHALLENGE), false);
+});
+
 test("active user resolution rejects inactive mobile token users", () => {
-  const claims = { userId: "user-123", email: "token@example.com" };
+  const claims = {
+    userId: "user-123",
+    email: "token@example.com",
+    issuedAt: new Date(),
+  };
 
   assert.equal(
-    resolveActiveMobileTokenClaims(claims, {
-      id: "user-123",
-      email: "user@example.com",
-      isActive: false,
-    }),
+    resolveActiveMobileTokenClaims(claims, activeUser({ isActive: false })),
     null,
   );
 });
 
 test("active user resolution prefers the stored user email", () => {
-  const claims = { userId: "user-123", email: "token@example.com" };
+  const claims = {
+    userId: "user-123",
+    email: "token@example.com",
+    issuedAt: new Date("2026-06-01T10:00:00Z"),
+  };
 
-  assert.deepEqual(
-    resolveActiveMobileTokenClaims(claims, {
-      id: "user-123",
-      email: "user@example.com",
-      isActive: true,
-    }),
-    { userId: "user-123", email: "user@example.com" },
+  assert.deepEqual(resolveActiveMobileTokenClaims(claims, activeUser()), {
+    userId: "user-123",
+    email: "user@example.com",
+    issuedAt: new Date("2026-06-01T10:00:00Z"),
+  });
+});
+
+test("active user resolution rejects tokens issued before a revocation", () => {
+  const claims = {
+    userId: "user-123",
+    email: null,
+    issuedAt: new Date("2026-06-01T10:00:00Z"),
+  };
+
+  assert.equal(
+    resolveActiveMobileTokenClaims(
+      claims,
+      activeUser({ mobileTokensRevokedAt: new Date("2026-06-01T10:00:05Z") }),
+    ),
+    null,
   );
+});
+
+test("active user resolution keeps tokens issued after a revocation", () => {
+  const claims = {
+    userId: "user-123",
+    email: null,
+    issuedAt: new Date("2026-06-01T10:00:10Z"),
+  };
+
+  assert.ok(
+    resolveActiveMobileTokenClaims(
+      claims,
+      activeUser({ mobileTokensRevokedAt: new Date("2026-06-01T10:00:05Z") }),
+    ),
+  );
+});
+
+test("active user resolution survives a same-second revocation re-sign-in", () => {
+  const claims = {
+    userId: "user-123",
+    email: null,
+    issuedAt: new Date("2026-06-01T10:00:05.000Z"),
+  };
+
+  assert.ok(
+    resolveActiveMobileTokenClaims(
+      claims,
+      activeUser({
+        mobileTokensRevokedAt: new Date("2026-06-01T10:00:05.900Z"),
+      }),
+    ),
+  );
+});
+
+test("active user resolution fails closed for tokens without an issue time", () => {
+  const claims = { userId: "user-123", email: null, issuedAt: null };
+
+  assert.equal(
+    resolveActiveMobileTokenClaims(
+      claims,
+      activeUser({ mobileTokensRevokedAt: new Date() }),
+    ),
+    null,
+  );
+  assert.ok(resolveActiveMobileTokenClaims(claims, activeUser()));
 });
 
 test("readBearerToken parses Authorization headers", () => {
@@ -137,9 +273,9 @@ test("redirect allowlist rejects attacker-controlled targets", () => {
   }
 });
 
-test("token redirect location carries the token in the fragment", () => {
+test("code redirect location carries the code in the fragment", () => {
   assert.equal(
-    buildMobileTokenRedirectLocation("finhance://auth", "tok en"),
-    "finhance://auth#token=tok%20en",
+    buildMobileCodeRedirectLocation("finhance://auth", "cod e"),
+    "finhance://auth#code=cod%20e",
   );
 });
