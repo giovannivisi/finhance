@@ -25,7 +25,6 @@ import {
   addMonths,
   currentMonth,
   formatMonthLabel,
-  monthBounds,
 } from "@/lib/dates";
 import { spacing, useTheme } from "@/theme";
 
@@ -287,8 +286,8 @@ export default function AnalyticsScreen() {
     const thisMonth = currentMonth();
     const startMonth = addMonths(thisMonth, -(Number(range) - 1));
     return {
-      from: monthBounds(startMonth).from,
-      to: monthBounds(thisMonth).to,
+      from: startMonth,
+      to: thisMonth,
     };
   }, [range]);
 
