@@ -1,4 +1,4 @@
-import { CategoryBudgetOverride, Prisma } from '@finhance/db';
+import { CategoryBudgetOverride, CategoryType, Prisma } from '@finhance/db';
 import type {
   CategoryBudgetOverrideResponse,
   CategoryBudgetResponse,
@@ -45,14 +45,26 @@ export function toCategoryBudgetResponse(
   budget: CategoryBudgetModel,
 ): CategoryBudgetResponse {
   const categoryHierarchy = getCategoryHierarchyMetadata(budget.category);
+  const normalizedHierarchy =
+    budget.category.type === CategoryType.EXPENSE &&
+    !budget.category.parentCategoryId &&
+    !categoryHierarchy.primaryCategoryId
+      ? {
+          primaryCategoryId: budget.category.id,
+          primaryCategoryName: budget.category.name,
+          secondaryCategoryId: null,
+          secondaryCategoryName: null,
+        }
+      : categoryHierarchy;
+
   return {
     id: budget.id,
     categoryId: budget.categoryId,
     categoryName: budget.category.name,
-    primaryCategoryId: categoryHierarchy.primaryCategoryId,
-    primaryCategoryName: categoryHierarchy.primaryCategoryName,
-    secondaryCategoryId: categoryHierarchy.secondaryCategoryId,
-    secondaryCategoryName: categoryHierarchy.secondaryCategoryName,
+    primaryCategoryId: normalizedHierarchy.primaryCategoryId,
+    primaryCategoryName: normalizedHierarchy.primaryCategoryName,
+    secondaryCategoryId: normalizedHierarchy.secondaryCategoryId,
+    secondaryCategoryName: normalizedHierarchy.secondaryCategoryName,
     categoryArchivedAt: budget.category.archivedAt?.toISOString() ?? null,
     currency: budget.currency,
     amount: decimalToNumber(budget.amount),

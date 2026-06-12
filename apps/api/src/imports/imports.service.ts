@@ -3283,6 +3283,21 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     summary: ImportBatchSummaryResponse,
   ): void {
     const batchPrimaries = new Set<string>();
+    const batchCategoryPrimaries = new Set(
+      payload.categories
+        .filter((r) => r.type === CategoryType.EXPENSE && r.level === 'PRIMARY')
+        .map((r) => r.primary.trim().toLocaleLowerCase('en-US')),
+    );
+    const batchCategorySecondaries = new Set(
+      payload.categories
+        .filter(
+          (r) => r.type === CategoryType.EXPENSE && r.level === 'SECONDARY',
+        )
+        .map(
+          (r) =>
+            `${r.primary.trim().toLocaleLowerCase('en-US')}:${(r.secondary ?? '').trim().toLocaleLowerCase('en-US')}`,
+        ),
+    );
     const existingExpensePrimaries = state.activeCategories.filter(
       (c) => c.type === CategoryType.EXPENSE && c.parentCategoryId === null,
     );
@@ -3371,9 +3386,12 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
 
       const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
       if (row.level === 'PRIMARY') {
-        const existingPrimary = existingExpensePrimaries.find(
-          (c) => c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
-        );
+        const existingPrimary =
+          batchCategoryPrimaries.has(normalizedPrimary) ||
+          existingExpensePrimaries.some(
+            (c) =>
+              c.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary,
+          );
         this.bumpSummary(
           summary,
           'expenseCategoryHierarchy',
@@ -3383,15 +3401,21 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
         const normalizedSecondary = (row.secondary ?? '')
           .trim()
           .toLocaleLowerCase('en-US');
-        const existingSecondary = existingSecondaries.find((c) => {
-          const parent = c.parentCategoryId
-            ? activeCategoriesById.get(c.parentCategoryId)
-            : null;
-          return (
-            c.name.trim().toLocaleLowerCase('en-US') === normalizedSecondary &&
-            parent?.name.trim().toLocaleLowerCase('en-US') === normalizedPrimary
-          );
-        });
+        const existingSecondary =
+          batchCategorySecondaries.has(
+            `${normalizedPrimary}:${normalizedSecondary}`,
+          ) ||
+          existingSecondaries.some((c) => {
+            const parent = c.parentCategoryId
+              ? activeCategoriesById.get(c.parentCategoryId)
+              : null;
+            return (
+              c.name.trim().toLocaleLowerCase('en-US') ===
+                normalizedSecondary &&
+              parent?.name.trim().toLocaleLowerCase('en-US') ===
+                normalizedPrimary
+            );
+          });
         this.bumpSummary(
           summary,
           'expenseCategoryHierarchy',
@@ -3744,6 +3768,10 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    const categoriesAfterCategoryImport = await db.category.findMany({
+      where: { userId: ownerId, archivedAt: null },
+    });
+
     const hierarchyPrimaries = payload.expenseCategoryHierarchy.filter(
       (r) => r.level === 'PRIMARY',
     );
@@ -3754,7 +3782,7 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     for (const row of hierarchyPrimaries) {
       const normalizedPrimary = row.primary.trim().toLocaleLowerCase('en-US');
       const existing =
-        state.activeCategories.find(
+        categoriesAfterCategoryImport.find(
           (c) =>
             c.type === CategoryType.EXPENSE &&
             c.parentCategoryId === null &&

@@ -403,6 +403,36 @@ The import/export workflow is intentionally domain-aware:
 
 Template CSVs are served from `apps/web/public/import-templates`.
 
+### Recommended first import order
+
+If you import a full package together in one preview/apply batch, you do not
+need to manually order the files. The backend applies them in dependency-aware
+steps.
+
+If you import files in separate passes, then order only matters where one file
+references `importKey` values created by another:
+
+1. `accounts.csv`
+2. `categories.csv`
+3. `expenseCategoryHierarchy.csv`
+4. any files that depend on accounts and/or categories:
+   `expenseValidationRules.csv`, `assets.csv`, `recurringRules.csv`,
+   `budgets.csv`, `transactions.csv`
+5. `recurringExceptions.csv` after `recurringRules.csv`
+6. `budgetOverrides.csv` after `budgets.csv`
+
+Practical notes:
+
+- if your package does not include one of those files, skip it
+- `transactions.csv` depends on referenced accounts and, for explicit category
+  links, referenced categories already existing
+- `expenseCategoryHierarchy.csv` and `expenseValidationRules.csv` both depend
+  on the expense categories already being imported
+- `transactions.csv` does not need `expenseValidationRules.csv` first when it
+  already carries explicit `categoryImportKey` values
+- `budgetOverrides.csv` depends on `budgets.csv`, and
+  `recurringExceptions.csv` depends on `recurringRules.csv`
+
 ## Privacy notice configuration
 
 The `/privacy` page is backed by server-side configuration and can render

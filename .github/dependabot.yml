@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # The root pnpm-lock.yaml covers every workspace package, including the
+  # exact-pinned next-auth beta in apps/web, which only receives security
+  # fixes through manual-style bumps like these.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"

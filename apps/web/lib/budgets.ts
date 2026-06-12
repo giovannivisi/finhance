@@ -120,6 +120,9 @@ export function getBudgetStatusLabel(status: BudgetUsageStatus): string {
 export function sortBudgetItemsForDisplay(
   items: MonthlyBudgetItemResponse[],
 ): MonthlyBudgetItemResponse[] {
+  const isPrimaryBudget = (item: MonthlyBudgetItemResponse): boolean =>
+    item.primaryCategoryId === item.categoryId && item.secondaryCategoryId === null;
+
   const rank = (status: BudgetUsageStatus): number => {
     switch (status) {
       case "OVER_BUDGET":
@@ -133,6 +136,14 @@ export function sortBudgetItemsForDisplay(
   };
 
   return [...items].sort((left, right) => {
+    if (left.primaryCategoryId === right.primaryCategoryId) {
+      const primaryDelta =
+        Number(isPrimaryBudget(right)) - Number(isPrimaryBudget(left));
+      if (primaryDelta !== 0) {
+        return primaryDelta;
+      }
+    }
+
     const statusDelta = rank(left.status) - rank(right.status);
     if (statusDelta !== 0) {
       return statusDelta;

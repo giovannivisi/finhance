@@ -114,13 +114,23 @@ function buildAuthConfig(): NextAuthConfig {
             })
           : null;
 
-        return resolveHostedSignInDecision({
+        const allowed = resolveHostedSignInDecision({
           provider: account?.provider ?? undefined,
           profile: profile ?? undefined,
           userEmail: normalizedEmail,
           existingUser,
           bootstrapEmail: resolveBootstrapEmail(),
         });
+
+        // Accounts auto-link across providers by verified email, so record
+        // which provider each sign-in used to keep that path auditable.
+        console.info(
+          `[auth] sign-in ${allowed ? "allowed" : "denied"} via ${
+            account?.provider ?? "unknown"
+          } for ${normalizedEmail ?? "<no email>"}`,
+        );
+
+        return allowed;
       },
       async session({ session, user }) {
         if (session.user) {

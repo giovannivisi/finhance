@@ -74,6 +74,26 @@ describe("TabBar", () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
+  it("clears a completed pending route so the same destination can be revisited later", async () => {
+    const user = userEvent.setup();
+    usePathnameMock.mockReturnValue("/analytics");
+    const { rerender } = render(<TabBar />);
+
+    await user.click(screen.getByLabelText("Dashboard"));
+
+    expect(pushMock).toHaveBeenNthCalledWith(1, "/dashboard");
+
+    usePathnameMock.mockReturnValue("/dashboard");
+    rerender(<TabBar />);
+
+    usePathnameMock.mockReturnValue("/categories");
+    rerender(<TabBar />);
+
+    await user.click(screen.getByLabelText("Dashboard"));
+
+    expect(pushMock).toHaveBeenNthCalledWith(2, "/dashboard");
+  });
+
   it("opens the More panel and pushes secondary navigation targets", async () => {
     const user = userEvent.setup();
     render(<TabBar />);

@@ -91,7 +91,6 @@ export function expenseBudgetCategories(
   return categories.filter(
     (category) =>
       category.type === "EXPENSE" &&
-      category.isSecondary &&
       isSelectableCategory(category, selectedId),
   );
 }

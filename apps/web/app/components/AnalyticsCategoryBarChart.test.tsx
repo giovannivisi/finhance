@@ -7,6 +7,9 @@ const push = vi.fn();
 const ChartDataContext = createContext<
   Array<{ href?: string; selectionKey?: string }>
 >([]);
+const ChartClickContext = createContext<
+  ((state: { activeTooltipIndex?: number }) => void) | undefined
+>(undefined);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -34,15 +37,17 @@ vi.mock("recharts", () => ({
     onClick?: (state: { activeTooltipIndex?: number }) => void;
     children: React.ReactNode;
   }) => (
-    <ChartDataContext.Provider value={data}>
-      <button
-        type="button"
-        onClick={() => onClick?.({ activeTooltipIndex: 0 })}
-      >
-        Chart row 1
-      </button>
-      {children}
-    </ChartDataContext.Provider>
+    <ChartClickContext.Provider value={onClick}>
+      <ChartDataContext.Provider value={data}>
+        <button
+          type="button"
+          onClick={() => onClick?.({ activeTooltipIndex: 0 })}
+        >
+          Chart row 1
+        </button>
+        <div>{children}</div>
+      </ChartDataContext.Provider>
+    </ChartClickContext.Provider>
   ),
   CartesianGrid: () => null,
   XAxis: () => null,
@@ -52,9 +57,14 @@ vi.mock("recharts", () => ({
   Bar: ({
     onClick,
   }: {
-    onClick?: (entry?: { href?: string; selectionKey?: string }) => void;
+    onClick?: (
+      entry?: { href?: string; selectionKey?: string },
+      index?: number,
+      event?: { stopPropagation?: () => void },
+    ) => void;
   }) => {
     const data = useContext(ChartDataContext);
+    const chartOnClick = useContext(ChartClickContext);
 
     return (
       <div>
@@ -62,7 +72,17 @@ vi.mock("recharts", () => ({
           <button
             key={`${item.selectionKey ?? item.href ?? index}`}
             type="button"
-            onClick={() => onClick?.(item)}
+            onClick={() => {
+              let stopped = false;
+              onClick?.(item, index, {
+                stopPropagation: () => {
+                  stopped = true;
+                },
+              });
+              if (!stopped) {
+                chartOnClick?.({ activeTooltipIndex: index });
+              }
+            }}
           >
             Bar {index + 1}
           </button>
@@ -95,6 +115,7 @@ describe("AnalyticsCategoryBarChart", () => {
     fireEvent.click(screen.getByRole("button", { name: "Bar 1" }));
 
     expect(push).toHaveBeenCalledWith("/transactions?primaryCategoryId=rent");
+    expect(push).toHaveBeenCalledTimes(1);
   });
 
   it("uses local bar selection instead of navigation when a selection key is provided", () => {
@@ -120,6 +141,7 @@ describe("AnalyticsCategoryBarChart", () => {
     fireEvent.click(screen.getByRole("button", { name: "Bar 1" }));
 
     expect(onBarSelect).toHaveBeenCalledWith("rent");
+    expect(onBarSelect).toHaveBeenCalledTimes(1);
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -144,6 +166,7 @@ describe("AnalyticsCategoryBarChart", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chart row 1" }));
 
     expect(onBarSelect).toHaveBeenCalledWith("rent");
+    expect(onBarSelect).toHaveBeenCalledTimes(1);
     expect(push).not.toHaveBeenCalled();
   });
 });

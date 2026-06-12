@@ -37,11 +37,17 @@ function cn(...inputs: ClassValue[]) {
 
 const TAB_COUNT = PRIMARY_NAV_ITEMS.length + 1;
 
+interface PendingNavigationState {
+  originPath: string;
+  targetPath: string;
+}
+
 export default function TabBar() {
   const pathname = usePathname();
   const router = useRouter();
   useTheme();
-  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] =
+    useState<PendingNavigationState | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [hoverLeftPct, setHoverLeftPct] = useState<number | null>(null);
@@ -65,7 +71,9 @@ export default function TabBar() {
 
   const currentPath = pathname ?? "/";
   const activePendingPath =
-    pendingPath && !isActivePath(currentPath, pendingPath) ? pendingPath : null;
+    pendingNavigation?.originPath === currentPath
+      ? pendingNavigation.targetPath
+      : null;
   const activePrimaryIndex = PRIMARY_NAV_ITEMS.findIndex((item) =>
     isActivePath(currentPath, item.href),
   );
@@ -142,7 +150,10 @@ export default function TabBar() {
         return;
       }
 
-      setPendingPath(nextPath);
+      setPendingNavigation({
+        originPath: currentPath,
+        targetPath: nextPath,
+      });
       startNavigationProgress(nextPath);
       setShowMore(false);
       setHoveredIndex(null);

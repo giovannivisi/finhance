@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useEffect,
   useMemo,
@@ -29,6 +30,7 @@ import {
   groupImportSummaries,
   splitImportIssues,
 } from "@lib/imports";
+import { reloadPage } from "@lib/page-reload";
 import type { ImportPrivacySummary } from "@lib/privacy-notice";
 import { useSingleFlightActions } from "@lib/single-flight";
 
@@ -232,6 +234,7 @@ export default function ImportsPageClient({
   const actions = useSingleFlightActions<
     "preview" | "apply" | "exportData" | "exportTemplates"
   >();
+  const router = useRouter();
   const disclosureRef = useRef<HTMLDivElement | null>(null);
   const disclosureButtonRefs = useRef<
     Partial<Record<ImportDisclosureId, HTMLButtonElement | null>>
@@ -823,6 +826,10 @@ export default function ImportsPageClient({
         );
         setPreview({ ...applied, canApply: false });
         setBatches((previous) => upsertBatch(previous, applied));
+        if (reloadPage()) {
+          return;
+        }
+        router.refresh();
       } catch (error) {
         setApplyError(
           error instanceof Error

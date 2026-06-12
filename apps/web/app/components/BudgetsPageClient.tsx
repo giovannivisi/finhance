@@ -124,6 +124,27 @@ function getCurrencyWarnings(
   return warnings;
 }
 
+function getBudgetTransactionsHref(
+  item: Pick<
+    MonthlyBudgetItemResponse,
+    "categoryId" | "primaryCategoryId" | "secondaryCategoryId"
+  >,
+  month: string,
+): string {
+  const isPrimaryBudget =
+    item.primaryCategoryId === item.categoryId && item.secondaryCategoryId === null;
+
+  return buildBudgetTransactionsLink({
+    month,
+    primaryCategoryId: isPrimaryBudget
+      ? item.categoryId
+      : item.primaryCategoryId,
+    secondaryCategoryId: isPrimaryBudget
+      ? undefined
+      : item.secondaryCategoryId ?? item.categoryId,
+  });
+}
+
 export default function BudgetsPageClient({
   budgetView,
   categories,
@@ -453,8 +474,8 @@ export default function BudgetsPageClient({
                           </p>
                         </div>
                         <div className="text-sm text-[var(--text-secondary)]">
-                          {currency.budgetedCategoryCount} budgeted categor
-                          {currency.budgetedCategoryCount === 1 ? "y" : "ies"}
+                          {currency.budgetedCategoryCount} budget
+                          {currency.budgetedCategoryCount === 1 ? "" : "s"}
                         </div>
                       </div>
 
@@ -503,9 +524,9 @@ export default function BudgetsPageClient({
 
                       {currency.items.length === 0 ? (
                         <p className="budget-empty-note">
-                          No budgeted categories in {currency.currency} for this
-                          month yet. Start with the categories already showing
-                          spend below or create a fresh plan in the editor.
+                          No budgets in {currency.currency} for this month yet.
+                          Start with the categories already showing spend below
+                          or create a fresh plan in the editor.
                         </p>
                       ) : (
                         <div className="mt-6 list-stack is-loose">
@@ -681,15 +702,9 @@ export default function BudgetsPageClient({
                                           {({ closeMenu }) => (
                                             <>
                                               <Link
-                                                href={buildBudgetTransactionsLink(
-                                                  {
-                                                    month: budgetView.month,
-                                                    primaryCategoryId:
-                                                      item.primaryCategoryId,
-                                                    secondaryCategoryId:
-                                                      item.secondaryCategoryId ??
-                                                      item.categoryId,
-                                                  },
+                                                href={getBudgetTransactionsHref(
+                                                  item,
+                                                  budgetView.month,
                                                 )}
                                                 role="menuitem"
                                                 className="overflow-menu-item"

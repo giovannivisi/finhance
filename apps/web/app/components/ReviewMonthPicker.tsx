@@ -48,7 +48,6 @@ export default function ReviewMonthPicker({
           name="month"
           type="month"
           defaultValue={currentMonth}
-          className="rounded-lg border px-3 py-2"
         />
       </div>
       <button

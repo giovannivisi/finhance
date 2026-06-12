@@ -40,6 +40,35 @@ export function getCurrentRomeYearStartString(date = new Date()): string {
   return `${parts.year}-01-01`;
 }
 
+export function getRomeMonthStartString(date = new Date()): string {
+  const parts = getRomeDateParts(date);
+  return `${parts.year}-${parts.month}-01`;
+}
+
+export function getRomeMonthEndString(date = new Date()): string {
+  const parts = getRomeDateParts(date);
+  const lastDay = new Date(
+    Date.UTC(Number(parts.year), Number(parts.month), 0),
+  ).getUTCDate();
+
+  return `${parts.year}-${parts.month}-${String(lastDay).padStart(2, "0")}`;
+}
+
+export function getLatestAvailableMonthActivityFilters(
+  date = new Date(),
+): ActivityFilters {
+  return {
+    from: getRomeMonthStartString(date),
+    to: getRomeMonthEndString(date),
+    accountId: "",
+    categoryId: "",
+    primaryCategoryId: "",
+    secondaryCategoryId: "",
+    kind: "",
+    includeArchivedAccounts: false,
+  };
+}
+
 export function getDefaultActivityFilters(date = new Date()): ActivityFilters {
   return {
     from: getCurrentRomeYearStartString(date),

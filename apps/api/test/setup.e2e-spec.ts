@@ -186,4 +186,38 @@ describe('Setup routes (e2e)', () => {
         });
       });
   });
+
+  it('explains when only one category type is still missing', async () => {
+    prisma.account.count.mockResolvedValue(1);
+    prisma.category.findMany.mockResolvedValue([{ type: 'EXPENSE' }]);
+    prisma.user.findUnique.mockResolvedValue({
+      userSettings: { reportingCurrency: 'EUR' },
+    });
+
+    await request(httpServer())
+      .get('/setup/status')
+      .expect(200)
+      .expect((response: ResponseWithBody) => {
+        const body = bodyAs<{
+          requiredSteps: Array<{
+            code: string;
+            status: string;
+            title: string;
+            detail: string;
+            actionLabel: string;
+          }>;
+        }>(response);
+
+        expect(
+          body.requiredSteps.find((step) => step.code === 'CATEGORIES'),
+        ).toMatchObject({
+          status: 'INCOMPLETE',
+          title: 'Add at least one income category',
+          actionLabel: 'Add income category',
+        });
+        expect(
+          body.requiredSteps.find((step) => step.code === 'CATEGORIES')?.detail,
+        ).toContain('expense category is already available');
+      });
+  });
 });

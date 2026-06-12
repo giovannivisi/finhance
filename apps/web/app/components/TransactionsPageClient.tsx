@@ -17,7 +17,6 @@ import RecurringMaterializeButton from "@components/RecurringMaterializeButton";
 import { useAppPreferences } from "@components/ThemeProvider";
 import TransactionForm from "@components/TransactionForm";
 import type { ActivityFilters } from "@lib/activity";
-import { getDefaultActivityFilters } from "@lib/activity";
 import { buildTransactionsLink } from "@lib/analytics";
 import {
   recurringTransactionToOccurrenceFormValues,
@@ -252,6 +251,7 @@ export default function TransactionsPageClient({
   categories,
   expenseValidationRules,
   initialFilters,
+  defaultFilters,
   initialHasPendingSync = false,
   showTransactionTimes,
 }: {
@@ -261,6 +261,7 @@ export default function TransactionsPageClient({
   categories: CategoryResponse[];
   expenseValidationRules: ExpenseValidationRuleResponse[];
   initialFilters: ActivityFilters;
+  defaultFilters: ActivityFilters;
   initialHasPendingSync?: boolean;
   showTransactionTimes: boolean;
 }) {
@@ -301,7 +302,6 @@ export default function TransactionsPageClient({
   const navigation = useSingleFlightNavigation();
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
-  const defaultFilters = useMemo(() => getDefaultActivityFilters(), []);
   const hasActiveFilters =
     filters.from !== defaultFilters.from ||
     filters.to !== defaultFilters.to ||

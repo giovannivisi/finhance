@@ -159,6 +159,23 @@ function createImportedCategory(
   };
 }
 
+function createImportedExpenseValidationRule(
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  const now = new Date('2026-04-19T10:00:00.000Z');
+
+  return {
+    id: 'expense-validation-rule-1',
+    userId: OWNER_ID,
+    entry: 'Supermarket',
+    normalizedEntry: 'supermarket',
+    secondaryCategoryId: 'category-2',
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
 function createImportedAsset(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -272,6 +289,11 @@ describe('ImportsService', () => {
       create: jest.Mock;
       update: jest.Mock;
     };
+    expenseValidationRule: {
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
     transaction: {
       findMany: jest.Mock;
       create: jest.Mock;
@@ -328,6 +350,11 @@ describe('ImportsService', () => {
         create: jest.fn(),
         update: jest.fn(),
       },
+      expenseValidationRule: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
       transaction: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
@@ -366,6 +393,7 @@ describe('ImportsService', () => {
           account: typeof prisma.account;
           asset: typeof prisma.asset;
           category: typeof prisma.category;
+          expenseValidationRule: typeof prisma.expenseValidationRule;
           transaction: typeof prisma.transaction;
           recurringTransactionRule: typeof prisma.recurringTransactionRule;
           recurringTransactionOccurrence: typeof prisma.recurringTransactionOccurrence;
@@ -378,6 +406,7 @@ describe('ImportsService', () => {
           account: prisma.account,
           asset: prisma.asset,
           category: prisma.category,
+          expenseValidationRule: prisma.expenseValidationRule,
           transaction: prisma.transaction,
           recurringTransactionRule: prisma.recurringTransactionRule,
           recurringTransactionOccurrence: prisma.recurringTransactionOccurrence,
@@ -633,6 +662,136 @@ describe('ImportsService', () => {
     >;
     expect(calls[0]?.[0].data.importKey).toBe('xfer-1');
     expect(calls[1]?.[0].data.importKey).toBe('xfer-1');
+  });
+
+  it('treats hierarchy rows already covered by category imports as satisfied during preview and apply', async () => {
+    prisma.account.findMany.mockResolvedValue([createImportedAccount()]);
+
+    const createdCategories: Array<Record<string, unknown>> = [];
+    let createdCategoryCount = 0;
+    prisma.category.findMany.mockImplementation(() => createdCategories);
+    prisma.category.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) => {
+        createdCategoryCount += 1;
+        const created = createImportedCategory({
+          id: `category-${createdCategoryCount}`,
+          importKey: data.importKey,
+          name: data.name,
+          type: data.type,
+          parentCategoryId: data.parentCategoryId ?? null,
+          order: data.order ?? 0,
+          archivedAt: data.archivedAt ?? null,
+        });
+        createdCategories.push(created);
+        return created;
+      },
+    );
+
+    const createdExpenseValidationRules: Array<Record<string, unknown>> = [];
+    prisma.expenseValidationRule.findMany.mockImplementation(
+      () => createdExpenseValidationRules,
+    );
+    prisma.expenseValidationRule.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) => {
+        const created = createImportedExpenseValidationRule({
+          id: `expense-validation-rule-${createdExpenseValidationRules.length + 1}`,
+          entry: data.entry,
+          normalizedEntry: data.normalizedEntry,
+          secondaryCategoryId: data.secondaryCategoryId,
+        });
+        createdExpenseValidationRules.push(created);
+        return created;
+      },
+    );
+
+    prisma.transaction.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) =>
+        createImportedTransaction({
+          id: 'transaction-groceries',
+          importKey: data.importKey,
+          postedAt: data.postedAt,
+          accountId: data.accountId,
+          categoryId: data.categoryId,
+          amount: data.amount,
+          currency: data.currency,
+          direction: data.direction,
+          kind: data.kind,
+          description: data.description,
+          notes: data.notes,
+          counterparty: data.counterparty,
+        }),
+    );
+
+    const preview = await service.previewCsv(OWNER_ID, {
+      categories: {
+        originalName: 'categories.csv',
+        buffer: Buffer.from(
+          'importKey,type,level,primary,secondary,primaryOrder,secondaryOrder,archived\nfood-primary,EXPENSE,PRIMARY,Food,,0,,false\ngroceries-secondary,EXPENSE,SECONDARY,Food,Groceries,,0,false\n',
+        ),
+      },
+      expenseCategoryHierarchy: {
+        originalName: 'expenseCategoryHierarchy.csv',
+        buffer: Buffer.from(
+          'level,primary,secondary,primaryOrder,secondaryOrder\nPRIMARY,Food,,0,\nSECONDARY,Food,Groceries,,0\n',
+        ),
+      },
+      expenseValidationRules: {
+        originalName: 'expenseValidationRules.csv',
+        buffer: Buffer.from(
+          'entry,primary,secondary\nSupermarket,Food,Groceries\n',
+        ),
+      },
+      transactions: {
+        originalName: 'transactions.csv',
+        buffer: Buffer.from(
+          'importKey,postedAt,kind,amount,description,notes,accountImportKey,direction,categoryImportKey,counterparty,sourceAccountImportKey,destinationAccountImportKey\ngroceries-2026-06-01,2026-06-01T09:00:00.000Z,EXPENSE,42.50,Supermarket,,checking,OUTFLOW,,,,\n',
+        ),
+      },
+    });
+
+    expect(preview.status).toBe('PREVIEW');
+    expect(preview.canApply).toBe(true);
+    expect(preview.summary.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file: 'categories',
+          createCount: 2,
+          updateCount: 0,
+          unchangedCount: 0,
+        }),
+        expect.objectContaining({
+          file: 'expenseCategoryHierarchy',
+          createCount: 0,
+          updateCount: 0,
+          unchangedCount: 2,
+        }),
+        expect.objectContaining({
+          file: 'expenseValidationRules',
+          createCount: 1,
+        }),
+        expect.objectContaining({
+          file: 'transactions',
+          createCount: 1,
+        }),
+      ]),
+    );
+
+    prisma.importBatch.findFirst.mockResolvedValue(
+      createImportBatch({
+        id: preview.id,
+        payloadJson: nthCallArg<ImportBatchCreateCall>(
+          prisma.importBatch.create,
+          0,
+        ).data.payloadJson,
+      }),
+    );
+
+    const result = await service.applyBatch(OWNER_ID, preview.id);
+
+    expect(result.status).toBe('APPLIED');
+    expect(prisma.category.create).toHaveBeenCalledTimes(2);
+    expect(prisma.expenseValidationRule.create).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction.create).toHaveBeenCalledTimes(1);
   });
 
   it('rejects market assets assigned to non-broker accounts during preview', async () => {
@@ -1130,6 +1289,7 @@ describe('ImportsService', () => {
           account: typeof prisma.account;
           asset: typeof prisma.asset;
           category: typeof prisma.category;
+          expenseValidationRule: typeof prisma.expenseValidationRule;
           transaction: typeof prisma.transaction;
           recurringTransactionRule: typeof prisma.recurringTransactionRule;
           recurringTransactionOccurrence: typeof prisma.recurringTransactionOccurrence;
@@ -1147,6 +1307,7 @@ describe('ImportsService', () => {
           account: prisma.account,
           asset: prisma.asset,
           category: prisma.category,
+          expenseValidationRule: prisma.expenseValidationRule,
           transaction: prisma.transaction,
           recurringTransactionRule: prisma.recurringTransactionRule,
           recurringTransactionOccurrence: prisma.recurringTransactionOccurrence,

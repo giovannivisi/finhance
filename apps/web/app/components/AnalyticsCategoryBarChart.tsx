@@ -39,6 +39,17 @@ type InteractiveChartDatum = {
   selectionKey?: string;
 };
 
+function stopChartEventPropagation(event: unknown): void {
+  if (
+    typeof event === "object" &&
+    event !== null &&
+    "stopPropagation" in event &&
+    typeof event.stopPropagation === "function"
+  ) {
+    event.stopPropagation();
+  }
+}
+
 export default function AnalyticsCategoryBarChart({
   currency,
   data,
@@ -173,7 +184,8 @@ export default function AnalyticsCategoryBarChart({
             fill={barColor}
             radius={[0, 8, 8, 0]}
             cursor={hasClickableBars ? "pointer" : "default"}
-            onClick={(entry) => {
+            onClick={(entry, _index, event) => {
+              stopChartEventPropagation(event);
               handleChartSelection(entry);
             }}
           >

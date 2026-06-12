@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CategoryResponse } from "@finhance/shared";
+import ConfirmActionModal from "@components/ConfirmActionModal";
 import CategoryForm from "@components/CategoryForm";
 import DisclosureIcon from "@components/DisclosureIcon";
 import Modal from "@components/Modal";
@@ -34,6 +35,9 @@ export default function CategoriesPageClient({
     string | null
   >(null);
   const [pendingDeleteCategoryId, setPendingDeleteCategoryId] = useState<
+    string | null
+  >(null);
+  const [confirmDeleteCategoryId, setConfirmDeleteCategoryId] = useState<
     string | null
   >(null);
   const [openExpensePrimaries, setOpenExpensePrimaries] = useState<Set<string>>(
@@ -124,14 +128,6 @@ export default function CategoriesPageClient({
       setActionError(null);
       setPendingDeleteCategoryId(categoryId);
 
-      const confirmed = confirm(
-        "Delete this archived category permanently? This cannot be undone.",
-      );
-      if (!confirmed) {
-        setPendingDeleteCategoryId(null);
-        return;
-      }
-
       try {
         await apiMutation<void>(`/categories/${categoryId}/permanent`, {
           method: "DELETE",
@@ -141,6 +137,7 @@ export default function CategoriesPageClient({
           setEditingCategoryId(null);
         }
 
+        setConfirmDeleteCategoryId(null);
         router.refresh();
       } catch (error) {
         setActionError(
@@ -152,6 +149,22 @@ export default function CategoriesPageClient({
         setPendingDeleteCategoryId(null);
       }
     });
+  }
+
+  function requestPermanentDelete(categoryId: string) {
+    setActionError(null);
+    setConfirmDeleteCategoryId(categoryId);
+  }
+
+  function closeDeleteModal() {
+    if (
+      confirmDeleteCategoryId &&
+      actions.isRunning(`delete:${confirmDeleteCategoryId}`)
+    ) {
+      return;
+    }
+
+    setConfirmDeleteCategoryId(null);
   }
 
   return (
@@ -363,6 +376,28 @@ export default function CategoriesPageClient({
           </>
         ) : null}
       </Modal>
+
+      <ConfirmActionModal
+        open={confirmDeleteCategoryId !== null}
+        onClose={closeDeleteModal}
+        onConfirm={() => {
+          if (!confirmDeleteCategoryId) {
+            return;
+          }
+
+          void handleDeletePermanently(confirmDeleteCategoryId);
+        }}
+        title="Delete category"
+        description="Delete this archived category permanently? This cannot be undone."
+        confirmLabel="Delete category"
+        pendingLabel="Deleting..."
+        error={actionError}
+        isPending={
+          confirmDeleteCategoryId
+            ? actions.isRunning(`delete:${confirmDeleteCategoryId}`)
+            : false
+        }
+      />
     </div>
   );
 
@@ -496,7 +531,7 @@ export default function CategoriesPageClient({
               {category.canDeletePermanently ? (
                 <button
                   type="button"
-                  onClick={() => void handleDeletePermanently(category.id)}
+                  onClick={() => requestPermanentDelete(category.id)}
                   disabled={pendingDeleteCategoryId === category.id}
                   className={
                     options?.compact

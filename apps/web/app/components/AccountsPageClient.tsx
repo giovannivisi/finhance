@@ -8,6 +8,7 @@ import type {
   AccountResponse,
 } from "@finhance/shared";
 import AccountForm from "@components/AccountForm";
+import ConfirmActionModal from "@components/ConfirmActionModal";
 import Modal from "@components/Modal";
 import {
   accountToFormValues,
@@ -57,6 +58,9 @@ export default function AccountsPageClient({
     string | null
   >(null);
   const [pendingDeleteAccountId, setPendingDeleteAccountId] = useState<
+    string | null
+  >(null);
+  const [confirmDeleteAccountId, setConfirmDeleteAccountId] = useState<
     string | null
   >(null);
   const [pendingBaselineAccountId, setPendingBaselineAccountId] = useState<
@@ -145,14 +149,6 @@ export default function AccountsPageClient({
       setReconciliationError(null);
       setPendingDeleteAccountId(accountId);
 
-      const confirmed = confirm(
-        "Delete this archived account permanently? This cannot be undone.",
-      );
-      if (!confirmed) {
-        setPendingDeleteAccountId(null);
-        return;
-      }
-
       try {
         await apiMutation<void>(`/accounts/${accountId}/permanent`, {
           method: "DELETE",
@@ -162,6 +158,7 @@ export default function AccountsPageClient({
           setEditingAccountId(null);
         }
 
+        setConfirmDeleteAccountId(null);
         router.refresh();
       } catch (error) {
         setActionError(
@@ -173,6 +170,23 @@ export default function AccountsPageClient({
         setPendingDeleteAccountId(null);
       }
     });
+  }
+
+  function requestPermanentDelete(accountId: string) {
+    setActionError(null);
+    setReconciliationError(null);
+    setConfirmDeleteAccountId(accountId);
+  }
+
+  function closeDeleteModal() {
+    if (
+      confirmDeleteAccountId &&
+      actions.isRunning(`delete:${confirmDeleteAccountId}`)
+    ) {
+      return;
+    }
+
+    setConfirmDeleteAccountId(null);
   }
 
   async function handleEstablishBaseline(accountId: string) {
@@ -343,7 +357,7 @@ export default function AccountsPageClient({
                         ) : null}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-4">
+                      <div className="account-actions">
                         {reconciliation?.canCreateAdjustment ? (
                           <button
                             type="button"
@@ -351,7 +365,7 @@ export default function AccountsPageClient({
                               void handleCreateAdjustment(account.id)
                             }
                             disabled={adjustingAccountId === account.id}
-                            className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                            className="link-button account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {adjustingAccountId === account.id
                               ? "Adjusting..."
@@ -362,7 +376,7 @@ export default function AccountsPageClient({
                         <button
                           type="button"
                           onClick={() => setEditingAccountId(account.id)}
-                          className="link-button mobile-hit-target"
+                          className="link-button account-action mobile-hit-target"
                         >
                           Edit
                         </button>
@@ -370,7 +384,7 @@ export default function AccountsPageClient({
                         {account.type === "BROKER" && !account.archivedAt ? (
                           <Link
                             href={`/brokerage/${account.id}`}
-                            className="link-button mobile-hit-target"
+                            className="link-button account-action mobile-hit-target"
                           >
                             Open brokerage
                           </Link>
@@ -381,7 +395,7 @@ export default function AccountsPageClient({
                             type="button"
                             onClick={() => void handleArchive(account.id)}
                             disabled={pendingArchiveAccountId === account.id}
-                            className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                            className="link-button is-danger account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {pendingArchiveAccountId === account.id
                               ? "Archiving..."
@@ -395,7 +409,7 @@ export default function AccountsPageClient({
                               disabled={
                                 pendingUnarchiveAccountId === account.id
                               }
-                              className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                              className="link-button account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {pendingUnarchiveAccountId === account.id
                                 ? "Unarchiving..."
@@ -404,11 +418,9 @@ export default function AccountsPageClient({
                             {account.canDeletePermanently ? (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  void handleDeletePermanently(account.id)
-                                }
+                                onClick={() => requestPermanentDelete(account.id)}
                                 disabled={pendingDeleteAccountId === account.id}
-                                className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                                className="link-button is-danger account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {pendingDeleteAccountId === account.id
                                   ? "Deleting..."
@@ -669,6 +681,28 @@ export default function AccountsPageClient({
           </>
         ) : null}
       </Modal>
+
+      <ConfirmActionModal
+        open={confirmDeleteAccountId !== null}
+        onClose={closeDeleteModal}
+        onConfirm={() => {
+          if (!confirmDeleteAccountId) {
+            return;
+          }
+
+          void handleDeletePermanently(confirmDeleteAccountId);
+        }}
+        title="Delete account"
+        description="Delete this archived account permanently? This cannot be undone."
+        confirmLabel="Delete account"
+        pendingLabel="Deleting..."
+        error={actionError}
+        isPending={
+          confirmDeleteAccountId
+            ? actions.isRunning(`delete:${confirmDeleteAccountId}`)
+            : false
+        }
+      />
     </div>
   );
 }
