@@ -18,6 +18,7 @@ model User {
   updatedAt                       DateTime                         @updatedAt @map("updated_at")
   assetKindOrder                  Json?                            @map("asset_kind_order")
   userSettings                    Json?                            @map("user_settings")
+  mobileTokensRevokedAt           DateTime?                        @map("mobile_tokens_revoked_at")
   providerAccounts                AuthProviderAccount[]
   sessions                        AuthSession[]
   assets                          Asset[]

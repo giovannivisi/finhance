@@ -48,11 +48,8 @@ export const DESKTOP_NAV_ITEMS: readonly AppNavItem[] = [
 ] as const;
 
 const PREFETCH_NAV_PATHS = new Set<string>([
-  "/dashboard",
-  "/transactions",
-  "/accounts",
-  "/analytics",
-  "/brokerage",
+  ...DESKTOP_NAV_ITEMS.map((item) => item.href),
+  "/setup",
 ]);
 
 const ROUTE_SUCCESSOR_PREFETCH_PATHS: Record<string, readonly string[]> = {

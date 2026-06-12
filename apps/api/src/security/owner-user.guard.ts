@@ -1,6 +1,12 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '@prisma/prisma.service';
+import { isHostedAuthMode } from '@/config/auth-mode';
 import type { RequestWithApiAuth } from '@/security/api-auth.types';
 import { ensureOwnerUserRecord } from '@/security/owner-user';
 import { isPublicRoute } from '@/security/public-route';
@@ -21,10 +27,14 @@ export class OwnerUserGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<RequestWithApiAuth>();
     const ownerId = resolveRequestOwnerId(request);
 
-    await ensureOwnerUserRecord(this.prisma, {
+    const owner = await ensureOwnerUserRecord(this.prisma, {
       userId: ownerId,
       email: request.authPrincipal?.email ?? null,
     });
+
+    if (isHostedAuthMode() && !owner.isActive) {
+      throw new ForbiddenException('This user account is disabled.');
+    }
 
     return true;
   }

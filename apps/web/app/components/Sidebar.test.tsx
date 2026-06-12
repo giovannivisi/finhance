@@ -16,15 +16,21 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({
-    children,
-    href,
-    ...rest
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...rest}>
-      {children}
-    </a>
-  ),
+  default: (
+    props: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+      href: string;
+      prefetch?: boolean;
+    },
+  ) => {
+    const { children, href, prefetch, ...rest } = props;
+    void prefetch;
+
+    return (
+      <a href={href} {...rest}>
+        {children}
+      </a>
+    );
+  },
 }));
 
 vi.mock("@lib/navigation-progress", () => ({
@@ -85,7 +91,7 @@ describe("Sidebar", () => {
     expect(pushMock).toHaveBeenNthCalledWith(2, "/dashboard");
   });
 
-  it("prefetches selected routes on hover intent", async () => {
+  it("prefetches navigation routes on hover intent", async () => {
     const user = userEvent.setup();
     render(<Sidebar />);
 
@@ -95,6 +101,6 @@ describe("Sidebar", () => {
 
     expect(prefetchMock).toHaveBeenCalledWith("/analytics");
     expect(prefetchMock).toHaveBeenCalledWith("/brokerage");
-    expect(prefetchMock).not.toHaveBeenCalledWith("/history");
+    expect(prefetchMock).toHaveBeenCalledWith("/history");
   });
 });

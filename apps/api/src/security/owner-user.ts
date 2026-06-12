@@ -4,7 +4,7 @@ const PLACEHOLDER_EMAIL_DOMAIN = 'placeholder.local';
 
 type OwnerUserClient = {
   user: {
-    upsert(args: Prisma.UserUpsertArgs): Promise<unknown>;
+    upsert(args: Prisma.UserUpsertArgs): Promise<{ isActive: boolean }>;
   };
 };
 
@@ -18,7 +18,7 @@ export async function ensureOwnerUserRecord(
     userId: string;
     email?: string | null;
   },
-): Promise<void> {
+): Promise<{ isActive: boolean }> {
   const userId = input.userId.trim();
 
   if (!userId) {
@@ -28,7 +28,7 @@ export async function ensureOwnerUserRecord(
   const normalizedEmail =
     normalizeOwnerEmail(input.email) ?? buildOwnerPlaceholderEmail(userId);
 
-  await client.user.upsert({
+  return client.user.upsert({
     where: { id: userId },
     update:
       normalizeOwnerEmail(input.email) === null
@@ -38,6 +38,7 @@ export async function ensureOwnerUserRecord(
       id: userId,
       email: normalizedEmail,
     },
+    select: { isActive: true },
   });
 }
 
