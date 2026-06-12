@@ -176,3 +176,22 @@ export interface BrokeragePageBootstrapResponse {
   recentTransactions: TransactionResponse[];
   positionsWithValues: DashboardAssetResponse[];
 }
+
+export type BrokeragePerformanceRange = "1D" | "1W" | "1M" | "1Y" | "MAX";
+
+export interface BrokeragePerformancePointResponse {
+  t: number; // epoch milliseconds
+  value: number; // portfolio value in reporting currency
+}
+
+export interface BrokeragePerformanceResponse {
+  range: BrokeragePerformanceRange;
+  reportingCurrency: string;
+  pricingStatus: AggregatePricingStatus;
+  points: BrokeragePerformancePointResponse[];
+  baselineValue: number | null;
+  latestValue: number | null;
+  changeAbsolute: number | null;
+  changePercent: number | null;
+  asOf: string; // ISO timestamp
+}

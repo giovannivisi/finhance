@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validateSync, type ValidationError } from 'class-validator';
 import { AssetKind } from '@finhance/db';
+import { BrokeragePerformanceQueryDto } from '@brokerage/dto/brokerage-performance-query.dto';
 import { CreateBrokerageBuyDto } from '@brokerage/dto/create-brokerage-buy.dto';
 import { UpdatePortfolioAllocationTargetsDto } from '@brokerage/dto/update-portfolio-allocation-targets.dto';
 
@@ -29,6 +30,33 @@ describe('Brokerage DTO validation', () => {
       expect.arrayContaining([
         'ticker must be shorter than or equal to 32 characters',
         'exchange must be shorter than or equal to 24 characters',
+      ]),
+    );
+  });
+
+  it('accepts a valid performance range', () => {
+    const dto = plainToInstance(BrokeragePerformanceQueryDto, { range: '1W' });
+
+    expect(collectConstraintMessages(validateSync(dto))).toEqual([]);
+    expect(dto.range).toBe('1W');
+  });
+
+  it('allows an absent performance range', () => {
+    const dto = plainToInstance(BrokeragePerformanceQueryDto, {});
+
+    expect(collectConstraintMessages(validateSync(dto))).toEqual([]);
+    expect(dto.range).toBeUndefined();
+  });
+
+  it('rejects an invalid performance range', () => {
+    const dto = plainToInstance(BrokeragePerformanceQueryDto, {
+      range: '3M',
+    });
+
+    const messages = collectConstraintMessages(validateSync(dto));
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        'range must be one of the following values: 1D, 1W, 1M, 1Y, MAX',
       ]),
     );
   });

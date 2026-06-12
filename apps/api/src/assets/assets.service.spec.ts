@@ -613,4 +613,131 @@ describe('AssetsService', () => {
       ),
     );
   });
+
+  describe('getLiveValuations', () => {
+    it('returns live quotes converted to the reporting currency without writing to the database', async () => {
+      prisma.asset.findMany.mockResolvedValue([
+        createAsset({
+          id: 'asset-1',
+          accountId: 'account-1',
+          currency: 'USD',
+          quantity: new Prisma.Decimal('2'),
+        }),
+      ]);
+      prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('150'));
+      prices.getStoredFxRateSnapshot.mockResolvedValue({
+        rate: new Prisma.Decimal('0.9'),
+        status: 'EXACT',
+        source: 'LIVE',
+        rateDate: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await service.getLiveValuations(OWNER_ID);
+
+      expect(result.reportingCurrency).toBe('EUR');
+      expect(result.quotes).toEqual([
+        {
+          assetId: 'asset-1',
+          price: 150,
+          currency: 'USD',
+          value: 300,
+          valueInReporting: 270,
+        },
+      ]);
+      expect(prices.getMarketPrice).toHaveBeenCalledWith(
+        expect.objectContaining({ ticker: 'AAPL', quoteCurrency: 'USD' }),
+        { maxAgeMs: 15000 },
+      );
+      expect(prisma.asset.update).not.toHaveBeenCalled();
+      expect(prisma.asset.create).not.toHaveBeenCalled();
+    });
+
+    it('uses only stored FX rates and never calls live FX endpoints', async () => {
+      prisma.asset.findMany.mockResolvedValue([
+        createAsset({
+          id: 'asset-1',
+          accountId: 'account-1',
+          currency: 'USD',
+          quantity: new Prisma.Decimal('1'),
+        }),
+      ]);
+      prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('100'));
+      prices.getStoredFxRateSnapshot.mockResolvedValue({
+        rate: new Prisma.Decimal('0.9'),
+        status: 'EXACT',
+        source: 'LIVE',
+        rateDate: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await service.getLiveValuations(OWNER_ID);
+
+      expect(prices.getStoredFxRateSnapshot).toHaveBeenCalledWith(
+        OWNER_ID,
+        expect.any(Date),
+        'USD',
+        'EUR',
+      );
+      expect(prices.getFxRate).not.toHaveBeenCalled();
+      expect(prices.getFxRateForDate).not.toHaveBeenCalled();
+    });
+
+    it('omits positions whose live quote is unavailable', async () => {
+      prisma.asset.findMany.mockResolvedValue([
+        createAsset({
+          id: 'asset-1',
+          accountId: 'account-1',
+          currency: 'USD',
+          quantity: new Prisma.Decimal('2'),
+        }),
+        createAsset({
+          id: 'asset-2',
+          name: 'Tesla',
+          ticker: 'TSLA',
+          accountId: 'account-1',
+          currency: 'USD',
+          quantity: new Prisma.Decimal('1'),
+        }),
+      ]);
+      prices.getMarketPrice
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(new Prisma.Decimal('200'));
+      prices.getStoredFxRateSnapshot.mockResolvedValue({
+        rate: new Prisma.Decimal('0.9'),
+        status: 'EXACT',
+        source: 'LIVE',
+        rateDate: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await service.getLiveValuations(OWNER_ID);
+
+      expect(result.quotes).toHaveLength(1);
+      expect(result.quotes[0].assetId).toBe('asset-2');
+    });
+
+    it('skips positions with no quantity or no ticker', async () => {
+      prisma.asset.findMany.mockResolvedValue([
+        createAsset({
+          id: 'asset-1',
+          accountId: 'account-1',
+          currency: 'USD',
+          quantity: new Prisma.Decimal('0'),
+        }),
+        createAsset({
+          id: 'asset-2',
+          accountId: 'account-1',
+          currency: 'USD',
+          ticker: null,
+          quantity: new Prisma.Decimal('1'),
+        }),
+      ]);
+
+      const result = await service.getLiveValuations(OWNER_ID);
+
+      expect(result.quotes).toEqual([]);
+      expect(prices.getMarketPrice).not.toHaveBeenCalled();
+    });
+  });
 });

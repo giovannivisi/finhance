@@ -9,6 +9,11 @@ import { PrismaService } from '@prisma/prisma.service';
 import { AccountsService } from '@accounts/accounts.service';
 import { toAccountResponse } from '@accounts/accounts.mapper';
 import { AssetsService } from '@assets/assets.service';
+import { PricesService } from '@prices/prices.service';
+import type {
+  MarketSeries,
+  StoredFxRateSnapshot,
+} from '@prices/prices.service';
 import { TransactionsService } from '@transactions/transactions.service';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
 import { toTransactionResponse } from '@transactions/transactions.mapper';
@@ -26,9 +31,13 @@ import {
   TransactionKind,
 } from '@finhance/db';
 import type {
+  AggregatePricingStatus,
   BrokerageAccountSummaryResponse,
   BrokerageActivityItemResponse,
   BrokerageOperationResponse,
+  BrokeragePerformancePointResponse,
+  BrokeragePerformanceRange,
+  BrokeragePerformanceResponse,
   BrokeragePositionResponse,
   BrokerageWorkspaceResponse,
   CreateBrokerageBuyRequest,
@@ -53,6 +62,7 @@ const MARKET_KINDS = new Set<AssetKind>([
   AssetKind.BOND,
   AssetKind.CRYPTO,
 ]);
+const PERFORMANCE_MAX_POINTS = 500;
 
 const KIND_LABELS: Record<AssetKind, string> = {
   CASH: 'Cash',
@@ -79,6 +89,16 @@ interface SecurityTargetModel {
   targetPercent: Prisma.Decimal;
 }
 
+/** A priced position whose value can be reconstructed over time. */
+interface PerformancePricedPosition {
+  assetId: string;
+  currency: string;
+  currentQuantity: Prisma.Decimal;
+  series: MarketSeries;
+  /** Operation timestamps and signed quantity deltas, sorted ascending by postedAt. */
+  quantityDeltas: Array<{ postedAt: number; delta: Prisma.Decimal }>;
+}
+
 interface AssetKindTargetModel {
   kind: AssetKind;
   targetPercent: Prisma.Decimal;
@@ -92,6 +112,7 @@ export class BrokerageService {
     private readonly prisma: PrismaService,
     private readonly accountsService: AccountsService,
     private readonly assetsService: AssetsService,
+    private readonly pricesService: PricesService,
     private readonly transactionsService: TransactionsService,
   ) {}
 
@@ -203,6 +224,296 @@ export class BrokerageService {
       positions,
       activity: activity.slice(0, BROKERAGE_ACTIVITY_LIMIT),
       allocation,
+    };
+  }
+
+  async getPerformance(
+    ownerId: string,
+    accountId: string,
+    range: BrokeragePerformanceRange,
+  ): Promise<BrokeragePerformanceResponse> {
+    const now = new Date();
+    await this.getRequiredBrokerAccount(ownerId, accountId, this.prisma);
+    const dashboard = await this.assetsService.getDashboard(ownerId);
+    const reportingCurrency = dashboard.reportingCurrency;
+
+    const activePositions = dashboard.assets.filter(
+      (asset) =>
+        asset.type === 'ASSET' &&
+        asset.accountId === accountId &&
+        asset.kind &&
+        this.isMarketKind(asset.kind) &&
+        (asset.quantity ?? 0) > 0,
+    );
+
+    if (activePositions.length === 0) {
+      const asOf = now.toISOString();
+      return {
+        range,
+        reportingCurrency,
+        pricingStatus: this.buildEmptyPricingStatus(),
+        points: [],
+        baselineValue: null,
+        latestValue: null,
+        changeAbsolute: null,
+        changePercent: null,
+        asOf,
+      };
+    }
+
+    const positionAssets = await this.prisma.asset.findMany({
+      where: {
+        id: { in: activePositions.map((asset) => asset.id) },
+        userId: ownerId,
+      },
+    });
+    const assetById = new Map(positionAssets.map((asset) => [asset.id, asset]));
+
+    const pricedViews = activePositions.filter(
+      (asset) => !!asset.ticker && !!assetById.get(asset.id),
+    );
+    const manualViews = activePositions.filter((asset) => !asset.ticker);
+
+    // Constant contribution from manual positions (no ticker -> no series).
+    let constantTotal = this.toDecimal(
+      manualViews.reduce(
+        (sum, asset) => sum + (asset.currentValue ?? asset.referenceValue ?? 0),
+        0,
+      ),
+    );
+
+    // Fetch a price series for every priced position in parallel.
+    const seriesResults = await Promise.all(
+      pricedViews.map(async (asset) => {
+        const record = assetById.get(asset.id)!;
+        const series = await this.pricesService.getMarketSeries(
+          {
+            kind: asset.kind!,
+            ticker: record.ticker!,
+            exchange: record.exchange,
+            quoteCurrency: record.currency,
+          },
+          range,
+        );
+        return { asset, record, series };
+      }),
+    );
+
+    let hasFailedSeries = false;
+    const reconstructable = seriesResults.filter(
+      (
+        entry,
+      ): entry is (typeof seriesResults)[number] & {
+        series: MarketSeries;
+      } => {
+        if (entry.series) {
+          return true;
+        }
+
+        hasFailedSeries = true;
+        constantTotal = constantTotal.plus(
+          this.toDecimal(
+            entry.asset.currentValue ?? entry.asset.referenceValue ?? 0,
+          ),
+        );
+        return false;
+      },
+    );
+
+    // Load operations for the reconstructable assets and build quantity
+    // deltas: BUY adds, SELL subtracts.
+    const assetIds = reconstructable.map((entry) => entry.record.id);
+    const operations =
+      assetIds.length === 0
+        ? []
+        : await this.prisma.brokerageOperation.findMany({
+            where: {
+              userId: ownerId,
+              assetId: { in: assetIds },
+              kind: {
+                in: [BrokerageOperationKind.BUY, BrokerageOperationKind.SELL],
+              },
+              quantity: { not: null },
+            },
+            orderBy: { postedAt: 'asc' },
+          });
+    const opsByAsset = new Map<string, BrokerageOperation[]>();
+    for (const operation of operations) {
+      if (!operation.assetId || !operation.quantity) {
+        continue;
+      }
+
+      const list = opsByAsset.get(operation.assetId) ?? [];
+      list.push(operation);
+      opsByAsset.set(operation.assetId, list);
+    }
+
+    const pricedPositions: PerformancePricedPosition[] = reconstructable.map(
+      (entry) => {
+        const ops = opsByAsset.get(entry.record.id) ?? [];
+        const quantityDeltas = ops.map((operation) => ({
+          postedAt: operation.postedAt.getTime(),
+          delta:
+            operation.kind === BrokerageOperationKind.BUY
+              ? this.toDecimal(operation.quantity)
+              : ZERO.sub(this.toDecimal(operation.quantity)),
+        }));
+
+        return {
+          assetId: entry.record.id,
+          currency: entry.record.currency,
+          currentQuantity: this.toDecimal(entry.record.quantity),
+          series: entry.series,
+          quantityDeltas,
+        };
+      },
+    );
+
+    // Fetch an FX series for every distinct non-reporting currency among the
+    // reconstructable priced positions.
+    const fxCurrencies = [
+      ...new Set(
+        pricedPositions
+          .map((position) => position.currency)
+          .filter((currency) => currency !== reportingCurrency),
+      ),
+    ];
+    const fxSeriesByCurrency = new Map<string, MarketSeries | null>();
+    const fxSnapshotByCurrency = new Map<string, StoredFxRateSnapshot>();
+    await Promise.all(
+      fxCurrencies.map(async (currency) => {
+        const [series, snapshot] = await Promise.all([
+          this.pricesService.getFxSeries(currency, reportingCurrency, range),
+          this.pricesService.getStoredFxRateSnapshot(
+            ownerId,
+            now,
+            currency,
+            reportingCurrency,
+          ),
+        ]);
+        fxSeriesByCurrency.set(currency, series);
+        fxSnapshotByCurrency.set(currency, snapshot);
+      }),
+    );
+
+    // An FX series gap is only a real problem if the stored snapshot fallback
+    // is also stale or missing; an EXACT snapshot covers the gap cleanly.
+    const hasStaleFx = fxCurrencies.some((currency) => {
+      if (fxSeriesByCurrency.get(currency)) {
+        return false;
+      }
+
+      return fxSnapshotByCurrency.get(currency)?.status === 'STALE';
+    });
+    const hasMissingFx = fxCurrencies.some((currency) => {
+      if (fxSeriesByCurrency.get(currency)) {
+        return false;
+      }
+
+      return (
+        (fxSnapshotByCurrency.get(currency)?.status ?? 'MISSING') === 'MISSING'
+      );
+    });
+
+    // Determine the range start and the time grid.
+    const rangeStart = this.resolvePerformanceRangeStart(
+      range,
+      now,
+      pricedPositions,
+      fxSeriesByCurrency,
+    );
+    const grid = this.buildPerformanceTimeGrid(
+      rangeStart,
+      now,
+      pricedPositions,
+      fxSeriesByCurrency,
+    );
+
+    const fxFallbackRate = (currency: string): Prisma.Decimal =>
+      this.toDecimal(fxSnapshotByCurrency.get(currency)?.rate ?? 1);
+
+    const points: BrokeragePerformancePointResponse[] = grid.map((t) => {
+      let total = constantTotal;
+
+      for (const position of pricedPositions) {
+        const quantity = this.quantityAt(position, t);
+        const price = this.seriesValueAt(position.series, t);
+        const fx =
+          position.currency === reportingCurrency
+            ? ZERO.add(1)
+            : this.fxValueAt(
+                fxSeriesByCurrency.get(position.currency) ?? null,
+                t,
+                fxFallbackRate(position.currency),
+              );
+
+        total = total.plus(quantity.mul(price).mul(fx));
+      }
+
+      return { t, value: this.round2(total.toNumber()) };
+    });
+
+    const downsampled = this.downsamplePoints(points, PERFORMANCE_MAX_POINTS);
+
+    // Baseline.
+    let baselineValue: number | null = null;
+    if (range === '1D') {
+      let hasPreviousClose = pricedPositions.length > 0;
+      let baselineTotal = constantTotal;
+
+      for (const position of pricedPositions) {
+        if (position.series.previousClose === null) {
+          hasPreviousClose = false;
+          break;
+        }
+
+        const fx =
+          position.currency === reportingCurrency
+            ? ZERO.add(1)
+            : this.fxValueAt(
+                fxSeriesByCurrency.get(position.currency) ?? null,
+                now.getTime(),
+                fxFallbackRate(position.currency),
+              );
+
+        baselineTotal = baselineTotal.plus(
+          position.currentQuantity
+            .mul(new Prisma.Decimal(position.series.previousClose.toString()))
+            .mul(fx),
+        );
+      }
+
+      baselineValue = hasPreviousClose
+        ? this.round2(baselineTotal.toNumber())
+        : (downsampled[0]?.value ?? null);
+    } else {
+      baselineValue = downsampled[0]?.value ?? null;
+    }
+
+    const latestValue = downsampled[downsampled.length - 1]?.value ?? null;
+    const changeAbsolute =
+      latestValue !== null && baselineValue !== null
+        ? this.round2(latestValue - baselineValue)
+        : null;
+    const changePercent =
+      changeAbsolute !== null && baselineValue !== null && baselineValue > 0
+        ? this.round2((changeAbsolute / baselineValue) * 100)
+        : null;
+
+    return {
+      range,
+      reportingCurrency,
+      pricingStatus: this.buildPerformancePricingStatus(
+        hasFailedSeries,
+        hasStaleFx,
+        hasMissingFx,
+      ),
+      points: downsampled,
+      baselineValue,
+      latestValue,
+      changeAbsolute,
+      changePercent,
+      asOf: now.toISOString(),
     };
   }
 
@@ -1129,6 +1440,203 @@ export class BrokerageService {
     asset: Pick<DashboardAssetView, 'currentValue' | 'referenceValue'>,
   ): number {
     return asset.currentValue ?? asset.referenceValue ?? 0;
+  }
+
+  private buildEmptyPricingStatus(): AggregatePricingStatus {
+    return {
+      state: 'FRESH',
+      refreshSuggested: false,
+      hasStaleQuotes: false,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    };
+  }
+
+  private buildPerformancePricingStatus(
+    hasFailedSeries: boolean,
+    hasStaleFx: boolean,
+    hasMissingFx: boolean,
+  ): AggregatePricingStatus {
+    const state =
+      hasFailedSeries || hasMissingFx
+        ? 'PARTIAL'
+        : hasStaleFx
+          ? 'STALE'
+          : 'FRESH';
+
+    return {
+      state,
+      refreshSuggested: state !== 'FRESH',
+      hasStaleQuotes: hasFailedSeries,
+      hasStaleFx,
+      hasMissingFx,
+    };
+  }
+
+  /**
+   * Resolves the start of the requested range. For MAX, this is the
+   * earliest timestamp among all fetched series (falling back to `now` if
+   * no series produced any points).
+   */
+  private resolvePerformanceRangeStart(
+    range: BrokeragePerformanceRange,
+    now: Date,
+    pricedPositions: PerformancePricedPosition[],
+    fxSeriesByCurrency: Map<string, MarketSeries | null>,
+  ): number {
+    if (range !== 'MAX') {
+      const start = new Date(now);
+      switch (range) {
+        case '1D':
+          start.setDate(start.getDate() - 1);
+          break;
+        case '1W':
+          start.setDate(start.getDate() - 7);
+          break;
+        case '1M':
+          start.setMonth(start.getMonth() - 1);
+          break;
+        case '1Y':
+          start.setFullYear(start.getFullYear() - 1);
+          break;
+      }
+
+      return start.getTime();
+    }
+
+    const allFirstPoints = [
+      ...pricedPositions.map((position) => position.series.points[0]?.t),
+      ...[...fxSeriesByCurrency.values()]
+        .filter((series): series is MarketSeries => !!series)
+        .map((series) => series.points[0]?.t),
+    ].filter((t): t is number => typeof t === 'number');
+
+    if (allFirstPoints.length === 0) {
+      return now.getTime();
+    }
+
+    return Math.min(...allFirstPoints);
+  }
+
+  /** Sorted union of all fetched series timestamps, clipped to [rangeStart, now]. */
+  private buildPerformanceTimeGrid(
+    rangeStart: number,
+    now: Date,
+    pricedPositions: PerformancePricedPosition[],
+    fxSeriesByCurrency: Map<string, MarketSeries | null>,
+  ): number[] {
+    const nowMs = now.getTime();
+    const timestamps = new Set<number>();
+
+    for (const position of pricedPositions) {
+      for (const point of position.series.points) {
+        if (point.t >= rangeStart && point.t <= nowMs) {
+          timestamps.add(point.t);
+        }
+      }
+    }
+
+    for (const series of fxSeriesByCurrency.values()) {
+      if (!series) {
+        continue;
+      }
+
+      for (const point of series.points) {
+        if (point.t >= rangeStart && point.t <= nowMs) {
+          timestamps.add(point.t);
+        }
+      }
+    }
+
+    if (timestamps.size === 0) {
+      // No series data at all (e.g. only manual/degraded positions): fall
+      // back to a flat two-point range so the chart still renders.
+      timestamps.add(rangeStart);
+      timestamps.add(nowMs);
+    }
+
+    return [...timestamps].sort((left, right) => left - right);
+  }
+
+  /**
+   * Quantity of a position at time `t`, reconstructed by reversing
+   * BUY/SELL operations posted after `t`. Clamped to zero.
+   */
+  private quantityAt(
+    position: PerformancePricedPosition,
+    t: number,
+  ): Prisma.Decimal {
+    let removed = ZERO;
+    for (const { postedAt, delta } of position.quantityDeltas) {
+      if (postedAt > t) {
+        removed = removed.plus(delta);
+      }
+    }
+
+    const quantity = position.currentQuantity.sub(removed);
+    return quantity.lt(ZERO) ? ZERO : quantity;
+  }
+
+  /**
+   * Price at time `t`: forward-filled from the last point <= t, or
+   * backward-filled from the first point if `t` precedes all data.
+   */
+  private seriesValueAt(series: MarketSeries, t: number): Prisma.Decimal {
+    let candidate: number | null = null;
+
+    for (const point of series.points) {
+      if (point.t <= t) {
+        candidate = point.price;
+      } else {
+        break;
+      }
+    }
+
+    if (candidate === null) {
+      candidate = series.points[0]?.price ?? 0;
+    }
+
+    return new Prisma.Decimal(candidate.toString());
+  }
+
+  /** FX rate at time `t`, falling back to `fallback` when no series is available. */
+  private fxValueAt(
+    series: MarketSeries | null,
+    t: number,
+    fallback: Prisma.Decimal,
+  ): Prisma.Decimal {
+    if (!series) {
+      return fallback;
+    }
+
+    return this.seriesValueAt(series, t);
+  }
+
+  /** Uniformly downsamples to at most `maxPoints`, always keeping the last point. */
+  private downsamplePoints(
+    points: BrokeragePerformancePointResponse[],
+    maxPoints: number,
+  ): BrokeragePerformancePointResponse[] {
+    if (points.length <= maxPoints) {
+      return points;
+    }
+
+    const step = points.length / maxPoints;
+    const result: BrokeragePerformancePointResponse[] = [];
+    for (let i = 0; i < maxPoints; i += 1) {
+      result.push(points[Math.floor(i * step)]);
+    }
+
+    const last = points[points.length - 1];
+    if (result[result.length - 1] !== last) {
+      result[result.length - 1] = last;
+    }
+
+    return result;
+  }
+
+  private round2(value: number): number {
+    return Math.round(value * 100) / 100;
   }
 
   private operationTitle(kind: BrokerageOperationKind): string {
