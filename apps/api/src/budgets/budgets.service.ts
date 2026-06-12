@@ -1005,16 +1005,35 @@ export class BudgetsService {
     const summary = this.createEmptyCurrencyTotals(currency);
     summary.budgetedCategoryCount = budgetedItemCount;
 
+    // Item amounts round-trip exactly through number, so rebuilding decimals
+    // keeps the accumulated totals free of float drift.
+    let budgetTotal = this.toDecimal(0);
+    let spentTotal = this.toDecimal(0);
+    let remainingTotal = this.toDecimal(0);
+    let overBudgetTotal = this.toDecimal(0);
+
     for (const item of ownerItems) {
-      summary.budgetTotal += item.budgetAmount;
-      summary.spentTotal += item.spentAmount;
-      summary.remainingTotal += item.remainingAmount;
-      summary.overBudgetTotal += Math.max(
-        0,
-        item.spentAmount - item.budgetAmount,
+      const budgetAmount = this.toDecimal(item.budgetAmount);
+      const spentAmount = this.toDecimal(item.spentAmount);
+      const overrun = spentAmount.minus(budgetAmount);
+
+      budgetTotal = budgetTotal.plus(budgetAmount);
+      spentTotal = spentTotal.plus(spentAmount);
+      remainingTotal = remainingTotal.plus(
+        this.toDecimal(item.remainingAmount),
       );
+
+      if (overrun.greaterThan(0)) {
+        overBudgetTotal = overBudgetTotal.plus(overrun);
+      }
+
       summary.overBudgetCount += item.status === 'OVER_BUDGET' ? 1 : 0;
     }
+
+    summary.budgetTotal = budgetTotal.toNumber();
+    summary.spentTotal = spentTotal.toNumber();
+    summary.remainingTotal = remainingTotal.toNumber();
+    summary.overBudgetTotal = overBudgetTotal.toNumber();
 
     return summary;
   }
