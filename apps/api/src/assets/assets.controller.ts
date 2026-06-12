@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   Post,
   Put,
@@ -10,6 +11,10 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { AssetsService } from '@assets/assets.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
+import {
+  ReorderAssetKindsDto,
+  ReorderAssetsDto,
+} from '@assets/dto/reorder-assets.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
 import { createNamedThrottleOverride } from '@/config/throttle.config';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
@@ -79,7 +84,24 @@ export class AssetsController {
     return toAssetResponse(asset);
   }
 
+  @Put('reorder/assets')
+  async reorderAssets(@Body() body: ReorderAssetsDto): Promise<void> {
+    return this.assetsService.reorderAssets(
+      this.resolveOwnerId(),
+      body.assetIds,
+    );
+  }
+
+  @Put('reorder/kinds')
+  async reorderKinds(@Body() body: ReorderAssetKindsDto): Promise<void> {
+    return this.assetsService.reorderAssetKinds(
+      this.resolveOwnerId(),
+      body.kindOrder,
+    );
+  }
+
   @Delete(':id')
+  @HttpCode(204)
   async remove(@Param('id') id: string): Promise<void> {
     return this.assetsService.remove(this.resolveOwnerId(), id);
   }

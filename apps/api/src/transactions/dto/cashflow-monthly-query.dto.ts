@@ -73,6 +73,21 @@ export class CashflowMonthlyQueryDto {
   accountId?: string[];
 
   @IsOptional()
+  @IsString()
+  @Transform(trimStringValue)
+  categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Transform(trimStringValue)
+  primaryCategoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Transform(trimStringValue)
+  secondaryCategoryId?: string;
+
+  @IsOptional()
   @Transform(booleanValue)
   @IsBoolean()
   includeArchivedAccounts?: boolean;

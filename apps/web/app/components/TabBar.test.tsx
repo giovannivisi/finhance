@@ -3,27 +3,34 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TabBar from "@components/TabBar";
+import { resetNavigationPrefetchesForTests } from "@lib/navigation-prefetch";
 
 const pushMock = vi.fn();
+const prefetchMock = vi.fn();
 const usePathnameMock = vi.fn();
-const toggleThemeMock = vi.fn();
+const startNavigationProgressMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => usePathnameMock(),
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, prefetch: prefetchMock }),
 }));
 
 vi.mock("next/link", () => ({
-  default: ({
-    children,
-    href,
-    onClick,
-    ...rest
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} onClick={(event) => onClick?.(event)} {...rest}>
-      {children}
-    </a>
-  ),
+  default: (
+    props: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+      href: string;
+      prefetch?: boolean;
+    },
+  ) => {
+    const { children, href, onClick, prefetch, ...rest } = props;
+    void prefetch;
+
+    return (
+      <a href={href} onClick={(event) => onClick?.(event)} {...rest}>
+        {children}
+      </a>
+    );
+  },
 }));
 
 vi.mock("framer-motion", () => ({
@@ -31,24 +38,40 @@ vi.mock("framer-motion", () => ({
     <>{children}</>
   ),
   motion: {
-    div: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-      <div {...props}>{children}</div>
-    ),
+    div: (
+      props: React.HTMLAttributes<HTMLDivElement> & { initial?: unknown },
+    ) => {
+      const { children, initial, ...rest } = props;
+      void initial;
+
+      return <div {...rest}>{children}</div>;
+    },
   },
+  useAnimation: () => ({
+    set: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+  }),
   useReducedMotion: () => true,
 }));
 
 vi.mock("@components/ThemeProvider", () => ({
   useTheme: () => ({
     theme: "dark",
-    toggleTheme: toggleThemeMock,
+    toggleTheme: vi.fn(),
   }),
+}));
+
+vi.mock("@lib/navigation-progress", () => ({
+  startNavigationProgress: (path: string) => startNavigationProgressMock(path),
 }));
 
 describe("TabBar", () => {
   beforeEach(() => {
     pushMock.mockReset();
-    toggleThemeMock.mockReset();
+    prefetchMock.mockReset();
+    startNavigationProgressMock.mockReset();
+    resetNavigationPrefetchesForTests();
     usePathnameMock.mockReturnValue("/accounts");
   });
 
@@ -61,6 +84,26 @@ describe("TabBar", () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
+  it("clears a completed pending route so the same destination can be revisited later", async () => {
+    const user = userEvent.setup();
+    usePathnameMock.mockReturnValue("/analytics");
+    const { rerender } = render(<TabBar />);
+
+    await user.click(screen.getByLabelText("Dashboard"));
+
+    expect(pushMock).toHaveBeenNthCalledWith(1, "/dashboard");
+
+    usePathnameMock.mockReturnValue("/dashboard");
+    rerender(<TabBar />);
+
+    usePathnameMock.mockReturnValue("/categories");
+    rerender(<TabBar />);
+
+    await user.click(screen.getByLabelText("Dashboard"));
+
+    expect(pushMock).toHaveBeenNthCalledWith(2, "/dashboard");
+  });
+
   it("opens the More panel and pushes secondary navigation targets", async () => {
     const user = userEvent.setup();
     render(<TabBar />);
@@ -69,34 +112,45 @@ describe("TabBar", () => {
     await user.click(screen.getByRole("link", { name: "Analytics" }));
 
     await waitFor(() => {
+      expect(startNavigationProgressMock).toHaveBeenCalledWith("/analytics");
       expect(pushMock).toHaveBeenCalledWith("/analytics");
     });
   });
 
-  it("shows the privacy notice link in the More panel", async () => {
+  it("keeps the More panel focused on secondary navigation", async () => {
     const user = userEvent.setup();
     render(<TabBar />);
 
     await user.click(screen.getByRole("button", { name: /more navigation/i }));
-    await user.click(screen.getByRole("link", { name: "Privacy notice" }));
 
-    await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/privacy");
-    });
+    expect(screen.getByRole("link", { name: "Analytics" })).toBeInTheDocument();
+    expect(prefetchMock).toHaveBeenCalledWith("/brokerage");
+    expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Privacy notice" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("toggles theme from the More panel and closes it", async () => {
+  it("prefetches primary routes on hover and brokerage when More opens", async () => {
+    const user = userEvent.setup();
+    render(<TabBar />);
+
+    await user.hover(screen.getByLabelText("Analytics"));
+    await user.click(screen.getByRole("button", { name: /more navigation/i }));
+
+    expect(prefetchMock).toHaveBeenCalledWith("/analytics");
+    expect(prefetchMock).toHaveBeenCalledWith("/brokerage");
+  });
+
+  it("prefetches secondary follow-up routes when More stays open briefly", async () => {
     const user = userEvent.setup();
     render(<TabBar />);
 
     await user.click(screen.getByRole("button", { name: /more navigation/i }));
-    await user.click(
-      screen.getByRole("button", { name: /switch to light mode/i }),
-    );
 
-    expect(toggleThemeMock).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(screen.queryByText("Light mode")).not.toBeInTheDocument();
+      expect(prefetchMock).toHaveBeenCalledWith("/history");
+      expect(prefetchMock).toHaveBeenCalledWith("/review");
     });
   });
 });

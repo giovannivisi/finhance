@@ -1,0 +1,567 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                              String                           @id @default(cuid())
+  email                           String                           @unique
+  emailVerified                   DateTime?                        @map("email_verified")
+  name                            String?
+  image                           String?
+  isActive                        Boolean                          @default(true) @map("is_active")
+  createdAt                       DateTime                         @default(now()) @map("created_at")
+  updatedAt                       DateTime                         @updatedAt @map("updated_at")
+  assetKindOrder                  Json?                            @map("asset_kind_order")
+  userSettings                    Json?                            @map("user_settings")
+  mobileTokensRevokedAt           DateTime?                        @map("mobile_tokens_revoked_at")
+  providerAccounts                AuthProviderAccount[]
+  sessions                        AuthSession[]
+  assets                          Asset[]
+  accounts                        Account[]
+  categories                      Category[]
+  expenseValidationRules          ExpenseValidationRule[]
+  categoryBudgets                 CategoryBudget[]
+  categoryBudgetOverrides         CategoryBudgetOverride[]
+  portfolioState                  PortfolioState?
+  idempotencyRequests             IdempotencyRequest[]
+  operationStates                 OperationState[]
+  netWorthSnapshots               NetWorthSnapshot[]
+  transactions                    Transaction[]
+  recurringTransactionRules       RecurringTransactionRule[]
+  recurringTransactionOccurrences RecurringTransactionOccurrence[]
+  importBatches                   ImportBatch[]
+  brokerageOperations             BrokerageOperation[]
+  portfolioAssetKindTargets       PortfolioAssetKindTarget[]
+  portfolioSecurityTargets        PortfolioSecurityTarget[]
+  fxRates                         FxRate[]
+
+  @@map("users")
+}
+
+model AuthProviderAccount {
+  id                String @id @default(cuid())
+  userId            String @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String @map("provider_account_id")
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("auth_provider_accounts")
+}
+
+model AuthSession {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("auth_sessions")
+}
+
+model AuthVerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("auth_verification_tokens")
+}
+
+model Asset {
+  id            String         @id @default(cuid())
+  userId        String
+  name          String
+  type          AssetType
+  balance       Decimal        @db.Decimal(20, 10)
+  currency      String         @default("EUR")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  kind          AssetKind?
+  notes         String?
+  order         Int?           @default(0)
+  ticker        String?
+  liabilityKind LiabilityKind?
+  exchange      String?
+  quantity      Decimal?       @db.Decimal(20, 10)
+  unitPrice     Decimal?       @db.Decimal(20, 10)
+  lastPrice     Decimal?       @db.Decimal(20, 10)
+  lastPriceAt   DateTime?
+  lastFxRate    Decimal?       @db.Decimal(20, 10)
+  lastFxRateAt  DateTime?
+  accountId     String?
+  importSource  ImportSource?
+  importKey     String?
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  account       Account?       @relation(fields: [accountId, userId], references: [id, userId])
+  brokerageOperations BrokerageOperation[]
+
+  @@unique([id, userId])
+  @@unique([userId, type, kind, ticker, exchange, accountId])
+  @@unique([userId, importSource, importKey])
+  @@index([userId])
+  @@index([userId, accountId])
+}
+
+model Account {
+  id                            String                     @id @default(cuid())
+  userId                        String
+  name                          String
+  type                          AccountType
+  currency                      String                     @default("EUR")
+  institution                   String?
+  notes                         String?
+  order                         Int                        @default(0)
+  archivedAt                    DateTime?
+  createdAt                     DateTime                   @default(now())
+  updatedAt                     DateTime                   @updatedAt
+  importSource                  ImportSource?
+  importKey                     String?
+  openingBalance                Decimal                    @default(0) @db.Decimal(20, 10)
+  openingBalanceDate            DateTime?                  @db.Date
+  user                          User                       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  assets                        Asset[]
+  recurringRules                RecurringTransactionRule[] @relation("StandardRecurringRuleAccount")
+  recurringTransferDestinations RecurringTransactionRule[] @relation("TransferRecurringRuleDestination")
+  recurringTransferSources      RecurringTransactionRule[] @relation("TransferRecurringRuleSource")
+  transactions                  Transaction[]
+  brokerageOperations           BrokerageOperation[]
+
+  @@unique([id, userId])
+  @@unique([userId, importSource, importKey])
+  @@index([userId, archivedAt, order, createdAt])
+}
+
+model Category {
+  id                     String                     @id @default(cuid())
+  userId                 String
+  name                   String
+  type                   CategoryType
+  // Active name uniqueness is enforced by a manual partial expression index in
+  // migrations so expense secondaries are unique within their parent primary.
+  parentCategoryId       String?                    @map("parent_category_id")
+  order                  Int                        @default(0)
+  archivedAt             DateTime?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+  importSource           ImportSource?
+  importKey              String?
+  user                   User                       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  parentCategory         Category?                  @relation("CategoryHierarchy", fields: [parentCategoryId, userId], references: [id, userId], onDelete: SetNull, onUpdate: Cascade)
+  childCategories        Category[]                 @relation("CategoryHierarchy")
+  budgets                CategoryBudget[]
+  recurringRules         RecurringTransactionRule[]
+  transactions           Transaction[]
+  expenseValidationRules ExpenseValidationRule[]    @relation("ExpenseValidationRuleSecondaryCategory")
+
+  @@unique([id, userId])
+  @@unique([userId, importSource, importKey])
+  @@index([userId, type, parentCategoryId, archivedAt, order, createdAt])
+}
+
+model ExpenseValidationRule {
+  id                  String   @id @default(cuid())
+  userId              String
+  entry               String
+  normalizedEntry     String   @map("normalized_entry")
+  secondaryCategoryId String   @map("secondary_category_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  secondaryCategory   Category @relation("ExpenseValidationRuleSecondaryCategory", fields: [secondaryCategoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, normalizedEntry])
+  @@index([userId, secondaryCategoryId])
+}
+
+model CategoryBudget {
+  id           String                   @id @default(cuid())
+  userId       String
+  importSource ImportSource?
+  importKey    String?
+  categoryId   String
+  currency     String
+  amount       Decimal                  @db.Decimal(20, 10)
+  startMonth   DateTime                 @db.Date
+  endMonth     DateTime?                @db.Date
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  user         User                     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  category     Category                 @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
+  overrides    CategoryBudgetOverride[]
+
+  @@unique([id, userId])
+  @@unique([userId, importSource, importKey])
+  @@unique([userId, categoryId, currency, startMonth])
+  @@index([userId, startMonth, endMonth])
+  @@index([userId, categoryId, currency, startMonth, endMonth])
+}
+
+model CategoryBudgetOverride {
+  id               String         @id @default(cuid())
+  userId           String
+  categoryBudgetId String
+  month            DateTime       @db.Date
+  amount           Decimal        @db.Decimal(20, 10)
+  note             String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  user             User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  categoryBudget   CategoryBudget @relation(fields: [categoryBudgetId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([categoryBudgetId, month])
+  @@index([userId, month])
+  @@index([userId, categoryBudgetId, month])
+}
+
+model PortfolioState {
+  userId                 String    @id
+  lastRefreshSucceededAt DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  refreshStartedAt       DateTime?
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+}
+
+model IdempotencyRequest {
+  userId             String
+  method             String
+  routePath          String
+  idempotencyKey     String
+  requestFingerprint String
+  status             IdempotencyRequestStatus
+  responseStatusCode Int?
+  responseJson       Json?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  completedAt        DateTime?
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([userId, method, routePath, idempotencyKey])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model OperationState {
+  userId          String
+  type            OperationType
+  startedAt       DateTime?
+  lastSucceededAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user            User          @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([userId, type])
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+model NetWorthSnapshot {
+  id               String   @id @default(cuid())
+  userId           String
+  snapshotDate     DateTime @db.Date
+  capturedAt       DateTime
+  baseCurrency     String   @default("EUR")
+  assetsTotal      Decimal  @db.Decimal(20, 10)
+  liabilitiesTotal Decimal  @db.Decimal(20, 10)
+  netWorthTotal    Decimal  @db.Decimal(20, 10)
+  nativeAssetTotals Json?
+  nativeLiabilityTotals Json?
+  unavailableCount Int      @default(0)
+  isPartial        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([userId, snapshotDate, baseCurrency])
+  @@index([userId, snapshotDate])
+}
+
+model Transaction {
+  id                       String                    @id @default(cuid())
+  userId                   String
+  importSource             ImportSource?
+  importKey                String?
+  postedAt                 DateTime
+  accountId                String
+  categoryId               String?
+  amount                   Decimal                   @db.Decimal(20, 10)
+  currency                 String
+  nativeAmount             Decimal?                  @db.Decimal(20, 10)
+  nativeCurrency           String?
+  fxRateUsed               Decimal?                  @db.Decimal(20, 10)
+  fxRateSource             FxRateSource?
+  direction                TransactionDirection
+  kind                     TransactionKind
+  description              String
+  notes                    String?
+  counterparty             String?
+  transferGroupId          String?
+  splitGroupId             String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  recurringRuleId          String?
+  recurringOccurrenceMonth DateTime?                 @db.Date
+  user                     User                      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  account                  Account                   @relation(fields: [accountId, userId], references: [id, userId], onUpdate: Cascade)
+  category                 Category?                 @relation(fields: [categoryId, userId], references: [id, userId], onUpdate: Cascade)
+  recurringRule            RecurringTransactionRule? @relation(fields: [recurringRuleId], references: [id])
+  brokerageOperationMirror BrokerageOperation?
+
+  @@unique([id, userId])
+  @@unique([userId, importSource, importKey, direction])
+  @@unique([userId, recurringRuleId, recurringOccurrenceMonth, direction], map: "Transaction_userId_recurringRuleId_recurringOccurrenceMonth_dir")
+  @@index([userId, postedAt])
+  @@index([userId, kind, postedAt])
+  @@index([userId, accountId, postedAt])
+  @@index([userId, categoryId, postedAt])
+  @@index([userId, transferGroupId])
+  @@index([userId, splitGroupId])
+  @@index([userId, recurringRuleId, recurringOccurrenceMonth])
+}
+
+model FxRate {
+  id           String   @id @default(cuid())
+  userId       String
+  rateDate     DateTime @db.Date
+  fromCurrency String
+  toCurrency   String
+  rate         Decimal  @db.Decimal(20, 10)
+  source       FxRateSource
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, rateDate, fromCurrency, toCurrency])
+  @@index([userId, fromCurrency, toCurrency, rateDate])
+}
+
+model BrokerageOperation {
+  id                  String                @id @default(cuid())
+  userId              String
+  accountId           String
+  assetId             String?
+  kind                BrokerageOperationKind
+  postedAt            DateTime
+  currency            String
+  quantity            Decimal?              @db.Decimal(20, 10)
+  unitPrice           Decimal?              @db.Decimal(20, 10)
+  grossAmount         Decimal?              @db.Decimal(20, 10)
+  feeAmount           Decimal?              @db.Decimal(20, 10)
+  cashAmount          Decimal               @db.Decimal(20, 10)
+  realisedGainLoss    Decimal?              @db.Decimal(20, 10)
+  notes               String?
+  mirroredTransactionId String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  account             Account               @relation(fields: [accountId, userId], references: [id, userId], onDelete: Cascade)
+  asset               Asset?                @relation(fields: [assetId, userId], references: [id, userId], onDelete: Restrict)
+  mirroredTransaction Transaction?          @relation(fields: [mirroredTransactionId, userId], references: [id, userId], onDelete: Restrict)
+
+  @@index([userId, accountId, postedAt(sort: Desc)])
+  @@index([userId, assetId, postedAt(sort: Desc)])
+  @@unique([mirroredTransactionId, userId])
+  @@unique([mirroredTransactionId])
+}
+
+model PortfolioAssetKindTarget {
+  id            String    @id @default(cuid())
+  userId        String
+  kind          AssetKind
+  targetPercent Decimal   @db.Decimal(8, 4)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, kind])
+  @@index([userId, kind])
+}
+
+model PortfolioSecurityTarget {
+  id            String    @id @default(cuid())
+  userId        String
+  kind          AssetKind
+  ticker        String
+  exchange      String    @default("")
+  name          String?
+  targetPercent Decimal   @db.Decimal(8, 4)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([userId, kind, ticker, exchange])
+  @@index([userId, kind, ticker, exchange])
+}
+
+model RecurringTransactionRule {
+  id                         String                           @id @default(cuid())
+  userId                     String
+  importSource               ImportSource?
+  importKey                  String?
+  name                       String
+  isActive                   Boolean                          @default(true)
+  kind                       TransactionKind
+  amount                     Decimal                          @db.Decimal(20, 10)
+  dayOfMonth                 Int
+  startDate                  DateTime                         @db.Date
+  endDate                    DateTime?                        @db.Date
+  accountId                  String?
+  direction                  TransactionDirection?
+  categoryId                 String?
+  counterparty               String?
+  sourceAccountId            String?
+  destinationAccountId       String?
+  description                String
+  notes                      String?
+  lastMaterializationError   String?
+  lastMaterializationErrorAt DateTime?
+  createdAt                  DateTime                         @default(now())
+  updatedAt                  DateTime                         @default(now()) @updatedAt
+  user                       User                             @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  account                    Account?                         @relation("StandardRecurringRuleAccount", fields: [accountId, userId], references: [id, userId], onDelete: SetNull)
+  category                   Category?                        @relation(fields: [categoryId, userId], references: [id, userId], onDelete: SetNull)
+  destinationAccount         Account?                         @relation("TransferRecurringRuleDestination", fields: [destinationAccountId, userId], references: [id, userId], onDelete: SetNull)
+  occurrences                RecurringTransactionOccurrence[]
+  sourceAccount              Account?                         @relation("TransferRecurringRuleSource", fields: [sourceAccountId, userId], references: [id, userId], onDelete: SetNull)
+  transactions               Transaction[]
+
+  @@unique([userId, importSource, importKey])
+  @@index([userId, accountId])
+  @@index([userId, sourceAccountId])
+  @@index([userId, destinationAccountId])
+  @@index([userId, isActive, dayOfMonth, startDate], map: "RecurringTransactionRule_userId_isActive_dayOfMonth_startDate_i")
+}
+
+model RecurringTransactionOccurrence {
+  id                           String                    @id @default(cuid())
+  userId                       String
+  recurringRuleId              String
+  occurrenceMonth              DateTime                  @db.Date
+  status                       RecurringOccurrenceStatus
+  overrideAmount               Decimal?                  @db.Decimal(20, 10)
+  overridePostedAtDate         DateTime?                 @db.Date
+  overrideAccountId            String?
+  overrideDirection            TransactionDirection?
+  overrideCategoryId           String?
+  overrideCounterparty         String?
+  overrideSourceAccountId      String?
+  overrideDestinationAccountId String?
+  overrideDescription          String?
+  overrideNotes                String?
+  createdAt                    DateTime                  @default(now())
+  updatedAt                    DateTime                  @default(now()) @updatedAt
+  user                         User                      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  recurringRule                RecurringTransactionRule  @relation(fields: [recurringRuleId], references: [id], onDelete: Cascade)
+
+  @@unique([recurringRuleId, occurrenceMonth])
+  @@index([userId, occurrenceMonth])
+  @@index([userId, recurringRuleId, occurrenceMonth])
+}
+
+model ImportBatch {
+  id          String            @id @default(cuid())
+  userId      String
+  source      ImportSource
+  status      ImportBatchStatus
+  summaryJson Json
+  errorJson   Json
+  payloadJson Json?
+  createdAt   DateTime          @default(now())
+  appliedAt   DateTime?
+  user        User              @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+enum AssetType {
+  ASSET
+  LIABILITY
+}
+
+enum AssetKind {
+  CASH
+  STOCK
+  BOND
+  CRYPTO
+  REAL_ESTATE
+  PENSION
+  COMMODITY
+  OTHER
+}
+
+enum LiabilityKind {
+  TAX
+  DEBT
+  OTHER
+}
+
+enum AccountType {
+  BANK
+  BROKER
+  CARD
+  CASH
+  LOAN
+  OTHER
+}
+
+enum CategoryType {
+  EXPENSE
+  INCOME
+}
+
+enum TransactionKind {
+  EXPENSE
+  INCOME
+  TRANSFER
+  ADJUSTMENT
+}
+
+enum BrokerageOperationKind {
+  BUY
+  SELL
+  DIVIDEND
+  FEE
+}
+
+enum TransactionDirection {
+  INFLOW
+  OUTFLOW
+}
+
+enum FxRateSource {
+  LIVE
+  MANUAL
+}
+
+enum RecurringOccurrenceStatus {
+  SKIPPED
+  OVERRIDDEN
+}
+
+enum ImportBatchStatus {
+  PREVIEW
+  APPLIED
+  FAILED
+}
+
+enum ImportSource {
+  CSV_TEMPLATE
+}
+
+enum IdempotencyRequestStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum OperationType {
+  ASSET_REFRESH
+  SNAPSHOT_CAPTURE
+  RECURRING_MATERIALIZE
+}

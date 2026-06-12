@@ -1,6 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@finhance/db';
 import request from 'supertest';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { BudgetsController } from '@budgets/budgets.controller';
@@ -44,7 +44,12 @@ describe('Budget routes with Prisma schema (e2e)', () => {
         BudgetsService,
         CategoriesService,
         PrismaService,
-        RequestOwnerResolver,
+        {
+          provide: RequestOwnerResolver,
+          useValue: {
+            resolveOwnerId: () => OWNER_ID,
+          },
+        },
       ],
     }).compile();
 
@@ -96,10 +101,18 @@ describe('Budget routes with Prisma schema (e2e)', () => {
     await prisma.category.createMany({
       data: [
         {
+          id: 'category-household',
+          userId: OWNER_ID,
+          name: 'Household',
+          type: 'EXPENSE',
+          order: 0,
+        },
+        {
           id: 'category-groceries',
           userId: OWNER_ID,
           name: 'Groceries',
           type: 'EXPENSE',
+          parentCategoryId: 'category-household',
           order: 0,
         },
         {
@@ -107,6 +120,7 @@ describe('Budget routes with Prisma schema (e2e)', () => {
           userId: OWNER_ID,
           name: 'Dining',
           type: 'EXPENSE',
+          parentCategoryId: 'category-household',
           order: 1,
         },
       ],
@@ -193,6 +207,143 @@ describe('Budget routes with Prisma schema (e2e)', () => {
       categoryName: 'Dining',
       spentAmount: 48,
     });
+  });
+
+  it('allows a budget on a primary category and aggregates descendant spend', async () => {
+    await seedBudgetWorkspace();
+
+    const createResponse = await request(httpServer())
+      .post('/budgets')
+      .send({
+        categoryId: 'category-household',
+        currency: 'EUR',
+        amount: 150,
+        startMonth: '2026-04',
+      })
+      .expect(201);
+
+    expect(bodyAs<CategoryBudgetResponse>(createResponse)).toMatchObject({
+      categoryId: 'category-household',
+      categoryName: 'Household',
+      primaryCategoryId: 'category-household',
+      primaryCategoryName: 'Household',
+      secondaryCategoryId: null,
+      secondaryCategoryName: null,
+    });
+
+    const monthlyResponse = await request(httpServer())
+      .get('/budgets?month=2026-04')
+      .expect(200);
+
+    const monthly = bodyAs<MonthlyBudgetResponse>(monthlyResponse);
+    expect(monthly.currencies).toHaveLength(1);
+    expect(monthly.currencies[0]).toMatchObject({
+      currency: 'EUR',
+      budgetTotal: 150,
+      spentTotal: 128,
+      remainingTotal: 22,
+      unbudgetedExpenseTotal: 0,
+      uncategorizedExpenseTotal: 15,
+    });
+    expect(monthly.currencies[0].items[0]).toMatchObject({
+      categoryId: 'category-household',
+      categoryName: 'Household',
+      primaryCategoryId: 'category-household',
+      secondaryCategoryId: null,
+      budgetAmount: 150,
+      spentAmount: 128,
+    });
+    expect(monthly.currencies[0].unbudgetedCategories).toEqual([]);
+  });
+
+  it('allows primary and secondary budgets together while keeping the primary as the roll-up summary owner', async () => {
+    await seedBudgetWorkspace();
+
+    await request(httpServer())
+      .post('/budgets')
+      .send({
+        categoryId: 'category-household',
+        currency: 'EUR',
+        amount: 150,
+        startMonth: '2026-04',
+      })
+      .expect(201);
+
+    const secondaryResponse = await request(httpServer())
+      .post('/budgets')
+      .send({
+        categoryId: 'category-groceries',
+        currency: 'EUR',
+        amount: 100,
+        startMonth: '2026-04',
+      })
+      .expect(201);
+
+    expect(bodyAs<CategoryBudgetResponse>(secondaryResponse)).toMatchObject({
+      categoryId: 'category-groceries',
+      primaryCategoryId: 'category-household',
+      secondaryCategoryId: 'category-groceries',
+    });
+
+    const monthlyResponse = await request(httpServer())
+      .get('/budgets?month=2026-04')
+      .expect(200);
+
+    const monthly = bodyAs<MonthlyBudgetResponse>(monthlyResponse);
+    expect(monthly.currencies[0]).toMatchObject({
+      currency: 'EUR',
+      budgetTotal: 150,
+      spentTotal: 128,
+      remainingTotal: 22,
+      budgetedCategoryCount: 2,
+      unbudgetedExpenseTotal: 0,
+      uncategorizedExpenseTotal: 15,
+    });
+    expect(monthly.currencies[0].items).toHaveLength(2);
+    expect(monthly.currencies[0].items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          categoryId: 'category-household',
+          budgetAmount: 150,
+          spentAmount: 128,
+          secondaryCategoryId: null,
+        }),
+        expect.objectContaining({
+          categoryId: 'category-groceries',
+          budgetAmount: 100,
+          spentAmount: 80,
+          secondaryCategoryId: 'category-groceries',
+        }),
+      ]),
+    );
+  });
+
+  it('still rejects overlapping budgets on the same exact category', async () => {
+    await seedBudgetWorkspace();
+
+    await request(httpServer())
+      .post('/budgets')
+      .send({
+        categoryId: 'category-groceries',
+        currency: 'EUR',
+        amount: 100,
+        startMonth: '2026-04',
+      })
+      .expect(201);
+
+    const overlapResponse = await request(httpServer())
+      .post('/budgets')
+      .send({
+        categoryId: 'category-groceries',
+        currency: 'EUR',
+        amount: 120,
+        startMonth: '2026-04',
+      })
+      .expect(400);
+
+    expect(bodyAs<{ message: string }>(overlapResponse).message).toBe(
+      'Budget ranges cannot overlap for the same category and currency.',
+    );
   });
 
   it('persists month overrides in the dedicated override table', async () => {

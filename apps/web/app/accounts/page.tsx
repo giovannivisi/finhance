@@ -1,36 +1,51 @@
 import Container from "@components/Container";
 import AccountsPageClient from "@components/AccountsPageClient";
-import { api } from "@lib/api";
+import { isMissingPageDataRouteError } from "@lib/api-fallback";
+import { api } from "@lib/server-api";
 import type {
   AccountReconciliationResponse,
   AccountResponse,
+  AccountsPageDataResponse,
 } from "@finhance/shared";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountsPage() {
-  let accounts: AccountResponse[] | null = null;
-  let reconciliations: AccountReconciliationResponse[] | null = null;
+  let pageData: AccountsPageDataResponse | null = null;
   let errorMessage: string | null = null;
 
   try {
-    [accounts, reconciliations] = await Promise.all([
-      api<AccountResponse[]>("/accounts?includeArchived=true"),
-      api<AccountReconciliationResponse[]>(
-        "/accounts/reconciliation?includeArchived=true",
-      ),
-    ]);
+    pageData = await api<AccountsPageDataResponse>(
+      "/accounts/page-data?includeArchived=true",
+    );
   } catch (error) {
-    errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Account data is currently unavailable.";
+    if (isMissingPageDataRouteError(error)) {
+      try {
+        const [accounts, reconciliations] = await Promise.all([
+          api<AccountResponse[]>("/accounts?includeArchived=true"),
+          api<AccountReconciliationResponse[]>(
+            "/accounts/reconciliation?includeArchived=true",
+          ),
+        ]);
+        pageData = { accounts, reconciliations };
+      } catch (fallbackError) {
+        errorMessage =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : "Account data is currently unavailable.";
+      }
+    } else {
+      errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Account data is currently unavailable.";
+    }
   }
 
   return (
     <>
       <Container>
-        {!accounts || !reconciliations ? (
+        {!pageData ? (
           <section className="page-shell">
             <div className="page-hero">
               <p className="page-kicker">Structure</p>
@@ -47,8 +62,8 @@ export default async function AccountsPage() {
           </section>
         ) : (
           <AccountsPageClient
-            accounts={accounts}
-            reconciliations={reconciliations}
+            accounts={pageData.accounts}
+            reconciliations={pageData.reconciliations}
           />
         )}
       </Container>

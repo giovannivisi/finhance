@@ -1,4 +1,7 @@
-import { shouldApplyThrottler } from '@/security/proxy-aware-throttler.guard';
+import {
+  resolveThrottleTracker,
+  shouldApplyThrottler,
+} from '@/security/proxy-aware-throttler.guard';
 
 describe('shouldApplyThrottler', () => {
   it('applies the global default throttle without explicit route metadata', () => {
@@ -26,5 +29,33 @@ describe('shouldApplyThrottler', () => {
         hasExplicitThrottle: true,
       }),
     ).toBe(true);
+  });
+});
+
+describe('resolveThrottleTracker', () => {
+  it('keys authenticated requests on the principal user id', () => {
+    expect(
+      resolveThrottleTracker({
+        authPrincipal: { userId: 'user-123', email: null },
+        ip: '203.0.113.10',
+      }),
+    ).toBe('user:user-123');
+  });
+
+  it('falls back to the client ip without an authenticated principal', () => {
+    expect(
+      resolveThrottleTracker({
+        ip: '203.0.113.10',
+      }),
+    ).toBe('203.0.113.10');
+  });
+
+  it('ignores principals with blank user ids', () => {
+    expect(
+      resolveThrottleTracker({
+        authPrincipal: { userId: '   ', email: null },
+        ip: '203.0.113.10',
+      }),
+    ).toBe('203.0.113.10');
   });
 });

@@ -1,9 +1,13 @@
-import { Prisma, TransactionKind } from '@prisma/client';
+import { Prisma, TransactionKind } from '@finhance/db';
 
 export type TransactionRecord = Prisma.TransactionGetPayload<{
   include: {
     account: true;
-    category: true;
+    category: {
+      include: {
+        parentCategory: true;
+      };
+    };
   };
 }>;
 
@@ -19,15 +23,24 @@ export interface TransferTransactionEntry {
   inflow: TransactionRecord;
 }
 
+export interface SplitTransactionEntry {
+  entryType: 'SPLIT';
+  splitGroupId: string;
+  rows: TransactionRecord[];
+}
+
 export type LogicalTransactionEntry =
   | StandardTransactionEntry
-  | TransferTransactionEntry;
+  | TransferTransactionEntry
+  | SplitTransactionEntry;
 
 export interface TransactionFilters {
   from?: string;
   to?: string;
   accountId?: string;
   categoryId?: string;
+  primaryCategoryId?: string;
+  secondaryCategoryId?: string;
   kind?: TransactionKind;
   includeArchivedAccounts?: boolean;
   limit?: number;
@@ -39,6 +52,8 @@ export interface CashflowFilters {
   to?: string;
   accountId?: string;
   categoryId?: string;
+  primaryCategoryId?: string;
+  secondaryCategoryId?: string;
   includeArchivedAccounts?: boolean;
 }
 
@@ -47,5 +62,7 @@ export interface MonthlyCashflowFilters {
   to: string;
   accountIds?: string[];
   categoryId?: string;
+  primaryCategoryId?: string;
+  secondaryCategoryId?: string;
   includeArchivedAccounts?: boolean;
 }

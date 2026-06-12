@@ -59,7 +59,7 @@ export function getReviewWarningLink(
     case "PARTIAL_OPENING_SNAPSHOT":
     case "PARTIAL_CLOSING_SNAPSHOT":
       return { href: "/history", label: "Open history" };
-    case "NON_EUR_CASHFLOW_NOT_COMPARABLE":
+    case "NON_REPORTING_CURRENCY_CASHFLOW_NOT_COMPARABLE":
     case "UNCATEGORIZED_EXPENSES":
     case "UNCATEGORIZED_INCOME":
       return {

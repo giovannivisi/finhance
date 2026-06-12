@@ -1,51 +1,79 @@
-import { Prisma } from '@prisma/client';
+import { NotFoundException } from '@nestjs/common';
 import {
   CategoryType,
+  Prisma,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 import { BudgetsService } from '@budgets/budgets.service';
 
 const OWNER_ID = 'local-dev';
+const NOW = new Date('2026-04-23T10:00:00.000Z');
 
-function createCategory(overrides: Partial<Record<string, unknown>> = {}) {
-  const now = new Date('2026-04-23T10:00:00.000Z');
+function createPrimaryCategory(
+  overrides: Partial<Record<string, unknown>> = {},
+) {
+  return {
+    id: 'category-primary',
+    userId: OWNER_ID,
+    name: 'Household',
+    type: CategoryType.EXPENSE,
+    parentCategoryId: null,
+    parentCategory: null,
+    order: 0,
+    archivedAt: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+function createSecondaryCategory(
+  overrides: Partial<Record<string, unknown>> = {},
+) {
+  const parentCategory =
+    (overrides.parentCategory as ReturnType<typeof createPrimaryCategory>) ??
+    createPrimaryCategory();
 
   return {
     id: 'category-1',
     userId: OWNER_ID,
     name: 'Groceries',
     type: CategoryType.EXPENSE,
+    parentCategoryId: parentCategory.id,
+    parentCategory,
     order: 0,
     archivedAt: null,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: NOW,
+    updatedAt: NOW,
     ...overrides,
   };
 }
 
 function createBudget(overrides: Partial<Record<string, unknown>> = {}) {
-  const now = new Date('2026-04-23T10:00:00.000Z');
+  const category =
+    (overrides.category as
+      | ReturnType<typeof createPrimaryCategory>
+      | ReturnType<typeof createSecondaryCategory>) ??
+    createSecondaryCategory();
 
   return {
     id: 'budget-1',
     userId: OWNER_ID,
-    categoryId: 'category-1',
+    categoryId: (overrides.categoryId as string | undefined) ?? category.id,
     currency: 'EUR',
     amount: new Prisma.Decimal('100'),
     startMonth: new Date('2026-04-01T00:00:00.000Z'),
     endMonth: null,
-    createdAt: now,
-    updatedAt: now,
-    category: createCategory(),
+    createdAt: NOW,
+    updatedAt: NOW,
+    category,
     overrides: [],
     ...overrides,
   };
 }
 
 function createOverride(overrides: Partial<Record<string, unknown>> = {}) {
-  const now = new Date('2026-04-23T10:00:00.000Z');
-
   return {
     id: 'override-1',
     userId: OWNER_ID,
@@ -53,21 +81,29 @@ function createOverride(overrides: Partial<Record<string, unknown>> = {}) {
     month: new Date('2026-04-01T00:00:00.000Z'),
     amount: new Prisma.Decimal('90'),
     note: 'Carryover',
-    createdAt: now,
-    updatedAt: now,
+    createdAt: NOW,
+    updatedAt: NOW,
     ...overrides,
   };
 }
 
 function createExpenseRow(overrides: Partial<Record<string, unknown>> = {}) {
-  const now = new Date('2026-04-23T10:00:00.000Z');
+  const category =
+    overrides.category === null
+      ? null
+      : ((overrides.category as ReturnType<typeof createSecondaryCategory>) ??
+        createSecondaryCategory());
+  const categoryId =
+    overrides.categoryId !== undefined
+      ? (overrides.categoryId as string | null)
+      : (category?.id ?? null);
 
   return {
     id: 'transaction-1',
     userId: OWNER_ID,
     postedAt: new Date('2026-04-10T10:00:00.000Z'),
     accountId: 'account-1',
-    categoryId: 'category-1',
+    categoryId,
     amount: new Prisma.Decimal('120'),
     currency: 'EUR',
     direction: TransactionDirection.OUTFLOW,
@@ -76,12 +112,12 @@ function createExpenseRow(overrides: Partial<Record<string, unknown>> = {}) {
     notes: null,
     counterparty: null,
     transferGroupId: null,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: NOW,
+    updatedAt: NOW,
     recurringRuleId: null,
     recurringOccurrenceMonth: null,
     account: null,
-    category: createCategory(),
+    category,
     ...overrides,
   };
 }
@@ -104,6 +140,9 @@ describe('BudgetsService', () => {
       updateMany: jest.Mock;
     };
     transaction: {
+      findMany: jest.Mock;
+    };
+    category: {
       findMany: jest.Mock;
     };
   };
@@ -130,6 +169,9 @@ describe('BudgetsService', () => {
       transaction: {
         findMany: jest.fn(),
       },
+      category: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     prisma.$transaction.mockImplementation(
@@ -137,26 +179,26 @@ describe('BudgetsService', () => {
         callback: (tx: {
           categoryBudget: typeof prisma.categoryBudget;
           categoryBudgetOverride: typeof prisma.categoryBudgetOverride;
+          category: typeof prisma.category;
         }) => Promise<unknown>,
       ) =>
         callback({
           categoryBudget: prisma.categoryBudget,
           categoryBudgetOverride: prisma.categoryBudgetOverride,
+          category: prisma.category,
         }),
     );
 
     categories = {
-      findOne: jest.fn().mockResolvedValue(createCategory()),
+      findOne: jest.fn().mockResolvedValue(createSecondaryCategory()),
     };
 
     service = new BudgetsService(prisma as never, categories as never);
   });
 
-  it('rejects non-expense categories for budgets', async () => {
-    categories.findOne.mockResolvedValue(
-      createCategory({
-        type: CategoryType.INCOME,
-      }),
+  it('rejects invalid categories for budgets', async () => {
+    categories.findOne.mockRejectedValue(
+      new NotFoundException('Category category-1 was not found.'),
     );
 
     await expect(
@@ -166,10 +208,29 @@ describe('BudgetsService', () => {
         amount: 100,
         startMonth: '2026-04',
       }),
+    ).rejects.toThrow('Category category-1 is invalid.');
+  });
+
+  it('rejects non-expense categories for budgets', async () => {
+    categories.findOne.mockResolvedValue(
+      createPrimaryCategory({
+        id: 'category-income',
+        name: 'Salary',
+        type: CategoryType.INCOME,
+      }),
+    );
+
+    await expect(
+      service.create(OWNER_ID, {
+        categoryId: 'category-income',
+        currency: 'EUR',
+        amount: 100,
+        startMonth: '2026-04',
+      }),
     ).rejects.toThrow('Budgets can only be assigned to expense categories.');
   });
 
-  it('rejects overlapping repeating budgets', async () => {
+  it('rejects overlapping repeating budgets on the same category', async () => {
     prisma.categoryBudget.findFirst.mockResolvedValue(createBudget());
 
     await expect(
@@ -184,6 +245,35 @@ describe('BudgetsService', () => {
     );
   });
 
+  it('allows overlapping primary and secondary budgets in the same range', async () => {
+    categories.findOne.mockResolvedValue(createPrimaryCategory());
+    prisma.categoryBudget.findFirst.mockResolvedValue(null);
+    prisma.categoryBudget.create.mockResolvedValue(
+      createBudget({
+        category: createPrimaryCategory(),
+        categoryId: 'category-primary',
+        amount: new Prisma.Decimal('150'),
+      }),
+    );
+
+    const created = await service.create(OWNER_ID, {
+      categoryId: 'category-primary',
+      currency: 'EUR',
+      amount: 150,
+      startMonth: '2026-04',
+    });
+
+    expect(created.categoryId).toBe('category-primary');
+    const callArg = (
+      prisma.categoryBudget.findFirst.mock.calls[0] as [
+        { where: { userId: string; categoryId: string; currency: string } },
+      ]
+    )[0];
+    expect(callArg.where.userId).toBe(OWNER_ID);
+    expect(callArg.where.categoryId).toBe('category-primary');
+    expect(callArg.where.currency).toBe('EUR');
+  });
+
   it('builds monthly budgets with overrides, unbudgeted expense, and uncategorized expense kept separate', async () => {
     prisma.categoryBudget.findMany.mockResolvedValue([
       createBudget({
@@ -191,7 +281,9 @@ describe('BudgetsService', () => {
       }),
     ]);
     prisma.transaction.findMany.mockResolvedValue([
-      createExpenseRow(),
+      createExpenseRow({
+        amount: new Prisma.Decimal('120'),
+      }),
       createExpenseRow({
         id: 'prev-month',
         postedAt: new Date('2026-03-11T10:00:00.000Z'),
@@ -204,19 +296,18 @@ describe('BudgetsService', () => {
       }),
       createExpenseRow({
         id: 'unbudgeted',
-        categoryId: 'category-2',
-        amount: new Prisma.Decimal('30'),
-        category: createCategory({
+        category: createSecondaryCategory({
           id: 'category-2',
           name: 'Dining',
           order: 1,
         }),
+        amount: new Prisma.Decimal('30'),
       }),
       createExpenseRow({
         id: 'uncategorized',
         categoryId: null,
-        amount: new Prisma.Decimal('10'),
         category: null,
+        amount: new Prisma.Decimal('10'),
       }),
     ]);
 
@@ -250,6 +341,10 @@ describe('BudgetsService', () => {
             status: 'OVER_BUDGET',
             previousMonthExpense: 60,
             averageExpenseLast3Months: 30,
+            primaryCategoryId: 'category-primary',
+            primaryCategoryName: 'Household',
+            secondaryCategoryId: 'category-1',
+            secondaryCategoryName: 'Groceries',
             startMonth: '2026-04',
             endMonth: null,
             override: {
@@ -278,9 +373,166 @@ describe('BudgetsService', () => {
             spentAmount: 30,
             previousMonthExpense: null,
             averageExpenseLast3Months: null,
+            primaryCategoryId: 'category-primary',
+            primaryCategoryName: 'Household',
+            secondaryCategoryId: 'category-2',
+            secondaryCategoryName: 'Dining',
           },
         ],
       },
+    ]);
+  });
+
+  it('keeps primary and secondary budget items while using the primary as the summary owner', async () => {
+    prisma.categoryBudget.findMany.mockResolvedValue([
+      createBudget({
+        id: 'budget-primary',
+        category: createPrimaryCategory(),
+        categoryId: 'category-primary',
+        amount: new Prisma.Decimal('150'),
+      }),
+      createBudget({
+        id: 'budget-secondary',
+        amount: new Prisma.Decimal('100'),
+      }),
+    ]);
+    prisma.category.findMany.mockResolvedValue([
+      { id: 'category-1', parentCategoryId: 'category-primary' },
+      { id: 'category-2', parentCategoryId: 'category-primary' },
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([
+      createExpenseRow({
+        category: createSecondaryCategory({
+          id: 'category-1',
+          name: 'Groceries',
+        }),
+        amount: new Prisma.Decimal('80'),
+      }),
+      createExpenseRow({
+        id: 'transaction-2',
+        category: createSecondaryCategory({
+          id: 'category-2',
+          name: 'Dining',
+          order: 1,
+        }),
+        amount: new Prisma.Decimal('48'),
+      }),
+      createExpenseRow({
+        id: 'prev-month-groceries',
+        postedAt: new Date('2026-03-11T10:00:00.000Z'),
+        category: createSecondaryCategory({
+          id: 'category-1',
+          name: 'Groceries',
+        }),
+        amount: new Prisma.Decimal('60'),
+      }),
+      createExpenseRow({
+        id: 'two-months-back-dining',
+        postedAt: new Date('2026-02-12T10:00:00.000Z'),
+        category: createSecondaryCategory({
+          id: 'category-2',
+          name: 'Dining',
+          order: 1,
+        }),
+        amount: new Prisma.Decimal('30'),
+      }),
+    ]);
+
+    const result = await service.findMonthly(OWNER_ID, '2026-04', {
+      includeArchivedCategories: true,
+    });
+
+    expect(result.currencies).toEqual([
+      expect.objectContaining({
+        currency: 'EUR',
+        budgetTotal: 150,
+        spentTotal: 128,
+        remainingTotal: 22,
+        overBudgetTotal: 0,
+        overBudgetCount: 0,
+        budgetedCategoryCount: 2,
+        unbudgetedExpenseTotal: 0,
+        uncategorizedExpenseTotal: 0,
+        overBudgetHighlights: [],
+        unbudgetedCategories: [],
+      }),
+    ]);
+    expect(result.currencies[0].items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          budgetId: 'budget-primary',
+          categoryId: 'category-primary',
+          budgetAmount: 150,
+          spentAmount: 128,
+          secondaryCategoryId: null,
+        }),
+        expect.objectContaining({
+          budgetId: 'budget-secondary',
+          categoryId: 'category-1',
+          budgetAmount: 100,
+          spentAmount: 80,
+          secondaryCategoryId: 'category-1',
+        }),
+      ]),
+    );
+  });
+
+  it('deduplicates over-budget summary warnings to the primary roll-up owner', async () => {
+    prisma.categoryBudget.findMany.mockResolvedValue([
+      createBudget({
+        id: 'budget-primary',
+        category: createPrimaryCategory(),
+        categoryId: 'category-primary',
+        amount: new Prisma.Decimal('100'),
+      }),
+      createBudget({
+        id: 'budget-secondary',
+        amount: new Prisma.Decimal('70'),
+      }),
+    ]);
+    prisma.category.findMany.mockResolvedValue([
+      { id: 'category-1', parentCategoryId: 'category-primary' },
+      { id: 'category-2', parentCategoryId: 'category-primary' },
+    ]);
+    prisma.transaction.findMany.mockResolvedValue([
+      createExpenseRow({
+        category: createSecondaryCategory({
+          id: 'category-1',
+          name: 'Groceries',
+        }),
+        amount: new Prisma.Decimal('80'),
+      }),
+      createExpenseRow({
+        id: 'transaction-2',
+        category: createSecondaryCategory({
+          id: 'category-2',
+          name: 'Dining',
+          order: 1,
+        }),
+        amount: new Prisma.Decimal('60'),
+      }),
+    ]);
+
+    const result = await service.findMonthly(OWNER_ID, '2026-04', {
+      includeArchivedCategories: true,
+    });
+
+    expect(result.currencies[0]).toMatchObject({
+      budgetTotal: 100,
+      spentTotal: 140,
+      remainingTotal: -40,
+      overBudgetTotal: 40,
+      overBudgetCount: 1,
+      budgetedCategoryCount: 2,
+    });
+    expect(result.currencies[0].overBudgetHighlights).toEqual([
+      expect.objectContaining({
+        budgetId: 'budget-primary',
+        categoryId: 'category-primary',
+        spentAmount: 140,
+        budgetAmount: 100,
+        status: 'OVER_BUDGET',
+      }),
     ]);
   });
 

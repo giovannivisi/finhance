@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readApiError } from "./api.ts";
+import { getApiUrl, readApiError } from "./api.ts";
+
+test("getApiUrl routes browser requests through the web proxy", () => {
+  assert.equal(getApiUrl("/accounts"), "/api/proxy/accounts");
+  assert.equal(getApiUrl("accounts"), "/api/proxy/accounts");
+});
 
 test("readApiError returns JSON message strings", async () => {
   const response = new Response(JSON.stringify({ message: "Invalid asset." }), {
@@ -11,6 +16,42 @@ test("readApiError returns JSON message strings", async () => {
   });
 
   assert.equal(await readApiError(response), "Invalid asset.");
+});
+
+test("readApiError flattens structured Nest validation payloads", async () => {
+  const response = new Response(
+    JSON.stringify({
+      message: [
+        {
+          property: "securityTargets",
+          children: [
+            {
+              property: "0",
+              children: [
+                {
+                  property: "ticker",
+                  constraints: {
+                    matches: "ticker must match /^[A-Z0-9.\\-=]{1,32}$/ regular expression",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+    {
+      status: 400,
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  assert.equal(
+    await readApiError(response),
+    "securityTargets.0.ticker: ticker must match /^[A-Z0-9.\\-=]{1,32}$/ regular expression",
+  );
 });
 
 test("readApiError returns short plain-text errors", async () => {
@@ -38,6 +79,6 @@ test("readApiError sanitizes HTML error pages", async () => {
   const error = await readApiError(response);
 
   assert.match(error, /API error: 404/);
-  assert.match(error, /NEXT_PUBLIC_API_URL/);
+  assert.match(error, /routing configuration/);
   assert.doesNotMatch(error, /<!DOCTYPE html>/i);
 });

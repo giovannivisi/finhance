@@ -5,7 +5,7 @@ import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { MonthlyReviewController } from '@recurring/monthly-review.controller';
 import { RecurringController } from '@recurring/recurring.controller';
 import { RecurringService } from '@recurring/recurring.service';
-import { Prisma, TransactionDirection, TransactionKind } from '@prisma/client';
+import { Prisma, TransactionDirection, TransactionKind } from '@finhance/db';
 import type {
   MaterializeRecurringRulesResponse,
   MonthlyReviewResponse,
@@ -249,13 +249,15 @@ describe('Recurring routes (e2e)', () => {
       openingNetWorth: 1000,
       closingNetWorth: 1200,
       netWorthDelta: 200,
+      reportingCurrency: 'EUR',
       openingSnapshotDate: '2026-03-31',
       closingSnapshotDate: '2026-04-30',
       warnings: [],
       netWorthExplanation: {
-        isComparableInEur: true,
-        cashflowContributionEur: 100,
-        valuationMovementEur: 100,
+        reportingCurrency: 'EUR',
+        isComparableInReportingCurrency: true,
+        cashflowContribution: 100,
+        marketAndFxMovement: 100,
         note: 'Safe EUR explanation.',
       },
       recurringComparison: [],

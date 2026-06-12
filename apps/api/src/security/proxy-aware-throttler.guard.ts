@@ -6,6 +6,7 @@ import {
   type ThrottlerGetTrackerFunction,
 } from '@nestjs/throttler';
 import { resolveClientIp } from '@/security/client-ip';
+import type { RequestWithApiAuth } from '@/security/api-auth.types';
 
 const THROTTLER_SKIP = 'THROTTLER:SKIP';
 const THROTTLER_LIMIT = 'THROTTLER:LIMIT';
@@ -18,6 +19,16 @@ const DEFAULT_THROTTLER_NAME = 'default';
 type ThrottleNumeric =
   | number
   | ((context: ExecutionContext) => number | Promise<number>);
+
+// Hosted traffic reaches the API through the web proxy, so client IPs
+// collapse to the proxy's egress addresses. Keying on the authenticated
+// principal keeps one user from exhausting every other user's bucket.
+export function resolveThrottleTracker(req: Record<string, unknown>): string {
+  const principal = (req as RequestWithApiAuth).authPrincipal;
+  const userId = principal?.userId?.trim();
+
+  return userId ? `user:${userId}` : resolveClientIp(req);
+}
 
 export function shouldApplyThrottler(input: {
   throttlerName: string | undefined;
@@ -119,7 +130,7 @@ export class ProxyAwareThrottlerGuard extends ThrottlerGuard {
   }
 
   protected getTracker(req: Record<string, unknown>): Promise<string> {
-    return Promise.resolve(resolveClientIp(req));
+    return Promise.resolve(resolveThrottleTracker(req));
   }
 
   private async resolveThrottleValue<T>(

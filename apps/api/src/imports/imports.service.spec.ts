@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { ImportsService } from '@imports/imports.service';
+import { IMPORT_TEMPLATE_HEADERS } from '@imports/imports.types';
 import { PrismaService } from '@prisma/prisma.service';
 import { PricesService } from '@prices/prices.service';
 import { RecurringService } from '@recurring/recurring.service';
@@ -14,7 +15,7 @@ import {
   RecurringOccurrenceStatus,
   TransactionDirection,
   TransactionKind,
-} from '@prisma/client';
+} from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 type ImportBatchCreateCall = {
@@ -50,6 +51,21 @@ type ImportBatchUpdateManyCall = {
 function nthCallArg<T>(mockFn: jest.Mock, index: number): T {
   const calls = mockFn.mock.calls as unknown[][];
   return calls[index]?.[0] as T;
+}
+
+function retryableClosedTransactionError() {
+  return new Prisma.PrismaClientKnownRequestError(
+    'Transaction API error: Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma does not have information about anymore, or was obtained before disconnecting.',
+    {
+      code: 'P2028',
+      clientVersion: '6.19.0',
+      meta: {
+        modelName: 'Transaction',
+        error:
+          'Transaction not found. Transaction ID is invalid, refers to an old closed transaction Prisma does not have information about anymore, or was obtained before disconnecting.',
+      },
+    },
+  );
 }
 
 function createImportBatch(
@@ -137,6 +153,23 @@ function createImportedCategory(
     type: CategoryType.INCOME,
     order: 0,
     archivedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function createImportedExpenseValidationRule(
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  const now = new Date('2026-04-19T10:00:00.000Z');
+
+  return {
+    id: 'expense-validation-rule-1',
+    userId: OWNER_ID,
+    entry: 'Supermarket',
+    normalizedEntry: 'supermarket',
+    secondaryCategoryId: 'category-2',
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -256,6 +289,11 @@ describe('ImportsService', () => {
       create: jest.Mock;
       update: jest.Mock;
     };
+    expenseValidationRule: {
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
     transaction: {
       findMany: jest.Mock;
       create: jest.Mock;
@@ -284,6 +322,7 @@ describe('ImportsService', () => {
       update: jest.Mock;
       updateMany: jest.Mock;
     };
+    recoverConnection: jest.Mock;
     $transaction: jest.Mock;
   };
   let prices: {
@@ -307,6 +346,11 @@ describe('ImportsService', () => {
         update: jest.fn(),
       },
       category: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      expenseValidationRule: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
         update: jest.fn(),
@@ -339,6 +383,7 @@ describe('ImportsService', () => {
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      recoverConnection: jest.fn().mockResolvedValue(undefined),
       $transaction: jest.fn(),
     };
 
@@ -348,6 +393,7 @@ describe('ImportsService', () => {
           account: typeof prisma.account;
           asset: typeof prisma.asset;
           category: typeof prisma.category;
+          expenseValidationRule: typeof prisma.expenseValidationRule;
           transaction: typeof prisma.transaction;
           recurringTransactionRule: typeof prisma.recurringTransactionRule;
           recurringTransactionOccurrence: typeof prisma.recurringTransactionOccurrence;
@@ -360,6 +406,7 @@ describe('ImportsService', () => {
           account: prisma.account,
           asset: prisma.asset,
           category: prisma.category,
+          expenseValidationRule: prisma.expenseValidationRule,
           transaction: prisma.transaction,
           recurringTransactionRule: prisma.recurringTransactionRule,
           recurringTransactionOccurrence: prisma.recurringTransactionOccurrence,
@@ -397,6 +444,34 @@ describe('ImportsService', () => {
       prices as unknown as PricesService,
       recurring as unknown as RecurringService,
     );
+  });
+
+  it('periodically clears expired persisted preview payloads', async () => {
+    jest.useFakeTimers();
+
+    try {
+      prisma.importBatch.updateMany.mockClear();
+      service.onModuleInit();
+
+      expect(prisma.importBatch.updateMany).toHaveBeenCalledTimes(1);
+
+      await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(prisma.importBatch.updateMany).toHaveBeenCalledTimes(2);
+      const updateManyCall = nthCallArg<ImportBatchUpdateManyCall>(
+        prisma.importBatch.updateMany,
+        1,
+      );
+      expect(updateManyCall.where.userId).toBeUndefined();
+      expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
+      expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
+      expect(updateManyCall.data).toEqual({
+        payloadJson: Prisma.DbNull,
+      });
+    } finally {
+      service.onModuleDestroy();
+      jest.useRealTimers();
+    }
   });
 
   it('previews a valid accounts template as a safe create batch', async () => {
@@ -447,6 +522,8 @@ describe('ImportsService', () => {
       recurringExceptions: [],
       budgets: [],
       budgetOverrides: [],
+      expenseCategoryHierarchy: [],
+      expenseValidationRules: [],
     });
   });
 
@@ -587,6 +664,158 @@ describe('ImportsService', () => {
     expect(calls[1]?.[0].data.importKey).toBe('xfer-1');
   });
 
+  it('treats hierarchy rows already covered by category imports as satisfied during preview and apply', async () => {
+    prisma.account.findMany.mockResolvedValue([createImportedAccount()]);
+
+    const createdCategories: Array<Record<string, unknown>> = [];
+    let createdCategoryCount = 0;
+    prisma.category.findMany.mockImplementation(() => createdCategories);
+    prisma.category.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) => {
+        createdCategoryCount += 1;
+        const created = createImportedCategory({
+          id: `category-${createdCategoryCount}`,
+          importKey: data.importKey,
+          name: data.name,
+          type: data.type,
+          parentCategoryId: data.parentCategoryId ?? null,
+          order: data.order ?? 0,
+          archivedAt: data.archivedAt ?? null,
+        });
+        createdCategories.push(created);
+        return created;
+      },
+    );
+
+    const createdExpenseValidationRules: Array<Record<string, unknown>> = [];
+    prisma.expenseValidationRule.findMany.mockImplementation(
+      () => createdExpenseValidationRules,
+    );
+    prisma.expenseValidationRule.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) => {
+        const created = createImportedExpenseValidationRule({
+          id: `expense-validation-rule-${createdExpenseValidationRules.length + 1}`,
+          entry: data.entry,
+          normalizedEntry: data.normalizedEntry,
+          secondaryCategoryId: data.secondaryCategoryId,
+        });
+        createdExpenseValidationRules.push(created);
+        return created;
+      },
+    );
+
+    prisma.transaction.create.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) =>
+        createImportedTransaction({
+          id: 'transaction-groceries',
+          importKey: data.importKey,
+          postedAt: data.postedAt,
+          accountId: data.accountId,
+          categoryId: data.categoryId,
+          amount: data.amount,
+          currency: data.currency,
+          direction: data.direction,
+          kind: data.kind,
+          description: data.description,
+          notes: data.notes,
+          counterparty: data.counterparty,
+        }),
+    );
+
+    const preview = await service.previewCsv(OWNER_ID, {
+      categories: {
+        originalName: 'categories.csv',
+        buffer: Buffer.from(
+          'importKey,type,level,primary,secondary,primaryOrder,secondaryOrder,archived\nfood-primary,EXPENSE,PRIMARY,Food,,0,,false\ngroceries-secondary,EXPENSE,SECONDARY,Food,Groceries,,0,false\n',
+        ),
+      },
+      expenseCategoryHierarchy: {
+        originalName: 'expenseCategoryHierarchy.csv',
+        buffer: Buffer.from(
+          'level,primary,secondary,primaryOrder,secondaryOrder\nPRIMARY,Food,,0,\nSECONDARY,Food,Groceries,,0\n',
+        ),
+      },
+      expenseValidationRules: {
+        originalName: 'expenseValidationRules.csv',
+        buffer: Buffer.from(
+          'entry,primary,secondary\nSupermarket,Food,Groceries\n',
+        ),
+      },
+      transactions: {
+        originalName: 'transactions.csv',
+        buffer: Buffer.from(
+          'importKey,postedAt,kind,amount,description,notes,accountImportKey,direction,categoryImportKey,counterparty,sourceAccountImportKey,destinationAccountImportKey\ngroceries-2026-06-01,2026-06-01T09:00:00.000Z,EXPENSE,42.50,Supermarket,,checking,OUTFLOW,,,,\n',
+        ),
+      },
+    });
+
+    expect(preview.status).toBe('PREVIEW');
+    expect(preview.canApply).toBe(true);
+    expect(preview.summary.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file: 'categories',
+          createCount: 2,
+          updateCount: 0,
+          unchangedCount: 0,
+        }),
+        expect.objectContaining({
+          file: 'expenseCategoryHierarchy',
+          createCount: 0,
+          updateCount: 0,
+          unchangedCount: 2,
+        }),
+        expect.objectContaining({
+          file: 'expenseValidationRules',
+          createCount: 1,
+        }),
+        expect.objectContaining({
+          file: 'transactions',
+          createCount: 1,
+        }),
+      ]),
+    );
+
+    prisma.importBatch.findFirst.mockResolvedValue(
+      createImportBatch({
+        id: preview.id,
+        payloadJson: nthCallArg<ImportBatchCreateCall>(
+          prisma.importBatch.create,
+          0,
+        ).data.payloadJson,
+      }),
+    );
+
+    const result = await service.applyBatch(OWNER_ID, preview.id);
+
+    expect(result.status).toBe('APPLIED');
+    expect(prisma.category.create).toHaveBeenCalledTimes(2);
+    expect(prisma.expenseValidationRule.create).toHaveBeenCalledTimes(1);
+    expect(prisma.transaction.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects market assets assigned to non-broker accounts during preview', async () => {
+    const result = await service.previewCsv(OWNER_ID, {
+      accounts: {
+        originalName: 'accounts.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,currency,institution,notes,order,archived\nchecking,Checking,BANK,EUR,,,0,false\n',
+        ),
+      },
+      assets: {
+        originalName: 'assets.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,kind,liabilityKind,currency,balance,accountImportKey,ticker,exchange,quantity,unitPrice,notes,order\nvwce,VWCE,ASSET,STOCK,,EUR,,checking,VWCE,.MI,2,100,,0\n',
+        ),
+      },
+    });
+
+    expect(result.canApply).toBe(false);
+    expect(result.issues[0]?.message).toContain(
+      'Market assets must belong to a BROKER account.',
+    );
+  });
+
   it('exports a zip with the four template files and backfills manual keys', async () => {
     const manualAccount = createImportedAccount({
       id: 'account-manual',
@@ -602,6 +831,8 @@ describe('ImportsService', () => {
       importSource: null,
       importKey: null,
       name: 'Consulting',
+      parentCategory: null,
+      parentCategoryId: null,
       archivedAt: new Date('2026-04-18T10:00:00.000Z'),
     });
     const manualAsset = createImportedAsset({
@@ -613,7 +844,7 @@ describe('ImportsService', () => {
       account: {
         ...manualAccount,
         importSource: ImportSource.CSV_TEMPLATE,
-        importKey: 'manual-account-account-manual',
+        importKey: 'account-main-checking-eur',
       },
       notes: 'Emergency fund',
     });
@@ -626,8 +857,9 @@ describe('ImportsService', () => {
       category: {
         ...manualCategory,
         importSource: ImportSource.CSV_TEMPLATE,
-        importKey: 'manual-category-category-manual',
+        importKey: 'category-income-consulting',
       },
+      account: manualAccount,
       description: 'Consulting invoice',
     });
 
@@ -637,7 +869,7 @@ describe('ImportsService', () => {
         {
           ...manualAccount,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-account-account-manual',
+          importKey: 'account-main-checking-eur',
         },
       ]);
     prisma.category.findMany
@@ -646,7 +878,7 @@ describe('ImportsService', () => {
         {
           ...manualCategory,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-category-category-manual',
+          importKey: 'category-income-consulting',
         },
       ]);
     prisma.asset.findMany
@@ -655,7 +887,7 @@ describe('ImportsService', () => {
         {
           ...manualAsset,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-asset-asset-manual',
+          importKey: 'asset-cash-reserve-eur',
         },
       ]);
     prisma.transaction.findMany
@@ -664,7 +896,7 @@ describe('ImportsService', () => {
         {
           ...manualTransaction,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-transaction-transaction-manual',
+          importKey: 'tx-2026-04-01-consulting-invoice-main-checking',
         },
       ]);
 
@@ -681,29 +913,58 @@ describe('ImportsService', () => {
       'recurringExceptions.csv',
       'budgets.csv',
       'budgetOverrides.csv',
+      'expenseValidationRules.csv',
     ]);
     expect(entries.get('accounts.csv')).toContain(
       'importKey,name,type,currency,institution,notes,order,openingBalance,openingBalanceDate,archived',
     );
     expect(entries.get('accounts.csv')).toContain(
-      'manual-account-account-manual,Main checking,BANK,EUR,Local Bank,Primary account,0,0,,true',
+      'account-main-checking-eur,Main checking,BANK,EUR,Local Bank,Primary account,0,0,,true',
     );
     expect(entries.get('categories.csv')).toContain(
-      'manual-category-category-manual,Consulting,INCOME,0,true',
+      'category-income-consulting,INCOME,PRIMARY,Consulting,,0,,true',
     );
     expect(entries.get('assets.csv')).toContain(
-      'manual-asset-asset-manual,Cash reserve,ASSET,CASH,,EUR,100,manual-account-account-manual,,,,,Emergency fund,0',
+      'asset-cash-reserve-eur,Cash reserve,ASSET,CASH,,EUR,100,account-main-checking-eur,,,,,Emergency fund,0',
     );
     expect(entries.get('transactions.csv')).toContain(
-      'manual-transaction-transaction-manual,2026-04-01T08:00:00.000Z,INCOME,5000,Consulting invoice,,manual-account-account-manual,INFLOW,manual-category-category-manual,Employer,,',
+      'tx-2026-04-01-consulting-invoice-main-checking,2026-04-01T08:00:00.000Z,INCOME,5000,Consulting invoice,,account-main-checking-eur,INFLOW,category-income-consulting,Employer,,',
+    );
+    expect(entries.get('expenseValidationRules.csv')).toBe(
+      'entry,primary,secondary\n',
     );
     expect(prisma.account.update).toHaveBeenCalledWith({
       where: { id: 'account-manual' },
       data: {
         importSource: ImportSource.CSV_TEMPLATE,
-        importKey: 'manual-account-account-manual',
+        importKey: 'account-main-checking-eur',
       },
     });
+  });
+
+  it('exports the import templates as a zip generated from the shared schema', () => {
+    const result = service.exportTemplateZip();
+    const entries = parseZipEntries(result.buffer);
+
+    expect(result.filename).toMatch(
+      /^finhance-import-templates-\d{4}-\d{2}-\d{2}\.zip$/,
+    );
+    expect([...entries.keys()]).toEqual([
+      'accounts.csv',
+      'categories.csv',
+      'assets.csv',
+      'transactions.csv',
+      'recurringRules.csv',
+      'recurringExceptions.csv',
+      'budgets.csv',
+      'budgetOverrides.csv',
+      'expenseCategoryHierarchy.csv',
+      'expenseValidationRules.csv',
+    ]);
+
+    for (const [file, headers] of Object.entries(IMPORT_TEMPLATE_HEADERS)) {
+      expect(entries.get(`${file}.csv`)).toBe(`${headers.join(',')}\n`);
+    }
   });
 
   it('neutralizes spreadsheet formulas in exported CSV values', async () => {
@@ -800,12 +1061,12 @@ describe('ImportsService', () => {
         {
           ...transferOut,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-transfer-transfer_group',
+          importKey: 'transfer-2026-04-01-move-cash',
         },
         {
           ...transferIn,
           importSource: ImportSource.CSV_TEMPLATE,
-          importKey: 'manual-transfer-transfer_group',
+          importKey: 'transfer-2026-04-01-move-cash',
         },
       ]);
 
@@ -815,7 +1076,7 @@ describe('ImportsService', () => {
 
     expect(lines).toHaveLength(2);
     expect(lines[1]).toBe(
-      'manual-transfer-transfer_group,2026-04-01T08:00:00.000Z,TRANSFER,250,Move cash,,,,,,checking,savings',
+      'transfer-2026-04-01-move-cash,2026-04-01T08:00:00.000Z,TRANSFER,250,Move cash,,,,,,checking,savings',
     );
     expect(prisma.transaction.update).toHaveBeenCalledTimes(2);
   });
@@ -998,6 +1259,79 @@ describe('ImportsService', () => {
       status: ImportBatchStatus.APPLIED,
       payloadJson: Prisma.DbNull,
     });
+  });
+
+  it('retries applying a preview batch when Prisma loses the transaction session mid-apply', async () => {
+    const preview = await service.previewCsv(OWNER_ID, {
+      accounts: {
+        originalName: 'accounts.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,currency,institution,notes,order,archived\nchecking,Checking,BANK,EUR,,,0,false\n',
+        ),
+      },
+    });
+
+    prisma.importBatch.findFirst.mockResolvedValue(
+      createImportBatch({
+        id: preview.id,
+        payloadJson: nthCallArg<ImportBatchCreateCall>(
+          prisma.importBatch.create,
+          0,
+        ).data.payloadJson,
+      }),
+    );
+    prisma.account.create.mockResolvedValue(createImportedAccount());
+
+    let transactionAttempt = 0;
+    prisma.$transaction.mockImplementation(
+      async (
+        callback: (tx: {
+          account: typeof prisma.account;
+          asset: typeof prisma.asset;
+          category: typeof prisma.category;
+          expenseValidationRule: typeof prisma.expenseValidationRule;
+          transaction: typeof prisma.transaction;
+          recurringTransactionRule: typeof prisma.recurringTransactionRule;
+          recurringTransactionOccurrence: typeof prisma.recurringTransactionOccurrence;
+          categoryBudget: typeof prisma.categoryBudget;
+          categoryBudgetOverride: typeof prisma.categoryBudgetOverride;
+          importBatch: typeof prisma.importBatch;
+        }) => Promise<unknown>,
+      ) => {
+        transactionAttempt += 1;
+        if (transactionAttempt === 1) {
+          throw retryableClosedTransactionError();
+        }
+
+        return callback({
+          account: prisma.account,
+          asset: prisma.asset,
+          category: prisma.category,
+          expenseValidationRule: prisma.expenseValidationRule,
+          transaction: prisma.transaction,
+          recurringTransactionRule: prisma.recurringTransactionRule,
+          recurringTransactionOccurrence: prisma.recurringTransactionOccurrence,
+          categoryBudget: prisma.categoryBudget,
+          categoryBudgetOverride: prisma.categoryBudgetOverride,
+          importBatch: prisma.importBatch,
+        });
+      },
+    );
+
+    const result = await service.applyBatch(OWNER_ID, preview.id);
+
+    expect(result.status).toBe('APPLIED');
+    expect(prisma.recoverConnection).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      expect.objectContaining({
+        maxWait: 15_000,
+        timeout: 120_000,
+      }),
+    );
+    expect(prisma.account.create).toHaveBeenCalledTimes(1);
   });
 
   it('rejects applying an expired persisted preview batch after a restart', async () => {
@@ -1198,6 +1532,82 @@ describe('ImportsService', () => {
     });
   });
 
+  it('normalizes malformed stored import issue rows when listing recent batches', async () => {
+    prisma.importBatch.findMany.mockResolvedValue([
+      createImportBatch({
+        errorJson: [
+          {
+            file: 'accounts',
+            rowNumber: '2',
+            field: undefined,
+            severity: 'error',
+            message: 'Account row is invalid.',
+          },
+          {
+            file: 'transactions',
+            rowNumber: null,
+            field: 123,
+            severity: 'WARNING',
+            message: 'Transaction needs attention.',
+          },
+          {
+            file: 'assets',
+            rowNumber: 'not-a-number',
+            field: null,
+            severity: 'ERROR',
+            message: 'Asset row is invalid.',
+          },
+          {
+            file: 'accounts',
+            rowNumber: 3,
+            field: null,
+            severity: 'INVALID',
+            message: 'Unknown severity falls back to error.',
+          },
+          {
+            file: 'accounts',
+            rowNumber: 4,
+            field: null,
+            severity: 'ERROR',
+          },
+        ],
+      }),
+    ]);
+
+    const [batch] = await service.listRecent(OWNER_ID);
+
+    expect(batch?.issues).toEqual([
+      {
+        file: 'accounts',
+        rowNumber: 2,
+        field: null,
+        severity: 'ERROR',
+        message: 'Account row is invalid.',
+      },
+      {
+        file: 'transactions',
+        rowNumber: 1,
+        field: null,
+        severity: 'WARNING',
+        message: 'Transaction needs attention.',
+      },
+      {
+        file: 'assets',
+        rowNumber: 1,
+        field: null,
+        severity: 'ERROR',
+        message: 'Asset row is invalid.',
+      },
+      {
+        file: 'accounts',
+        rowNumber: 3,
+        field: null,
+        severity: 'ERROR',
+        message: 'Unknown severity falls back to error.',
+      },
+    ]);
+  });
+
   it('rejects oversized import keys during preview before persistence', async () => {
     const result = await service.previewCsv(OWNER_ID, {
       accounts: {
@@ -1267,6 +1677,8 @@ describe('ImportsService', () => {
       recurringExceptions: [],
       budgets: [],
       budgetOverrides: [],
+      expenseCategoryHierarchy: [],
+      expenseValidationRules: [],
     });
   });
 });

@@ -28,7 +28,11 @@ export default function WorkflowSection({
           <article key={card.code} className="workflow-card">
             <h3 className="workflow-card-title">{card.title}</h3>
             <p className="workflow-card-detail">{card.detail}</p>
-            <Link href={card.href} className="btn-secondary mt-auto self-start">
+            <Link
+              href={card.href}
+              prefetch={false}
+              className="btn-secondary mt-auto self-start"
+            >
               {card.actionLabel}
             </Link>
           </article>

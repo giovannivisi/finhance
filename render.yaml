@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: finhance-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    autoDeployTrigger: commit
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm db:generate && pnpm --filter api build
+    startCommand: pnpm --filter api start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_MODE
+        value: hosted
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_TRUST_PROXY
+        value: "1"
+      - key: DATABASE_URL
+        sync: false
+      - key: API_ALLOWED_ORIGINS
+        sync: false
+      - key: AUTH_API_JWT_ISSUER
+        sync: false
+      - key: AUTH_API_JWT_AUDIENCE
+        sync: false
+      - key: AUTH_API_JWT_KID
+        sync: false
+      - key: AUTH_API_JWT_PUBLIC_KEY
+        sync: false

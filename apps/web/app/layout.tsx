@@ -1,8 +1,15 @@
 import "./globals.css";
 
+export const preferredRegion = "fra1";
+
 export const metadata = {
   title: "Finhance",
   description: "Finance dashboard",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export const viewport = {
@@ -14,6 +21,8 @@ export const viewport = {
 import TabBar from "@components/TabBar";
 import TopHeader from "@components/TopHeader";
 import Sidebar from "@components/Sidebar";
+import NavigationPrefetchCoordinator from "@components/NavigationPrefetchCoordinator";
+import NavigationTransitionOverlay from "@components/NavigationTransitionOverlay";
 import { ThemeProvider } from "@components/ThemeProvider";
 import Script from "next/script";
 
@@ -45,6 +54,8 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
+          <NavigationPrefetchCoordinator />
+          <NavigationTransitionOverlay />
           <a href="#main" className="skip-link">
             Skip to content
           </a>

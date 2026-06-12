@@ -1,4 +1,5 @@
 import type { AssetKind, LiabilityKind } from "@finhance/shared";
+import { getExchangePickerOptionsForKind } from "@lib/currency-ui";
 
 export interface KindConfig {
   showBalance: boolean;
@@ -18,15 +19,9 @@ export const COLORS = {
   OTHER: "#4B5563",
 } as const satisfies Record<AssetKind, string>;
 
-export const EXCHANGE_SUFFIXES = [
-  { label: "🇺🇸 United States", value: "" },
-  { label: "🇮🇹 Milan (BIT)", value: ".MI" },
-  { label: "🇬🇧 London (LSE)", value: ".L" },
-  { label: "🇩🇪 Xetra (DE)", value: ".DE" },
-  { label: "🇫🇷 Paris (EPA)", value: ".PA" },
-  { label: "🇪🇸 Madrid (BME)", value: ".MC" },
-  { label: "Crypto", value: "_CRYPTO_" },
-] as const;
+export function getExchangeSuffixesForKind(kind: AssetKind) {
+  return getExchangePickerOptionsForKind(kind);
+}
 
 export const ASSET_KIND_OPTIONS: AssetKind[] = [
   "CASH",
@@ -91,6 +86,23 @@ export const ASSET_KIND_CONFIG = {
     showUnitPrice: false,
   },
 } as const satisfies Record<AssetKind, KindConfig>;
+
+const KIND_DISPLAY_NAMES: Record<string, string> = {
+  CASH: "Cash",
+  STOCK: "Stock",
+  BOND: "Bond",
+  CRYPTO: "Crypto",
+  REAL_ESTATE: "Real Estate",
+  PENSION: "Pension",
+  COMMODITY: "Commodity",
+  OTHER: "Other",
+  TAX: "Tax",
+  DEBT: "Debt",
+};
+
+export function formatKindLabel(kind: string): string {
+  return KIND_DISPLAY_NAMES[kind] ?? kind.replace(/_/g, " ");
+}
 
 export const LIABILITY_CONFIG = {
   TAX: {

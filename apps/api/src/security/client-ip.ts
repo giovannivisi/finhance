@@ -17,6 +17,11 @@ function normalizeIp(candidate: unknown): string | null {
 }
 
 export function resolveClientIp(request: RequestLike): string {
+  const directIp = normalizeIp(request.ip);
+  if (directIp) {
+    return directIp;
+  }
+
   if (Array.isArray(request.ips)) {
     for (const candidate of request.ips) {
       const ip = normalizeIp(candidate);
@@ -24,11 +29,6 @@ export function resolveClientIp(request: RequestLike): string {
         return ip;
       }
     }
-  }
-
-  const directIp = normalizeIp(request.ip);
-  if (directIp) {
-    return directIp;
   }
 
   const remoteAddress = normalizeIp(request.socket?.remoteAddress);

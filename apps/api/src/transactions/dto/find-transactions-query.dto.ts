@@ -10,7 +10,7 @@ import {
   IsString,
   Matches,
 } from 'class-validator';
-import { TransactionKind as PrismaTransactionKind } from '@prisma/client';
+import { TransactionKind as PrismaTransactionKind } from '@finhance/db';
 import type { TransactionKind } from '@finhance/shared';
 
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -75,6 +75,16 @@ export class FindTransactionsQueryDto {
   @IsString()
   @Transform(trimOptionalStringValue)
   categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Transform(trimOptionalStringValue)
+  primaryCategoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Transform(trimOptionalStringValue)
+  secondaryCategoryId?: string;
 
   @IsOptional()
   @IsEnum(PrismaTransactionKind)

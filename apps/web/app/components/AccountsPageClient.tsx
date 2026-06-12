@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type {
@@ -7,6 +8,7 @@ import type {
   AccountResponse,
 } from "@finhance/shared";
 import AccountForm from "@components/AccountForm";
+import ConfirmActionModal from "@components/ConfirmActionModal";
 import Modal from "@components/Modal";
 import {
   accountToFormValues,
@@ -58,12 +60,17 @@ export default function AccountsPageClient({
   const [pendingDeleteAccountId, setPendingDeleteAccountId] = useState<
     string | null
   >(null);
+  const [confirmDeleteAccountId, setConfirmDeleteAccountId] = useState<
+    string | null
+  >(null);
   const [pendingBaselineAccountId, setPendingBaselineAccountId] = useState<
     string | null
   >(null);
   const [adjustingAccountId, setAdjustingAccountId] = useState<string | null>(
     null,
   );
+  const [expandedReconciliationInfoById, setExpandedReconciliationInfoById] =
+    useState<Record<string, boolean>>({});
   const actions = useSingleFlightActions<string>();
 
   const editingAccount =
@@ -142,14 +149,6 @@ export default function AccountsPageClient({
       setReconciliationError(null);
       setPendingDeleteAccountId(accountId);
 
-      const confirmed = confirm(
-        "Delete this archived account permanently? This cannot be undone.",
-      );
-      if (!confirmed) {
-        setPendingDeleteAccountId(null);
-        return;
-      }
-
       try {
         await apiMutation<void>(`/accounts/${accountId}/permanent`, {
           method: "DELETE",
@@ -159,6 +158,7 @@ export default function AccountsPageClient({
           setEditingAccountId(null);
         }
 
+        setConfirmDeleteAccountId(null);
         router.refresh();
       } catch (error) {
         setActionError(
@@ -170,6 +170,23 @@ export default function AccountsPageClient({
         setPendingDeleteAccountId(null);
       }
     });
+  }
+
+  function requestPermanentDelete(accountId: string) {
+    setActionError(null);
+    setReconciliationError(null);
+    setConfirmDeleteAccountId(accountId);
+  }
+
+  function closeDeleteModal() {
+    if (
+      confirmDeleteAccountId &&
+      actions.isRunning(`delete:${confirmDeleteAccountId}`)
+    ) {
+      return;
+    }
+
+    setConfirmDeleteAccountId(null);
   }
 
   async function handleEstablishBaseline(accountId: string) {
@@ -220,6 +237,13 @@ export default function AccountsPageClient({
         setAdjustingAccountId(null);
       }
     });
+  }
+
+  function toggleReconciliationInfo(accountId: string) {
+    setExpandedReconciliationInfoById((current) => ({
+      ...current,
+      [accountId]: !current[accountId],
+    }));
   }
 
   return (
@@ -282,15 +306,27 @@ export default function AccountsPageClient({
               (() => {
                 const reconciliation =
                   reconciliationByAccountId.get(account.id) ?? null;
+                const institution = account.institution?.trim() ?? "";
+                const institutionLabel =
+                  institution &&
+                  institution.toLocaleLowerCase() !==
+                    account.name.trim().toLocaleLowerCase()
+                    ? institution
+                    : null;
+                const isReconciliationInfoExpanded =
+                  expandedReconciliationInfoById[account.id] ?? false;
 
                 return (
                   <article key={account.id} className="list-card is-roomy">
                     <div className="flex flex-wrap items-start justify-between gap-5">
-                      <div className="section-stack-tight">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                      <div className="account-header-copy">
+                        <div className="account-title-row">
+                          <h3 className="account-title text-lg font-semibold text-[var(--text-primary)]">
                             {account.name}
                           </h3>
+                          <span className="account-currency-inline">
+                            ({account.currency})
+                          </span>
                           <span className="status-chip is-neutral">
                             {ACCOUNT_TYPE_LABELS[account.type]}
                           </span>
@@ -308,12 +344,11 @@ export default function AccountsPageClient({
                           ) : null}
                         </div>
 
-                        <p className="text-sm text-[var(--text-secondary)]">
-                          {account.currency}
-                          {account.institution
-                            ? ` • ${account.institution}`
-                            : ""}
-                        </p>
+                        {institutionLabel ? (
+                          <p className="account-institution-meta">
+                            {institutionLabel}
+                          </p>
+                        ) : null}
 
                         {account.notes ? (
                           <p className="text-sm text-[var(--text-secondary)]">
@@ -322,7 +357,7 @@ export default function AccountsPageClient({
                         ) : null}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-4">
+                      <div className="account-actions">
                         {reconciliation?.canCreateAdjustment ? (
                           <button
                             type="button"
@@ -330,7 +365,7 @@ export default function AccountsPageClient({
                               void handleCreateAdjustment(account.id)
                             }
                             disabled={adjustingAccountId === account.id}
-                            className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                            className="link-button account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {adjustingAccountId === account.id
                               ? "Adjusting..."
@@ -341,17 +376,26 @@ export default function AccountsPageClient({
                         <button
                           type="button"
                           onClick={() => setEditingAccountId(account.id)}
-                          className="link-button mobile-hit-target"
+                          className="link-button account-action mobile-hit-target"
                         >
                           Edit
                         </button>
+
+                        {account.type === "BROKER" && !account.archivedAt ? (
+                          <Link
+                            href={`/brokerage/${account.id}`}
+                            className="link-button account-action mobile-hit-target"
+                          >
+                            Open brokerage
+                          </Link>
+                        ) : null}
 
                         {!account.archivedAt ? (
                           <button
                             type="button"
                             onClick={() => void handleArchive(account.id)}
                             disabled={pendingArchiveAccountId === account.id}
-                            className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                            className="link-button is-danger account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {pendingArchiveAccountId === account.id
                               ? "Archiving..."
@@ -365,7 +409,7 @@ export default function AccountsPageClient({
                               disabled={
                                 pendingUnarchiveAccountId === account.id
                               }
-                              className="link-button mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                              className="link-button account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {pendingUnarchiveAccountId === account.id
                                 ? "Unarchiving..."
@@ -374,11 +418,9 @@ export default function AccountsPageClient({
                             {account.canDeletePermanently ? (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  void handleDeletePermanently(account.id)
-                                }
+                                onClick={() => requestPermanentDelete(account.id)}
                                 disabled={pendingDeleteAccountId === account.id}
-                                className="link-button is-danger mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
+                                className="link-button is-danger account-action mobile-hit-target disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {pendingDeleteAccountId === account.id
                                   ? "Deleting..."
@@ -391,24 +433,13 @@ export default function AccountsPageClient({
                     </div>
                     {reconciliation ? (
                       <div className="detail-panel is-roomy section-stack-relaxed">
-                        <p className="text-xs text-[var(--text-secondary)]">
-                          {account.openingBalanceDate
-                            ? `Baseline: ${formatCurrency(
-                                account.openingBalance,
-                                account.currency,
-                              )} from ${account.openingBalanceDate}`
-                            : "Baseline: full transaction history"}
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                          Mode:{" "}
-                          {reconciliation.baselineMode === "OPENING_BALANCE"
-                            ? "Opening balance baseline"
-                            : "Full history baseline"}
-                        </p>
-
                         <div className="metric-strip is-relaxed">
                           <div className="detail-panel is-roomy">
-                            <p className="detail-metric-label">Tracked</p>
+                            <p className="detail-metric-label">
+                              {account.type === "BROKER"
+                                ? "Tracked cash"
+                                : "Tracked"}
+                            </p>
                             <p className="detail-metric-value">
                               {reconciliation.trackedBalance === null
                                 ? "Unavailable"
@@ -420,7 +451,11 @@ export default function AccountsPageClient({
                           </div>
 
                           <div className="detail-panel is-roomy">
-                            <p className="detail-metric-label">Expected</p>
+                            <p className="detail-metric-label">
+                              {account.type === "BROKER"
+                                ? "Expected cash"
+                                : "Expected"}
+                            </p>
                             <p className="detail-metric-value">
                               {reconciliation.expectedBalance === null
                                 ? "Unavailable"
@@ -444,94 +479,156 @@ export default function AccountsPageClient({
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-4 text-xs text-[var(--text-secondary)]">
-                          <span>
-                            {reconciliation.assetCount} assets assigned
-                          </span>
-                          <span>
-                            {reconciliation.transactionCount} transactions
-                          </span>
-                        </div>
+                        <div className="account-reconciliation-disclosure">
+                          <button
+                            type="button"
+                            aria-expanded={isReconciliationInfoExpanded}
+                            aria-controls={`account-reconciliation-extra-${account.id}`}
+                            onClick={() => toggleReconciliationInfo(account.id)}
+                            className="account-reconciliation-toggle"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={`account-reconciliation-toggle-indicator${
+                                isReconciliationInfoExpanded ? " is-open" : ""
+                              }`}
+                            >
+                              {isReconciliationInfoExpanded ? "−" : "+"}
+                            </span>
+                            <span>
+                              {isReconciliationInfoExpanded
+                                ? "Hide info"
+                                : "More info"}
+                            </span>
+                          </button>
 
-                        <div
-                          className={`${GUIDANCE_STYLES[reconciliation.adjustmentGuidance.status]}`}
-                        >
-                          <p className="font-medium">
-                            Adjustment guidance:{" "}
-                            {reconciliation.adjustmentGuidance.status}
-                          </p>
-                          <p className="mt-1">
-                            {reconciliation.adjustmentGuidance.message}
-                          </p>
-                        </div>
-
-                        {reconciliation.openingBalanceBaselineGuidance ? (
-                          <div className="page-inline-notice surface-info">
-                            <p className="font-medium">
-                              Opening balance baseline
-                            </p>
-                            <p className="mt-1">
-                              {reconciliation.openingBalanceBaselineGuidance}
-                            </p>
-                            {reconciliation.canEstablishOpeningBalanceBaseline ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void handleEstablishBaseline(account.id)
-                                }
-                                disabled={
-                                  pendingBaselineAccountId === account.id
-                                }
-                                className="mt-3 link-button disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {pendingBaselineAccountId === account.id
-                                  ? "Setting baseline..."
-                                  : "Set opening balance from current state"}
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        {reconciliation.diagnostics.length > 0 ? (
-                          <div className="space-y-3">
-                            {reconciliation.diagnostics.map((diagnostic) => (
-                              <article
-                                key={`${account.id}:${diagnostic.code}`}
-                                className={
-                                  DIAGNOSTIC_STYLES[diagnostic.severity]
-                                }
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <p className="font-medium">
-                                    {diagnostic.summary}
+                          {isReconciliationInfoExpanded ? (
+                            <div
+                              id={`account-reconciliation-extra-${account.id}`}
+                              className="account-reconciliation-details"
+                            >
+                              <div className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                                {reconciliation.reconciliationScope ===
+                                "CASH_ONLY" ? (
+                                  <p>
+                                    Brokerage reconciliation tracks cash
+                                    movements only. Open positions are excluded
+                                    from this balance check.
                                   </p>
-                                  <span className="status-chip is-neutral">
-                                    {diagnostic.code}
-                                  </span>
-                                </div>
-                                <p className="mt-2 text-sm">
-                                  Likely cause: {diagnostic.likelyCause}
+                                ) : null}
+                                <p>
+                                  {account.openingBalanceDate
+                                    ? `Baseline: ${formatCurrency(
+                                        account.openingBalance,
+                                        account.currency,
+                                      )} from ${account.openingBalanceDate}`
+                                    : "Baseline: full transaction history"}
                                 </p>
-                                <p className="mt-1 text-sm">
-                                  Recommended action:{" "}
-                                  {diagnostic.recommendedAction}
+                                <p>
+                                  Mode:{" "}
+                                  {reconciliation.baselineMode ===
+                                  "OPENING_BALANCE"
+                                    ? "Opening balance baseline"
+                                    : "Full history baseline"}
                                 </p>
-                              </article>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-[var(--text-secondary)]">
-                            No structural reconciliation warnings for this
-                            account.
-                          </p>
-                        )}
+                              </div>
 
-                        {account.archivedAt && account.deleteBlockReason ? (
-                          <p className="mt-4 text-sm text-[var(--text-secondary)]">
-                            Permanent delete blocked:{" "}
-                            {account.deleteBlockReason}
-                          </p>
-                        ) : null}
+                              <div className="flex flex-wrap gap-4 text-xs text-[var(--text-secondary)]">
+                                <span>
+                                  {reconciliation.assetCount} assets assigned
+                                </span>
+                                <span>
+                                  {reconciliation.transactionCount} transactions
+                                </span>
+                              </div>
+
+                              <div
+                                className={`${GUIDANCE_STYLES[reconciliation.adjustmentGuidance.status]}`}
+                              >
+                                <p className="font-medium">
+                                  Adjustment guidance:{" "}
+                                  {reconciliation.adjustmentGuidance.status}
+                                </p>
+                                <p className="mt-1">
+                                  {reconciliation.adjustmentGuidance.message}
+                                </p>
+                              </div>
+
+                              {reconciliation.openingBalanceBaselineGuidance ? (
+                                <div className="page-inline-notice surface-info">
+                                  <p className="font-medium">
+                                    Opening balance baseline
+                                  </p>
+                                  <p className="mt-1">
+                                    {
+                                      reconciliation.openingBalanceBaselineGuidance
+                                    }
+                                  </p>
+                                  {reconciliation.canEstablishOpeningBalanceBaseline ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void handleEstablishBaseline(account.id)
+                                      }
+                                      disabled={
+                                        pendingBaselineAccountId === account.id
+                                      }
+                                      className="mt-3 link-button disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      {pendingBaselineAccountId === account.id
+                                        ? "Setting baseline..."
+                                        : "Set opening balance from current state"}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
+
+                              {reconciliation.diagnostics.length > 0 ? (
+                                <div className="space-y-3">
+                                  {reconciliation.diagnostics.map(
+                                    (diagnostic) => (
+                                      <article
+                                        key={`${account.id}:${diagnostic.code}`}
+                                        className={
+                                          DIAGNOSTIC_STYLES[diagnostic.severity]
+                                        }
+                                      >
+                                        <div className="flex items-center justify-between gap-3">
+                                          <p className="font-medium">
+                                            {diagnostic.summary}
+                                          </p>
+                                          <span className="status-chip is-neutral">
+                                            {diagnostic.code}
+                                          </span>
+                                        </div>
+                                        <p className="mt-2 text-sm">
+                                          Likely cause: {diagnostic.likelyCause}
+                                        </p>
+                                        <p className="mt-1 text-sm">
+                                          Recommended action:{" "}
+                                          {diagnostic.recommendedAction}
+                                        </p>
+                                      </article>
+                                    ),
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-[var(--text-secondary)]">
+                                  No structural reconciliation warnings for this
+                                  account.
+                                </p>
+                              )}
+
+                              {account.archivedAt &&
+                              account.deleteBlockReason ? (
+                                <p className="text-sm text-[var(--text-secondary)]">
+                                  Permanent delete blocked:{" "}
+                                  {account.deleteBlockReason}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     ) : null}
                   </article>
@@ -584,6 +681,28 @@ export default function AccountsPageClient({
           </>
         ) : null}
       </Modal>
+
+      <ConfirmActionModal
+        open={confirmDeleteAccountId !== null}
+        onClose={closeDeleteModal}
+        onConfirm={() => {
+          if (!confirmDeleteAccountId) {
+            return;
+          }
+
+          void handleDeletePermanently(confirmDeleteAccountId);
+        }}
+        title="Delete account"
+        description="Delete this archived account permanently? This cannot be undone."
+        confirmLabel="Delete account"
+        pendingLabel="Deleting..."
+        error={actionError}
+        isPending={
+          confirmDeleteAccountId
+            ? actions.isRunning(`delete:${confirmDeleteAccountId}`)
+            : false
+        }
+      />
     </div>
   );
 }
