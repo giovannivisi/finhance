@@ -1,3 +1,6 @@
+// This cache is per-process: with more than one web instance, a mutation only
+// invalidates the instance that handled it, so cross-instance staleness is
+// bounded by the TTLs below rather than by explicit invalidation.
 const DEFAULT_SERVER_API_CACHE_TTL_MS = 10_000;
 const REFERENCE_SERVER_API_CACHE_TTL_MS = 60_000;
 const SUPPORT_SERVER_API_CACHE_TTL_MS = 20_000;
