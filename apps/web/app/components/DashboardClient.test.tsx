@@ -357,15 +357,14 @@ describe("DashboardClient", () => {
 
     renderDashboard();
 
-    // The row's displayed value comes from the live quote's asset-currency
-    // value...
-    expect(screen.getByText("130,00 €")).toBeInTheDocument();
-    // ...while the headline net worth moves by the reporting-currency delta
-    // (145 - 120 = 25) on top of the server baseline (40), and the assets
-    // stat, the Stock allocation subtotal and the Stock category-block
-    // subtotal all move to 145 (120 + 25).
+    // The row's displayed value comes from the live quote's reporting-currency
+    // valuation, not its asset-currency `value`...
     expect(screen.getByText("65,00 €")).toBeInTheDocument();
-    expect(screen.getAllByText("145,00 €")).toHaveLength(3);
+    // ...while the headline net worth moves by the reporting-currency delta
+    // (145 - 120 = 25) on top of the server baseline (40). The row's current
+    // value, the assets stat, the Stock allocation subtotal and the Stock
+    // category-block subtotal all show 145 (120 + 25).
+    expect(screen.getAllByText("145,00 €")).toHaveLength(4);
   });
 
   it("leaves the row and headline total unchanged when there is no live data", () => {

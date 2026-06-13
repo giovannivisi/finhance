@@ -21,10 +21,14 @@ function indexQuotes(
 }
 
 /**
- * Updates each matched position's `currentPrice` and `currentValue` (asset
- * currency) from the live quotes. Positions without a matching quote, or
- * whose currency does not match the quote's currency, are returned
- * unchanged.
+ * Updates each matched position's `currentPrice` (asset currency, from
+ * `quote.price`), `currentValue` (reporting currency, from
+ * `quote.valueInReporting`), and `unrealisedGainLoss` (reporting currency,
+ * recomputed as `valueInReporting - costBasis` to match the server's
+ * post-conversion arithmetic). A position is left entirely unchanged when
+ * there is no matching quote, the currency differs, or the quote has no
+ * `valueInReporting` (a half-updated row showing a fresh price against a
+ * stale value would be misleading).
  */
 export function mergePositionsWithLiveQuotes(
   positions: readonly BrokeragePositionResponse[],
@@ -41,30 +45,35 @@ export function mergePositionsWithLiveQuotes(
 
     if (
       !quote ||
-      quote.currency.toUpperCase() !== position.currency.toUpperCase()
+      quote.currency.toUpperCase() !== position.currency.toUpperCase() ||
+      quote.valueInReporting == null
     ) {
       return position;
     }
 
     const unrealisedGainLoss =
       position.costBasis !== null && position.costBasis !== undefined
-        ? quote.value - position.costBasis
+        ? quote.valueInReporting - position.costBasis
         : position.unrealisedGainLoss;
 
     return {
       ...position,
       currentPrice: quote.price,
-      currentValue: quote.value,
+      currentValue: quote.valueInReporting,
       unrealisedGainLoss,
     };
   });
 }
 
 /**
- * Updates each matched dashboard asset's `currentValue` (and `lastPrice`
- * when the holding tracks a unit price) from the live quotes. Used by the
- * dashboard tab, which displays `DashboardAssetResponse` rows rather than
- * brokerage positions.
+ * Updates each matched dashboard asset's `currentValue` (reporting currency,
+ * from `quote.valueInReporting`) and, for holdings that track a unit price,
+ * `lastPrice` (asset currency, from `quote.price`). Used by the dashboard
+ * tab, which displays `DashboardAssetResponse` rows rather than brokerage
+ * positions. An asset is left entirely unchanged when there is no matching
+ * quote, the currency differs, or the quote has no `valueInReporting` (a
+ * half-updated row showing a fresh price against a stale value would be
+ * misleading).
  */
 export function mergeDashboardAssetsWithLiveQuotes(
   assets: readonly DashboardAssetResponse[],
@@ -81,14 +90,15 @@ export function mergeDashboardAssetsWithLiveQuotes(
 
     if (
       !quote ||
-      quote.currency.toUpperCase() !== asset.currency.toUpperCase()
+      quote.currency.toUpperCase() !== asset.currency.toUpperCase() ||
+      quote.valueInReporting == null
     ) {
       return asset;
     }
 
     return {
       ...asset,
-      currentValue: quote.value,
+      currentValue: quote.valueInReporting,
       lastPrice: asset.quantity !== null ? quote.price : asset.lastPrice,
     };
   });

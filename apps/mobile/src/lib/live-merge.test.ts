@@ -95,9 +95,13 @@ describe("mergePositionsWithLiveQuotes", () => {
 
     const merged = mergePositionsWithLiveQuotes(positions, quotes);
 
+    // Unit price comes from the asset-currency quote price.
     expect(merged[0]!.currentPrice).toBe(113);
-    expect(merged[0]!.currentValue).toBe(13560);
-    expect(merged[0]!.unrealisedGainLoss).toBe(13560 - 11820);
+    // Current value comes from the reporting-currency valuation, not the
+    // asset-currency `value`.
+    expect(merged[0]!.currentValue).toBe(12500);
+    // Unrealised P/L is recomputed from the new reporting-currency value.
+    expect(merged[0]!.unrealisedGainLoss).toBe(12500 - 11820);
   });
 
   it("leaves positions unchanged when there is no matching quote", () => {
@@ -118,12 +122,41 @@ describe("mergePositionsWithLiveQuotes", () => {
     expect(merged[0]).toEqual(positions[0]);
   });
 
+  it("leaves positions unchanged when the quote has no valueInReporting", () => {
+    const positions = [position({})];
+    const quotes = [quote({ valueInReporting: null })];
+
+    const merged = mergePositionsWithLiveQuotes(positions, quotes);
+
+    expect(merged[0]).toEqual(positions[0]);
+  });
+
   it("returns a copy when there are no quotes", () => {
     const positions = [position({})];
     const merged = mergePositionsWithLiveQuotes(positions, []);
 
     expect(merged).toEqual(positions);
     expect(merged).not.toBe(positions);
+  });
+
+  it("uses valueInReporting for currentValue when the asset currency differs from the reporting currency", () => {
+    const positions = [
+      position({ currency: "USD", currentValue: 1100, costBasis: 900 }),
+    ];
+    const quotes = [
+      quote({
+        currency: "USD",
+        price: 110,
+        value: 1100,
+        valueInReporting: 1012,
+      }),
+    ];
+
+    const merged = mergePositionsWithLiveQuotes(positions, quotes);
+
+    expect(merged[0]!.currentValue).toBe(1012);
+    expect(merged[0]!.currentPrice).toBe(110);
+    expect(merged[0]!.unrealisedGainLoss).toBe(1012 - 900);
   });
 });
 
@@ -134,7 +167,10 @@ describe("mergeDashboardAssetsWithLiveQuotes", () => {
 
     const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
 
-    expect(merged[0]!.currentValue).toBe(13560);
+    // Current value comes from the reporting-currency valuation, not the
+    // asset-currency `value`.
+    expect(merged[0]!.currentValue).toBe(12500);
+    // Last price comes from the asset-currency quote price.
     expect(merged[0]!.lastPrice).toBe(113);
   });
 
@@ -144,7 +180,7 @@ describe("mergeDashboardAssetsWithLiveQuotes", () => {
 
     const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
 
-    expect(merged[0]!.currentValue).toBe(13560);
+    expect(merged[0]!.currentValue).toBe(12500);
     expect(merged[0]!.lastPrice).toBeNull();
   });
 
@@ -153,6 +189,32 @@ describe("mergeDashboardAssetsWithLiveQuotes", () => {
     const merged = mergeDashboardAssetsWithLiveQuotes(assets, [quote({})]);
 
     expect(merged[0]).toEqual(assets[0]);
+  });
+
+  it("leaves the asset unchanged when the quote has no valueInReporting", () => {
+    const assets = [dashboardAsset({})];
+    const quotes = [quote({ valueInReporting: null })];
+
+    const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+
+    expect(merged[0]).toEqual(assets[0]);
+  });
+
+  it("uses valueInReporting for currentValue when the asset currency differs from the reporting currency", () => {
+    const assets = [dashboardAsset({ currency: "USD", currentValue: 1100 })];
+    const quotes = [
+      quote({
+        currency: "USD",
+        price: 110,
+        value: 1100,
+        valueInReporting: 1012,
+      }),
+    ];
+
+    const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+
+    expect(merged[0]!.currentValue).toBe(1012);
+    expect(merged[0]!.lastPrice).toBe(110);
   });
 });
 

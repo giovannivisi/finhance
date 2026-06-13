@@ -82,12 +82,15 @@ export function mergeLiveDashboardAssets(
 
 /**
  * Merges live quotes into dashboard asset rows, updating the displayed
- * current value (and, for assets that track a quantity, the latest unit
- * price) from the quote's asset-currency figures. Matching requires both the
- * assetId and currency to agree with the quote; assets without a matching
- * quote, or whose currency differs, are returned unchanged. This mirrors the
- * mobile dashboard's `mergeDashboardAssetsWithLiveQuotes` so the two
- * platforms behave the same way.
+ * current value (reporting currency, from `quote.valueInReporting`) and, for
+ * assets that track a quantity, the latest unit price (asset currency, from
+ * `quote.price`). Matching requires both the assetId and currency to agree
+ * with the quote. A row is left entirely unchanged when there is no matching
+ * quote, the currency differs, or the quote has no `valueInReporting` (a
+ * half-updated row showing a fresh price against a stale value would be
+ * misleading). This mirrors the mobile dashboard's
+ * `mergeDashboardAssetsWithLiveQuotes` so the two platforms behave the same
+ * way.
  */
 export function mergeDashboardAssetsWithLiveQuotes(
   assets: readonly DashboardAssetResponse[],
@@ -104,14 +107,15 @@ export function mergeDashboardAssetsWithLiveQuotes(
 
     if (
       !quote ||
-      quote.currency.toUpperCase() !== asset.currency.toUpperCase()
+      quote.currency.toUpperCase() !== asset.currency.toUpperCase() ||
+      quote.valueInReporting == null
     ) {
       return asset;
     }
 
     return {
       ...asset,
-      currentValue: quote.value,
+      currentValue: quote.valueInReporting,
       lastPrice: asset.quantity !== null ? quote.price : asset.lastPrice,
     };
   });

@@ -257,6 +257,34 @@ test("mergeDashboardAssetsWithLiveQuotes leaves the row unchanged on a currency 
   assert.deepEqual(merged, assets);
 });
 
+test("mergeDashboardAssetsWithLiveQuotes leaves the row unchanged when the quote has no valueInReporting", () => {
+  const assets = [buildDashboardAsset()];
+  const quotes = [
+    buildQuote({ price: 56, value: 560, valueInReporting: null }),
+  ];
+
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+
+  assert.deepEqual(merged, assets);
+});
+
+test("mergeDashboardAssetsWithLiveQuotes uses valueInReporting for currentValue when the asset currency differs from the reporting currency", () => {
+  const assets = [buildDashboardAsset({ currency: "USD", currentValue: 1100 })];
+  const quotes = [
+    buildQuote({
+      currency: "USD",
+      price: 110,
+      value: 1100,
+      valueInReporting: 1012,
+    }),
+  ];
+
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+
+  assert.equal(merged[0].currentValue, 1012);
+  assert.equal(merged[0].lastPrice, 110);
+});
+
 test("mergeDashboardAssetsWithLiveQuotes returns a copy when there are no quotes", () => {
   const assets = [buildDashboardAsset()];
 
