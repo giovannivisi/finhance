@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
+import BrokeragePerformanceChart from "@components/BrokeragePerformanceChart";
 import Modal from "@components/Modal";
 import MoneyValue from "@components/MoneyValue";
 import OverflowMenu from "@components/OverflowMenu";
@@ -16,15 +17,26 @@ import {
   getDashboardRefreshNotice,
   requestDashboardRefresh,
 } from "@lib/dashboard-refresh";
+import {
+  applyLiveValueDelta,
+  computeLiveValueDelta,
+  mergeLivePositions,
+} from "@lib/live-valuations";
 import { formatSensitiveNumber } from "@lib/money";
+import { useLiveValuations } from "@lib/useLiveValuations";
 import type {
   AssetKind,
   BrokerageActivityItemResponse,
   BrokeragePositionResponse,
   BrokerageWorkspaceResponse,
   CategoryResponse,
+  LiveAssetValuationResponse,
   PortfolioAllocationSnapshotItemResponse,
 } from "@finhance/shared";
+
+// Stable fallback so the live-merge memos don't recompute on every render
+// while there is no live data yet.
+const EMPTY_LIVE_QUOTES: LiveAssetValuationResponse[] = [];
 
 type OperationModalKind =
   | "BUY"
@@ -378,16 +390,33 @@ export default function BrokeragePageClient({
         : workspace.cashReconciliation.status === "MISMATCH"
           ? "status-chip is-warning"
           : "status-chip is-danger";
+  const { data: liveValuationsData } = useLiveValuations();
+  const liveQuotes = liveValuationsData?.quotes ?? EMPTY_LIVE_QUOTES;
+  const mergedPositions = useMemo(
+    () => mergeLivePositions(workspace.positions, liveQuotes),
+    [workspace.positions, liveQuotes],
+  );
+  const liveValueDelta = useMemo(
+    () => computeLiveValueDelta(workspace.positions, liveQuotes),
+    [workspace.positions, liveQuotes],
+  );
+  const mergedSummary = useMemo(
+    () => applyLiveValueDelta(workspace.selectedBroker, liveValueDelta),
+    [workspace.selectedBroker, liveValueDelta],
+  );
+  const isLivePolling = isHydrated;
+  const liveTotalValue =
+    liveValuationsData != null ? mergedSummary.totalValue : null;
   const unrealisedGainLossTone =
-    workspace.selectedBroker.unrealisedGainLoss > 0
+    mergedSummary.unrealisedGainLoss > 0
       ? "brokerage-value-positive"
-      : workspace.selectedBroker.unrealisedGainLoss < 0
+      : mergedSummary.unrealisedGainLoss < 0
         ? "brokerage-value-negative"
         : undefined;
   const unrealisedGainLossColor =
-    workspace.selectedBroker.unrealisedGainLoss > 0
+    mergedSummary.unrealisedGainLoss > 0
       ? "var(--color-income)"
-      : workspace.selectedBroker.unrealisedGainLoss < 0
+      : mergedSummary.unrealisedGainLoss < 0
         ? "var(--color-expense)"
         : undefined;
   const pricingStatusMessage =
@@ -848,16 +877,15 @@ export default function BrokeragePageClient({
                   </p>
                 ) : null}
               </div>
-              <div className="brokerage-summary-total">
-                <p className="detail-metric-label">Total value</p>
-                <p className="brokerage-summary-total-value">
-                  <MoneyValue
-                    value={workspace.selectedBroker.totalValue}
-                    currency={workspace.reportingCurrency}
-                  />
-                </p>
-              </div>
             </div>
+
+            <BrokeragePerformanceChart
+              accountId={brokerageAccountId}
+              reportingCurrency={workspace.reportingCurrency}
+              fallbackTotalValue={workspace.selectedBroker.totalValue}
+              liveTotalValue={liveTotalValue}
+              isLivePolling={isLivePolling}
+            />
 
             <div className="metric-strip is-relaxed brokerage-summary-metrics">
               <div className="detail-panel is-roomy">
@@ -873,7 +901,7 @@ export default function BrokeragePageClient({
                 <p className="detail-metric-label">Invested</p>
                 <p className="detail-metric-value">
                   <MoneyValue
-                    value={workspace.selectedBroker.investedValue}
+                    value={mergedSummary.investedValue}
                     currency={workspace.reportingCurrency}
                   />
                 </p>
@@ -891,7 +919,7 @@ export default function BrokeragePageClient({
                   }
                 >
                   <MoneyValue
-                    value={workspace.selectedBroker.unrealisedGainLoss}
+                    value={mergedSummary.unrealisedGainLoss}
                     currency={workspace.reportingCurrency}
                     className={unrealisedGainLossTone}
                     style={
@@ -938,13 +966,13 @@ export default function BrokeragePageClient({
               </div>
             ) : null}
 
-            {workspace.positions.length === 0 ? (
+            {mergedPositions.length === 0 ? (
               <div className="page-inline-notice surface-dashed">
                 No active positions yet.
               </div>
             ) : (
               <div className="list-stack">
-                {workspace.positions.map((position) => {
+                {mergedPositions.map((position) => {
                   const gainLossTone =
                     position.unrealisedGainLoss == null
                       ? "neutral"
