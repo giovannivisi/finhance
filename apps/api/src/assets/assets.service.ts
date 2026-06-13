@@ -33,6 +33,8 @@ import type {
   DashboardAssetResponse,
   DashboardResponse,
   DashboardSummary,
+  LiveAssetValuationResponse,
+  LiveValuationsResponse,
   RefreshAssetsResponse,
   ValuationSource,
 } from '@finhance/shared';
@@ -154,6 +156,100 @@ export class AssetsService {
       latestSnapshotDate: null,
       latestSnapshotCapturedAt: null,
       latestSnapshotIsPartial: null,
+    };
+  }
+
+  /**
+   * Returns live, read-only quotes for active market positions with a
+   * ticker. Unlike {@link refreshAssets}, this never writes to the
+   * database: market prices are fetched with a short `maxAgeMs` to allow
+   * a recently cached quote to be reused, and FX conversion uses only
+   * stored FX rates (no live FX calls).
+   */
+  async getLiveValuations(ownerId: string): Promise<LiveValuationsResponse> {
+    const now = new Date();
+    const [assets, user] = await Promise.all([
+      this.prisma.asset.findMany({
+        where: { userId: ownerId, type: AssetType.ASSET },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: ownerId },
+        select: { userSettings: true },
+      }),
+    ]);
+    const reportingCurrency = this.resolveReportingCurrency(user?.userSettings);
+
+    const candidates = assets.filter(
+      (asset) =>
+        this.isMarketAsset(asset) &&
+        !!asset.ticker &&
+        this.toDecimal(asset.quantity).gt(ZERO),
+    );
+
+    const fxCurrencies = [
+      ...new Set(
+        candidates
+          .map((asset) => asset.currency)
+          .filter((currency) => currency !== reportingCurrency),
+      ),
+    ];
+    const fxSnapshots: FxResolutionMap = new Map();
+    await Promise.all(
+      fxCurrencies.map(async (currency) => {
+        fxSnapshots.set(
+          currency,
+          await this.pricesService.getStoredFxRateSnapshot(
+            ownerId,
+            now,
+            currency,
+            reportingCurrency,
+          ),
+        );
+      }),
+    );
+
+    const quotes = await Promise.all(
+      candidates.map(async (asset) => {
+        const price = await this.pricesService.getMarketPrice(
+          {
+            kind: asset.kind!,
+            ticker: asset.ticker!,
+            exchange: asset.exchange,
+            quoteCurrency: asset.currency,
+          },
+          { maxAgeMs: 15000 },
+        );
+
+        if (price === null) {
+          return null;
+        }
+
+        const quantity = this.toDecimal(asset.quantity);
+        const value = quantity.mul(price);
+        const fxRate =
+          asset.currency === reportingCurrency
+            ? new Prisma.Decimal(1)
+            : (fxSnapshots.get(asset.currency)?.rate ?? null);
+        const valueInReporting = fxRate ? value.mul(fxRate) : null;
+
+        const quote: LiveAssetValuationResponse = {
+          assetId: asset.id,
+          price: price.toNumber(),
+          currency: asset.currency,
+          value: value.toNumber(),
+          valueInReporting: valueInReporting?.toNumber() ?? null,
+        };
+
+        return quote;
+      }),
+    );
+
+    return {
+      asOf: now.toISOString(),
+      reportingCurrency,
+      quotes: quotes.filter(
+        (quote): quote is LiveAssetValuationResponse => quote !== null,
+      ),
     };
   }
 

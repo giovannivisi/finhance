@@ -1143,6 +1143,127 @@ const workspace = {
   },
 };
 
+/**
+ * Deterministic pseudo-random generator (mulberry32) so the synthetic
+ * performance series is stable across requests for the same seed, while
+ * still looking like a plausible random walk.
+ */
+function mulberry32(seed) {
+  let state = seed;
+  return () => {
+    state |= 0;
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const PERFORMANCE_RANGE_CONFIG = {
+  "1D": { points: 80, stepMs: 5 * 60 * 1000, volatility: 0.0009, seed: 1001 },
+  "1W": { points: 130, stepMs: 60 * 60 * 1000, volatility: 0.0022, seed: 1007 },
+  "1M": {
+    points: 150,
+    stepMs: 4 * 60 * 60 * 1000,
+    volatility: 0.0035,
+    seed: 1031,
+  },
+  "1Y": {
+    points: 250,
+    stepMs: 24 * 60 * 60 * 1000,
+    volatility: 0.009,
+    seed: 1103,
+  },
+  MAX: {
+    points: 300,
+    stepMs: 3 * 24 * 60 * 60 * 1000,
+    volatility: 0.012,
+    seed: 1201,
+  },
+};
+
+/**
+ * Builds a synthetic portfolio performance series for the given range: a
+ * seeded random walk ending at the current broker total value, with a
+ * baseline at the first point.
+ */
+function buildPerformanceSeries(range) {
+  const config =
+    PERFORMANCE_RANGE_CONFIG[range] ?? PERFORMANCE_RANGE_CONFIG["1D"];
+  const random = mulberry32(config.seed);
+  const endValue = brokerSummary.totalValue;
+  const now = Date.now();
+
+  // Walk backwards from the current value so the series ends "today" at the
+  // real fixture total, then reverse into chronological order.
+  const values = [endValue];
+  for (let i = 1; i < config.points; i += 1) {
+    const previous = values[values.length - 1];
+    const drift = (random() - 0.5) * 2 * config.volatility;
+    values.push(previous / (1 + drift));
+  }
+  values.reverse();
+
+  const points = values.map((value, index) => ({
+    t: now - (config.points - 1 - index) * config.stepMs,
+    value: Math.round(value * 100) / 100,
+  }));
+
+  const baselineValue = points[0].value;
+  const latestValue = points[points.length - 1].value;
+  const changeAbsolute = Math.round((latestValue - baselineValue) * 100) / 100;
+  const changePercent =
+    baselineValue !== 0
+      ? Math.round((changeAbsolute / baselineValue) * 100 * 100) / 100
+      : null;
+
+  return {
+    range,
+    reportingCurrency: workspace.reportingCurrency,
+    pricingStatus: workspace.pricingStatus,
+    points,
+    baselineValue,
+    latestValue,
+    changeAbsolute,
+    changePercent,
+    asOf: new Date(now).toISOString(),
+  };
+}
+
+/**
+ * Live asset valuations with a small +/-0.3% jitter applied on every call,
+ * so the live UI visibly ticks while polling.
+ */
+const LIVE_VALUATION_BASE = [
+  { assetId: "as-vwce", price: 112.4, currency: "EUR", quantity: 120 },
+  { assetId: "as-btc", price: 61250, currency: "EUR", quantity: 0.12 },
+  { assetId: "as-tlt", price: 96.9, currency: "USD", quantity: 12 },
+];
+
+function buildLiveValuations() {
+  const quotes = LIVE_VALUATION_BASE.map((base) => {
+    const jitter = 1 + (Math.random() * 2 - 1) * 0.003; // +/-0.3%
+    const price = Math.round(base.price * jitter * 100) / 100;
+    const value = Math.round(price * base.quantity * 100) / 100;
+    const valueInReporting =
+      base.currency === dashboard.reportingCurrency ? value : null;
+
+    return {
+      assetId: base.assetId,
+      price,
+      currency: base.currency,
+      value,
+      valueInReporting,
+    };
+  });
+
+  return {
+    asOf: new Date().toISOString(),
+    reportingCurrency: dashboard.reportingCurrency,
+    quotes,
+  };
+}
+
 const routes = {
   "/health": {
     status: "ok",
@@ -1177,6 +1298,7 @@ const routes = {
   "/monthly-review/page-data": { review, setup, hasPendingSync: true },
   "/snapshots": snapshots,
   "/brokerage": [brokerSummary],
+  "/assets/live-valuations": buildLiveValuations,
   "/users/me/settings": {
     showTransactionTimes: true,
     startPage: "DASHBOARD",
@@ -1206,6 +1328,10 @@ const dynamicRoutes = [
     (id) => recurringRules.find((r) => r.id === id),
   ],
   [/^\/budgets\/([\w-]+)\/overrides$/, () => []],
+  [
+    /^\/brokerage\/([\w-]+)\/performance$/,
+    (_id, query) => buildPerformanceSeries(query.get("range") ?? "1D"),
+  ],
   [/^\/brokerage\/([\w-]+)$/, () => workspace],
 ];
 
@@ -1217,17 +1343,21 @@ const dynamicRoutes = [
 const hostedMode = process.argv.includes("--hosted");
 const MOCK_MOBILE_TOKEN = "mock-mobile-token";
 
-function resolvePayload(path, method) {
+function resolvePayload(path, method, query) {
   let payload = routes[path];
 
   if (payload === undefined) {
     for (const [pattern, resolve] of dynamicRoutes) {
       const match = path.match(pattern);
       if (match) {
-        payload = resolve(match[1]);
+        payload = resolve(match[1], query);
         break;
       }
     }
+  }
+
+  if (typeof payload === "function") {
+    payload = payload(query);
   }
 
   if (payload === undefined && method !== "GET") {
@@ -1280,7 +1410,7 @@ const server = createServer((req, res) => {
     path = path.slice("/api/proxy".length) || "/";
   }
 
-  const payload = resolvePayload(path, req.method);
+  const payload = resolvePayload(path, req.method, url.searchParams);
 
   if (payload === undefined) {
     return respond(404, { message: `Mock route not found: ${path}` });

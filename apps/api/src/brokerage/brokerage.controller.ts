@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { BrokerageService } from '@brokerage/brokerage.service';
+import { BrokeragePerformanceQueryDto } from '@brokerage/dto/brokerage-performance-query.dto';
 import { CreateBrokerageBuyDto } from '@brokerage/dto/create-brokerage-buy.dto';
 import { CreateBrokerageSellDto } from '@brokerage/dto/create-brokerage-sell.dto';
 import { CreateBrokerageDividendDto } from '@brokerage/dto/create-brokerage-dividend.dto';
@@ -9,6 +10,7 @@ import { UpdatePortfolioAllocationTargetsDto } from '@brokerage/dto/update-portf
 import type {
   BrokerageAccountSummaryResponse,
   BrokerageOperationResponse,
+  BrokeragePerformanceResponse,
   BrokerageWorkspaceResponse,
   PortfolioAllocationTargetsResponse,
 } from '@finhance/shared';
@@ -34,6 +36,18 @@ export class BrokerageController {
     @Param('accountId') accountId: string,
   ): Promise<BrokerageWorkspaceResponse> {
     return this.brokerageService.getWorkspace(this.resolveOwnerId(), accountId);
+  }
+
+  @Get(':accountId/performance')
+  async getPerformance(
+    @Param('accountId') accountId: string,
+    @Query() query: BrokeragePerformanceQueryDto,
+  ): Promise<BrokeragePerformanceResponse> {
+    return this.brokerageService.getPerformance(
+      this.resolveOwnerId(),
+      accountId,
+      query.range ?? '1D',
+    );
   }
 
   @Post(':accountId/buy')

@@ -124,3 +124,17 @@ export interface RefreshAssetsResponse {
   updatedCount: number;
   staleCount: number;
 }
+
+export interface LiveAssetValuationResponse {
+  assetId: string;
+  price: number; // unit price in the asset's own currency
+  currency: string;
+  value: number; // quantity x price, asset currency
+  valueInReporting: number | null; // null when FX unavailable
+}
+
+export interface LiveValuationsResponse {
+  asOf: string;
+  reportingCurrency: string;
+  quotes: LiveAssetValuationResponse[];
+}

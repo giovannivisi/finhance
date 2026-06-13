@@ -1,6 +1,36 @@
 import { AssetKind } from '@finhance/db';
 import { PricesService } from '@prices/prices.service';
 
+function jsonResponse(body: unknown, ok = true): Response {
+  return {
+    ok,
+    status: ok ? 200 : 500,
+    json: () => Promise.resolve(body),
+  } as unknown as Response;
+}
+
+function chartSeriesBody(input: {
+  timestamps: number[];
+  closes: Array<number | null>;
+  previousClose?: number | null;
+}): unknown {
+  return {
+    chart: {
+      result: [
+        {
+          timestamp: input.timestamps,
+          meta: {
+            chartPreviousClose: input.previousClose ?? null,
+          },
+          indicators: {
+            quote: [{ close: input.closes }],
+          },
+        },
+      ],
+    },
+  };
+}
+
 describe('PricesService', () => {
   let service: PricesService;
   let prisma: {
@@ -10,6 +40,8 @@ describe('PricesService', () => {
       upsert: jest.Mock;
     };
   };
+  let fetchMock: jest.Mock;
+  let originalFetch: typeof global.fetch;
 
   beforeEach(() => {
     prisma = {
@@ -20,6 +52,14 @@ describe('PricesService', () => {
       },
     };
     service = new PricesService(prisma as never);
+
+    originalFetch = global.fetch;
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   it('normalizes crypto symbols to a Yahoo pair', () => {
@@ -113,6 +153,213 @@ describe('PricesService', () => {
       source: null,
       rateDate: null,
       updatedAt: null,
+    });
+  });
+
+  describe('getMarketSeries', () => {
+    it('filters out null closes and parses the previous close', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          chartSeriesBody({
+            timestamps: [1000, 2000, 3000],
+            closes: [100, null, 102],
+            previousClose: 99,
+          }),
+        ),
+      );
+
+      const series = await service.getMarketSeries(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'AAPL',
+          exchange: 'NASDAQ',
+          quoteCurrency: 'USD',
+        },
+        '1D',
+      );
+
+      expect(series).toEqual({
+        points: [
+          { t: 1_000_000, price: 100 },
+          { t: 3_000_000, price: 102 },
+        ],
+        previousClose: 99,
+        latestPrice: 102,
+      });
+    });
+
+    it('returns null when the upstream request fails', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}, false));
+
+      const series = await service.getMarketSeries(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'AAPL',
+          exchange: 'NASDAQ',
+          quoteCurrency: 'USD',
+        },
+        '1D',
+      );
+
+      expect(series).toBeNull();
+    });
+
+    it('returns null when no usable points are returned', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          chartSeriesBody({ timestamps: [1000, 2000], closes: [null, null] }),
+        ),
+      );
+
+      const series = await service.getMarketSeries(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'AAPL',
+          exchange: 'NASDAQ',
+          quoteCurrency: 'USD',
+        },
+        '1D',
+      );
+
+      expect(series).toBeNull();
+    });
+
+    it('caches series per range using range-specific TTLs', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          chartSeriesBody({
+            timestamps: [1000],
+            closes: [100],
+            previousClose: 99,
+          }),
+        ),
+      );
+
+      const input = {
+        kind: AssetKind.STOCK,
+        ticker: 'AAPL',
+        exchange: 'NASDAQ',
+        quoteCurrency: 'USD',
+      };
+
+      await service.getMarketSeries(input, '1D');
+      await service.getMarketSeries(input, '1D');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // A different range is cached independently and triggers a new request.
+      await service.getMarketSeries(input, '1W');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('getFxSeries', () => {
+    it('returns null when the from and to currencies are the same', async () => {
+      const series = await service.getFxSeries('EUR', 'EUR', '1D');
+
+      expect(series).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('fetches a series for the FX pair symbol', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          chartSeriesBody({
+            timestamps: [1000],
+            closes: [0.92],
+            previousClose: 0.91,
+          }),
+        ),
+      );
+
+      const series = await service.getFxSeries('USD', 'EUR', '1D');
+
+      expect(series).toEqual({
+        points: [{ t: 1_000_000, price: 0.92 }],
+        previousClose: 0.91,
+        latestPrice: 0.92,
+      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('USDEUR%3DX'),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('getMarketPrice with maxAgeMs', () => {
+    const marketInput = {
+      kind: AssetKind.STOCK,
+      ticker: 'AAPL',
+      exchange: 'NASDAQ',
+      quoteCurrency: 'USD',
+    };
+
+    it('reuses a cached quote when it is within maxAgeMs', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          chart: { result: [{ meta: { regularMarketPrice: 150 } }] },
+        }),
+      );
+
+      const first = await service.getMarketPrice(marketInput, {
+        maxAgeMs: 60_000,
+      });
+      const second = await service.getMarketPrice(marketInput, {
+        maxAgeMs: 60_000,
+      });
+
+      expect(first?.toString()).toBe('150');
+      expect(second?.toString()).toBe('150');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('forces a refetch when maxAgeMs is smaller than the cached entry age', async () => {
+      let now = 0;
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse({
+            chart: { result: [{ meta: { regularMarketPrice: 150 } }] },
+          }),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            chart: { result: [{ meta: { regularMarketPrice: 151 } }] },
+          }),
+        );
+
+      const first = await service.getMarketPrice(marketInput, {
+        maxAgeMs: 5000,
+      });
+      now = 10_000;
+      const second = await service.getMarketPrice(marketInput, {
+        maxAgeMs: 5000,
+      });
+
+      expect(first?.toString()).toBe('150');
+      expect(second?.toString()).toBe('151');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      jest.spyOn(Date, 'now').mockRestore();
+    });
+
+    it('clamps maxAgeMs to a minimum of 5 seconds', async () => {
+      let now = 0;
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          chart: { result: [{ meta: { regularMarketPrice: 150 } }] },
+        }),
+      );
+
+      await service.getMarketPrice(marketInput, { maxAgeMs: 1 });
+      now = 4000; // Below the 5s clamp, so the cached value should still be used.
+      await service.getMarketPrice(marketInput, { maxAgeMs: 1 });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      jest.spyOn(Date, 'now').mockRestore();
     });
   });
 });

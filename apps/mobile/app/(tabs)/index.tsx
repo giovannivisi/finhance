@@ -1,10 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
-import type { DashboardAssetResponse } from "@finhance/shared";
+import type {
+  DashboardAssetResponse,
+  LiveAssetValuationResponse,
+} from "@finhance/shared";
 
-import { useDashboard, useRefreshAssets } from "@/api/queries";
+import {
+  useDashboard,
+  useLiveValuations,
+  useRefreshAssets,
+} from "@/api/queries";
+import { LiveDot } from "@/components/charts";
 import {
   AppText,
   Card,
@@ -25,7 +33,12 @@ import {
   holdingValue,
 } from "@/features/dashboard/derive";
 import { formatTimestampLabel, localDateOf } from "@/lib/dates";
+import {
+  computeLiveValueDelta,
+  mergeDashboardAssetsWithLiveQuotes,
+} from "@/lib/live-merge";
 import { formatMoney } from "@/lib/money";
+import { useIsScreenActive } from "@/lib/screen-active";
 import { spacing, useTheme } from "@/theme";
 
 function PricingStatusChip({
@@ -114,16 +127,49 @@ export default function DashboardScreen() {
   const dashboardQuery = useDashboard();
   const refreshAssets = useRefreshAssets();
 
+  const isActive = useIsScreenActive();
+  const liveQuery = useLiveValuations(isActive);
+
+  const previousQuotesRef = useRef<
+    readonly LiveAssetValuationResponse[] | null
+  >(null);
+  const [liveValueDelta, setLiveValueDelta] = useState(0);
+
+  const liveQuotes = liveQuery.data?.quotes;
+
+  useEffect(() => {
+    if (!liveQuotes) {
+      return;
+    }
+
+    const { totalValueDelta, matchedCount } = computeLiveValueDelta(
+      previousQuotesRef.current,
+      liveQuotes,
+    );
+
+    if (matchedCount > 0) {
+      setLiveValueDelta((current) => current + totalValueDelta);
+    }
+
+    previousQuotesRef.current = liveQuotes;
+  }, [liveQuotes]);
+
   const data = dashboardQuery.data;
+
+  const mergedAssets = useMemo(
+    () =>
+      data && liveQuotes
+        ? mergeDashboardAssetsWithLiveQuotes(data.dashboard.assets, liveQuotes)
+        : (data?.dashboard.assets ?? []),
+    [data, liveQuotes],
+  );
+
   const holdings = useMemo(
     () =>
       data
-        ? deriveDashboardHoldings(
-            data.dashboard.assets,
-            data.dashboard.assetKindOrder,
-          )
+        ? deriveDashboardHoldings(mergedAssets, data.dashboard.assetKindOrder)
         : null,
-    [data],
+    [data, mergedAssets],
   );
 
   const headerRight = (
@@ -185,6 +231,9 @@ export default function DashboardScreen() {
     (step) => step.status === "INCOMPLETE",
   );
 
+  const liveNetWorth = dashboard.summary.netWorth + liveValueDelta;
+  const liveAssets = dashboard.summary.assets + liveValueDelta;
+
   return (
     <Screen
       kicker="Overview"
@@ -205,11 +254,20 @@ export default function DashboardScreen() {
             }}
           >
             <View style={{ gap: 4, flex: 1 }}>
-              <AppText variant="kicker" tone="tertiary">
-                Net worth · {reportingCurrency}
-              </AppText>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <AppText variant="kicker" tone="tertiary">
+                  Net worth · {reportingCurrency}
+                </AppText>
+                {isActive && liveQuery.isFetching ? <LiveDot /> : null}
+              </View>
               <MoneyText
-                amount={dashboard.summary.netWorth}
+                amount={liveNetWorth}
                 currency={reportingCurrency}
                 variant="display"
               />
@@ -237,7 +295,7 @@ export default function DashboardScreen() {
               label="Assets"
               value={
                 <MoneyText
-                  amount={dashboard.summary.assets}
+                  amount={liveAssets}
                   currency={reportingCurrency}
                   variant="title3"
                 />

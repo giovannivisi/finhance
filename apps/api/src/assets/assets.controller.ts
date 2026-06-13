@@ -22,6 +22,7 @@ import type {
   AssetResponse,
   DashboardAssetResponse,
   DashboardSummary,
+  LiveValuationsResponse,
   RefreshAssetsResponse,
 } from '@finhance/shared';
 import { toAssetResponse } from '@assets/assets.mapper';
@@ -51,6 +52,11 @@ export class AssetsController {
   @Get('summary')
   async getSummary(): Promise<DashboardSummary> {
     return this.assetsService.getSummary(this.resolveOwnerId());
+  }
+
+  @Get('live-valuations')
+  async getLiveValuations(): Promise<LiveValuationsResponse> {
+    return this.assetsService.getLiveValuations(this.resolveOwnerId());
   }
 
   @Post('refresh')

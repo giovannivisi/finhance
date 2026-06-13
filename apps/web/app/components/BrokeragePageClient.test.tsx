@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import BrokeragePageClient from "@components/BrokeragePageClient";
-import { apiMutation } from "@lib/api";
+import { api, apiMutation } from "@lib/api";
 import { requestDashboardRefresh } from "@lib/dashboard-refresh";
 
 const pushMock = vi.fn();
@@ -39,6 +39,7 @@ vi.mock("@components/ThemeProvider", () => ({
 
 vi.mock("@lib/api", () => ({
   apiMutation: vi.fn(),
+  api: vi.fn(),
 }));
 
 vi.mock("@lib/dashboard-refresh", () => ({
@@ -335,6 +336,39 @@ const categories = [
   },
 ];
 
+const PERFORMANCE_PRICING_STATUS = {
+  state: "FRESH" as const,
+  refreshSuggested: false,
+  hasStaleQuotes: false,
+  hasStaleFx: false,
+  hasMissingFx: false,
+};
+
+function buildPerformanceResponse() {
+  return {
+    range: "1D" as const,
+    reportingCurrency: "EUR",
+    pricingStatus: PERFORMANCE_PRICING_STATUS,
+    points: [
+      { t: Date.UTC(2026, 5, 12, 8, 0), value: 1480 },
+      { t: Date.UTC(2026, 5, 12, 16, 0), value: 1500 },
+    ],
+    baselineValue: 1480,
+    latestValue: 1500,
+    changeAbsolute: 20,
+    changePercent: (20 / 1480) * 100,
+    asOf: "2026-06-12T16:00:00.000Z",
+  };
+}
+
+function buildLiveValuationsResponse() {
+  return {
+    asOf: "2026-06-12T16:00:00.000Z",
+    reportingCurrency: "EUR",
+    quotes: [],
+  };
+}
+
 describe("BrokeragePageClient", () => {
   beforeEach(() => {
     pushMock.mockReset();
@@ -343,6 +377,16 @@ describe("BrokeragePageClient", () => {
     vi.mocked(apiMutation).mockReset();
     vi.mocked(requestDashboardRefresh).mockReset();
     vi.mocked(requestDashboardRefresh).mockResolvedValue({ ok: true });
+    vi.mocked(api).mockReset();
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path.includes("/performance")) {
+        return Promise.resolve(buildPerformanceResponse());
+      }
+      if (path.includes("/assets/live-valuations")) {
+        return Promise.resolve(buildLiveValuationsResponse());
+      }
+      return Promise.reject(new Error(`Unexpected api call: ${path}`));
+    });
   });
 
   it("renders the brokerage workspace and routes account switching through the deep link", async () => {

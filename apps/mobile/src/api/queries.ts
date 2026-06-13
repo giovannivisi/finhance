@@ -5,6 +5,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import type {
+  BrokeragePerformanceRange,
   CreateBrokerageBuyRequest,
   CreateBrokerageDividendRequest,
   CreateBrokerageFeeRequest,
@@ -55,6 +56,9 @@ export const queryKeys = {
   brokerageList: ["brokerage", "list"] as const,
   brokerageWorkspace: (accountId: string) =>
     ["brokerage", "workspace", accountId] as const,
+  brokeragePerformance: (accountId: string, range: BrokeragePerformanceRange) =>
+    ["brokerage", "performance", accountId, range] as const,
+  liveValuations: ["assets", "live-valuations"] as const,
   userSettings: ["user", "settings"] as const,
 };
 
@@ -219,6 +223,43 @@ export function useBrokerageWorkspace(accountId: string) {
   return useQuery({
     queryKey: queryKeys.brokerageWorkspace(accountId),
     queryFn: () => api.brokerage.workspace(client, accountId),
+  });
+}
+
+/**
+ * Portfolio performance series for a brokerage account. The 1D range is
+ * refetched every 60s while `refetchActive` is true (screen focused and the
+ * app is in the foreground); other ranges only refetch on the usual
+ * focus/mount triggers. Previous data stays visible while a new range loads.
+ */
+export function useBrokeragePerformance(
+  accountId: string,
+  range: BrokeragePerformanceRange,
+  refetchActive: boolean,
+) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.brokeragePerformance(accountId, range),
+    queryFn: () => api.brokerage.performance(client, accountId, range),
+    placeholderData: (previousData) => previousData,
+    refetchInterval: range === "1D" && refetchActive ? 60_000 : false,
+  });
+}
+
+/**
+ * Live asset valuations, polled every 15s while `enabled` is true (the
+ * consuming screen is focused and the app is in the foreground).
+ */
+export function useLiveValuations(enabled: boolean) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.liveValuations,
+    queryFn: () => api.assets.liveValuations(client),
+    enabled,
+    refetchInterval: enabled ? 15_000 : false,
+    // Live ticks are inherently stale the instant they arrive; always allow
+    // a fresh fetch rather than serving a cached snapshot.
+    staleTime: 0,
   });
 }
 

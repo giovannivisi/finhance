@@ -2,7 +2,10 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DashboardAssetResponse } from "@finhance/shared";
+import type {
+  DashboardAssetResponse,
+  LiveValuationsResponse,
+} from "@finhance/shared";
 import DashboardClient from "@components/DashboardClient";
 import { apiMutation } from "@lib/api";
 import { requestDashboardRefresh } from "@lib/dashboard-refresh";
@@ -75,6 +78,14 @@ vi.mock("@lib/dashboard-refresh", () => ({
 vi.mock("@lib/api", () => ({
   apiMutation: vi.fn(),
   fetchApiMutation: vi.fn(),
+}));
+
+const useLiveValuationsMock = vi.fn<
+  () => { data: LiveValuationsResponse | null; error: string | null }
+>(() => ({ data: null, error: null }));
+
+vi.mock("@lib/useLiveValuations", () => ({
+  useLiveValuations: () => useLiveValuationsMock(),
 }));
 
 vi.mock("@dnd-kit/core", () => ({
@@ -153,6 +164,8 @@ describe("DashboardClient", () => {
     vi.mocked(apiMutation).mockReset();
     vi.mocked(requestDashboardRefresh).mockReset();
     vi.mocked(requestDashboardRefresh).mockResolvedValue({ ok: true });
+    useLiveValuationsMock.mockReset();
+    useLiveValuationsMock.mockReturnValue({ data: null, error: null });
     document.documentElement.setAttribute("data-theme", "dark");
     document.documentElement.setAttribute("data-hide-money", "false");
   });
@@ -193,12 +206,12 @@ describe("DashboardClient", () => {
     return render(
       <DashboardClient
         grouped={{
-          ETFs: [assetWithBrokerage],
-          Debts: [liability],
+          STOCK: [assetWithBrokerage],
+          DEBT: [liability],
         }}
         kindTotalsArray={[
-          { kind: "ETFs", total: 120 },
-          { kind: "Debts", total: -80 },
+          { kind: "STOCK", total: 120 },
+          { kind: "DEBT", total: -80 },
         ]}
         baseCurrency="EUR"
         pricingStatus={
@@ -212,7 +225,7 @@ describe("DashboardClient", () => {
         }
         lastRefreshAt="2026-05-20T10:00:00.000Z"
         summary={{ assets: 120, liabilities: 80, netWorth: 40 }}
-        assetKindOrder={["ETFs", "Debts"]}
+        assetKindOrder={["STOCK", "DEBT"]}
         brokerageAccountIds={["broker-1"]}
       />,
     );
@@ -286,9 +299,7 @@ describe("DashboardClient", () => {
         /Latest stored values shown\. Refresh when you want live quotes/,
       ),
     ).toBeNull();
-    expect(
-      screen.getByText(/Last refresh \d+ min ago/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Last refresh \d+ min ago/)).toBeInTheDocument();
   });
 
   it("shows latest labels for stale stored valuations", () => {
@@ -324,5 +335,45 @@ describe("DashboardClient", () => {
 
     expect(screen.queryByText("LATEST")).not.toBeInTheDocument();
     expect(screen.getByText("Reference avg cost")).toBeInTheDocument();
+  });
+
+  it("merges a live valuation tick into the asset row and the headline total", () => {
+    useLiveValuationsMock.mockReturnValue({
+      data: {
+        asOf: "2026-06-12T16:00:00.000Z",
+        reportingCurrency: "EUR",
+        quotes: [
+          {
+            assetId: "asset-brokerage",
+            price: 65,
+            currency: "EUR",
+            value: 130,
+            valueInReporting: 145,
+          },
+        ],
+      },
+      error: null,
+    });
+
+    renderDashboard();
+
+    // The row's displayed value comes from the live quote's reporting-currency
+    // valuation, not its asset-currency `value`...
+    expect(screen.getByText("65,00 €")).toBeInTheDocument();
+    // ...while the headline net worth moves by the reporting-currency delta
+    // (145 - 120 = 25) on top of the server baseline (40). The row's current
+    // value, the assets stat, the Stock allocation subtotal and the Stock
+    // category-block subtotal all show 145 (120 + 25).
+    expect(screen.getAllByText("145,00 €")).toHaveLength(4);
+  });
+
+  it("leaves the row and headline total unchanged when there is no live data", () => {
+    renderDashboard();
+
+    // The asset row, the assets stat, the Stock allocation subtotal and the
+    // Stock category-block subtotal all show the server-provided value (120)
+    // unchanged.
+    expect(screen.getAllByText("120,00 €")).toHaveLength(4);
+    expect(screen.getByText("40,00 €")).toBeInTheDocument();
   });
 });

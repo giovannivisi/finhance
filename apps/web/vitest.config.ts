@@ -14,6 +14,7 @@ export default defineConfig({
         "app/components/AssetForm.tsx",
         "app/components/TransactionForm.tsx",
         "app/components/BrokeragePageClient.tsx",
+        "app/components/BrokeragePerformanceChart.tsx",
         "app/components/BudgetsPageClient.tsx",
         "app/components/DashboardClient.tsx",
         "app/components/OverflowMenu.tsx",

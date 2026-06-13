@@ -3358,6 +3358,163 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   width: 100%;
 }
 
+/* Performance chart section */
+
+.brokerage-performance {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.brokerage-performance-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.brokerage-performance-value-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brokerage-performance-value {
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.brokerage-performance-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-chip);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.brokerage-performance-badge.is-up,
+.brokerage-performance-badge.is-flat {
+  color: var(--color-income);
+  background: var(--surface-success-bg);
+  border: 1px solid var(--surface-success-border);
+}
+
+.brokerage-performance-badge.is-down {
+  color: var(--color-expense);
+  background: var(--surface-danger-bg);
+  border: 1px solid var(--surface-danger-border);
+}
+
+.brokerage-performance-badge-arrow {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.brokerage-live-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 60%, transparent);
+  animation: brokerage-live-dot-pulse 1.8s ease-out infinite;
+}
+
+@keyframes brokerage-live-dot-pulse {
+  0% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--color-primary) 55%, transparent);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.brokerage-performance-ranges {
+  align-self: flex-start;
+}
+
+.brokerage-performance-chart {
+  position: relative;
+  width: 100%;
+  height: 260px;
+}
+
+.brokerage-performance-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.brokerage-performance-gridline-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.brokerage-performance-gridline-label {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.brokerage-performance-skeleton {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card-muted);
+}
+
+.brokerage-performance-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-glass);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.brokerage-performance-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.brokerage-performance-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.brokerage-performance-note.is-error {
+  color: var(--color-expense);
+}
+
+@media (max-width: 767px) {
+  .brokerage-performance-chart {
+    height: 200px;
+  }
+}
+
 .brokerage-position-card,
 .brokerage-activity-card {
   display: flex;
