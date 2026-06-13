@@ -32,7 +32,7 @@ import {
   deriveDashboardHoldings,
   holdingValue,
 } from "@/features/dashboard/derive";
-import { formatTimestampLabel, localDateOf } from "@/lib/dates";
+import { localDateOf } from "@/lib/dates";
 import {
   computeLiveValueDelta,
   mergeDashboardAssetsWithLiveQuotes,
@@ -257,7 +257,6 @@ export default function DashboardScreen() {
     isRefreshing: refreshAssets.isPending,
     hasLiveQuotes: Boolean(liveQuotes && liveQuotes.length > 0),
     lastRefreshAt: dashboard.lastRefreshAt,
-    formatTimestamp: formatTimestampLabel,
   });
 
   return (
@@ -356,9 +355,11 @@ export default function DashboardScreen() {
             }}
           >
             <PricingStatusChip state={dashboard.pricingStatus.state} />
-            <AppText variant="caption" tone="tertiary">
-              {refreshStatusText}
-            </AppText>
+            {refreshStatusText ? (
+              <AppText variant="caption" tone="tertiary">
+                {refreshStatusText}
+              </AppText>
+            ) : null}
           </View>
 
           {dashboard.latestSnapshotDate ? (

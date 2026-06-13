@@ -38,36 +38,37 @@ describe("price refresh helpers", () => {
     ).toBe(false);
   });
 
-  it("distinguishes live quote polling from stored refresh timestamps", () => {
-    const formatTimestamp = (value: string) => `formatted ${value}`;
-
+  it("keeps dashboard refresh copy short", () => {
     expect(
       formatPriceRefreshStatusText({
         isRefreshing: true,
         hasLiveQuotes: false,
         lastRefreshAt: "2026-06-13T08:00:00.000Z",
-        formatTimestamp,
       }),
-    ).toBe("Refreshing prices...");
+    ).toBe("Updating prices...");
 
     expect(
       formatPriceRefreshStatusText({
         isRefreshing: false,
         hasLiveQuotes: true,
         lastRefreshAt: "2026-06-13T08:00:00.000Z",
-        formatTimestamp,
       }),
-    ).toBe(
-      "Live quotes updating · stored refresh formatted 2026-06-13T08:00:00.000Z",
-    );
+    ).toBeNull();
 
     expect(
       formatPriceRefreshStatusText({
         isRefreshing: false,
         hasLiveQuotes: false,
         lastRefreshAt: "2026-06-13T08:00:00.000Z",
-        formatTimestamp,
       }),
-    ).toBe("Stored refresh formatted 2026-06-13T08:00:00.000Z");
+    ).toBeNull();
+
+    expect(
+      formatPriceRefreshStatusText({
+        isRefreshing: false,
+        hasLiveQuotes: false,
+        lastRefreshAt: null,
+      }),
+    ).toBe("Prices not refreshed yet");
   });
 });

@@ -9,7 +9,9 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   View,
+  useWindowDimensions,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -38,8 +40,21 @@ function SheetSurface({
             ? "systemThickMaterialDark"
             : "systemThickMaterialLight"
         }
-        style={[style, { overflow: "hidden" }]}
+        style={[
+          style,
+          {
+            backgroundColor: colors.bgPopover,
+            overflow: "hidden",
+          },
+        ]}
       >
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            { backgroundColor: colors.bgPopover },
+          ]}
+        />
         {children}
       </BlurView>
     );
@@ -71,8 +86,10 @@ export function Sheet({
 }: SheetProps) {
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
   const translateY = useRef(new Animated.Value(0)).current;
   const scrollOffsetY = useRef(0);
+  const sheetMaxHeight = Math.round(height * maxHeightRatio);
 
   useEffect(() => {
     if (visible) {
@@ -126,7 +143,7 @@ export function Sheet({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={{ flex: 1, justifyContent: "flex-end" }}>
+      <View style={{ flex: 1 }}>
         <Pressable
           accessibilityLabel="Close"
           onPress={onClose}
@@ -142,22 +159,27 @@ export function Sheet({
         />
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
+          pointerEvents="box-none"
+          style={{ flex: 1, justifyContent: "flex-end" }}
         >
           <Animated.View
             {...panResponder.panHandlers}
             style={{
               transform: [{ translateY }],
+              width: "100%",
             }}
           >
             <SheetSurface
               style={{
+                width: "100%",
+                backgroundColor: colors.bgPopover,
                 borderTopLeftRadius: radius.sheet,
                 borderTopRightRadius: radius.sheet,
                 borderWidth: 1,
                 borderBottomWidth: 0,
                 borderColor: colors.borderStrong,
                 paddingBottom: insets.bottom + spacing.lg,
-                maxHeight: `${Math.round(maxHeightRatio * 100)}%`,
+                maxHeight: sheetMaxHeight,
               }}
             >
               <View
