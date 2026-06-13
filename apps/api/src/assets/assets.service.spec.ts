@@ -322,6 +322,13 @@ describe('AssetsService', () => {
     expect(dashboard.assets[0].referenceValue).toBe(72);
     expect(dashboard.assets[0].valuationSource).toBe('AVG_COST');
     expect(dashboard.summary.assets).toBe(72);
+    expect(dashboard.pricingStatus).toEqual({
+      state: 'STALE',
+      refreshSuggested: true,
+      hasStaleQuotes: true,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    });
   });
 
   it('assigns non-market assets to validated accounts', async () => {

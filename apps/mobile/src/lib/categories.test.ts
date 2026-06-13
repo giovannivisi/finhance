@@ -5,6 +5,8 @@ import {
   activityCategoryFilterQuery,
   activityCategoryFilterValue,
   categoryLabel,
+  expensePrimaryCategories,
+  expenseSecondaryCategories,
   isAssignableTransactionCategory,
 } from "./categories";
 
@@ -95,6 +97,84 @@ describe("isAssignableTransactionCategory", () => {
         "archived-secondary",
       ),
     ).toBe(true);
+  });
+});
+
+describe("expense category selectors", () => {
+  it("returns active expense primaries and keeps the selected archived primary", () => {
+    const activePrimary = category({
+      id: "active-primary",
+      name: "Household",
+      isPrimary: true,
+      isSecondary: false,
+    });
+    const archivedPrimary = category({
+      id: "archived-primary",
+      name: "Travel",
+      isPrimary: true,
+      isSecondary: false,
+      archivedAt: "2026-06-01T00:00:00.000Z",
+    });
+    const income = category({
+      id: "income",
+      type: "INCOME",
+      isPrimary: false,
+      isSecondary: false,
+    });
+
+    expect(
+      expensePrimaryCategories([archivedPrimary, activePrimary, income]).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["active-primary"]);
+    expect(
+      expensePrimaryCategories(
+        [archivedPrimary, activePrimary, income],
+        "archived-primary",
+      ).map((entry) => entry.id),
+    ).toEqual(["archived-primary", "active-primary"]);
+  });
+
+  it("returns active expense secondaries for the selected primary", () => {
+    const groceries = category({
+      id: "groceries",
+      name: "Groceries",
+      parentCategoryId: "household",
+      parentCategoryName: "Household",
+      isPrimary: false,
+      isSecondary: true,
+    });
+    const archivedUtilities = category({
+      id: "utilities",
+      name: "Utilities",
+      parentCategoryId: "household",
+      parentCategoryName: "Household",
+      isPrimary: false,
+      isSecondary: true,
+      archivedAt: "2026-06-01T00:00:00.000Z",
+    });
+    const travel = category({
+      id: "flights",
+      name: "Flights",
+      parentCategoryId: "travel",
+      parentCategoryName: "Travel",
+      isPrimary: false,
+      isSecondary: true,
+    });
+
+    expect(
+      expenseSecondaryCategories(
+        [groceries, archivedUtilities, travel],
+        "household",
+      ).map((entry) => entry.id),
+    ).toEqual(["groceries"]);
+    expect(
+      expenseSecondaryCategories(
+        [groceries, archivedUtilities, travel],
+        "household",
+        "utilities",
+      ).map((entry) => entry.id),
+    ).toEqual(["groceries", "utilities"]);
   });
 });
 

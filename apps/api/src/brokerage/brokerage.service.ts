@@ -268,6 +268,12 @@ export class BrokerageService {
       },
     });
     const assetById = new Map(positionAssets.map((asset) => [asset.id, asset]));
+    const maxStartCandidates = positionAssets.map((asset) =>
+      asset.createdAt.getTime(),
+    );
+    const currentTotalValue = this.round2(
+      this.sumEffectiveValues(activePositions),
+    );
 
     const pricedViews = activePositions.filter(
       (asset) => !!asset.ticker && !!assetById.get(asset.id),
@@ -343,6 +349,7 @@ export class BrokerageService {
         continue;
       }
 
+      maxStartCandidates.push(operation.postedAt.getTime());
       const list = opsByAsset.get(operation.assetId) ?? [];
       list.push(operation);
       opsByAsset.set(operation.assetId, list);
@@ -421,6 +428,7 @@ export class BrokerageService {
       now,
       pricedPositions,
       fxSeriesByCurrency,
+      maxStartCandidates,
     );
     const grid = this.buildPerformanceTimeGrid(
       rangeStart,
@@ -453,7 +461,11 @@ export class BrokerageService {
       return { t, value: this.round2(total.toNumber()) };
     });
 
-    const downsampled = this.downsamplePoints(points, PERFORMANCE_MAX_POINTS);
+    const downsampled = this.withCurrentPerformancePoint(
+      this.downsamplePoints(points, PERFORMANCE_MAX_POINTS),
+      { t: now.getTime(), value: currentTotalValue },
+      PERFORMANCE_MAX_POINTS,
+    );
 
     // Baseline.
     let baselineValue: number | null = null;
@@ -1483,6 +1495,7 @@ export class BrokerageService {
     now: Date,
     pricedPositions: PerformancePricedPosition[],
     fxSeriesByCurrency: Map<string, MarketSeries | null>,
+    fallbackStartCandidates: number[],
   ): number {
     if (range !== 'MAX') {
       const start = new Date(now);
@@ -1509,6 +1522,7 @@ export class BrokerageService {
       ...[...fxSeriesByCurrency.values()]
         .filter((series): series is MarketSeries => !!series)
         .map((series) => series.points[0]?.t),
+      ...fallbackStartCandidates,
     ].filter((t): t is number => typeof t === 'number');
 
     if (allFirstPoints.length === 0) {
@@ -1526,11 +1540,16 @@ export class BrokerageService {
     fxSeriesByCurrency: Map<string, MarketSeries | null>,
   ): number[] {
     const nowMs = now.getTime();
+    const effectiveRangeStart =
+      rangeStart < nowMs ? rangeStart : nowMs - 60_000;
     const timestamps = new Set<number>();
+
+    timestamps.add(effectiveRangeStart);
+    timestamps.add(nowMs);
 
     for (const position of pricedPositions) {
       for (const point of position.series.points) {
-        if (point.t >= rangeStart && point.t <= nowMs) {
+        if (point.t >= effectiveRangeStart && point.t <= nowMs) {
           timestamps.add(point.t);
         }
       }
@@ -1542,17 +1561,10 @@ export class BrokerageService {
       }
 
       for (const point of series.points) {
-        if (point.t >= rangeStart && point.t <= nowMs) {
+        if (point.t >= effectiveRangeStart && point.t <= nowMs) {
           timestamps.add(point.t);
         }
       }
-    }
-
-    if (timestamps.size === 0) {
-      // No series data at all (e.g. only manual/degraded positions): fall
-      // back to a flat two-point range so the chart still renders.
-      timestamps.add(rangeStart);
-      timestamps.add(nowMs);
     }
 
     return [...timestamps].sort((left, right) => left - right);
@@ -1633,6 +1645,27 @@ export class BrokerageService {
     }
 
     return result;
+  }
+
+  private withCurrentPerformancePoint(
+    points: BrokeragePerformancePointResponse[],
+    currentPoint: BrokeragePerformancePointResponse,
+    maxPoints: number,
+  ): BrokeragePerformancePointResponse[] {
+    if (points.length === 0) {
+      return [currentPoint];
+    }
+
+    const last = points[points.length - 1];
+    if (currentPoint.t <= last.t) {
+      return [...points.slice(0, -1), currentPoint];
+    }
+
+    if (points.length >= maxPoints) {
+      return [...points.slice(0, -1), currentPoint];
+    }
+
+    return [...points, currentPoint];
   }
 
   private round2(value: number): number {

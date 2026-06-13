@@ -380,9 +380,12 @@ describe("ImportsPageClient", () => {
     const revokeObjectUrl = vi.fn();
     const originalCreateObjectUrl = URL.createObjectURL;
     const originalRevokeObjectUrl = URL.revokeObjectURL;
+    const originalAnchorClick = HTMLAnchorElement.prototype.click;
+    const anchorClick = vi.fn();
 
     URL.createObjectURL = createObjectUrl;
     URL.revokeObjectURL = revokeObjectUrl;
+    HTMLAnchorElement.prototype.click = anchorClick;
     mockedReadApiError.mockResolvedValue("download failed");
     mockedFetchApiMutation
       .mockResolvedValueOnce(
@@ -402,31 +405,37 @@ describe("ImportsPageClient", () => {
         }),
       );
 
-    renderPage();
+    try {
+      renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: "Export templates" }));
-    await waitFor(() =>
-      expect(mockedFetchApiMutation).toHaveBeenNthCalledWith(
-        1,
-        "/imports/csv/templates/export",
-        { method: "POST" },
-      ),
-    );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Export templates" }),
+      );
+      await waitFor(() =>
+        expect(mockedFetchApiMutation).toHaveBeenNthCalledWith(
+          1,
+          "/imports/csv/templates/export",
+          { method: "POST" },
+        ),
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: "Export data" }));
-    await waitFor(() =>
-      expect(mockedFetchApiMutation).toHaveBeenNthCalledWith(
-        2,
-        "/imports/csv/export",
-        { method: "POST" },
-      ),
-    );
+      fireEvent.click(screen.getByRole("button", { name: "Export data" }));
+      await waitFor(() =>
+        expect(mockedFetchApiMutation).toHaveBeenNthCalledWith(
+          2,
+          "/imports/csv/export",
+          { method: "POST" },
+        ),
+      );
 
-    expect(createObjectUrl).toHaveBeenCalledTimes(2);
-    expect(revokeObjectUrl).toHaveBeenCalledTimes(2);
-
-    URL.createObjectURL = originalCreateObjectUrl;
-    URL.revokeObjectURL = originalRevokeObjectUrl;
+      expect(createObjectUrl).toHaveBeenCalledTimes(2);
+      expect(anchorClick).toHaveBeenCalledTimes(2);
+      expect(revokeObjectUrl).toHaveBeenCalledTimes(2);
+    } finally {
+      URL.createObjectURL = originalCreateObjectUrl;
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+      HTMLAnchorElement.prototype.click = originalAnchorClick;
+    }
   });
 
   it("refreshes the app router after a successful apply", async () => {

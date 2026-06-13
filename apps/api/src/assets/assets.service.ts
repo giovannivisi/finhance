@@ -1051,7 +1051,9 @@ export class AssetsService {
     fxRates: FxResolutionMap,
   ): AggregatePricingStatus {
     const hasStaleQuotes = assets.some(
-      (asset) => asset.valuationSource === 'LAST_QUOTE',
+      (asset) =>
+        asset.valuationSource === 'LAST_QUOTE' ||
+        asset.valuationSource === 'AVG_COST',
     );
     const hasStaleFx = [...fxRates.values()].some(
       (entry) => entry.status === 'STALE',

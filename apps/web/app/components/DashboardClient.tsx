@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from "react";
 import { Eye, EyeOff, MoreHorizontal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type {
@@ -87,8 +93,11 @@ function getValuationLabel(asset: DashboardAssetResponse): string {
 function getPricingStatusLabel(pricingStatus: AggregatePricingStatus): string {
   switch (pricingStatus.state) {
     case "FRESH":
+      return "Stored prices current";
     case "PARTIAL":
+      return "Some prices missing";
     case "STALE":
+      return "Stored prices stale";
     default:
       return "";
   }
@@ -443,7 +452,13 @@ export default function DashboardClient({
   const [lastDataRefreshMs, setLastDataRefreshMs] = useState(Date.now());
   const [isEditing, setIsEditing] = useState(false);
   const actions = useSingleFlightActions<"refresh">();
-  const { hideMoney, isHydrated, toggleHideMoney } = useAppPreferences();
+  const {
+    hideMoney,
+    isHydrated,
+    toggleHideMoney,
+    hasAttemptedDashboardRefresh,
+    markDashboardRefreshAttempted,
+  } = useAppPreferences();
   const allCategories = useMemo(() => Object.keys(grouped), [grouped]);
 
   // Live valuations are display-only: they update the figures the user sees
@@ -606,6 +621,23 @@ export default function DashboardClient({
     });
   }
 
+  const runAutoRefresh = useEffectEvent(() => {
+    if (hasAttemptedDashboardRefresh()) {
+      return;
+    }
+
+    markDashboardRefreshAttempted();
+    void handleRefresh();
+  });
+
+  useEffect(() => {
+    if (!isHydrated || !pricingStatus.refreshSuggested) {
+      return;
+    }
+
+    runAutoRefresh();
+  }, [isHydrated, pricingStatus.refreshSuggested]);
+
   const handleKindDragEnd = useCallback(
     (event: DragEndEvent, type: "ASSET" | "LIABILITY") => {
       const { active, over } = event;
@@ -699,18 +731,24 @@ export default function DashboardClient({
       ? "No stored price snapshot yet"
       : nowMs == null
         ? "Stored price snapshot available"
-        : `Last refresh ${Math.max(
+        : `Stored refresh ${Math.max(
             0,
             Math.floor(
               (nowMs - Math.max(Date.parse(lastRefreshAt), lastDataRefreshMs)) /
                 60_000,
             ),
           )} min ago`;
+  const liveStatusDetail =
+    liveQuotes.length > 0 ? "Live quotes updating every 15s" : null;
   const refreshStatus = isRefreshing
     ? "Refreshing latest prices..."
-    : [getPricingStatusLabel(pricingStatus), refreshStatusDetail]
+    : [
+        getPricingStatusLabel(pricingStatus),
+        liveStatusDetail,
+        refreshStatusDetail,
+      ]
         .filter(Boolean)
-        .join(" ");
+        .join(" · ");
 
   const refreshToneClass = refreshError
     ? "is-error"

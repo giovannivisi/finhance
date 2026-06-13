@@ -30,6 +30,14 @@ type CategoryReadClient = PrismaService | Prisma.TransactionClient;
 export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private runSerializableTransaction<T>(
+    callback: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(callback, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  }
+
   async findAll(
     ownerId: string,
     options?: { includeArchived?: boolean },
@@ -98,7 +106,7 @@ export class CategoriesService {
   ): Promise<HierarchicalCategoryRecord> {
     const prepared = await this.prepareCategoryInput(ownerId, dto);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableTransaction(async (tx) => {
       await this.assertActiveNameAvailable(
         tx,
         ownerId,
@@ -148,7 +156,7 @@ export class CategoriesService {
   ): Promise<HierarchicalCategoryRecord> {
     const prepared = await this.prepareCategoryInput(ownerId, dto, id);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableTransaction(async (tx) => {
       const existing = await this.getRequiredCategory(tx, ownerId, id);
 
       await this.assertHierarchyChangeAllowed(tx, ownerId, existing, prepared);
@@ -266,7 +274,7 @@ export class CategoriesService {
   }
 
   async remove(ownerId: string, id: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    await this.runSerializableTransaction(async (tx) => {
       const existing = await this.getRequiredCategory(tx, ownerId, id);
 
       if (existing.archivedAt) {
@@ -299,7 +307,7 @@ export class CategoriesService {
     ownerId: string,
     id: string,
   ): Promise<HierarchicalCategoryRecord> {
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableTransaction(async (tx) => {
       const existing = await this.getRequiredCategory(tx, ownerId, id);
 
       if (!existing.archivedAt) {
@@ -340,7 +348,7 @@ export class CategoriesService {
   }
 
   async permanentlyDelete(ownerId: string, id: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    await this.runSerializableTransaction(async (tx) => {
       const existing = await this.getRequiredCategory(tx, ownerId, id);
 
       if (!existing.archivedAt) {

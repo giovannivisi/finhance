@@ -11,6 +11,8 @@ import { apiMutation } from "@lib/api";
 import { requestDashboardRefresh } from "@lib/dashboard-refresh";
 
 const refreshMock = vi.fn();
+const hasAttemptedDashboardRefreshMock = vi.fn();
+const markDashboardRefreshAttemptedMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -23,9 +25,17 @@ vi.mock("next/link", () => ({
   default: ({
     children,
     href,
+    onClick,
     ...rest
   }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...rest}>
+    <a
+      href={href}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick?.(event);
+      }}
+      {...rest}
+    >
       {children}
     </a>
   ),
@@ -36,8 +46,8 @@ vi.mock("@components/ThemeProvider", () => ({
     hideMoney: false,
     isHydrated: true,
     toggleHideMoney: vi.fn(),
-    hasAttemptedDashboardRefresh: () => true,
-    markDashboardRefreshAttempted: vi.fn(),
+    hasAttemptedDashboardRefresh: hasAttemptedDashboardRefreshMock,
+    markDashboardRefreshAttempted: markDashboardRefreshAttemptedMock,
   }),
 }));
 
@@ -164,6 +174,9 @@ describe("DashboardClient", () => {
     vi.mocked(apiMutation).mockReset();
     vi.mocked(requestDashboardRefresh).mockReset();
     vi.mocked(requestDashboardRefresh).mockResolvedValue({ ok: true });
+    hasAttemptedDashboardRefreshMock.mockReset();
+    hasAttemptedDashboardRefreshMock.mockReturnValue(false);
+    markDashboardRefreshAttemptedMock.mockReset();
     useLiveValuationsMock.mockReset();
     useLiveValuationsMock.mockReturnValue({ data: null, error: null });
     document.documentElement.setAttribute("data-theme", "dark");
@@ -281,7 +294,41 @@ describe("DashboardClient", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not auto-refresh stale pricing on hydration", () => {
+  it("auto-refreshes stale pricing on hydration", async () => {
+    let resolveRefresh: (value: { ok: true }) => void = () => {};
+    vi.mocked(requestDashboardRefresh).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+
+    renderDashboard({
+      pricingStatus: {
+        state: "STALE",
+        refreshSuggested: true,
+        hasStaleQuotes: true,
+        hasStaleFx: false,
+        hasMissingFx: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
+    });
+    expect(markDashboardRefreshAttemptedMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Refreshing latest prices/)).toBeInTheDocument();
+
+    resolveRefresh({ ok: true });
+
+    await waitFor(() => {
+      expect(refreshMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not repeat stale pricing auto-refresh after the session attempt", () => {
+    hasAttemptedDashboardRefreshMock.mockReturnValue(true);
+
     renderDashboard({
       pricingStatus: {
         state: "STALE",
@@ -293,16 +340,19 @@ describe("DashboardClient", () => {
     });
 
     expect(requestDashboardRefresh).not.toHaveBeenCalled();
+    expect(markDashboardRefreshAttemptedMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
     expect(
       screen.queryByText(
         /Latest stored values shown\. Refresh when you want live quotes/,
       ),
     ).toBeNull();
-    expect(screen.getByText(/Last refresh \d+ min ago/)).toBeInTheDocument();
+    expect(screen.getByText(/Stored refresh \d+ min ago/)).toBeInTheDocument();
   });
 
   it("shows latest labels for stale stored valuations", () => {
+    hasAttemptedDashboardRefreshMock.mockReturnValue(true);
+
     renderDashboard({
       pricingStatus: {
         state: "STALE",

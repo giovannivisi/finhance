@@ -90,6 +90,14 @@ export class AccountsService {
     private readonly transactionsService?: TransactionsService,
   ) {}
 
+  private runSerializableTransaction<T>(
+    callback: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(callback, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  }
+
   async findAll(
     ownerId: string,
     options?: { includeArchived?: boolean },
@@ -237,7 +245,7 @@ export class AccountsService {
   async create(ownerId: string, dto: CreateAccountDto): Promise<Account> {
     const prepared = this.prepareAccountInput(ownerId, dto);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableTransaction(async (tx) => {
       const activeAccounts = await this.findActiveOrderedAccounts(tx, ownerId);
       const targetOrder = this.clampOrder(
         prepared.order,
@@ -278,7 +286,7 @@ export class AccountsService {
   ): Promise<Account> {
     const prepared = this.prepareAccountInput(ownerId, dto);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableTransaction(async (tx) => {
       const existing = await this.getRequiredAccount(tx, ownerId, id);
       await this.assertOpeningBalanceBaselineUpdateAllowed(
         tx,
@@ -342,7 +350,7 @@ export class AccountsService {
   }
 
   async remove(ownerId: string, id: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    await this.runSerializableTransaction(async (tx) => {
       const existing = await this.getRequiredAccount(tx, ownerId, id);
 
       if (existing.archivedAt) {
@@ -363,7 +371,7 @@ export class AccountsService {
   }
 
   async unarchive(ownerId: string, id: string): Promise<Account> {
-    return this.prisma.$transaction(async (tx) => {
+    return this.runSerializableTransaction(async (tx) => {
       const existing = await this.getRequiredAccount(tx, ownerId, id);
 
       if (!existing.archivedAt) {
@@ -385,7 +393,7 @@ export class AccountsService {
   }
 
   async permanentlyDelete(ownerId: string, id: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    await this.runSerializableTransaction(async (tx) => {
       const existing = await this.getRequiredAccount(tx, ownerId, id);
 
       if (!existing.archivedAt) {

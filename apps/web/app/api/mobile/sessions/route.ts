@@ -1,6 +1,7 @@
 import { resolveCrossOriginRejection } from "@lib/api-proxy";
 import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { resolveMobileBearerUser } from "@lib/mobile-auth";
 import { prisma } from "@lib/prisma";
 
 export const runtime = "nodejs";
@@ -27,7 +28,17 @@ export async function DELETE(request: Request) {
   }
 
   const session = await auth();
-  const userId = session?.user?.id?.trim();
+  let userId = session?.user?.id?.trim() ?? null;
+
+  if (!userId) {
+    const mobileUser = await resolveMobileBearerUser(
+      request.headers.get("authorization"),
+    );
+
+    if (mobileUser.present && !mobileUser.invalid) {
+      userId = mobileUser.user.userId;
+    }
+  }
 
   if (!userId) {
     return Response.json(

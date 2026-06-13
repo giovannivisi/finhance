@@ -70,6 +70,25 @@ test("resolvePrivacyNoticeConfig provides local defaults for self-hosted mode", 
   assert.match(config.importSummary.recipients, /loopback browser origins/i);
   assert.match(config.importSummary.recipients, /Yahoo Finance/i);
   assert.ok(
+    config.categoryGroups.some((group) =>
+      group.items.some((item) => /mobile session tokens/i.test(item)),
+    ),
+  );
+  assert.ok(
+    config.processingActivities.some(
+      (activity) =>
+        activity.key === "marketData" &&
+        /historical chart/i.test(activity.purpose),
+    ),
+  );
+  assert.ok(
+    config.retention.some(
+      (entry) =>
+        entry.key === "requestSafety" &&
+        /performance-series cache/i.test(entry.retention),
+    ),
+  );
+  assert.ok(
     config.processors.some((processor) =>
       processor.name.includes("Yahoo Finance"),
     ),

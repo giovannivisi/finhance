@@ -23,6 +23,158 @@ const ts = "2026-01-01T09:00:00.000Z";
 const base = { createdAt: ts, updatedAt: ts };
 const deletable = { canDeletePermanently: false, deleteBlockReason: "in use" };
 
+const importBatches = [
+  {
+    id: "imp-demo-1",
+    source: "CSV_TEMPLATE",
+    status: "APPLIED",
+    summary: {
+      files: [
+        {
+          file: "accounts",
+          createCount: 2,
+          updateCount: 1,
+          unchangedCount: 0,
+        },
+        {
+          file: "transactions",
+          createCount: 28,
+          updateCount: 4,
+          unchangedCount: 12,
+        },
+        {
+          file: "expenseValidationRules",
+          createCount: 3,
+          updateCount: 0,
+          unchangedCount: 5,
+        },
+      ],
+      errorCount: 0,
+      warningCount: 1,
+    },
+    issues: [
+      {
+        file: "transactions",
+        rowNumber: 14,
+        field: "notes",
+        severity: "WARNING",
+        message: "Long note was trimmed in the preview.",
+      },
+    ],
+    createdAt: day(4, -1),
+    appliedAt: day(4, -1),
+  },
+  {
+    id: "imp-demo-2",
+    source: "CSV_TEMPLATE",
+    status: "PREVIEW",
+    summary: {
+      files: [
+        {
+          file: "budgets",
+          createCount: 6,
+          updateCount: 0,
+          unchangedCount: 0,
+        },
+        {
+          file: "budgetOverrides",
+          createCount: 2,
+          updateCount: 0,
+          unchangedCount: 0,
+        },
+      ],
+      errorCount: 0,
+      warningCount: 0,
+    },
+    issues: [],
+    createdAt: day(12),
+    appliedAt: null,
+  },
+];
+
+const privacyNotice = {
+  deploymentMode: "local",
+  lastUpdated: "2026-06-13",
+  controller: {
+    name: "Mock finhance workspace",
+    email: "privacy@example.test",
+    website: null,
+    postalAddress: null,
+    instructions: "Mock data for mobile development.",
+  },
+  rightsContact: {
+    name: "Mock finhance workspace",
+    email: "rights@example.test",
+    website: null,
+    postalAddress: null,
+    instructions: null,
+  },
+  supervisoryAuthority: {
+    name: "Your local data protection authority",
+    complaintUrl: "https://www.edpb.europa.eu/about-edpb/about-edpb/members_en",
+  },
+  categoryGroups: [
+    {
+      title: "Finance records",
+      items: [
+        "Accounts, transactions, assets, liabilities, budgets, and categories.",
+        "Notes, descriptions, counterparties, and imported CSV rows.",
+      ],
+    },
+    {
+      title: "Device data",
+      items: [
+        "Mobile server connection details and hosted mobile session tokens.",
+        "Theme and hide-amounts preferences stored on this device.",
+      ],
+    },
+  ],
+  sourceOfData: [
+    "Directly from you when you enter or import records.",
+    "From market data providers when quote or FX refreshes run.",
+  ],
+  processingActivities: [
+    {
+      key: "workspaceRecords",
+      title: "Operate the finance workspace",
+      purpose: "Store and organise the workspace records shown in the app.",
+      dataCategories: ["Workspace finance records."],
+      legalBasis: {
+        basis: "Art. 6(1)(b) GDPR",
+        explanation: "Provide the workspace features.",
+        legitimateInterests: null,
+      },
+    },
+    {
+      key: "marketData",
+      title: "Refresh market prices and FX rates",
+      purpose: "Fetch quote, FX, and historical chart data on request.",
+      dataCategories: ["Market symbols, chart ranges, and currency pairs."],
+      legalBasis: {
+        basis: "Art. 6(1)(b) GDPR",
+        explanation: "Provide valuation features.",
+        legitimateInterests: null,
+      },
+    },
+  ],
+  retention: [
+    {
+      key: "workspaceData",
+      title: "Workspace finance records",
+      retention: "Stored until removed from the workspace.",
+      detail: "Mock notice detail.",
+    },
+    {
+      key: "browserPreferences",
+      title: "Device preferences and mobile connection state",
+      retention: "Stored until the app is disconnected or storage is cleared.",
+      detail: "Mock notice detail.",
+    },
+  ],
+  automatedDecisionMaking:
+    "The mock notice does not describe automated decision-making with legal or similarly significant effects.",
+};
+
 const accounts = [
   {
     id: "acc-bank",
@@ -1299,6 +1451,7 @@ const routes = {
   "/snapshots": snapshots,
   "/brokerage": [brokerSummary],
   "/assets/live-valuations": buildLiveValuations,
+  "/imports": importBatches,
   "/users/me/settings": {
     showTransactionTimes: true,
     startPage: "DASHBOARD",
@@ -1395,6 +1548,21 @@ const server = createServer((req, res) => {
       res.statusCode = 302;
       res.setHeader("location", `${redirect}#token=${MOCK_MOBILE_TOKEN}`);
       console.log(`${req.method} ${path} -> 302 ${redirect}`);
+      res.end();
+      return;
+    }
+
+    if (path === "/api/mobile/privacy") {
+      return respond(200, privacyNotice);
+    }
+
+    if (path === "/api/mobile/sessions" && req.method === "DELETE") {
+      if (req.headers.authorization !== `Bearer ${MOCK_MOBILE_TOKEN}`) {
+        return respond(401, { message: "Mobile session is invalid or expired." });
+      }
+
+      console.log(`${req.method} ${path} -> 204`);
+      res.statusCode = 204;
       res.end();
       return;
     }

@@ -38,6 +38,10 @@ import {
   mergeDashboardAssetsWithLiveQuotes,
 } from "@/lib/live-merge";
 import { formatMoney } from "@/lib/money";
+import {
+  formatPriceRefreshStatusText,
+  shouldStartAutomaticPriceRefresh,
+} from "@/lib/price-refresh";
 import { useIsScreenActive } from "@/lib/screen-active";
 import { spacing, useTheme } from "@/theme";
 
@@ -133,6 +137,7 @@ export default function DashboardScreen() {
   const previousQuotesRef = useRef<
     readonly LiveAssetValuationResponse[] | null
   >(null);
+  const autoRefreshStartedRef = useRef(false);
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
@@ -155,6 +160,21 @@ export default function DashboardScreen() {
   }, [liveQuotes]);
 
   const data = dashboardQuery.data;
+
+  useEffect(() => {
+    if (
+      !shouldStartAutomaticPriceRefresh({
+        isActive,
+        refreshSuggested: data?.dashboard.pricingStatus.refreshSuggested,
+        alreadyStarted: autoRefreshStartedRef.current,
+      })
+    ) {
+      return;
+    }
+
+    autoRefreshStartedRef.current = true;
+    refreshAssets.mutate();
+  }, [data?.dashboard.pricingStatus.refreshSuggested, isActive, refreshAssets]);
 
   const mergedAssets = useMemo(
     () =>
@@ -233,6 +253,12 @@ export default function DashboardScreen() {
 
   const liveNetWorth = dashboard.summary.netWorth + liveValueDelta;
   const liveAssets = dashboard.summary.assets + liveValueDelta;
+  const refreshStatusText = formatPriceRefreshStatusText({
+    isRefreshing: refreshAssets.isPending,
+    hasLiveQuotes: Boolean(liveQuotes && liveQuotes.length > 0),
+    lastRefreshAt: dashboard.lastRefreshAt,
+    formatTimestamp: formatTimestampLabel,
+  });
 
   return (
     <Screen
@@ -331,9 +357,7 @@ export default function DashboardScreen() {
           >
             <PricingStatusChip state={dashboard.pricingStatus.state} />
             <AppText variant="caption" tone="tertiary">
-              {dashboard.lastRefreshAt
-                ? `Refreshed ${formatTimestampLabel(dashboard.lastRefreshAt)}`
-                : "Prices not refreshed yet"}
+              {refreshStatusText}
             </AppText>
           </View>
 

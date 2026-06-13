@@ -17,6 +17,7 @@ import type {
   UpsertAssetRequest,
   UpsertCategoryBudgetOverrideRequest,
   UpsertCategoryRequest,
+  UpsertExpenseValidationRuleRequest,
   UpsertRecurringOccurrenceRequest,
   UpsertRecurringTransactionRuleRequest,
   UpsertTransactionRequest,
@@ -59,8 +60,114 @@ export const queryKeys = {
   brokeragePerformance: (accountId: string, range: BrokeragePerformanceRange) =>
     ["brokerage", "performance", accountId, range] as const,
   liveValuations: ["assets", "live-valuations"] as const,
+  imports: ["imports"] as const,
+  expenseValidation: ["expense-validation"] as const,
   userSettings: ["user", "settings"] as const,
 };
+
+type QueryRoot =
+  | "dashboard"
+  | "setup"
+  | "accounts"
+  | "categories"
+  | "transactions"
+  | "cashflow"
+  | "budgets"
+  | "assets"
+  | "recurring"
+  | "monthly-review"
+  | "snapshots"
+  | "brokerage"
+  | "imports"
+  | "expense-validation";
+
+const TRANSACTION_INVALIDATION_ROOTS = [
+  "dashboard",
+  "setup",
+  "accounts",
+  "transactions",
+  "cashflow",
+  "budgets",
+  "assets",
+  "recurring",
+  "monthly-review",
+  "brokerage",
+] as const satisfies readonly QueryRoot[];
+
+const ACCOUNT_INVALIDATION_ROOTS = [
+  "dashboard",
+  "setup",
+  "accounts",
+  "transactions",
+  "cashflow",
+  "budgets",
+  "assets",
+  "recurring",
+  "monthly-review",
+  "brokerage",
+] as const satisfies readonly QueryRoot[];
+
+const CATEGORY_INVALIDATION_ROOTS = [
+  "dashboard",
+  "setup",
+  "categories",
+  "transactions",
+  "cashflow",
+  "budgets",
+  "recurring",
+  "monthly-review",
+  "imports",
+  "expense-validation",
+] as const satisfies readonly QueryRoot[];
+
+const ASSET_INVALIDATION_ROOTS = [
+  "dashboard",
+  "setup",
+  "accounts",
+  "assets",
+  "brokerage",
+  "snapshots",
+] as const satisfies readonly QueryRoot[];
+
+const BUDGET_INVALIDATION_ROOTS = [
+  "dashboard",
+  "budgets",
+  "monthly-review",
+] as const satisfies readonly QueryRoot[];
+
+const RECURRING_INVALIDATION_ROOTS = [
+  "dashboard",
+  "accounts",
+  "transactions",
+  "cashflow",
+  "budgets",
+  "assets",
+  "recurring",
+  "monthly-review",
+] as const satisfies readonly QueryRoot[];
+
+const SNAPSHOT_INVALIDATION_ROOTS = [
+  "dashboard",
+  "snapshots",
+] as const satisfies readonly QueryRoot[];
+
+const BROKERAGE_INVALIDATION_ROOTS = [
+  "dashboard",
+  "setup",
+  "accounts",
+  "transactions",
+  "cashflow",
+  "budgets",
+  "assets",
+  "monthly-review",
+  "snapshots",
+  "brokerage",
+] as const satisfies readonly QueryRoot[];
+
+const EXPENSE_VALIDATION_INVALIDATION_ROOTS = [
+  "imports",
+  "expense-validation",
+] as const satisfies readonly QueryRoot[];
 
 export function useDashboard() {
   const client = useApiClient();
@@ -115,8 +222,16 @@ export function useTransaction(id: string | null) {
 export function useExpenseValidationRules() {
   const client = useApiClient();
   return useQuery({
-    queryKey: ["expense-validation"] as const,
+    queryKey: queryKeys.expenseValidation,
     queryFn: () => api.expenseValidation.list(client),
+  });
+}
+
+export function useImportBatches() {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.imports,
+    queryFn: () => api.imports.list(client),
   });
 }
 
@@ -273,32 +388,19 @@ export function useUserSettings(): UseQueryResult<
   });
 }
 
-/** Invalidates everything money-related after a data mutation. */
-function useInvalidateData() {
+function useInvalidateData(roots: readonly QueryRoot[]) {
   const queryClient = useQueryClient();
 
   return async () => {
     await Promise.all(
-      [
-        "dashboard",
-        "setup",
-        "accounts",
-        "transactions",
-        "cashflow",
-        "budgets",
-        "assets",
-        "recurring",
-        "monthly-review",
-        "snapshots",
-        "brokerage",
-      ].map((root) => queryClient.invalidateQueries({ queryKey: [root] })),
+      roots.map((root) => queryClient.invalidateQueries({ queryKey: [root] })),
     );
   };
 }
 
 export function useCreateTransaction() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(TRANSACTION_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: UpsertTransactionRequest) =>
       api.transactions.create(client, body),
@@ -308,7 +410,7 @@ export function useCreateTransaction() {
 
 export function useUpdateTransaction() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(TRANSACTION_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({
       id,
@@ -323,7 +425,7 @@ export function useUpdateTransaction() {
 
 export function useDeleteTransaction() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(TRANSACTION_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) => api.transactions.remove(client, id),
     onSuccess: invalidate,
@@ -332,7 +434,7 @@ export function useDeleteTransaction() {
 
 export function useCreateAccount() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ACCOUNT_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: UpsertAccountRequest) =>
       api.accounts.create(client, body),
@@ -342,7 +444,7 @@ export function useCreateAccount() {
 
 export function useUpdateAccount() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ACCOUNT_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpsertAccountRequest }) =>
       api.accounts.update(client, id, body),
@@ -352,7 +454,7 @@ export function useUpdateAccount() {
 
 export function useArchiveAccount() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ACCOUNT_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) => api.accounts.archive(client, id),
     onSuccess: invalidate,
@@ -361,7 +463,7 @@ export function useArchiveAccount() {
 
 export function useUnarchiveAccount() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ACCOUNT_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) => api.accounts.unarchive(client, id),
     onSuccess: invalidate,
@@ -370,7 +472,7 @@ export function useUnarchiveAccount() {
 
 export function useDeleteAccountPermanently() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ACCOUNT_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) => api.accounts.deletePermanently(client, id),
     onSuccess: invalidate,
@@ -379,7 +481,7 @@ export function useDeleteAccountPermanently() {
 
 export function useReconciliationAdjustment() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(TRANSACTION_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) =>
       api.accounts.createReconciliationAdjustment(client, id),
@@ -389,7 +491,7 @@ export function useReconciliationAdjustment() {
 
 export function useEstablishOpeningBalanceBaseline() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ACCOUNT_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) =>
       api.accounts.establishOpeningBalanceBaseline(client, id),
@@ -399,7 +501,7 @@ export function useEstablishOpeningBalanceBaseline() {
 
 export function useCreateCategory() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(CATEGORY_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: UpsertCategoryRequest) =>
       api.categories.create(client, body),
@@ -409,7 +511,7 @@ export function useCreateCategory() {
 
 export function useUpdateCategory() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(CATEGORY_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpsertCategoryRequest }) =>
       api.categories.update(client, id, body),
@@ -419,7 +521,7 @@ export function useUpdateCategory() {
 
 export function useArchiveCategory() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(CATEGORY_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) => api.categories.archive(client, id),
     onSuccess: invalidate,
@@ -428,7 +530,7 @@ export function useArchiveCategory() {
 
 export function useUnarchiveCategory() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(CATEGORY_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) => api.categories.unarchive(client, id),
     onSuccess: invalidate,
@@ -437,7 +539,7 @@ export function useUnarchiveCategory() {
 
 export function useDeleteCategoryPermanently() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(CATEGORY_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) => api.categories.deletePermanently(client, id),
     onSuccess: invalidate,
@@ -446,7 +548,7 @@ export function useDeleteCategoryPermanently() {
 
 export function useCreateAsset() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ASSET_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: UpsertAssetRequest) => api.assets.create(client, body),
     onSuccess: invalidate,
@@ -455,7 +557,7 @@ export function useCreateAsset() {
 
 export function useUpdateAsset() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ASSET_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpsertAssetRequest }) =>
       api.assets.update(client, id, body),
@@ -465,7 +567,7 @@ export function useUpdateAsset() {
 
 export function useDeleteAsset() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ASSET_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) => api.assets.remove(client, id),
     onSuccess: invalidate,
@@ -474,7 +576,7 @@ export function useDeleteAsset() {
 
 export function useRefreshAssets() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(ASSET_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: () => api.assets.refresh(client),
     onSuccess: invalidate,
@@ -483,7 +585,7 @@ export function useRefreshAssets() {
 
 export function useCreateBudget() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(BUDGET_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: CreateCategoryBudgetRequest) =>
       api.budgets.create(client, body),
@@ -493,7 +595,7 @@ export function useCreateBudget() {
 
 export function useUpdateBudget() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(BUDGET_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({
       id,
@@ -508,7 +610,7 @@ export function useUpdateBudget() {
 
 export function useDeleteBudget() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(BUDGET_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({
       id,
@@ -523,7 +625,7 @@ export function useDeleteBudget() {
 
 export function useUpsertBudgetOverride() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(BUDGET_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({
       id,
@@ -540,7 +642,7 @@ export function useUpsertBudgetOverride() {
 
 export function useClearBudgetOverride() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(BUDGET_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({ id, month }: { id: string; month: string }) =>
       api.budgets.clearOverride(client, id, month),
@@ -550,7 +652,7 @@ export function useClearBudgetOverride() {
 
 export function useCreateRecurringRule() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(RECURRING_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: UpsertRecurringTransactionRuleRequest) =>
       api.recurring.create(client, body),
@@ -560,7 +662,7 @@ export function useCreateRecurringRule() {
 
 export function useUpdateRecurringRule() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(RECURRING_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({
       id,
@@ -575,7 +677,7 @@ export function useUpdateRecurringRule() {
 
 export function useDeleteRecurringRule() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(RECURRING_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (id: string) => api.recurring.remove(client, id),
     onSuccess: invalidate,
@@ -584,7 +686,7 @@ export function useDeleteRecurringRule() {
 
 export function useUpsertRecurringOccurrence() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(RECURRING_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({
       id,
@@ -601,7 +703,7 @@ export function useUpsertRecurringOccurrence() {
 
 export function useClearRecurringOccurrence() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(RECURRING_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: ({ id, month }: { id: string; month: string }) =>
       api.recurring.clearOccurrence(client, id, month),
@@ -611,7 +713,7 @@ export function useClearRecurringOccurrence() {
 
 export function useMaterializeRecurring() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(RECURRING_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: () => api.recurring.materialize(client),
     onSuccess: invalidate,
@@ -620,7 +722,7 @@ export function useMaterializeRecurring() {
 
 export function useCaptureSnapshot() {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(SNAPSHOT_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: () => api.snapshots.capture(client),
     onSuccess: invalidate,
@@ -629,7 +731,7 @@ export function useCaptureSnapshot() {
 
 export function useBrokerageBuy(accountId: string) {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(BROKERAGE_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: CreateBrokerageBuyRequest) =>
       api.brokerage.buy(client, accountId, body),
@@ -639,7 +741,7 @@ export function useBrokerageBuy(accountId: string) {
 
 export function useBrokerageSell(accountId: string) {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(BROKERAGE_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: CreateBrokerageSellRequest) =>
       api.brokerage.sell(client, accountId, body),
@@ -649,7 +751,7 @@ export function useBrokerageSell(accountId: string) {
 
 export function useBrokerageDividend(accountId: string) {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(BROKERAGE_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: CreateBrokerageDividendRequest) =>
       api.brokerage.dividend(client, accountId, body),
@@ -659,10 +761,44 @@ export function useBrokerageDividend(accountId: string) {
 
 export function useBrokerageFee(accountId: string) {
   const client = useApiClient();
-  const invalidate = useInvalidateData();
+  const invalidate = useInvalidateData(BROKERAGE_INVALIDATION_ROOTS);
   return useMutation({
     mutationFn: (body: CreateBrokerageFeeRequest) =>
       api.brokerage.fee(client, accountId, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCreateExpenseValidationRule() {
+  const client = useApiClient();
+  const invalidate = useInvalidateData(EXPENSE_VALIDATION_INVALIDATION_ROOTS);
+  return useMutation({
+    mutationFn: (body: UpsertExpenseValidationRuleRequest) =>
+      api.expenseValidation.create(client, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateExpenseValidationRule() {
+  const client = useApiClient();
+  const invalidate = useInvalidateData(EXPENSE_VALIDATION_INVALIDATION_ROOTS);
+  return useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: UpsertExpenseValidationRuleRequest;
+    }) => api.expenseValidation.update(client, id, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteExpenseValidationRule() {
+  const client = useApiClient();
+  const invalidate = useInvalidateData(EXPENSE_VALIDATION_INVALIDATION_ROOTS);
+  return useMutation({
+    mutationFn: (id: string) => api.expenseValidation.remove(client, id),
     onSuccess: invalidate,
   });
 }

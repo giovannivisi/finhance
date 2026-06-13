@@ -34,6 +34,39 @@ export function isAssignableTransactionCategory(
   return !category.isSecondary;
 }
 
+function isSelectableCategory(
+  category: CategoryResponse,
+  selectedId?: string | null,
+): boolean {
+  return category.archivedAt === null || category.id === selectedId;
+}
+
+export function expensePrimaryCategories(
+  categories: CategoryResponse[],
+  selectedId?: string | null,
+): CategoryResponse[] {
+  return categories.filter(
+    (category) =>
+      category.type === "EXPENSE" &&
+      category.isPrimary &&
+      isSelectableCategory(category, selectedId),
+  );
+}
+
+export function expenseSecondaryCategories(
+  categories: CategoryResponse[],
+  primaryCategoryId: string,
+  selectedId?: string | null,
+): CategoryResponse[] {
+  return categories.filter(
+    (category) =>
+      category.type === "EXPENSE" &&
+      category.isSecondary &&
+      category.parentCategoryId === primaryCategoryId &&
+      isSelectableCategory(category, selectedId),
+  );
+}
+
 export function activityCategoryFilterValue(
   category: CategoryResponse,
 ): ActivityCategoryFilterValue {

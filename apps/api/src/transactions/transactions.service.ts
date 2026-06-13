@@ -146,6 +146,14 @@ export class TransactionsService {
     private readonly pricesService: PricesService,
   ) {}
 
+  private runSerializableTransaction<T>(
+    callback: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.prisma.$transaction(callback, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  }
+
   async findAll(
     ownerId: string,
     filters: TransactionFilters,
@@ -458,7 +466,7 @@ export class TransactionsService {
 
     const row =
       client === this.prisma
-        ? await this.prisma.$transaction((tx) => persist(tx))
+        ? await this.runSerializableTransaction((tx) => persist(tx))
         : await persist(client);
 
     return {
@@ -538,7 +546,7 @@ export class TransactionsService {
         destinationAccountId: existing.inflow.accountId,
       });
 
-      await this.prisma.$transaction(async (tx) => {
+      await this.runSerializableTransaction(async (tx) => {
         // Reverse old transfer cash effects (skip validation — reversals)
         await this.adjustAccountCashBalance(
           ownerId,
@@ -644,7 +652,7 @@ export class TransactionsService {
           },
         );
 
-        await this.prisma.$transaction(async (tx) => {
+        await this.runSerializableTransaction(async (tx) => {
           for (const row of existing.rows) {
             await this.adjustAccountCashBalance(
               ownerId,
@@ -716,7 +724,7 @@ export class TransactionsService {
       });
       const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
 
-      const row = await this.prisma.$transaction(async (tx) => {
+      const row = await this.runSerializableTransaction(async (tx) => {
         for (const existingRow of existing.rows) {
           await this.adjustAccountCashBalance(
             ownerId,
@@ -813,7 +821,7 @@ export class TransactionsService {
       });
       const splitGroupId = `split_${randomUUID()}`;
 
-      await this.prisma.$transaction(async (tx) => {
+      await this.runSerializableTransaction(async (tx) => {
         await this.adjustAccountCashBalance(
           ownerId,
           existing.row.accountId,
@@ -888,7 +896,7 @@ export class TransactionsService {
 
     const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
 
-    const row = await this.prisma.$transaction(async (tx) => {
+    const row = await this.runSerializableTransaction(async (tx) => {
       if (!isAdjustment) {
         // Reverse the old transaction's cash effect before validating the
         // replacement against the same atomic balance state.
@@ -965,73 +973,79 @@ export class TransactionsService {
     this.assertEntryIsMutable(existing);
 
     if (existing.entryType === 'TRANSFER') {
-      // Reverse cash effects for both legs of the transfer (skip validation)
-      await this.adjustAccountCashBalance(
-        ownerId,
-        existing.outflow.accountId,
-        existing.outflow.amount,
-        TransactionDirection.INFLOW,
-        this.prisma,
-        { skipValidation: true },
-      );
-      await this.adjustAccountCashBalance(
-        ownerId,
-        existing.inflow.accountId,
-        existing.inflow.amount,
-        TransactionDirection.OUTFLOW,
-        this.prisma,
-        { skipValidation: true },
-      );
-      await this.prisma.transaction.deleteMany({
-        where: {
-          userId: ownerId,
-          transferGroupId: existing.transferGroupId,
-        },
+      await this.runSerializableTransaction(async (tx) => {
+        // Reverse cash effects for both legs of the transfer (skip validation)
+        await this.adjustAccountCashBalance(
+          ownerId,
+          existing.outflow.accountId,
+          existing.outflow.amount,
+          TransactionDirection.INFLOW,
+          tx,
+          { skipValidation: true },
+        );
+        await this.adjustAccountCashBalance(
+          ownerId,
+          existing.inflow.accountId,
+          existing.inflow.amount,
+          TransactionDirection.OUTFLOW,
+          tx,
+          { skipValidation: true },
+        );
+        await tx.transaction.deleteMany({
+          where: {
+            userId: ownerId,
+            transferGroupId: existing.transferGroupId,
+          },
+        });
       });
       return;
     }
 
     if (existing.entryType === 'SPLIT') {
-      for (const row of existing.rows) {
-        await this.adjustAccountCashBalance(
-          ownerId,
-          row.accountId,
-          row.amount,
-          TransactionDirection.INFLOW,
-          this.prisma,
-          { skipValidation: true },
-        );
-      }
+      await this.runSerializableTransaction(async (tx) => {
+        for (const row of existing.rows) {
+          await this.adjustAccountCashBalance(
+            ownerId,
+            row.accountId,
+            row.amount,
+            TransactionDirection.INFLOW,
+            tx,
+            { skipValidation: true },
+          );
+        }
 
-      await this.prisma.transaction.deleteMany({
-        where: {
-          userId: ownerId,
-          splitGroupId: existing.splitGroupId,
-        },
+        await tx.transaction.deleteMany({
+          where: {
+            userId: ownerId,
+            splitGroupId: existing.splitGroupId,
+          },
+        });
       });
       return;
     }
 
     const isAdjustment = existing.row.kind === TransactionKind.ADJUSTMENT;
 
-    if (!isAdjustment) {
-      // Reverse the deleted transaction's cash effect (skip validation)
-      const reverseDirection =
-        existing.row.direction === TransactionDirection.INFLOW
-          ? TransactionDirection.OUTFLOW
-          : TransactionDirection.INFLOW;
-      await this.adjustAccountCashBalance(
-        ownerId,
-        existing.row.accountId,
-        existing.row.amount,
-        reverseDirection,
-        this.prisma,
-        { skipValidation: true },
-      );
-    }
+    await this.runSerializableTransaction(async (tx) => {
+      if (!isAdjustment) {
+        // Reverse the deleted transaction's cash effect (skip validation)
+        const reverseDirection =
+          existing.row.direction === TransactionDirection.INFLOW
+            ? TransactionDirection.OUTFLOW
+            : TransactionDirection.INFLOW;
+        await this.adjustAccountCashBalance(
+          ownerId,
+          existing.row.accountId,
+          existing.row.amount,
+          reverseDirection,
+          tx,
+          { skipValidation: true },
+        );
+      }
 
-    await this.prisma.transaction.delete({
-      where: { id: existing.row.id },
+      await tx.transaction.delete({
+        where: { id: existing.row.id },
+      });
     });
   }
 
@@ -1251,7 +1265,7 @@ export class TransactionsService {
     };
 
     if (client === this.prisma) {
-      await this.prisma.$transaction(persistTransfer);
+      await this.runSerializableTransaction(persistTransfer);
     } else {
       await persistTransfer(client);
     }
@@ -1316,7 +1330,7 @@ export class TransactionsService {
     };
 
     if (client === this.prisma) {
-      await this.prisma.$transaction(persistSplitExpense);
+      await this.runSerializableTransaction(persistSplitExpense);
     } else {
       await persistSplitExpense(client);
     }

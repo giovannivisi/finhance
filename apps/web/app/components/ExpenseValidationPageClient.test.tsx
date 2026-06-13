@@ -208,9 +208,12 @@ describe("ExpenseValidationPageClient", () => {
     const revokeObjectUrl = vi.fn();
     const originalCreateObjectUrl = URL.createObjectURL;
     const originalRevokeObjectUrl = URL.revokeObjectURL;
+    const originalAnchorClick = HTMLAnchorElement.prototype.click;
+    const anchorClick = vi.fn();
 
     URL.createObjectURL = createObjectUrl;
     URL.revokeObjectURL = revokeObjectUrl;
+    HTMLAnchorElement.prototype.click = anchorClick;
     mockedFetchApiMutation.mockResolvedValue(
       new Response("rules", {
         headers: {
@@ -220,19 +223,23 @@ describe("ExpenseValidationPageClient", () => {
       }),
     );
 
-    renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "Rule tools" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Export rules" }));
+    try {
+      renderPage();
+      fireEvent.click(screen.getByRole("button", { name: "Rule tools" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Export rules" }));
 
-    await waitFor(() =>
-      expect(mockedFetchApiMutation).toHaveBeenCalledWith(
-        "/expense-validation/rules/export",
-        { method: "POST" },
-      ),
-    );
-    expect(mockedApiMutation).not.toHaveBeenCalled();
-
-    URL.createObjectURL = originalCreateObjectUrl;
-    URL.revokeObjectURL = originalRevokeObjectUrl;
+      await waitFor(() =>
+        expect(mockedFetchApiMutation).toHaveBeenCalledWith(
+          "/expense-validation/rules/export",
+          { method: "POST" },
+        ),
+      );
+      expect(anchorClick).toHaveBeenCalledTimes(1);
+      expect(mockedApiMutation).not.toHaveBeenCalled();
+    } finally {
+      URL.createObjectURL = originalCreateObjectUrl;
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+      HTMLAnchorElement.prototype.click = originalAnchorClick;
+    }
   });
 });

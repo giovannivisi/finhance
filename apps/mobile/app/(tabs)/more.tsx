@@ -6,8 +6,10 @@ import { useRecurringPending, useSetupStatus } from "@/api/queries";
 import { AppText, Card, Chip, ListRow, Screen } from "@/components/ui";
 import { useTheme } from "@/theme";
 
+type MoreHref = Href | "/expense-validation" | "/import" | "/privacy";
+
 interface MoreEntry {
-  href: Href;
+  href: MoreHref;
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
@@ -57,6 +59,18 @@ export default function MoreScreen() {
       subtitle: "Expense & income taxonomy",
     },
     {
+      href: "/expense-validation",
+      icon: "checkmark-circle-outline",
+      title: "Expense validation",
+      subtitle: "Exact-match category rules",
+    },
+    {
+      href: "/import",
+      icon: "cloud-upload-outline",
+      title: "Import & export",
+      subtitle: "CSV batches and web import flow",
+    },
+    {
       href: "/history",
       icon: "time-outline",
       title: "History",
@@ -78,6 +92,12 @@ export default function MoreScreen() {
       title: "Settings",
       subtitle: "Currency, appearance, server",
     },
+    {
+      href: "/privacy",
+      icon: "shield-checkmark-outline",
+      title: "Privacy notice",
+      subtitle: "Workspace and mobile data use",
+    },
   ];
 
   const renderEntries = (entries: MoreEntry[]) => (
@@ -86,7 +106,7 @@ export default function MoreScreen() {
         <ListRow
           key={entry.title}
           showDivider={index < entries.length - 1}
-          onPress={() => router.push(entry.href)}
+          onPress={() => router.push(entry.href as Href)}
           left={
             <View
               style={{

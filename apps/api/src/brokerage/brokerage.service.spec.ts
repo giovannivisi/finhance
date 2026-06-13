@@ -461,6 +461,117 @@ describe('BrokerageService', () => {
       expect(result.pricingStatus.state).toBe('FRESH');
     });
 
+    it('anchors long-range performance at the current stored dashboard value', async () => {
+      const fixedNow = new Date('2026-06-13T10:00:00.000Z');
+      const tOld = Date.UTC(2026, 0, 13, 10, 0);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR' }),
+        );
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-1',
+                currency: 'EUR',
+                quantity: 10,
+                currentValue: 1234,
+                referenceValue: 1000,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-1',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('10'),
+            createdAt: new Date('2025-01-13T10:00:00.000Z'),
+          }),
+        ]);
+        prices.getMarketSeries.mockResolvedValue({
+          points: [{ t: tOld, price: 90 }],
+          previousClose: 88,
+          latestPrice: 90,
+        });
+        prisma.brokerageOperation.findMany.mockResolvedValue([]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          '1Y',
+        );
+        const latestPoint = result.points[result.points.length - 1];
+
+        expect(latestPoint).toEqual({
+          t: fixedNow.getTime(),
+          value: 1234,
+        });
+        expect(result.latestValue).toBe(1234);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('keeps MAX chartable when historical series fetching fails', async () => {
+      const fixedNow = new Date('2026-06-13T10:00:00.000Z');
+      const createdAt = new Date('2025-02-01T10:00:00.000Z');
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR' }),
+        );
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-1',
+                currency: 'EUR',
+                quantity: 10,
+                currentValue: 1234,
+                referenceValue: 1000,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-1',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('10'),
+            createdAt,
+          }),
+        ]);
+        prices.getMarketSeries.mockResolvedValue(null);
+        prisma.brokerageOperation.findMany.mockResolvedValue([]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          'MAX',
+        );
+
+        expect(result.points).toEqual([
+          { t: createdAt.getTime(), value: 1234 },
+          { t: fixedNow.getTime(), value: 1234 },
+        ]);
+        expect(result.baselineValue).toBe(1234);
+        expect(result.latestValue).toBe(1234);
+        expect(result.pricingStatus.state).toBe('PARTIAL');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('falls back to a constant valuation and reports PARTIAL when the price series fails', async () => {
       prisma.account.findFirst.mockResolvedValue(
         createAccount({ currency: 'EUR' }),
@@ -513,6 +624,7 @@ describe('BrokerageService', () => {
               id: 'asset-1',
               currency: 'EUR',
               quantity: 10,
+              currentValue: 1050,
             }),
           ],
         }),

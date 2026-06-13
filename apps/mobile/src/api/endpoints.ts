@@ -20,6 +20,7 @@ import type {
   DashboardPageDataResponse,
   DashboardResponse,
   ExpenseValidationRuleResponse,
+  ImportBatchResponse,
   LiveValuationsResponse,
   MaterializeRecurringRulesResponse,
   MonthlyBudgetResponse,
@@ -40,6 +41,7 @@ import type {
   UpsertAssetRequest,
   UpsertCategoryBudgetOverrideRequest,
   UpsertCategoryRequest,
+  UpsertExpenseValidationRuleRequest,
   UpsertRecurringOccurrenceRequest,
   UpsertRecurringTransactionRuleRequest,
   UpsertTransactionRequest,
@@ -401,9 +403,30 @@ export const api = {
       ),
   },
 
+  imports: {
+    list: (client: ApiClient) =>
+      client.request<ImportBatchResponse[]>("/imports"),
+  },
+
   expenseValidation: {
     list: (client: ApiClient) =>
       client.request<ExpenseValidationRuleResponse[]>("/expense-validation"),
+    create: (client: ApiClient, body: UpsertExpenseValidationRuleRequest) =>
+      client.request<ExpenseValidationRuleResponse>(
+        "/expense-validation",
+        mutation("POST", body),
+      ),
+    update: (
+      client: ApiClient,
+      id: string,
+      body: UpsertExpenseValidationRuleRequest,
+    ) =>
+      client.request<ExpenseValidationRuleResponse>(
+        `/expense-validation/${id}`,
+        mutation("PUT", body),
+      ),
+    remove: (client: ApiClient, id: string) =>
+      client.request<void>(`/expense-validation/${id}`, mutation("DELETE")),
   },
 
   user: {

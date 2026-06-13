@@ -26,7 +26,14 @@ vi.mock("next/link", () => ({
     void prefetch;
 
     return (
-      <a href={href} onClick={(event) => onClick?.(event)} {...rest}>
+      <a
+        href={href}
+        onClick={(event) => {
+          event.preventDefault();
+          onClick?.(event);
+        }}
+        {...rest}
+      >
         {children}
       </a>
     );

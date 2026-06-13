@@ -38,11 +38,15 @@ client and API can never drift apart silently.
   expected-vs-actual, budget and reconciliation highlights
 - **Recurring** — rules, pause/resume, month exceptions (skip/override),
   manual materialisation
-- **Categories / History / Setup / Settings** — taxonomy management, snapshot
-  capture + history, setup checklist, reporting currency, theme, hide-money
+- **Categories / Expense validation / History / Setup / Settings** — taxonomy
+  management, exact-match expense categorisation rules, snapshot capture +
+  history, setup checklist, reporting currency, theme, hide-money
+- **Import & privacy** — recent CSV import batch history, hosted web hand-off
+  for CSV preview/apply/export, and an in-app privacy notice with mobile
+  storage/session details
 
-Deliberately not in v1 (desktop workflows): CSV import/export, expense
-validation rule management, and the privacy notice page.
+CSV file selection, preview, apply, template downloads, and export stay in the
+web workspace because that flow is multi-file and browser download-oriented.
 
 ### Hosted sign-in details
 

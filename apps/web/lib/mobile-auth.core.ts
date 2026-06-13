@@ -15,7 +15,7 @@ import { jwtVerify, SignJWT } from "jose";
 export const MOBILE_TOKEN_AUDIENCE = "finhance-mobile";
 export const MOBILE_CODE_AUDIENCE = "finhance-mobile-code";
 export const MOBILE_TOKEN_ISSUER = "finhance-web";
-export const MOBILE_TOKEN_DEFAULT_TTL = "120d";
+export const MOBILE_TOKEN_DEFAULT_TTL = "30d";
 export const MOBILE_CODE_TTL = "5m";
 
 /** Fragment key used when handing the sign-in code back to the app. */

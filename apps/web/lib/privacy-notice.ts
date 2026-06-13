@@ -190,9 +190,10 @@ const PROCESSING_ACTIVITY_DEFINITIONS: Record<
   marketData: {
     title: "Refresh market prices and FX rates",
     purpose:
-      "To fetch quote and exchange-rate data for supported market assets and currencies when valuations are refreshed.",
+      "To fetch quote, historical chart, and exchange-rate data for supported market assets and currencies when valuations, brokerage performance, or live read-only price displays are refreshed.",
     dataCategories: [
       "Requested market symbols, exchange suffixes, and currency pairs.",
+      "Historical quote range and interval choices used for brokerage performance charts.",
       "Technical request metadata needed to call the external quote provider.",
     ],
   },
@@ -203,17 +204,18 @@ const PROCESSING_ACTIVITY_DEFINITIONS: Record<
     dataCategories: [
       "Idempotency keys, hashed request fingerprints, response status codes, and request bodies cached for replay protection.",
       "Loopback IP, host-header, origin, and referer checks used to enforce local-only access.",
-      "Operational timestamps and short-lived process state used to coordinate imports or refresh jobs.",
+      "Operational timestamps and short-lived process state used to coordinate imports, live valuation polling, performance-series requests, or refresh jobs.",
     ],
   },
   browserPreferences: {
-    title: "Remember browser-side preferences",
+    title: "Remember device preferences and mobile connection state",
     purpose:
-      "To remember the selected theme, whether monetary values should be hidden, and whether the dashboard refresh attempt already happened in this browser session.",
+      "To remember the selected theme, whether monetary values should be hidden, whether the dashboard refresh attempt already happened in this browser session, and how the mobile app reconnects to a chosen server.",
     dataCategories: [
-      "Theme preference stored in local storage.",
-      "Hide-balances preference stored in local storage.",
-      "Single-session dashboard refresh flag stored in session storage.",
+      "Theme and hide-balances preferences stored in browser local storage or mobile device storage.",
+      "Single-session dashboard refresh flag stored in browser session storage.",
+      "Mobile server URL and server mode stored on the device.",
+      "Hosted mobile session token stored in the device keychain so the app can authenticate future proxy requests.",
     ],
   },
 };
@@ -250,6 +252,7 @@ const CATEGORY_GROUPS: PrivacyCategoryGroup[] = [
       "Idempotency records, hashed request fingerprints, and short-lived operation state used to protect writes.",
       "Loopback access checks based on request metadata while authentication is disabled.",
       "Browser-side theme, privacy-display, and session flags stored on the device you use to access the app.",
+      "Mobile server connection details and hosted mobile session tokens stored on the device.",
     ],
   },
   {
@@ -264,7 +267,8 @@ const CATEGORY_GROUPS: PrivacyCategoryGroup[] = [
 const SOURCE_OF_DATA = [
   "Directly from you when you enter, edit, review, or delete finance records inside the app.",
   "From files you upload to the import flow, including files that may contain data about third parties such as counterparties, institutions, and notes.",
-  "From the market data provider when you ask finhance to refresh quotes or FX rates for supported assets and currencies.",
+  "From the market data provider when you ask finhance to refresh quotes, FX rates, live valuations, or brokerage performance chart data for supported assets and currencies.",
+  "From the mobile app when you save a server URL, choose local display preferences, or sign in to a hosted workspace.",
 ];
 
 const DEFAULT_LOCAL_LEGAL_BASES: Record<
@@ -291,9 +295,9 @@ const DEFAULT_LOCAL_LEGAL_BASES: Record<
   },
   marketData: {
     basis:
-      "Art. 6(1)(b) GDPR — performance of a contract when you request quote or FX refresh features.",
+      "Art. 6(1)(b) GDPR — performance of a contract when you request quote, FX refresh, live valuation, or brokerage performance chart features.",
     explanation:
-      "Used only when the workspace refreshes market prices or FX rates for supported assets and currencies.",
+      "Used only when the workspace refreshes market prices, FX rates, live valuations, or historical chart data for supported assets and currencies.",
   },
   securityAndReliability: {
     basis:
@@ -305,11 +309,11 @@ const DEFAULT_LOCAL_LEGAL_BASES: Record<
   },
   browserPreferences: {
     basis:
-      "Art. 6(1)(f) GDPR — legitimate interests in remembering your local UI choices on the device you use to access the app.",
+      "Art. 6(1)(f) GDPR — legitimate interests in remembering your local UI choices and mobile connection state on the device you use to access the app.",
     explanation:
-      "Used to remember theme and privacy-display preferences without asking you to set them again on every page load.",
+      "Used to remember theme, privacy-display, server connection, and hosted mobile session state without asking you to repeat the same setup on every visit or app launch.",
     legitimateInterests:
-      "Providing a stable user interface and letting users hide monetary values locally on their device.",
+      "Providing a stable user interface, letting users hide monetary values locally, and keeping the mobile app connected to the selected workspace.",
   },
 };
 
@@ -321,7 +325,7 @@ const BUILTIN_PROCESSORS: PrivacyProcessor[] = [
       "Provides quote and FX responses when a user refreshes supported market or currency valuations.",
     location: "Provider-managed infrastructure",
     dataCategories: [
-      "Requested market symbols and currency pairs.",
+      "Requested market symbols, historical quote ranges, and currency pairs.",
       "Technical request metadata associated with the outbound API call.",
     ],
     website: "https://finance.yahoo.com/",
@@ -334,7 +338,7 @@ const BUILTIN_TRANSFERS: PrivacyTransfer[] = [
     purpose:
       "Quote and FX refresh requests for supported assets and currencies.",
     dataCategories: [
-      "Requested market symbols and currency pairs.",
+      "Requested market symbols, historical quote ranges, and currency pairs.",
       "Technical request metadata associated with the outbound API call.",
     ],
     safeguard:
@@ -374,16 +378,16 @@ const DEFAULT_RETENTION: Record<
   requestSafety: {
     title: "Idempotency and request-safety records",
     retention:
-      "Completed idempotency records are deleted after about 24 hours. Stale in-progress records are deleted after about 10 minutes. In-memory market quote cache entries live for about 5 minutes per process.",
+      "Completed idempotency records are deleted after about 24 hours. Stale in-progress records are deleted after about 10 minutes. In-memory market quote cache entries live for about 5 minutes per process, live valuation reads use a shorter cache window, and historical performance-series cache entries range from about 1 minute to 24 hours depending on the selected chart range.",
     detail:
       "These records exist to prevent duplicate writes, coordinate retries, and avoid repeating the same market quote lookup unnecessarily.",
   },
   browserPreferences: {
-    title: "Browser-side preferences",
+    title: "Device preferences and mobile connection state",
     retention:
-      "Stored on your device until you clear browser storage, change the setting, or end the current browser session where session storage is used.",
+      "Stored on your device until you clear browser or app storage, change the setting, disconnect the mobile app, sign out, or end the current browser session where session storage is used.",
     detail:
-      "Theme and hide-balances preferences live in local storage. The dashboard refresh-attempt flag lives in session storage.",
+      "Theme and hide-balances preferences live in browser local storage or mobile app storage. The dashboard refresh-attempt flag lives in browser session storage. The mobile server URL and mode live in app storage, and hosted mobile session tokens live in the device keychain.",
   },
 };
 

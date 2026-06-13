@@ -19,6 +19,7 @@ import {
   useBrokerageWorkspace,
   useCategories,
   useLiveValuations,
+  useRefreshAssets,
 } from "@/api/queries";
 import {
   AmountField,
@@ -58,6 +59,7 @@ import {
   resolveHeaderTotal,
 } from "@/lib/live-merge";
 import { formatMoney, parseAmountInput } from "@/lib/money";
+import { shouldStartAutomaticPriceRefresh } from "@/lib/price-refresh";
 import { useIsScreenActive } from "@/lib/screen-active";
 import { spacing, useTheme } from "@/theme";
 
@@ -184,6 +186,7 @@ export default function BrokerageWorkspaceScreen() {
 
   const workspaceQuery = useBrokerageWorkspace(accountId);
   const categoriesQuery = useCategories(false);
+  const refreshAssets = useRefreshAssets();
 
   const buyMutation = useBrokerageBuy(accountId);
   const sellMutation = useBrokerageSell(accountId);
@@ -204,6 +207,7 @@ export default function BrokerageWorkspaceScreen() {
   const previousQuotesRef = useRef<
     readonly LiveAssetValuationResponse[] | null
   >(null);
+  const autoRefreshStartedRef = useRef(false);
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
@@ -234,6 +238,21 @@ export default function BrokerageWorkspaceScreen() {
   const workspace: BrokerageWorkspaceResponse | undefined = workspaceQuery.data;
   const broker = workspace?.selectedBroker;
   const accountCurrency = broker?.account.currency ?? "EUR";
+
+  useEffect(() => {
+    if (
+      !shouldStartAutomaticPriceRefresh({
+        isActive,
+        refreshSuggested: workspace?.pricingStatus.refreshSuggested,
+        alreadyStarted: autoRefreshStartedRef.current,
+      })
+    ) {
+      return;
+    }
+
+    autoRefreshStartedRef.current = true;
+    refreshAssets.mutate();
+  }, [isActive, refreshAssets, workspace?.pricingStatus.refreshSuggested]);
 
   const performance = performanceQuery.data;
 

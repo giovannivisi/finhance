@@ -97,6 +97,14 @@ const SERIES_TTL_MS: Record<BrokeragePerformanceRange, number> = {
   MAX: 1000 * 60 * 60 * 24,
 };
 
+const SERIES_TIMEOUT_MS: Record<BrokeragePerformanceRange, number> = {
+  '1D': 3000,
+  '1W': 3000,
+  '1M': 3000,
+  '1Y': 7000,
+  MAX: 10_000,
+};
+
 @Injectable()
 export class PricesService {
   private readonly logger = new Logger(PricesService.name);
@@ -543,7 +551,7 @@ export class PricesService {
       const params = SERIES_RANGE_PARAMS[range];
       const url = `${BASE_QUOTE_URL}${encodeURIComponent(symbol)}?range=${params.range}&interval=${params.interval}`;
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(this.requestTimeoutMs),
+        signal: AbortSignal.timeout(SERIES_TIMEOUT_MS[range]),
       });
 
       if (!response.ok) {

@@ -39,11 +39,14 @@ const START_PAGE_LABELS: Record<UserStartPage, string> = {
 export default function SettingsScreen() {
   const router = useRouter();
   const { preference, setPreference, hideMoney, setHideMoney } = useTheme();
-  const { serverUrl, serverMode, clearServer } = useServerConnection();
+  const { serverUrl, serverMode, token, clearServer } = useServerConnection();
   const settingsQuery = useUserSettings();
   const updateSettings = useUpdateUserSettings();
   const [error, setError] = useState<string | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [confirmMobileSignOut, setConfirmMobileSignOut] = useState(false);
+  const [isSigningOutMobileDevices, setIsSigningOutMobileDevices] =
+    useState(false);
 
   const settings = settingsQuery.data;
 
@@ -55,6 +58,48 @@ export default function SettingsScreen() {
       await updateSettings.mutateAsync(patch);
     } catch (updateError) {
       setError(describeError(updateError));
+    }
+  };
+
+  const signOutMobileDevices = async () => {
+    if (!serverUrl || serverMode !== "hosted" || !token) {
+      return;
+    }
+
+    setError(null);
+    setIsSigningOutMobileDevices(true);
+
+    try {
+      const response = await fetch(`${serverUrl}/api/mobile/sessions`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        let message = "Unable to sign out mobile devices.";
+
+        try {
+          const payload = (await response.json()) as { message?: unknown };
+          if (typeof payload.message === "string" && payload.message.trim()) {
+            message = payload.message;
+          }
+        } catch {
+          // Keep the generic message when the server does not return JSON.
+        }
+
+        throw new Error(message);
+      }
+
+      setConfirmMobileSignOut(false);
+      await clearServer();
+      router.replace("/connect");
+    } catch (signOutError) {
+      setConfirmMobileSignOut(false);
+      setError(describeError(signOutError));
+    } finally {
+      setIsSigningOutMobileDevices(false);
     }
   };
 
@@ -173,6 +218,25 @@ export default function SettingsScreen() {
         </Card>
       </Section>
 
+      {serverMode === "hosted" ? (
+        <Section kicker="Security" title="Mobile devices">
+          <Card surface="warning">
+            <View style={{ gap: spacing.md }}>
+              <AppText variant="footnote" tone="secondary">
+                Sign out every mobile device connected to this hosted account.
+                This device will need to sign in again too.
+              </AppText>
+              <Button
+                label="Sign out mobile devices"
+                variant="danger"
+                size="sm"
+                onPress={() => setConfirmMobileSignOut(true)}
+              />
+            </View>
+          </Card>
+        </Section>
+      ) : null}
+
       <Sheet
         visible={confirmDisconnect}
         onClose={() => setConfirmDisconnect(false)}
@@ -196,6 +260,30 @@ export default function SettingsScreen() {
             label="Stay connected"
             variant="secondary"
             onPress={() => setConfirmDisconnect(false)}
+          />
+        </View>
+      </Sheet>
+
+      <Sheet
+        visible={confirmMobileSignOut}
+        onClose={() => setConfirmMobileSignOut(false)}
+        title="Sign out mobile devices?"
+      >
+        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+          <AppText variant="footnote" tone="secondary">
+            Every signed-in mobile device loses access immediately. You will
+            return to the connect screen after this completes.
+          </AppText>
+          <Button
+            label="Sign out devices"
+            variant="danger"
+            loading={isSigningOutMobileDevices}
+            onPress={signOutMobileDevices}
+          />
+          <Button
+            label="Cancel"
+            variant="secondary"
+            onPress={() => setConfirmMobileSignOut(false)}
           />
         </View>
       </Sheet>
