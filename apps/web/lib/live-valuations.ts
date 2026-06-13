@@ -52,35 +52,6 @@ export function mergeLivePositions(
 }
 
 /**
- * Merges live quotes into dashboard asset rows, replacing the current value
- * (reporting currency) with the live reporting-currency valuation for any
- * asset with a matching quote and a known FX rate. Assets without a matching
- * quote, or whose quote has no `valueInReporting`, are returned unchanged.
- */
-export function mergeLiveDashboardAssets(
-  assets: DashboardAssetResponse[],
-  quotes: LiveAssetValuationResponse[],
-): DashboardAssetResponse[] {
-  if (quotes.length === 0) {
-    return assets;
-  }
-
-  const byAssetId = indexLiveQuotesByAssetId(quotes);
-
-  return assets.map((asset) => {
-    const quote = byAssetId.get(asset.id);
-    if (!quote || quote.valueInReporting == null) {
-      return asset;
-    }
-
-    return {
-      ...asset,
-      currentValue: quote.valueInReporting,
-    };
-  });
-}
-
-/**
  * Merges live quotes into dashboard asset rows, updating the displayed
  * current value (reporting currency, from `quote.valueInReporting`) and, for
  * assets that track a quantity, the latest unit price (asset currency, from
@@ -239,9 +210,14 @@ export function applyLiveDeltasToSummary<T extends DashboardSummaryFigures>(
 
 /**
  * Sums the reporting-currency value of a group of assets (`currentValue ??
- * referenceValue ?? balance`, the same fallback used by the server-provided
- * subtotals), adjusted by any matching live-value deltas. Used to recompute
- * the per-kind subtotals shown above each asset/liability block.
+ * referenceValue`), adjusted by any matching live-value deltas. Used to
+ * recompute the per-kind subtotals shown above each asset/liability block.
+ *
+ * Assets where both values are null (the server could not resolve a
+ * reporting-currency valuation, e.g. an unknown FX rate) contribute nothing,
+ * matching the server's summary figures and the per-row display. The raw
+ * `balance` is deliberately not used as a fallback: it is in the asset's own
+ * currency, so adding it to a reporting-currency total would mix currencies.
  */
 export function sumDashboardValuesWithLiveDeltas(
   assets: readonly DashboardAssetResponse[],
@@ -250,8 +226,7 @@ export function sumDashboardValuesWithLiveDeltas(
   let total = 0;
 
   for (const asset of assets) {
-    const baseline =
-      asset.currentValue ?? asset.referenceValue ?? asset.balance;
+    const baseline = asset.currentValue ?? asset.referenceValue ?? 0;
     total += baseline + (deltas.get(asset.id) ?? 0);
   }
 

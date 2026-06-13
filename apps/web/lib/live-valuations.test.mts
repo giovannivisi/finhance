@@ -8,7 +8,6 @@ import {
   computeLiveChangePercent,
   computeLiveValueDelta,
   mergeDashboardAssetsWithLiveQuotes,
-  mergeLiveDashboardAssets,
   mergeLivePositions,
   sumDashboardValuesWithLiveDeltas,
 } from "./live-valuations.ts";
@@ -131,24 +130,6 @@ test("mergeLivePositions returns the same array reference when there are no quot
   const positions = [buildPosition()];
 
   assert.equal(mergeLivePositions(positions, []), positions);
-});
-
-test("mergeLiveDashboardAssets replaces currentValue with valueInReporting", () => {
-  const assets = [buildDashboardAsset()];
-  const quotes = [buildQuote({ valueInReporting: 575 })];
-
-  const merged = mergeLiveDashboardAssets(assets, quotes);
-
-  assert.equal(merged[0].currentValue, 575);
-});
-
-test("mergeLiveDashboardAssets skips quotes with a null valueInReporting", () => {
-  const assets = [buildDashboardAsset()];
-  const quotes = [buildQuote({ valueInReporting: null })];
-
-  const merged = mergeLiveDashboardAssets(assets, quotes);
-
-  assert.equal(merged[0].currentValue, 550);
 });
 
 test("computeLiveValueDelta sums reporting-currency deltas for matched positions", () => {
@@ -426,13 +407,15 @@ test("sumDashboardValuesWithLiveDeltas sums baseline values adjusted by matching
   assert.equal(sumDashboardValuesWithLiveDeltas(assets, deltas), 775);
 });
 
-test("sumDashboardValuesWithLiveDeltas falls back to referenceValue and balance", () => {
+test("sumDashboardValuesWithLiveDeltas falls back to referenceValue and excludes unresolved assets", () => {
   const assets = [
     buildDashboardAsset({
       id: "asset-1",
       currentValue: null,
       referenceValue: 500,
     }),
+    // No reporting-currency valuation could be resolved (e.g. unknown FX
+    // rate): the raw asset-currency balance must not leak into the total.
     buildDashboardAsset({
       id: "asset-2",
       currentValue: null,
@@ -441,5 +424,5 @@ test("sumDashboardValuesWithLiveDeltas falls back to referenceValue and balance"
     }),
   ];
 
-  assert.equal(sumDashboardValuesWithLiveDeltas(assets, new Map()), 580);
+  assert.equal(sumDashboardValuesWithLiveDeltas(assets, new Map()), 500);
 });
