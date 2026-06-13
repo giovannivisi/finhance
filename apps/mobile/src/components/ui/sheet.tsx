@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
+  Animated,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -69,6 +71,53 @@ export function Sheet({
 }: SheetProps) {
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const translateY = useRef(new Animated.Value(0)).current;
+  const scrollOffsetY = useRef(0);
+
+  useEffect(() => {
+    if (visible) {
+      translateY.setValue(0);
+      scrollOffsetY.current = 0;
+    }
+  }, [translateY, visible]);
+
+  const closeFromDrag = () => {
+    Animated.timing(translateY, {
+      toValue: 480,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => onClose());
+  };
+
+  const resetDrag = () => {
+    Animated.spring(translateY, {
+      toValue: 0,
+      damping: 22,
+      stiffness: 240,
+      mass: 0.8,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+      scrollOffsetY.current <= 0 &&
+      gestureState.dy > 8 &&
+      Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 1.4,
+    onPanResponderMove: (_, gestureState) => {
+      translateY.setValue(Math.max(0, gestureState.dy));
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      if (gestureState.dy > 96 || gestureState.vy > 1.2) {
+        closeFromDrag();
+        return;
+      }
+
+      resetDrag();
+    },
+    onPanResponderTerminate: resetDrag,
+    onPanResponderTerminationRequest: () => true,
+  });
 
   return (
     <Modal
@@ -94,74 +143,90 @@ export function Sheet({
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <SheetSurface
+          <Animated.View
+            {...panResponder.panHandlers}
             style={{
-              borderTopLeftRadius: radius.sheet,
-              borderTopRightRadius: radius.sheet,
-              borderWidth: 1,
-              borderBottomWidth: 0,
-              borderColor: colors.borderStrong,
-              paddingBottom: insets.bottom + spacing.lg,
-              maxHeight: `${Math.round(maxHeightRatio * 100)}%`,
+              transform: [{ translateY }],
             }}
           >
-            <View
+            <SheetSurface
               style={{
-                alignItems: "center",
-                paddingTop: spacing.sm,
+                borderTopLeftRadius: radius.sheet,
+                borderTopRightRadius: radius.sheet,
+                borderWidth: 1,
+                borderBottomWidth: 0,
+                borderColor: colors.borderStrong,
+                paddingBottom: insets.bottom + spacing.lg,
+                maxHeight: `${Math.round(maxHeightRatio * 100)}%`,
               }}
             >
               <View
                 style={{
-                  width: 42,
-                  height: 5,
-                  borderRadius: 3,
-                  backgroundColor: colors.borderStrong,
+                  alignItems: "center",
+                  paddingTop: spacing.sm,
                 }}
-              />
-            </View>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingHorizontal: spacing.xl,
-                paddingTop: spacing.md,
-                paddingBottom: spacing.sm,
-              }}
-            >
-              <AppText variant="title2">{title ?? ""}</AppText>
-              <Pressable
-                accessibilityLabel="Close sheet"
-                onPress={onClose}
-                hitSlop={10}
-                style={({ pressed }) => [
-                  {
-                    width: 32,
-                    height: 32,
-                    borderRadius: 16,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.bgControl,
-                  },
-                  pressed ? { opacity: 0.7 } : null,
-                ]}
               >
-                <Ionicons name="close" size={18} color={colors.textSecondary} />
-              </Pressable>
-            </View>
-            <ScrollView
-              contentContainerStyle={{
-                paddingHorizontal: spacing.xl,
-                paddingTop: spacing.sm,
-                gap: spacing.md,
-              }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {children}
-            </ScrollView>
-          </SheetSurface>
+                <View
+                  style={{
+                    width: 42,
+                    height: 5,
+                    borderRadius: 3,
+                    backgroundColor: colors.borderStrong,
+                  }}
+                />
+              </View>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: spacing.xl,
+                  paddingTop: spacing.md,
+                  paddingBottom: spacing.sm,
+                }}
+              >
+                <AppText variant="title2">{title ?? ""}</AppText>
+                <Pressable
+                  accessibilityLabel="Close sheet"
+                  onPress={onClose}
+                  hitSlop={10}
+                  style={({ pressed }) => [
+                    {
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.bgControl,
+                    },
+                    pressed ? { opacity: 0.7 } : null,
+                  ]}
+                >
+                  <Ionicons
+                    name="close"
+                    size={18}
+                    color={colors.textSecondary}
+                  />
+                </Pressable>
+              </View>
+              <ScrollView
+                style={{ flexShrink: 1 }}
+                contentContainerStyle={{
+                  paddingHorizontal: spacing.xl,
+                  paddingTop: spacing.sm,
+                  gap: spacing.md,
+                }}
+                keyboardShouldPersistTaps="handled"
+                onScroll={(event) => {
+                  scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+                }}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
+              >
+                {children}
+              </ScrollView>
+            </SheetSurface>
+          </Animated.View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
