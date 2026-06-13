@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
 import { useEffect, useRef, type ReactNode } from "react";
 import {
   Animated,
@@ -9,63 +8,15 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   View,
   useWindowDimensions,
-  type StyleProp,
-  type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { radius, spacing, useTheme } from "@/theme";
 
+import { IconButton } from "./button";
 import { AppText } from "./text";
-
-/** System-material glass on iOS, solid popover surface elsewhere. */
-function SheetSurface({
-  style,
-  children,
-}: {
-  style: StyleProp<ViewStyle>;
-  children: ReactNode;
-}) {
-  const { colors, scheme } = useTheme();
-
-  if (Platform.OS === "ios") {
-    return (
-      <BlurView
-        intensity={70}
-        tint={
-          scheme === "dark"
-            ? "systemThickMaterialDark"
-            : "systemThickMaterialLight"
-        }
-        style={[
-          style,
-          {
-            backgroundColor: colors.bgPopover,
-            overflow: "hidden",
-          },
-        ]}
-      >
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFillObject,
-            { backgroundColor: colors.bgPopover },
-          ]}
-        />
-        {children}
-      </BlurView>
-    );
-  }
-
-  return (
-    <View style={[style, { backgroundColor: colors.bgPopover }]}>
-      {children}
-    </View>
-  );
-}
 
 export interface SheetProps {
   visible: boolean;
@@ -76,20 +27,20 @@ export interface SheetProps {
   maxHeightRatio?: number;
 }
 
-/** Bottom sheet built on the core Modal so it works everywhere. */
+/** Modal panel matching the route-level edit screens. */
 export function Sheet({
   visible,
   onClose,
   title,
   children,
-  maxHeightRatio = 0.82,
+  maxHeightRatio = 0.92,
 }: SheetProps) {
   const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const translateY = useRef(new Animated.Value(0)).current;
   const scrollOffsetY = useRef(0);
-  const sheetMaxHeight = Math.round(height * maxHeightRatio);
+  const sheetHeight = Math.round(height * maxHeightRatio);
 
   useEffect(() => {
     if (visible) {
@@ -167,76 +118,63 @@ export function Sheet({
             style={{
               transform: [{ translateY }],
               width: "100%",
+              height: sheetHeight,
             }}
           >
-            <SheetSurface
+            <View
               style={{
+                flex: 1,
                 width: "100%",
-                backgroundColor: colors.bgPopover,
+                backgroundColor: colors.bgApp,
                 borderTopLeftRadius: radius.sheet,
                 borderTopRightRadius: radius.sheet,
                 borderWidth: 1,
                 borderBottomWidth: 0,
                 borderColor: colors.borderStrong,
-                paddingBottom: insets.bottom + spacing.lg,
-                maxHeight: sheetMaxHeight,
+                overflow: "hidden",
               }}
             >
               <View
                 style={{
-                  alignItems: "center",
-                  paddingTop: spacing.sm,
-                }}
-              >
-                <View
-                  style={{
-                    width: 42,
-                    height: 5,
-                    borderRadius: 3,
-                    backgroundColor: colors.borderStrong,
-                  }}
-                />
-              </View>
-              <View
-                style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  justifyContent: "space-between",
+                  gap: spacing.md,
                   paddingHorizontal: spacing.xl,
-                  paddingTop: spacing.md,
-                  paddingBottom: spacing.sm,
+                  paddingTop: spacing.xxl,
+                  paddingBottom: spacing.lg,
                 }}
               >
-                <AppText variant="title2">{title ?? ""}</AppText>
-                <Pressable
-                  accessibilityLabel="Close sheet"
+                <IconButton
+                  accessibilityLabel="Go back"
+                  icon={
+                    <Ionicons
+                      name="chevron-back"
+                      size={20}
+                      color={colors.textPrimary}
+                    />
+                  }
                   onPress={onClose}
-                  hitSlop={10}
-                  style={({ pressed }) => [
-                    {
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: colors.bgControl,
-                    },
-                    pressed ? { opacity: 0.7 } : null,
-                  ]}
+                />
+                <AppText
+                  variant="title1"
+                  numberOfLines={1}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 30,
+                    lineHeight: 36,
+                    letterSpacing: -0.8,
+                  }}
                 >
-                  <Ionicons
-                    name="close"
-                    size={18}
-                    color={colors.textSecondary}
-                  />
-                </Pressable>
+                  {title ?? ""}
+                </AppText>
               </View>
               <ScrollView
-                style={{ flexShrink: 1 }}
+                style={{ flex: 1 }}
                 contentContainerStyle={{
                   paddingHorizontal: spacing.xl,
-                  paddingTop: spacing.sm,
-                  gap: spacing.md,
+                  paddingBottom: insets.bottom + spacing.xxl,
+                  gap: spacing.lg,
                 }}
                 keyboardShouldPersistTaps="handled"
                 onScroll={(event) => {
@@ -247,7 +185,7 @@ export function Sheet({
               >
                 {children}
               </ScrollView>
-            </SheetSurface>
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -272,7 +210,7 @@ export interface OptionSheetProps<T extends string> {
   emptyLabel?: string;
 }
 
-/** Single-select option list presented in a bottom sheet. */
+/** Single-select option list presented in the shared modal panel. */
 export function OptionSheet<T extends string>({
   visible,
   onClose,
