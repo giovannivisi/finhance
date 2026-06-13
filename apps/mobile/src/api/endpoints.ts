@@ -4,6 +4,8 @@ import type {
   AccountReconciliationResponse,
   AssetResponse,
   BrokerageAccountSummaryResponse,
+  BrokeragePerformanceRange,
+  BrokeragePerformanceResponse,
   BrokerageWorkspaceResponse,
   CashflowAnalyticsPageDataResponse,
   CategoryBudgetOverrideResponse,
@@ -18,6 +20,7 @@ import type {
   DashboardPageDataResponse,
   DashboardResponse,
   ExpenseValidationRuleResponse,
+  LiveValuationsResponse,
   MaterializeRecurringRulesResponse,
   MonthlyBudgetResponse,
   MonthlyCashflowResponse,
@@ -222,6 +225,8 @@ export const api = {
         "/assets/refresh",
         mutation("POST"),
       ),
+    liveValuations: (client: ApiClient) =>
+      client.request<LiveValuationsResponse>("/assets/live-valuations"),
   },
 
   budgets: {
@@ -349,6 +354,15 @@ export const api = {
       client.request<BrokerageAccountSummaryResponse[]>("/brokerage"),
     workspace: (client: ApiClient, accountId: string) =>
       client.request<BrokerageWorkspaceResponse>(`/brokerage/${accountId}`),
+    performance: (
+      client: ApiClient,
+      accountId: string,
+      range: BrokeragePerformanceRange,
+    ) =>
+      client.request<BrokeragePerformanceResponse>(
+        `/brokerage/${accountId}/performance`,
+        { query: { range } },
+      ),
     buy: (
       client: ApiClient,
       accountId: string,

@@ -1,10 +1,20 @@
-import { useState } from "react";
-import { Pressable, View } from "react-native";
-import Svg, { G, Line, Path, Rect } from "react-native-svg";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Pressable, View } from "react-native";
+import Svg, { Circle, G, Line, Path, Rect } from "react-native-svg";
+import type {
+  BrokeragePerformancePointResponse,
+  BrokeragePerformanceRange,
+} from "@finhance/shared";
 
 import { AppText } from "@/components/ui";
 import { formatShortMonthLabel } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
+import {
+  buildAxisTimeLabels,
+  computePercentGridlines,
+  formatAxisTimeLabel,
+  isPerformancePositive,
+} from "@/lib/performance-chart";
 import { spacing, useTheme } from "@/theme";
 
 export interface MonthlyFlowPoint {
@@ -322,5 +332,285 @@ export function Sparkline({
     <Svg width={width} height={height}>
       <Path d={path} stroke={stroke} strokeWidth={1.8} fill="none" />
     </Svg>
+  );
+}
+
+/** Small pulsing dot shown while live price polling is active. */
+export function LiveDot() {
+  const { colors } = useTheme();
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.25,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity]);
+
+  return (
+    <Animated.View
+      style={{
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.chartIncome,
+        opacity,
+      }}
+    />
+  );
+}
+
+export interface PerformanceChartProps {
+  points: BrokeragePerformancePointResponse[];
+  range: BrokeragePerformanceRange;
+  baselineValue: number | null;
+  latestValue: number | null;
+  currency: string;
+  height?: number;
+}
+
+/**
+ * Portfolio performance line chart: a thin green/red line (green when the
+ * latest value is at or above the baseline), a dotted baseline reference,
+ * right-edge percent-deviation gridlines, and bottom time-axis labels
+ * appropriate for the selected range.
+ */
+export function PerformanceChart({
+  points,
+  range,
+  baselineValue,
+  latestValue,
+  currency,
+  height = 240,
+}: PerformanceChartProps) {
+  const { colors, hideMoney } = useTheme();
+  const [width, setWidth] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  const labelGutter = 44; // reserved for right-edge percent labels
+  const axisHeight = 22; // reserved for bottom time labels
+  const chartWidth = Math.max(0, width - labelGutter);
+  const chartHeight = height - axisHeight;
+
+  const gridlines = computePercentGridlines(points, baselineValue);
+  const axisLabels = buildAxisTimeLabels(points, range);
+  const positive = isPerformancePositive(latestValue, baselineValue);
+  const lineColor = positive ? colors.chartIncome : colors.chartExpense;
+
+  if (points.length === 0) {
+    return (
+      <View
+        style={{
+          height,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <AppText variant="footnote" tone="tertiary">
+          No performance data for this range yet.
+        </AppText>
+      </View>
+    );
+  }
+
+  const values = points.map((point) => point.value);
+  const min = Math.min(...values, baselineValue ?? values[0]!);
+  const max = Math.max(...values, baselineValue ?? values[0]!);
+  const valueRange = max - min || 1;
+
+  const xOf = (index: number) =>
+    points.length > 1 ? (index / (points.length - 1)) * chartWidth : 0;
+  const yOf = (value: number) =>
+    chartHeight - ((value - min) / valueRange) * chartHeight;
+
+  const linePath = points
+    .map(
+      (point, index) =>
+        `${index === 0 ? "M" : "L"}${xOf(index).toFixed(1)},${yOf(point.value).toFixed(1)}`,
+    )
+    .join(" ");
+
+  const selected = selectedIndex !== null ? points[selectedIndex] : null;
+  const baselineY = baselineValue !== null ? yOf(baselineValue) : null;
+
+  return (
+    <View style={{ gap: spacing.xs }}>
+      <View
+        style={{ height }}
+        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      >
+        {width > 0 ? (
+          <Svg width={width} height={height}>
+            {/* Right-edge percent-deviation gridlines */}
+            {gridlines.map((gridline, index) => (
+              <Line
+                key={index}
+                x1={0}
+                x2={chartWidth}
+                y1={yOf(gridline.value)}
+                y2={yOf(gridline.value)}
+                stroke={colors.chartGrid}
+                strokeWidth={1}
+              />
+            ))}
+
+            {/* Dotted baseline reference */}
+            {baselineY !== null ? (
+              <Line
+                x1={0}
+                x2={chartWidth}
+                y1={baselineY}
+                y2={baselineY}
+                stroke={colors.chartAxis}
+                strokeWidth={1}
+                strokeDasharray="2,4"
+              />
+            ) : null}
+
+            {/* Performance line */}
+            <Path
+              d={linePath}
+              stroke={lineColor}
+              strokeWidth={2.5}
+              fill="none"
+            />
+
+            {/* Selected point marker */}
+            {selected ? (
+              <Circle
+                cx={xOf(selectedIndex!)}
+                cy={yOf(selected.value)}
+                r={3.5}
+                fill={lineColor}
+              />
+            ) : null}
+          </Svg>
+        ) : null}
+
+        {/* Right-edge percent labels */}
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: axisHeight,
+            width: labelGutter,
+          }}
+        >
+          {gridlines.map((gridline, index) => (
+            <AppText
+              key={index}
+              variant="caption"
+              tone="tertiary"
+              numberOfLines={1}
+              style={{
+                position: "absolute",
+                right: 2,
+                top: yOf(gridline.value) - 7,
+                textAlign: "right",
+              }}
+            >
+              {gridline.label}
+            </AppText>
+          ))}
+        </View>
+
+        {/* Touch overlay for point selection */}
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: chartWidth,
+            bottom: axisHeight,
+            flexDirection: "row",
+          }}
+        >
+          {points.map((point, index) => (
+            <Pressable
+              key={point.t}
+              accessibilityRole="button"
+              accessibilityLabel={`${formatMoney(point.value, currency, { hide: hideMoney })}`}
+              onPress={() =>
+                setSelectedIndex(selectedIndex === index ? null : index)
+              }
+              style={{ flex: 1 }}
+            />
+          ))}
+        </View>
+
+        {/* Bottom time-axis labels */}
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: labelGutter,
+            bottom: 0,
+            height: axisHeight,
+          }}
+        >
+          {axisLabels.map(({ index, label }) => {
+            const isFirst = index === 0;
+            const isLast = index === points.length - 1;
+            const x = xOf(index);
+
+            return (
+              <AppText
+                key={index}
+                variant="caption"
+                tone="tertiary"
+                numberOfLines={1}
+                style={{
+                  position: "absolute",
+                  top: 4,
+                  left: isFirst ? 0 : isLast ? undefined : x - 18,
+                  right: isLast ? 0 : undefined,
+                  width: isFirst || isLast ? undefined : 36,
+                  textAlign: isFirst ? "left" : isLast ? "right" : "center",
+                }}
+              >
+                {label}
+              </AppText>
+            );
+          })}
+        </View>
+      </View>
+
+      {selected ? (
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            backgroundColor: colors.bgCardMuted,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+            gap: spacing.md,
+          }}
+        >
+          <AppText variant="caption" tone="secondary">
+            {formatAxisTimeLabel(selected.t, range)}
+          </AppText>
+          <AppText variant="caption" tabular>
+            {formatMoney(selected.value, currency, { hide: hideMoney })}
+          </AppText>
+        </View>
+      ) : null}
+    </View>
   );
 }

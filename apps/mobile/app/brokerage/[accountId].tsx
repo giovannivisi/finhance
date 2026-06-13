@@ -1,20 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
-import { View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, View } from "react-native";
 import type {
   AssetKind,
+  BrokeragePerformanceRange,
   BrokeragePositionResponse,
   BrokerageWorkspaceResponse,
+  LiveAssetValuationResponse,
 } from "@finhance/shared";
 
 import {
   useBrokerageBuy,
   useBrokerageDividend,
   useBrokerageFee,
+  useBrokeragePerformance,
   useBrokerageSell,
   useBrokerageWorkspace,
   useCategories,
+  useLiveValuations,
 } from "@/api/queries";
 import {
   AmountField,
@@ -22,6 +26,7 @@ import {
   Button,
   Card,
   Chip,
+  ChipRow,
   DateField,
   describeError,
   Divider,
@@ -33,18 +38,40 @@ import {
   Section,
   SelectField,
   Sheet,
+  Skeleton,
   SkeletonCard,
   Stat,
   TextField,
 } from "@/components/ui";
+import { LiveDot, PerformanceChart } from "@/components/charts";
 import {
   categoryLabel,
   isAssignableTransactionCategory,
 } from "@/lib/categories";
 import { formatDateLabel, localDateOf, todayLocalDate } from "@/lib/dates";
 import { ASSET_KIND_LABELS } from "@/lib/labels";
+import {
+  applyLiveDeltaToSummary,
+  computeLiveValueDelta,
+  mergePositionsWithLiveQuotes,
+  recomputeChangeFromLiveTotal,
+  resolveHeaderTotal,
+} from "@/lib/live-merge";
 import { formatMoney, parseAmountInput } from "@/lib/money";
+import { useIsScreenActive } from "@/lib/screen-active";
 import { spacing, useTheme } from "@/theme";
+
+const RANGE_OPTIONS: { value: BrokeragePerformanceRange; label: string }[] = [
+  { value: "1D", label: "1D" },
+  { value: "1W", label: "1W" },
+  { value: "1M", label: "1M" },
+  { value: "1Y", label: "1Y" },
+  { value: "MAX", label: "Max" },
+];
+
+function formatChangePercent(percent: number): string {
+  return `${Math.abs(percent).toFixed(2)}%`;
+}
 
 type OperationKind = "BUY" | "SELL" | "DIVIDEND" | "FEE";
 
@@ -168,10 +195,117 @@ export default function BrokerageWorkspaceScreen() {
     emptyOperationForm("EUR"),
   );
   const [formError, setFormError] = useState<string | null>(null);
+  const [range, setRange] = useState<BrokeragePerformanceRange>("1D");
+
+  const isActive = useIsScreenActive();
+  const performanceQuery = useBrokeragePerformance(accountId, range, isActive);
+  const liveQuery = useLiveValuations(isActive);
+
+  const previousQuotesRef = useRef<
+    readonly LiveAssetValuationResponse[] | null
+  >(null);
+  const [liveValueDelta, setLiveValueDelta] = useState(0);
+
+  const liveQuotes = liveQuery.data?.quotes;
+
+  // Reset the accumulated delta when navigating to a different account.
+  useEffect(() => {
+    previousQuotesRef.current = null;
+    setLiveValueDelta(0);
+  }, [accountId]);
+
+  useEffect(() => {
+    if (!liveQuotes) {
+      return;
+    }
+
+    const { totalValueDelta, matchedCount } = computeLiveValueDelta(
+      previousQuotesRef.current,
+      liveQuotes,
+    );
+
+    if (matchedCount > 0) {
+      setLiveValueDelta((current) => current + totalValueDelta);
+    }
+
+    previousQuotesRef.current = liveQuotes;
+  }, [liveQuotes]);
 
   const workspace: BrokerageWorkspaceResponse | undefined = workspaceQuery.data;
   const broker = workspace?.selectedBroker;
   const accountCurrency = broker?.account.currency ?? "EUR";
+
+  const performance = performanceQuery.data;
+
+  const liveTotal =
+    broker && liveValueDelta !== 0 ? broker.totalValue + liveValueDelta : null;
+
+  const headerTotal = broker
+    ? resolveHeaderTotal({
+        liveTotal,
+        performanceLatestValue: performance?.latestValue ?? null,
+        workspaceTotalValue: broker.totalValue,
+      })
+    : null;
+
+  const headerChange =
+    liveTotal !== null
+      ? recomputeChangeFromLiveTotal(
+          liveTotal,
+          performance?.baselineValue ?? null,
+        )
+      : performance &&
+          performance.changeAbsolute !== null &&
+          performance.changePercent !== null
+        ? {
+            changeAbsolute: performance.changeAbsolute,
+            changePercent: performance.changePercent,
+          }
+        : null;
+
+  const mergedPositions = useMemo(
+    () =>
+      workspace && liveQuotes
+        ? mergePositionsWithLiveQuotes(workspace.positions, liveQuotes)
+        : (workspace?.positions ?? []),
+    [workspace, liveQuotes],
+  );
+
+  const liveSummary =
+    broker && liveValueDelta !== 0
+      ? applyLiveDeltaToSummary(
+          {
+            totalValue: broker.totalValue,
+            investedValue: broker.investedValue,
+            unrealisedGainLoss: broker.unrealisedGainLoss,
+          },
+          liveValueDelta,
+        )
+      : null;
+
+  // Subtle fade/translate animation whenever the header total ticks.
+  const headerAnim = useRef(new Animated.Value(1)).current;
+  const previousHeaderTotalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (headerTotal === null) {
+      return;
+    }
+
+    if (
+      previousHeaderTotalRef.current !== null &&
+      previousHeaderTotalRef.current !== headerTotal
+    ) {
+      headerAnim.setValue(0.4);
+      Animated.timing(headerAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    previousHeaderTotalRef.current = headerTotal;
+  }, [headerTotal, headerAnim]);
 
   const positionOptions = useMemo(
     () =>
@@ -372,15 +506,96 @@ export default function BrokerageWorkspaceScreen() {
       <Card>
         <View style={{ gap: spacing.lg }}>
           <View style={{ gap: 4 }}>
-            <AppText variant="kicker" tone="tertiary">
-              Total value · {accountCurrency}
-            </AppText>
-            <MoneyText
-              amount={broker.totalValue}
-              currency={accountCurrency}
-              variant="display"
-            />
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <AppText variant="kicker" tone="tertiary">
+                Total value · {accountCurrency}
+              </AppText>
+              {isActive && liveQuery.isFetching ? <LiveDot /> : null}
+            </View>
+            <Animated.View style={{ opacity: headerAnim }}>
+              <MoneyText
+                amount={headerTotal ?? broker.totalValue}
+                currency={accountCurrency}
+                variant="display"
+              />
+            </Animated.View>
+            {headerChange ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <Ionicons
+                  name={
+                    headerChange.changeAbsolute >= 0 ? "caret-up" : "caret-down"
+                  }
+                  size={13}
+                  color={
+                    headerChange.changeAbsolute >= 0
+                      ? colors.chartIncome
+                      : colors.chartExpense
+                  }
+                />
+                <MoneyText
+                  amount={headerChange.changeAbsolute}
+                  currency={accountCurrency}
+                  variant="footnoteMedium"
+                  colorBySign
+                  signDisplay="exceptZero"
+                  maximumFractionDigits={0}
+                />
+                <AppText
+                  variant="footnoteMedium"
+                  tone={headerChange.changeAbsolute >= 0 ? "income" : "expense"}
+                >
+                  ({formatChangePercent(headerChange.changePercent)})
+                </AppText>
+              </View>
+            ) : null}
           </View>
+
+          <View style={{ gap: spacing.sm }}>
+            <ChipRow
+              options={RANGE_OPTIONS}
+              value={range}
+              onChange={setRange}
+            />
+            {performanceQuery.isPending ? (
+              <Skeleton height={240} style={{ borderRadius: 16 }} />
+            ) : performanceQuery.isError ? (
+              <AppText variant="footnote" tone="secondary">
+                Couldn&apos;t load the performance chart.
+              </AppText>
+            ) : (
+              <PerformanceChart
+                points={performance?.points ?? []}
+                range={range}
+                baselineValue={performance?.baselineValue ?? null}
+                latestValue={performance?.latestValue ?? null}
+                currency={performance?.reportingCurrency ?? accountCurrency}
+              />
+            )}
+            {performance &&
+            (performance.pricingStatus.state === "PARTIAL" ||
+              performance.pricingStatus.state === "STALE") ? (
+              <AppText variant="caption" tone="tertiary">
+                {performance.pricingStatus.state === "STALE"
+                  ? "Some prices are stale; this chart may not reflect the latest market moves."
+                  : "Some prices are still updating; this chart may be partial."}
+              </AppText>
+            ) : null}
+          </View>
+
+          <Divider />
+
           <View
             style={{ flexDirection: "row", gap: spacing.lg, flexWrap: "wrap" }}
           >
@@ -388,7 +603,7 @@ export default function BrokerageWorkspaceScreen() {
               label="Invested"
               value={
                 <MoneyText
-                  amount={broker.investedValue}
+                  amount={liveSummary?.investedValue ?? broker.investedValue}
                   currency={accountCurrency}
                   variant="title3"
                   maximumFractionDigits={0}
@@ -414,7 +629,9 @@ export default function BrokerageWorkspaceScreen() {
               label="Unrealised"
               value={
                 <MoneyText
-                  amount={broker.unrealisedGainLoss}
+                  amount={
+                    liveSummary?.unrealisedGainLoss ?? broker.unrealisedGainLoss
+                  }
                   currency={accountCurrency}
                   variant="title3"
                   colorBySign
@@ -490,9 +707,9 @@ export default function BrokerageWorkspaceScreen() {
 
       <Section
         kicker="Holdings"
-        title={`Positions (${workspace.positions.length})`}
+        title={`Positions (${mergedPositions.length})`}
       >
-        {workspace.positions.length === 0 ? (
+        {mergedPositions.length === 0 ? (
           <Card surface="muted">
             <AppText variant="footnote" tone="secondary">
               No positions yet. Record a buy to start the history.
@@ -500,11 +717,11 @@ export default function BrokerageWorkspaceScreen() {
           </Card>
         ) : (
           <Card style={{ paddingVertical: 4 }}>
-            {workspace.positions.map((position, index) => (
+            {mergedPositions.map((position, index) => (
               <PositionRow
                 key={position.assetId}
                 position={position}
-                showDivider={index < workspace.positions.length - 1}
+                showDivider={index < mergedPositions.length - 1}
               />
             ))}
           </Card>
