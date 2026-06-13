@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type {
   AggregatePricingStatus,
   DashboardAssetResponse,
+  LiveAssetValuationResponse,
 } from "@finhance/shared";
 import {
   DndContext,
@@ -45,10 +46,22 @@ import SectionHeader from "@components/SectionHeader";
 import DisclosureIcon from "@components/DisclosureIcon";
 import AllocationChart from "@components/AllocationChart";
 import { useAppPreferences } from "@components/ThemeProvider";
+import {
+  applyLiveDeltasToKindTotals,
+  applyLiveDeltasToSummary,
+  computeDashboardLiveValueDeltas,
+  mergeDashboardAssetsWithLiveQuotes,
+  sumDashboardValuesWithLiveDeltas,
+} from "@lib/live-valuations";
 import { formatSensitiveCurrency } from "@lib/money";
 import { useSingleFlightActions } from "@lib/single-flight";
+import { useLiveValuations } from "@lib/useLiveValuations";
 import { fetchApiMutation } from "@lib/api";
 import { COLORS, formatKindLabel } from "@lib/asset-ui";
+
+// Stable fallback so the live-merge memos don't recompute on every render
+// while there is no live data yet.
+const EMPTY_LIVE_QUOTES: LiveAssetValuationResponse[] = [];
 
 function getKindDotColor(kind: string): string {
   return COLORS[kind as keyof typeof COLORS] ?? "var(--border-glass-strong)";
@@ -433,6 +446,48 @@ export default function DashboardClient({
   const { hideMoney, isHydrated, toggleHideMoney } = useAppPreferences();
   const allCategories = useMemo(() => Object.keys(grouped), [grouped]);
 
+  // Live valuations are display-only: they update the figures the user sees
+  // between data refreshes but never touch `grouped`/`summary`/
+  // `kindTotalsArray` (the server-provided baseline) or `lastDataRefreshMs`.
+  const { data: liveValuationsData } = useLiveValuations();
+  const liveQuotes = liveValuationsData?.quotes ?? EMPTY_LIVE_QUOTES;
+
+  const flatAssets = useMemo(() => Object.values(grouped).flat(), [grouped]);
+
+  const liveValueDeltas = useMemo(
+    () => computeDashboardLiveValueDeltas(flatAssets, liveQuotes),
+    [flatAssets, liveQuotes],
+  );
+
+  const liveGrouped = useMemo(() => {
+    if (liveQuotes.length === 0) {
+      return grouped;
+    }
+
+    const mergedById = new Map(
+      mergeDashboardAssetsWithLiveQuotes(flatAssets, liveQuotes).map(
+        (asset) => [asset.id, asset],
+      ),
+    );
+
+    const next: Record<string, DashboardAssetResponse[]> = {};
+    for (const [kind, assets] of Object.entries(grouped)) {
+      next[kind] = assets.map((asset) => mergedById.get(asset.id) ?? asset);
+    }
+    return next;
+  }, [grouped, flatAssets, liveQuotes]);
+
+  const liveKindTotalsArray = useMemo(
+    () =>
+      applyLiveDeltasToKindTotals(kindTotalsArray, flatAssets, liveValueDeltas),
+    [kindTotalsArray, flatAssets, liveValueDeltas],
+  );
+
+  const liveSummary = useMemo(
+    () => applyLiveDeltasToSummary(summary, flatAssets, liveValueDeltas),
+    [summary, flatAssets, liveValueDeltas],
+  );
+
   const [assetKindOrderState, setAssetKindOrderState] = useState<string[]>(() =>
     applySavedKindOrder(allCategories, savedKindOrder),
   );
@@ -592,7 +647,7 @@ export default function DashboardClient({
     kind: string,
     type: "ASSET" | "LIABILITY",
   ): DashboardAssetResponse[] {
-    const assets = (grouped[kind] ?? []).filter((a) => a.type === type);
+    const assets = (liveGrouped[kind] ?? []).filter((a) => a.type === type);
     const orderedIds = assetOrderState[kind] ?? [];
     const byId = new Map(assets.map((a) => [a.id, a]));
     const ordered: DashboardAssetResponse[] = [];
@@ -670,7 +725,7 @@ export default function DashboardClient({
           <p className="dashboard-hero-eyebrow">Total Net Worth</p>
           <h1 className="dashboard-hero-amount">
             {formatSensitiveCurrency(
-              summary.netWorth,
+              liveSummary.netWorth,
               baseCurrency,
               shouldHideMoney,
             )}
@@ -706,7 +761,7 @@ export default function DashboardClient({
             <p className="dashboard-hero-stat-label">Assets</p>
             <p className="dashboard-hero-stat-value is-positive">
               {formatSensitiveCurrency(
-                summary.assets,
+                liveSummary.assets,
                 baseCurrency,
                 shouldHideMoney,
               )}
@@ -716,7 +771,7 @@ export default function DashboardClient({
             <p className="dashboard-hero-stat-label">Liabilities</p>
             <p className="dashboard-hero-stat-value is-negative">
               {formatSensitiveCurrency(
-                summary.liabilities,
+                liveSummary.liabilities,
                 baseCurrency,
                 shouldHideMoney,
               )}
@@ -749,7 +804,7 @@ export default function DashboardClient({
         <div className="glass-card dashboard-overview-card dashboard-overview-breakdown">
           <h3 className="dashboard-overview-title">Asset Allocation</h3>
           <div className="dashboard-overview-list">
-            {kindTotalsArray.map(({ kind, total }) => (
+            {liveKindTotalsArray.map(({ kind, total }) => (
               <div key={kind} className="dashboard-overview-row">
                 <div className="dashboard-overview-label">
                   <div
@@ -775,7 +830,7 @@ export default function DashboardClient({
             <AllocationChart
               size={220}
               currency={baseCurrency}
-              data={kindTotalsArray.map((kindTotal) => ({
+              data={liveKindTotalsArray.map((kindTotal) => ({
                 label: formatKindLabel(kindTotal.kind),
                 total: kindTotal.total,
                 color: getKindDotColor(kindTotal.kind),
@@ -854,16 +909,12 @@ export default function DashboardClient({
                         <div className="category-toggle-meta">
                           <span className="category-toggle-total">
                             {formatSensitiveCurrency(
-                              grouped[category]
-                                .filter((a) => a.type === "ASSET")
-                                .reduce(
-                                  (sum, a) =>
-                                    sum +
-                                    (a.currentValue ??
-                                      a.referenceValue ??
-                                      Number(a.balance)),
-                                  0,
+                              sumDashboardValuesWithLiveDeltas(
+                                grouped[category].filter(
+                                  (a) => a.type === "ASSET",
                                 ),
+                                liveValueDeltas,
+                              ),
                               baseCurrency,
                               shouldHideMoney,
                             )}
@@ -952,16 +1003,12 @@ export default function DashboardClient({
                         <div className="category-toggle-meta">
                           <span className="category-toggle-total">
                             {formatSensitiveCurrency(
-                              grouped[category]
-                                .filter((a) => a.type === "LIABILITY")
-                                .reduce(
-                                  (sum, a) =>
-                                    sum +
-                                    (a.currentValue ??
-                                      a.referenceValue ??
-                                      Number(a.balance)),
-                                  0,
+                              sumDashboardValuesWithLiveDeltas(
+                                grouped[category].filter(
+                                  (a) => a.type === "LIABILITY",
                                 ),
+                                liveValueDeltas,
+                              ),
                               baseCurrency,
                               shouldHideMoney,
                             )}

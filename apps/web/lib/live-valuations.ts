@@ -8,7 +8,7 @@ import type {
  * Indexes live valuation quotes by asset id for quick lookup during merges.
  */
 export function indexLiveQuotesByAssetId(
-  quotes: LiveAssetValuationResponse[],
+  quotes: readonly LiveAssetValuationResponse[],
 ): Map<string, LiveAssetValuationResponse> {
   const byAssetId = new Map<string, LiveAssetValuationResponse>();
   for (const quote of quotes) {
@@ -78,6 +78,180 @@ export function mergeLiveDashboardAssets(
       currentValue: quote.valueInReporting,
     };
   });
+}
+
+/**
+ * Merges live quotes into dashboard asset rows, updating the displayed
+ * current value (and, for assets that track a quantity, the latest unit
+ * price) from the quote's asset-currency figures. Matching requires both the
+ * assetId and currency to agree with the quote; assets without a matching
+ * quote, or whose currency differs, are returned unchanged. This mirrors the
+ * mobile dashboard's `mergeDashboardAssetsWithLiveQuotes` so the two
+ * platforms behave the same way.
+ */
+export function mergeDashboardAssetsWithLiveQuotes(
+  assets: readonly DashboardAssetResponse[],
+  quotes: readonly LiveAssetValuationResponse[],
+): DashboardAssetResponse[] {
+  if (quotes.length === 0) {
+    return [...assets];
+  }
+
+  const byAssetId = indexLiveQuotesByAssetId(quotes);
+
+  return assets.map((asset) => {
+    const quote = byAssetId.get(asset.id);
+
+    if (
+      !quote ||
+      quote.currency.toUpperCase() !== asset.currency.toUpperCase()
+    ) {
+      return asset;
+    }
+
+    return {
+      ...asset,
+      currentValue: quote.value,
+      lastPrice: asset.quantity !== null ? quote.price : asset.lastPrice,
+    };
+  });
+}
+
+/**
+ * Computes the reporting-currency delta for each asset with a matching live
+ * quote, against the server-provided baseline value (`currentValue ??
+ * referenceValue`). Assets without a matching quote, or whose quote has no
+ * `valueInReporting`, are omitted from the result so they neither inflate
+ * nor deflate aggregates derived from it.
+ *
+ * Computing deltas against the props (the server's last snapshot) rather
+ * than the previous tick keeps the merge idempotent: re-applying it to the
+ * same baseline always yields the same aggregates, and a fresh
+ * `router.refresh()` resets the baseline cleanly.
+ */
+export function computeDashboardLiveValueDeltas(
+  assets: readonly DashboardAssetResponse[],
+  quotes: readonly LiveAssetValuationResponse[],
+): Map<string, number> {
+  const deltas = new Map<string, number>();
+
+  if (quotes.length === 0) {
+    return deltas;
+  }
+
+  const byAssetId = indexLiveQuotesByAssetId(quotes);
+
+  for (const asset of assets) {
+    const quote = byAssetId.get(asset.id);
+    if (!quote || quote.valueInReporting == null) {
+      continue;
+    }
+
+    const baseline = asset.currentValue ?? asset.referenceValue ?? 0;
+    deltas.set(asset.id, quote.valueInReporting - baseline);
+  }
+
+  return deltas;
+}
+
+/**
+ * Applies per-asset reporting-currency deltas to the asset-kind subtotals
+ * shown in the allocation overview. Each total moves by the sum of the
+ * deltas for the ASSET-type assets that belong to that kind; kinds with no
+ * matching deltas are returned unchanged (same array reference).
+ */
+export function applyLiveDeltasToKindTotals(
+  kindTotalsArray: readonly { kind: string; total: number }[],
+  assets: readonly DashboardAssetResponse[],
+  deltas: ReadonlyMap<string, number>,
+): { kind: string; total: number }[] {
+  if (deltas.size === 0) {
+    return [...kindTotalsArray];
+  }
+
+  return kindTotalsArray.map((kindTotal) => {
+    let delta = 0;
+    for (const asset of assets) {
+      if (asset.type !== "ASSET" || (asset.kind ?? null) !== kindTotal.kind) {
+        continue;
+      }
+      delta += deltas.get(asset.id) ?? 0;
+    }
+
+    return delta === 0
+      ? kindTotal
+      : { ...kindTotal, total: kindTotal.total + delta };
+  });
+}
+
+export interface DashboardSummaryFigures {
+  assets: number;
+  liabilities: number;
+  netWorth: number;
+}
+
+/**
+ * Applies per-asset reporting-currency deltas to the headline summary
+ * figures. Asset deltas move the assets total, liability deltas move the
+ * liabilities total, and net worth shifts by their difference. Returns the
+ * same object reference when there is nothing to apply.
+ */
+export function applyLiveDeltasToSummary<T extends DashboardSummaryFigures>(
+  summary: T,
+  assets: readonly DashboardAssetResponse[],
+  deltas: ReadonlyMap<string, number>,
+): T {
+  if (deltas.size === 0) {
+    return summary;
+  }
+
+  let assetsDelta = 0;
+  let liabilitiesDelta = 0;
+
+  for (const asset of assets) {
+    const delta = deltas.get(asset.id);
+    if (!delta) {
+      continue;
+    }
+
+    if (asset.type === "ASSET") {
+      assetsDelta += delta;
+    } else {
+      liabilitiesDelta += delta;
+    }
+  }
+
+  if (assetsDelta === 0 && liabilitiesDelta === 0) {
+    return summary;
+  }
+
+  return {
+    ...summary,
+    assets: summary.assets + assetsDelta,
+    liabilities: summary.liabilities + liabilitiesDelta,
+    netWorth: summary.netWorth + assetsDelta - liabilitiesDelta,
+  };
+}
+
+/**
+ * Sums the reporting-currency value of a group of assets (`currentValue ??
+ * referenceValue ?? balance`, the same fallback used by the server-provided
+ * subtotals), adjusted by any matching live-value deltas. Used to recompute
+ * the per-kind subtotals shown above each asset/liability block.
+ */
+export function sumDashboardValuesWithLiveDeltas(
+  assets: readonly DashboardAssetResponse[],
+  deltas: ReadonlyMap<string, number>,
+): number {
+  let total = 0;
+
+  for (const asset of assets) {
+    const baseline =
+      asset.currentValue ?? asset.referenceValue ?? asset.balance;
+    total += baseline + (deltas.get(asset.id) ?? 0);
+  }
+
+  return total;
 }
 
 /**

@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  applyLiveDeltasToKindTotals,
+  applyLiveDeltasToSummary,
   applyLiveValueDelta,
+  computeDashboardLiveValueDeltas,
   computeLiveChangePercent,
   computeLiveValueDelta,
+  mergeDashboardAssetsWithLiveQuotes,
   mergeLiveDashboardAssets,
   mergeLivePositions,
+  sumDashboardValuesWithLiveDeltas,
 } from "./live-valuations.ts";
 import type {
   BrokeragePositionResponse,
@@ -212,4 +217,201 @@ test("computeLiveChangePercent recomputes the change against the baseline", () =
 test("computeLiveChangePercent returns null when the baseline is missing or zero", () => {
   assert.equal(computeLiveChangePercent(1100, null), null);
   assert.equal(computeLiveChangePercent(1100, 0), null);
+});
+
+test("mergeDashboardAssetsWithLiveQuotes updates currentValue and lastPrice for matched assets with a quantity", () => {
+  const assets = [buildDashboardAsset()];
+  const quotes = [buildQuote({ price: 56, value: 560 })];
+
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+
+  assert.equal(merged[0].currentValue, 560);
+  assert.equal(merged[0].lastPrice, 56);
+});
+
+test("mergeDashboardAssetsWithLiveQuotes does not update lastPrice for assets without a quantity", () => {
+  const assets = [buildDashboardAsset({ quantity: null, lastPrice: null })];
+  const quotes = [buildQuote({ price: 56, value: 560 })];
+
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+
+  assert.equal(merged[0].currentValue, 560);
+  assert.equal(merged[0].lastPrice, null);
+});
+
+test("mergeDashboardAssetsWithLiveQuotes leaves unmatched assets unchanged", () => {
+  const assets = [buildDashboardAsset({ id: "asset-2" })];
+  const quotes = [buildQuote({ assetId: "asset-1" })];
+
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+
+  assert.deepEqual(merged, assets);
+});
+
+test("mergeDashboardAssetsWithLiveQuotes leaves the row unchanged on a currency mismatch", () => {
+  const assets = [buildDashboardAsset({ currency: "EUR" })];
+  const quotes = [buildQuote({ currency: "USD" })];
+
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+
+  assert.deepEqual(merged, assets);
+});
+
+test("mergeDashboardAssetsWithLiveQuotes returns a copy when there are no quotes", () => {
+  const assets = [buildDashboardAsset()];
+
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, []);
+
+  assert.deepEqual(merged, assets);
+  assert.notEqual(merged, assets);
+});
+
+test("computeDashboardLiveValueDeltas computes the delta against currentValue", () => {
+  const assets = [buildDashboardAsset({ currentValue: 550 })];
+  const quotes = [buildQuote({ valueInReporting: 575 })];
+
+  const deltas = computeDashboardLiveValueDeltas(assets, quotes);
+
+  assert.equal(deltas.get("asset-1"), 25);
+});
+
+test("computeDashboardLiveValueDeltas falls back to referenceValue when currentValue is null", () => {
+  const assets = [
+    buildDashboardAsset({ currentValue: null, referenceValue: 500 }),
+  ];
+  const quotes = [buildQuote({ valueInReporting: 530 })];
+
+  const deltas = computeDashboardLiveValueDeltas(assets, quotes);
+
+  assert.equal(deltas.get("asset-1"), 30);
+});
+
+test("computeDashboardLiveValueDeltas omits assets with a null valueInReporting", () => {
+  const assets = [buildDashboardAsset({ currentValue: 550 })];
+  const quotes = [buildQuote({ valueInReporting: null })];
+
+  const deltas = computeDashboardLiveValueDeltas(assets, quotes);
+
+  assert.equal(deltas.has("asset-1"), false);
+});
+
+test("computeDashboardLiveValueDeltas omits assets without a matching quote", () => {
+  const assets = [buildDashboardAsset({ id: "asset-2", currentValue: 550 })];
+  const quotes = [buildQuote({ assetId: "asset-1" })];
+
+  const deltas = computeDashboardLiveValueDeltas(assets, quotes);
+
+  assert.equal(deltas.size, 0);
+});
+
+test("applyLiveDeltasToKindTotals adds matched ASSET deltas to the corresponding kind total", () => {
+  const assets = [
+    buildDashboardAsset({ id: "asset-1", kind: "STOCK", currentValue: 550 }),
+    buildDashboardAsset({ id: "asset-2", kind: "CASH", currentValue: 200 }),
+  ];
+  const deltas = new Map([
+    ["asset-1", 25],
+    ["asset-2", -5],
+  ]);
+  const kindTotalsArray = [
+    { kind: "STOCK", total: 550 },
+    { kind: "CASH", total: 200 },
+  ];
+
+  const result = applyLiveDeltasToKindTotals(kindTotalsArray, assets, deltas);
+
+  assert.deepEqual(result, [
+    { kind: "STOCK", total: 575 },
+    { kind: "CASH", total: 195 },
+  ]);
+});
+
+test("applyLiveDeltasToKindTotals returns equivalent totals when there are no deltas", () => {
+  const assets = [buildDashboardAsset({ kind: "STOCK", currentValue: 550 })];
+  const kindTotalsArray = [{ kind: "STOCK", total: 550 }];
+
+  const result = applyLiveDeltasToKindTotals(
+    kindTotalsArray,
+    assets,
+    new Map(),
+  );
+
+  assert.deepEqual(result, kindTotalsArray);
+  assert.notEqual(result, kindTotalsArray);
+});
+
+test("applyLiveDeltasToSummary moves the assets total and net worth for an ASSET delta", () => {
+  const assets = [
+    buildDashboardAsset({ id: "asset-1", type: "ASSET", currentValue: 550 }),
+  ];
+  const deltas = new Map([["asset-1", 25]]);
+  const summary = { assets: 550, liabilities: 100, netWorth: 450 };
+
+  const result = applyLiveDeltasToSummary(summary, assets, deltas);
+
+  assert.deepEqual(result, { assets: 575, liabilities: 100, netWorth: 475 });
+});
+
+test("applyLiveDeltasToSummary moves the liabilities total and net worth (opposite sign) for a LIABILITY delta", () => {
+  const assets = [
+    buildDashboardAsset({
+      id: "liability-1",
+      type: "LIABILITY",
+      kind: null,
+      liabilityKind: "DEBT",
+      currentValue: 100,
+    }),
+  ];
+  const deltas = new Map([["liability-1", 10]]);
+  const summary = { assets: 550, liabilities: 100, netWorth: 450 };
+
+  const result = applyLiveDeltasToSummary(summary, assets, deltas);
+
+  assert.deepEqual(result, { assets: 550, liabilities: 110, netWorth: 440 });
+});
+
+test("applyLiveDeltasToSummary returns the same object reference when there are no deltas", () => {
+  const assets = [buildDashboardAsset({ currentValue: 550 })];
+  const summary = { assets: 550, liabilities: 100, netWorth: 450 };
+
+  assert.equal(applyLiveDeltasToSummary(summary, assets, new Map()), summary);
+});
+
+test("applyLiveDeltasToSummary leaves aggregates unchanged when a quote has a null valueInReporting", () => {
+  const assets = [buildDashboardAsset({ id: "asset-1", currentValue: 550 })];
+  const quotes = [buildQuote({ assetId: "asset-1", valueInReporting: null })];
+  const deltas = computeDashboardLiveValueDeltas(assets, quotes);
+  const summary = { assets: 550, liabilities: 100, netWorth: 450 };
+
+  const result = applyLiveDeltasToSummary(summary, assets, deltas);
+
+  assert.deepEqual(result, summary);
+});
+
+test("sumDashboardValuesWithLiveDeltas sums baseline values adjusted by matching deltas", () => {
+  const assets = [
+    buildDashboardAsset({ id: "asset-1", currentValue: 550 }),
+    buildDashboardAsset({ id: "asset-2", currentValue: 200 }),
+  ];
+  const deltas = new Map([["asset-1", 25]]);
+
+  assert.equal(sumDashboardValuesWithLiveDeltas(assets, deltas), 775);
+});
+
+test("sumDashboardValuesWithLiveDeltas falls back to referenceValue and balance", () => {
+  const assets = [
+    buildDashboardAsset({
+      id: "asset-1",
+      currentValue: null,
+      referenceValue: 500,
+    }),
+    buildDashboardAsset({
+      id: "asset-2",
+      currentValue: null,
+      referenceValue: null,
+      balance: 80,
+    }),
+  ];
+
+  assert.equal(sumDashboardValuesWithLiveDeltas(assets, new Map()), 580);
 });
