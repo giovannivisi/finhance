@@ -3,6 +3,17 @@ type SessionUserLike = {
   email?: string | null;
 };
 
+const PUBLIC_HOSTED_PROXY_PATHS = new Set(["/privacy"]);
+
+export function isPublicHostedProxyPath(pathname: string): boolean {
+  const normalizedPath =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname;
+
+  return PUBLIC_HOSTED_PROXY_PATHS.has(normalizedPath);
+}
+
 export function buildSignInRedirectUrl(requestUrl: string): string {
   const currentUrl = new URL(requestUrl);
   const signInUrl = new URL("/api/auth/signin", currentUrl.origin);

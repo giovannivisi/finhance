@@ -177,11 +177,10 @@ export default function RecurringRuleDetailScreen() {
       kicker={TRANSACTION_KIND_LABELS[rule.kind]}
       title={rule.name}
       showBack
-      refreshing={ruleQuery.isRefetching}
-      onRefresh={() => {
-        ruleQuery.refetch();
-        occurrencesQuery.refetch();
-      }}
+      refreshing={ruleQuery.isRefetching || occurrencesQuery.isRefetching}
+      onRefresh={() =>
+        Promise.all([ruleQuery.refetch(), occurrencesQuery.refetch()])
+      }
       headerRight={
         <>
           <IconButton

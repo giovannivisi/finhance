@@ -185,6 +185,7 @@ export default function BudgetsScreen() {
     <Screen
       kicker="Plans"
       title="Budgets"
+      showBack
       withTabBarClearance
       refreshing={budgetQuery.isRefetching}
       onRefresh={() => budgetQuery.refetch()}

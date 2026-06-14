@@ -283,12 +283,18 @@ export default function AccountDetailScreen() {
       kicker={ACCOUNT_TYPE_LABELS[account.type]}
       title={account.name}
       showBack
-      refreshing={accountQuery.isRefetching}
-      onRefresh={() => {
-        accountQuery.refetch();
-        reconciliationsQuery.refetch();
-        transactionsQuery.refetch();
-      }}
+      refreshing={
+        accountQuery.isRefetching ||
+        reconciliationsQuery.isRefetching ||
+        transactionsQuery.isRefetching
+      }
+      onRefresh={() =>
+        Promise.all([
+          accountQuery.refetch(),
+          reconciliationsQuery.refetch(),
+          transactionsQuery.refetch(),
+        ])
+      }
       headerRight={
         <IconButton
           accessibilityLabel="Edit account"

@@ -118,7 +118,11 @@ function AccountRow({
   );
 }
 
-export default function WalletsScreen() {
+export function WalletsScreenContent({
+  showBack = true,
+}: {
+  showBack?: boolean;
+}) {
   const router = useRouter();
   const { colors } = useTheme();
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -160,7 +164,7 @@ export default function WalletsScreen() {
     <Screen
       kicker="Wallets"
       title="Accounts"
-      showBack
+      showBack={showBack}
       withTabBarClearance
       refreshing={pageQuery.isRefetching}
       onRefresh={() => pageQuery.refetch()}
@@ -263,4 +267,8 @@ export default function WalletsScreen() {
       )}
     </Screen>
   );
+}
+
+export default function WalletsScreen() {
+  return <WalletsScreenContent />;
 }

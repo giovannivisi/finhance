@@ -28,10 +28,10 @@ export default function MoreScreen() {
 
   const workspaceEntries: MoreEntry[] = [
     {
-      href: "/accounts",
-      icon: "wallet-outline",
-      title: "Wallets",
-      subtitle: "Accounts, balances, reconciliation",
+      href: "/history",
+      icon: "time-outline",
+      title: "History",
+      subtitle: "Net worth snapshots",
     },
     {
       href: "/brokerage",
@@ -40,10 +40,10 @@ export default function MoreScreen() {
       subtitle: "Positions, operations, allocation",
     },
     {
-      href: "/review",
-      icon: "checkmark-done-outline",
-      title: "Monthly review",
-      subtitle: "Close the month with confidence",
+      href: "/budgets",
+      icon: "pie-chart-outline",
+      title: "Budgets",
+      subtitle: "Monthly plans and overrides",
     },
     {
       href: "/recurring",
@@ -51,6 +51,12 @@ export default function MoreScreen() {
       title: "Recurring",
       subtitle: "Rules, exceptions, materialisation",
       badge: hasPendingRecurring ? "pending" : undefined,
+    },
+    {
+      href: "/review",
+      icon: "checkmark-done-outline",
+      title: "Monthly close",
+      subtitle: "Close the month with confidence",
     },
     {
       href: "/categories",
@@ -67,14 +73,8 @@ export default function MoreScreen() {
     {
       href: "/import",
       icon: "cloud-upload-outline",
-      title: "Import & export",
+      title: "Import",
       subtitle: "CSV batches and web import flow",
-    },
-    {
-      href: "/history",
-      icon: "time-outline",
-      title: "History",
-      subtitle: "Net worth snapshots",
     },
   ];
 

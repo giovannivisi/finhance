@@ -19,7 +19,7 @@ const TAB_ICONS: Record<
 > = {
   index: { active: "home", inactive: "home-outline" },
   activity: { active: "swap-vertical", inactive: "swap-vertical-outline" },
-  budgets: { active: "pie-chart", inactive: "pie-chart-outline" },
+  wallets: { active: "wallet", inactive: "wallet-outline" },
   analytics: { active: "trending-up", inactive: "trending-up-outline" },
   more: { active: "grid", inactive: "grid-outline" },
 };
@@ -41,9 +41,9 @@ function IosNativeTabs() {
         <Label>Activity</Label>
         <Icon sf="arrow.up.arrow.down" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="budgets">
-        <Label>Budgets</Label>
-        <Icon sf={{ default: "chart.pie", selected: "chart.pie.fill" }} />
+      <NativeTabs.Trigger name="wallets">
+        <Label>Wallets</Label>
+        <Icon sf={{ default: "wallet.pass", selected: "wallet.pass.fill" }} />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="analytics">
         <Label>Analytics</Label>
@@ -176,7 +176,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="activity" options={{ title: "Activity" }} />
-      <Tabs.Screen name="budgets" options={{ title: "Budgets" }} />
+      <Tabs.Screen name="wallets" options={{ title: "Wallets" }} />
       <Tabs.Screen name="analytics" options={{ title: "Analytics" }} />
       <Tabs.Screen name="more" options={{ title: "More" }} />
     </Tabs>

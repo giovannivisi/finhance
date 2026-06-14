@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildSignInRedirectUrl,
+  isPublicHostedProxyPath,
   resolveProxyAuthorization,
 } from "./proxy-auth.ts";
 
@@ -10,6 +11,16 @@ test("buildSignInRedirectUrl preserves the requested path and query", () => {
     buildSignInRedirectUrl("https://finhance.test/review?month=2026-05"),
     "https://finhance.test/api/auth/signin?callbackUrl=%2Freview%3Fmonth%3D2026-05",
   );
+});
+
+test("isPublicHostedProxyPath allows the privacy notice without a hosted session", () => {
+  assert.equal(isPublicHostedProxyPath("/privacy"), true);
+  assert.equal(isPublicHostedProxyPath("/privacy/"), true);
+});
+
+test("isPublicHostedProxyPath keeps workspace pages behind hosted auth", () => {
+  assert.equal(isPublicHostedProxyPath("/dashboard"), false);
+  assert.equal(isPublicHostedProxyPath("/privacy/settings"), false);
 });
 
 test("resolveProxyAuthorization returns a 401 response without a hosted session", async () => {

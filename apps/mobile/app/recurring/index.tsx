@@ -132,11 +132,10 @@ export default function RecurringListScreen() {
       title="Recurring"
       showBack
       withTabBarClearance
-      refreshing={rulesQuery.isRefetching}
-      onRefresh={() => {
-        rulesQuery.refetch();
-        pendingQuery.refetch();
-      }}
+      refreshing={rulesQuery.isRefetching || pendingQuery.isRefetching}
+      onRefresh={() =>
+        Promise.all([rulesQuery.refetch(), pendingQuery.refetch()])
+      }
       headerRight={
         <IconButton
           accessibilityLabel="Add recurring rule"

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   Platform,
   RefreshControl,
@@ -68,7 +68,7 @@ export interface ScreenProps {
   showBack?: boolean;
   children: ReactNode;
   refreshing?: boolean;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<unknown>;
   /** Adds bottom padding so the floating tab bar does not cover content. */
   withTabBarClearance?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
@@ -91,6 +91,30 @@ export function Screen({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (!refreshing) {
+      setIsPullRefreshing(false);
+    }
+  }, [refreshing]);
+
+  const handleRefresh = useCallback(() => {
+    if (!onRefresh) {
+      return;
+    }
+
+    setIsPullRefreshing(true);
+    const result = onRefresh();
+
+    if (result && typeof result === "object" && "finally" in result) {
+      void (result as Promise<unknown>)
+        .finally(() => {
+          setIsPullRefreshing(false);
+        })
+        .catch(() => undefined);
+    }
+  }, [onRefresh]);
 
   const header =
     kicker || title || headerRight || showBack ? (
@@ -190,8 +214,8 @@ export function Screen({
         refreshControl={
           onRefresh ? (
             <RefreshControl
-              refreshing={Boolean(refreshing)}
-              onRefresh={onRefresh}
+              refreshing={isPullRefreshing}
+              onRefresh={handleRefresh}
               tintColor={colors.textSecondary}
             />
           ) : undefined

@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
 import { resolveLocalRequestRejection } from "@lib/local-request";
-import { buildSignInRedirectUrl } from "@lib/proxy-auth";
+import {
+  buildSignInRedirectUrl,
+  isPublicHostedProxyPath,
+} from "@lib/proxy-auth";
 
 const authenticatedProxy = auth((request) => {
   const localRequestRejection = resolveLocalRequestRejection(request);
@@ -18,6 +21,10 @@ const authenticatedProxy = auth((request) => {
   }
 
   if (!isHostedAuthMode()) {
+    return NextResponse.next();
+  }
+
+  if (isPublicHostedProxyPath(new URL(request.url).pathname)) {
     return NextResponse.next();
   }
 

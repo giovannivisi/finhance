@@ -200,9 +200,9 @@ export default function ExpenseValidationScreen() {
       showBack
       withTabBarClearance
       refreshing={rulesQuery.isRefetching || categoriesQuery.isRefetching}
-      onRefresh={() => {
-        void Promise.all([rulesQuery.refetch(), categoriesQuery.refetch()]);
-      }}
+      onRefresh={() =>
+        Promise.all([rulesQuery.refetch(), categoriesQuery.refetch()])
+      }
       headerRight={
         <IconButton
           accessibilityLabel="Add rule"
