@@ -94,6 +94,7 @@ interface PerformancePricedPosition {
   assetId: string;
   currency: string;
   currentQuantity: Prisma.Decimal;
+  firstExposureAt: number;
   series: MarketSeries;
   /** Operation timestamps and signed quantity deltas, sorted ascending by postedAt. */
   quantityDeltas: Array<{ postedAt: number; delta: Prisma.Decimal }>;
@@ -233,7 +234,11 @@ export class BrokerageService {
     range: BrokeragePerformanceRange,
   ): Promise<BrokeragePerformanceResponse> {
     const now = new Date();
-    await this.getRequiredBrokerAccount(ownerId, accountId, this.prisma);
+    const brokerAccount = await this.getRequiredBrokerAccount(
+      ownerId,
+      accountId,
+      this.prisma,
+    );
     const dashboard = await this.assetsService.getDashboard(ownerId);
     const reportingCurrency = dashboard.reportingCurrency;
 
@@ -268,9 +273,6 @@ export class BrokerageService {
       },
     });
     const assetById = new Map(positionAssets.map((asset) => [asset.id, asset]));
-    const maxStartCandidates = positionAssets.map((asset) =>
-      asset.createdAt.getTime(),
-    );
     const currentTotalValue = this.round2(
       this.sumEffectiveValues(activePositions),
     );
@@ -326,6 +328,25 @@ export class BrokerageService {
       },
     );
 
+    if (reconstructable.length === 0) {
+      const asOf = now.toISOString();
+      return {
+        range,
+        reportingCurrency,
+        pricingStatus: this.buildPerformancePricingStatus(
+          hasFailedSeries,
+          false,
+          false,
+        ),
+        points: [],
+        baselineValue: null,
+        latestValue: null,
+        changeAbsolute: null,
+        changePercent: null,
+        asOf,
+      };
+    }
+
     // Load operations for the reconstructable assets and build quantity
     // deltas: BUY adds, SELL subtracts.
     const assetIds = reconstructable.map((entry) => entry.record.id);
@@ -349,15 +370,27 @@ export class BrokerageService {
         continue;
       }
 
-      maxStartCandidates.push(operation.postedAt.getTime());
       const list = opsByAsset.get(operation.assetId) ?? [];
       list.push(operation);
       opsByAsset.set(operation.assetId, list);
     }
 
+    const accountStartAt = await this.resolveBrokeragePerformanceAccountStart(
+      ownerId,
+      brokerAccount,
+    );
+
     const pricedPositions: PerformancePricedPosition[] = reconstructable.map(
       (entry) => {
         const ops = opsByAsset.get(entry.record.id) ?? [];
+        const firstBuyAt = this.firstOperationAt(
+          ops,
+          BrokerageOperationKind.BUY,
+        );
+        const fallbackExposureAt =
+          entry.record.importSource && accountStartAt !== null
+            ? accountStartAt
+            : entry.record.createdAt.getTime();
         const quantityDeltas = ops.map((operation) => ({
           postedAt: operation.postedAt.getTime(),
           delta:
@@ -370,6 +403,10 @@ export class BrokerageService {
           assetId: entry.record.id,
           currency: entry.record.currency,
           currentQuantity: this.toDecimal(entry.record.quantity),
+          firstExposureAt: Math.min(
+            fallbackExposureAt,
+            firstBuyAt ?? fallbackExposureAt,
+          ),
           series: entry.series,
           quantityDeltas,
         };
@@ -427,8 +464,7 @@ export class BrokerageService {
       range,
       now,
       pricedPositions,
-      fxSeriesByCurrency,
-      maxStartCandidates,
+      accountStartAt,
     );
     const grid = this.buildPerformanceTimeGrid(
       rangeStart,
@@ -1486,17 +1522,22 @@ export class BrokerageService {
   }
 
   /**
-   * Resolves the start of the requested range. For MAX, this is the
-   * earliest timestamp among all fetched series (falling back to `now` if
-   * no series produced any points).
+   * Resolves the start of the requested range from account/position exposure,
+   * not from the market data provider's oldest available quote.
    */
   private resolvePerformanceRangeStart(
     range: BrokeragePerformanceRange,
     now: Date,
     pricedPositions: PerformancePricedPosition[],
-    fxSeriesByCurrency: Map<string, MarketSeries | null>,
-    fallbackStartCandidates: number[],
+    accountStartAt: number | null,
   ): number {
+    const exposureStarts = [
+      accountStartAt,
+      ...pricedPositions.map((position) => position.firstExposureAt),
+    ].filter((t): t is number => typeof t === 'number');
+    const earliestExposureAt =
+      exposureStarts.length > 0 ? Math.min(...exposureStarts) : null;
+
     if (range !== 'MAX') {
       const start = new Date(now);
       switch (range) {
@@ -1514,22 +1555,13 @@ export class BrokerageService {
           break;
       }
 
-      return start.getTime();
+      const calendarStart = start.getTime();
+      return earliestExposureAt === null
+        ? calendarStart
+        : Math.max(calendarStart, earliestExposureAt);
     }
 
-    const allFirstPoints = [
-      ...pricedPositions.map((position) => position.series.points[0]?.t),
-      ...[...fxSeriesByCurrency.values()]
-        .filter((series): series is MarketSeries => !!series)
-        .map((series) => series.points[0]?.t),
-      ...fallbackStartCandidates,
-    ].filter((t): t is number => typeof t === 'number');
-
-    if (allFirstPoints.length === 0) {
-      return now.getTime();
-    }
-
-    return Math.min(...allFirstPoints);
+    return earliestExposureAt ?? now.getTime();
   }
 
   /** Sorted union of all fetched series timestamps, clipped to [rangeStart, now]. */
@@ -1548,6 +1580,19 @@ export class BrokerageService {
     timestamps.add(nowMs);
 
     for (const position of pricedPositions) {
+      if (
+        position.firstExposureAt >= effectiveRangeStart &&
+        position.firstExposureAt <= nowMs
+      ) {
+        timestamps.add(position.firstExposureAt);
+      }
+
+      for (const delta of position.quantityDeltas) {
+        if (delta.postedAt >= effectiveRangeStart && delta.postedAt <= nowMs) {
+          timestamps.add(delta.postedAt);
+        }
+      }
+
       for (const point of position.series.points) {
         if (point.t >= effectiveRangeStart && point.t <= nowMs) {
           timestamps.add(point.t);
@@ -1578,6 +1623,10 @@ export class BrokerageService {
     position: PerformancePricedPosition,
     t: number,
   ): Prisma.Decimal {
+    if (t < position.firstExposureAt) {
+      return ZERO;
+    }
+
     let removed = ZERO;
     for (const { postedAt, delta } of position.quantityDeltas) {
       if (postedAt > t) {
@@ -1587,6 +1636,50 @@ export class BrokerageService {
 
     const quantity = position.currentQuantity.sub(removed);
     return quantity.lt(ZERO) ? ZERO : quantity;
+  }
+
+  private firstOperationAt(
+    operations: BrokerageOperation[],
+    kind: BrokerageOperationKind,
+  ): number | null {
+    let first: number | null = null;
+
+    for (const operation of operations) {
+      if (operation.kind !== kind) {
+        continue;
+      }
+
+      const postedAt = operation.postedAt.getTime();
+      first = first === null ? postedAt : Math.min(first, postedAt);
+    }
+
+    return first;
+  }
+
+  private async resolveBrokeragePerformanceAccountStart(
+    ownerId: string,
+    account: Account,
+  ): Promise<number | null> {
+    const candidates: number[] = [];
+
+    if (!account.openingBalance.eq(ZERO) && account.openingBalanceDate) {
+      candidates.push(account.openingBalanceDate.getTime());
+    }
+
+    const firstTransaction = await this.prisma.transaction.findFirst({
+      where: {
+        userId: ownerId,
+        accountId: account.id,
+      },
+      orderBy: { postedAt: 'asc' },
+      select: { postedAt: true },
+    });
+
+    if (firstTransaction) {
+      candidates.push(firstTransaction.postedAt.getTime());
+    }
+
+    return candidates.length > 0 ? Math.min(...candidates) : null;
   }
 
   /**

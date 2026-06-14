@@ -12,7 +12,7 @@ import {
   useLiveValuations,
   useRefreshAssets,
 } from "@/api/queries";
-import { LiveDot } from "@/components/charts";
+import { AllocationDonutChart, LiveDot } from "@/components/charts";
 import {
   AppText,
   Card,
@@ -258,6 +258,13 @@ export default function DashboardScreen() {
     hasLiveQuotes: Boolean(liveQuotes && liveQuotes.length > 0),
     lastRefreshAt: dashboard.lastRefreshAt,
   });
+  const assetDistribution = holdings.assetGroups
+    .filter((group) => group.total !== null && group.total > 0)
+    .map((group) => ({
+      key: group.key,
+      label: group.label,
+      value: group.total ?? 0,
+    }));
 
   return (
     <Screen
@@ -344,6 +351,24 @@ export default function DashboardScreen() {
           </View>
 
           <Divider />
+
+          {assetDistribution.length > 0 ? (
+            <>
+              <View style={{ gap: spacing.md }}>
+                <AppText variant="kicker" tone="tertiary">
+                  Assets distribution
+                </AppText>
+                <AllocationDonutChart
+                  data={assetDistribution}
+                  currency={reportingCurrency}
+                  size={136}
+                  totalLabel="Assets"
+                />
+              </View>
+
+              <Divider />
+            </>
+          ) : null}
 
           <View
             style={{

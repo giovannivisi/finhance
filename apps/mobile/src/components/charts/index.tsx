@@ -287,6 +287,197 @@ export function BreakdownBars({
   );
 }
 
+export interface AllocationDatum {
+  key: string;
+  label: string;
+  value: number;
+  color?: string;
+}
+
+export interface AllocationDonutChartProps {
+  data: AllocationDatum[];
+  currency: string;
+  size?: number;
+  strokeWidth?: number;
+  totalLabel?: string;
+  maxLegendItems?: number;
+}
+
+/** Donut chart with a compact legend for portfolio allocation snapshots. */
+export function AllocationDonutChart({
+  data,
+  currency,
+  size = 150,
+  strokeWidth = 18,
+  totalLabel = "Total",
+  maxLegendItems = 6,
+}: AllocationDonutChartProps) {
+  const { colors, hideMoney } = useTheme();
+  const cleaned = data.filter((item) => item.value > 0);
+  const total = cleaned.reduce((sum, item) => sum + item.value, 0);
+  const radius = size / 2 - strokeWidth / 2 - 2;
+  const centre = size / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+
+  const palette = [
+    colors.chartIncome,
+    colors.chartNeutral,
+    colors.chartSpent,
+    colors.warning,
+    colors.chartExpense,
+    colors.chartBudget,
+    colors.info,
+    colors.primary,
+  ];
+
+  const items = cleaned.map((item, index) => ({
+    ...item,
+    color: item.color ?? palette[index % palette.length],
+    percent: total > 0 ? (item.value / total) * 100 : 0,
+  }));
+
+  if (items.length === 0) {
+    return (
+      <View
+        style={{
+          minHeight: 96,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <AppText variant="footnote" tone="tertiary">
+          No allocation data yet.
+        </AppText>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.lg,
+        flexWrap: "wrap",
+      }}
+    >
+      <View style={{ width: size, height: size }}>
+        <Svg width={size} height={size}>
+          <Circle
+            cx={centre}
+            cy={centre}
+            r={radius}
+            stroke={colors.bgControl}
+            strokeWidth={strokeWidth}
+            fill="none"
+          />
+          <G rotation={-90} origin={`${centre}, ${centre}`}>
+            {items.map((item) => {
+              const arc = (item.value / total) * circumference;
+              const dashOffset = -offset;
+              offset += arc;
+
+              return (
+                <Circle
+                  key={item.key}
+                  cx={centre}
+                  cy={centre}
+                  r={radius}
+                  stroke={item.color}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={`${arc} ${circumference - arc}`}
+                  strokeDashoffset={dashOffset}
+                  strokeLinecap="butt"
+                  fill="none"
+                />
+              );
+            })}
+          </G>
+        </Svg>
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: spacing.md,
+          }}
+        >
+          <AppText variant="caption" tone="tertiary" numberOfLines={1}>
+            {totalLabel}
+          </AppText>
+          <AppText variant="footnoteMedium" numberOfLines={1} tabular>
+            {formatMoney(total, currency, {
+              hide: hideMoney,
+              maximumFractionDigits: 0,
+            })}
+          </AppText>
+        </View>
+      </View>
+
+      <View style={{ flex: 1, minWidth: 150, gap: spacing.sm }}>
+        {items.slice(0, maxLegendItems).map((item) => (
+          <View key={item.key} style={{ gap: 3 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: spacing.md,
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.sm,
+                }}
+              >
+                <View
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: item.color,
+                  }}
+                />
+                <AppText
+                  variant="footnoteMedium"
+                  numberOfLines={1}
+                  style={{ flex: 1 }}
+                >
+                  {item.label}
+                </AppText>
+              </View>
+              <AppText variant="caption" tone="secondary" tabular>
+                {item.percent.toFixed(0)}%
+              </AppText>
+            </View>
+            <AppText
+              variant="caption"
+              tone="tertiary"
+              numberOfLines={1}
+              style={{ paddingLeft: 8 + spacing.sm }}
+            >
+              {formatMoney(item.value, currency, {
+                hide: hideMoney,
+                maximumFractionDigits: 0,
+              })}
+            </AppText>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export interface SparklineProps {
   values: number[];
   width?: number;

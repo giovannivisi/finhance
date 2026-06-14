@@ -31,6 +31,7 @@ const SERVER_MODE_KEY = "finhance.serverMode";
 const MOBILE_TOKEN_KEY = "finhance.mobileToken";
 
 export type ServerMode = "local" | "hosted";
+export type HostedSignInProvider = "google" | "github";
 
 export interface ServerInspection {
   kind: ServerKind["kind"];
@@ -49,7 +50,10 @@ interface ServerConnectionContextValue {
   needsSignIn: boolean;
   inspectServer: (rawUrl: string) => Promise<ServerInspection>;
   saveLocalServer: (normalizedUrl: string) => Promise<void>;
-  signInHosted: (normalizedUrl: string) => Promise<void>;
+  signInHosted: (
+    normalizedUrl: string,
+    provider?: HostedSignInProvider,
+  ) => Promise<void>;
   clearServer: () => Promise<void>;
 }
 
@@ -218,7 +222,10 @@ export function ServerConnectionProvider({
     setServerUrl(normalizedUrl);
   }, []);
 
-  const signInHosted = useCallback(async (normalizedUrl: string) => {
+  const signInHosted = useCallback(async (
+    normalizedUrl: string,
+    provider?: HostedSignInProvider,
+  ) => {
     // The session token rides on every request; never send it in the clear.
     if (!normalizedUrl.startsWith("https://") && !__DEV__) {
       throw new ApiError(
@@ -235,13 +242,15 @@ export function ServerConnectionProvider({
     );
 
     const redirectUri = Linking.createURL("auth");
-    const authorizeUrl =
-      `${normalizedUrl}/api/mobile/authorize` +
-      `?redirect=${encodeURIComponent(redirectUri)}` +
-      `&challenge=${challenge.toLowerCase()}`;
+    const authorizeUrl = new URL(`${normalizedUrl}/api/mobile/authorize`);
+    authorizeUrl.searchParams.set("redirect", redirectUri);
+    authorizeUrl.searchParams.set("challenge", challenge.toLowerCase());
+    if (provider) {
+      authorizeUrl.searchParams.set("provider", provider);
+    }
 
     const result = await WebBrowser.openAuthSessionAsync(
-      authorizeUrl,
+      authorizeUrl.toString(),
       redirectUri,
     );
 

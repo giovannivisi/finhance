@@ -10,7 +10,10 @@ import {
   Screen,
   TextField,
 } from "@/components/ui";
-import { useServerConnection } from "@/api/server-connection";
+import {
+  useServerConnection,
+  type HostedSignInProvider,
+} from "@/api/server-connection";
 import { PRODUCTION_SERVER_URL } from "@/lib/config";
 import { spacing, useTheme } from "@/theme";
 
@@ -20,7 +23,7 @@ import { spacing, useTheme } from "@/theme";
  * "different server" disclosure for those who want it.
  */
 export default function ConnectScreen() {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const {
     serverUrl,
     needsSignIn,
@@ -34,6 +37,12 @@ export default function ConnectScreen() {
   const [customHostedUrl, setCustomHostedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyProvider, setBusyProvider] =
+    useState<HostedSignInProvider | null>(null);
+  const logoSource =
+    scheme === "light"
+      ? require("../assets/icon.png")
+      : require("../assets/icon-dark.png");
 
   // A saved hosted server whose session expired signs back into that server.
   const signInTarget =
@@ -48,17 +57,22 @@ export default function ConnectScreen() {
     }
   }, [needsSignIn, serverUrl]);
 
-  const handleSignIn = async (target: string) => {
+  const handleSignIn = async (
+    target: string,
+    provider: HostedSignInProvider,
+  ) => {
     setBusy(true);
+    setBusyProvider(provider);
     setError(null);
 
     try {
-      await signInHosted(target);
+      await signInHosted(target, provider);
       // The connection gate flips to the tabs once the token is stored.
     } catch (signInError) {
       setError(describeError(signInError));
     } finally {
       setBusy(false);
+      setBusyProvider(null);
     }
   };
 
@@ -99,7 +113,7 @@ export default function ConnectScreen() {
       <View style={{ gap: spacing.xxl, paddingBottom: spacing.xxl }}>
         <View style={{ alignItems: "center", gap: spacing.xl }}>
           <Image
-            source={require("../assets/splash-icon.png")}
+            source={logoSource}
             style={{
               width: 96,
               height: 96,
@@ -128,16 +142,42 @@ export default function ConnectScreen() {
           {!advanced ? (
             <>
               <Button
-                label={needsSignIn ? "Sign in again" : "Sign in"}
-                onPress={() => handleSignIn(signInTarget)}
-                loading={busy}
+                label={
+                  needsSignIn
+                    ? "Sign in again with Google"
+                    : "Sign in with Google"
+                }
+                onPress={() => handleSignIn(signInTarget, "google")}
+                loading={busyProvider === "google"}
+                disabled={busy}
+                icon={
+                  <Ionicons name="logo-google" size={17} color="#ffffff" />
+                }
+              />
+              <Button
+                label={
+                  needsSignIn
+                    ? "Sign in again with GitHub"
+                    : "Sign in with GitHub"
+                }
+                onPress={() => handleSignIn(signInTarget, "github")}
+                loading={busyProvider === "github"}
+                disabled={busy}
+                variant="secondary"
+                icon={
+                  <Ionicons
+                    name="logo-github"
+                    size={17}
+                    color={colors.textPrimary}
+                  />
+                }
               />
               <AppText
                 variant="caption"
                 tone="tertiary"
                 style={{ textAlign: "center" }}
               >
-                Opens your browser for the usual Google or GitHub sign-in.
+                Continue in your browser.
               </AppText>
             </>
           ) : (
@@ -162,18 +202,35 @@ export default function ConnectScreen() {
                   }
                 />
                 {customHostedUrl ? (
-                  <Button
-                    label="Sign in with browser"
-                    onPress={() => handleSignIn(customHostedUrl)}
-                    loading={busy}
-                    icon={
-                      <Ionicons
-                        name="globe-outline"
-                        size={17}
-                        color="#ffffff"
-                      />
-                    }
-                  />
+                  <View style={{ gap: spacing.md }}>
+                    <Button
+                      label="Sign in with Google"
+                      onPress={() => handleSignIn(customHostedUrl, "google")}
+                      loading={busyProvider === "google"}
+                      disabled={busy}
+                      icon={
+                        <Ionicons
+                          name="logo-google"
+                          size={17}
+                          color="#ffffff"
+                        />
+                      }
+                    />
+                    <Button
+                      label="Sign in with GitHub"
+                      onPress={() => handleSignIn(customHostedUrl, "github")}
+                      loading={busyProvider === "github"}
+                      disabled={busy}
+                      variant="secondary"
+                      icon={
+                        <Ionicons
+                          name="logo-github"
+                          size={17}
+                          color={colors.textPrimary}
+                        />
+                      }
+                    />
+                  </View>
                 ) : (
                   <Button
                     label="Continue"

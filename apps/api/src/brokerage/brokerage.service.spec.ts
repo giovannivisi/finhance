@@ -5,6 +5,7 @@ import {
   AssetKind,
   AssetType,
   BrokerageOperationKind,
+  ImportSource,
   Prisma,
 } from '@finhance/db';
 
@@ -133,6 +134,9 @@ describe('BrokerageService', () => {
       update: jest.Mock;
       create: jest.Mock;
     };
+    transaction: {
+      findFirst: jest.Mock;
+    };
     brokerageOperation: {
       create: jest.Mock;
       findMany: jest.Mock;
@@ -175,6 +179,9 @@ describe('BrokerageService', () => {
         update: jest.fn(),
         create: jest.fn(),
       },
+      transaction: {
+        findFirst: jest.fn(),
+      },
       brokerageOperation: {
         create: jest.fn(),
         findMany: jest.fn(),
@@ -209,6 +216,7 @@ describe('BrokerageService', () => {
       applyAccountCashMovement: jest.fn(),
       create: jest.fn(),
     };
+    prisma.transaction.findFirst.mockResolvedValue(null);
 
     service = new BrokerageService(
       prisma as never,
@@ -379,6 +387,7 @@ describe('BrokerageService', () => {
           id: 'asset-1',
           currency: 'EUR',
           quantity: new Prisma.Decimal('10'),
+          createdAt: new Date(tEarly - 1000),
         }),
       ]);
       prices.getMarketSeries.mockResolvedValue({
@@ -406,6 +415,158 @@ describe('BrokerageService', () => {
 
       expect(earlyPoint?.value).toBeCloseTo(5 * 100, 2); // 5 units held before the BUY
       expect(latePoint?.value).toBeCloseTo(10 * 110, 2); // 10 units held after the BUY
+    });
+
+    it('clips 1Y imported holdings to the first known brokerage activity', async () => {
+      const fixedNow = new Date('2026-06-14T10:00:00.000Z');
+      const accountStartedAt = new Date('2025-10-03T10:00:00.000Z');
+      const tBeforeAccount = Date.UTC(2025, 8, 1, 10, 0);
+      const tMid = Date.UTC(2026, 0, 15, 10, 0);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR', createdAt: fixedNow }),
+        );
+        prisma.transaction.findFirst.mockResolvedValue({
+          postedAt: accountStartedAt,
+        });
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-1',
+                currency: 'EUR',
+                quantity: 10,
+                currentValue: 1234,
+                referenceValue: 1000,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-1',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('10'),
+            createdAt: fixedNow,
+            importSource: ImportSource.CSV_TEMPLATE,
+          }),
+        ]);
+        prices.getMarketSeries.mockResolvedValue({
+          points: [
+            { t: tBeforeAccount, price: 80 },
+            { t: accountStartedAt.getTime(), price: 100 },
+            { t: tMid, price: 110 },
+          ],
+          previousClose: null,
+          latestPrice: 110,
+        });
+        prisma.brokerageOperation.findMany.mockResolvedValue([]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          '1Y',
+        );
+
+        expect(result.points[0]).toEqual({
+          t: accountStartedAt.getTime(),
+          value: 1000,
+        });
+        expect(
+          result.points.some((point) => point.t < accountStartedAt.getTime()),
+        ).toBe(false);
+        expect(result.baselineValue).toBe(1000);
+        expect(result.latestValue).toBe(1234);
+        expect(result.changeAbsolute).toBe(234);
+        expect(result.changePercent).toBe(23.4);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('starts MAX at first broker activity while keeping quantity zero before the first BUY', async () => {
+      const fixedNow = new Date('2026-06-14T10:00:00.000Z');
+      const accountStartedAt = new Date('2025-10-03T10:00:00.000Z');
+      const buyPostedAt = new Date('2025-11-07T10:00:00.000Z');
+      const tMid = Date.UTC(2026, 0, 15, 10, 0);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR', createdAt: fixedNow }),
+        );
+        prisma.transaction.findFirst.mockResolvedValue({
+          postedAt: accountStartedAt,
+        });
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-1',
+                currency: 'EUR',
+                quantity: 10,
+                currentValue: 1250,
+                referenceValue: 1000,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-1',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('10'),
+            createdAt: fixedNow,
+          }),
+        ]);
+        prices.getMarketSeries.mockResolvedValue({
+          points: [
+            { t: accountStartedAt.getTime(), price: 90 },
+            { t: buyPostedAt.getTime(), price: 100 },
+            { t: tMid, price: 110 },
+          ],
+          previousClose: null,
+          latestPrice: 110,
+        });
+        prisma.brokerageOperation.findMany.mockResolvedValue([
+          {
+            id: 'op-1',
+            assetId: 'asset-1',
+            kind: BrokerageOperationKind.BUY,
+            postedAt: buyPostedAt,
+            quantity: new Prisma.Decimal('10'),
+          },
+        ]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          'MAX',
+        );
+        const firstPoint = result.points[0];
+        const buyPoint = result.points.find(
+          (point) => point.t === buyPostedAt.getTime(),
+        );
+
+        expect(firstPoint).toEqual({
+          t: accountStartedAt.getTime(),
+          value: 0,
+        });
+        expect(buyPoint?.value).toBe(1000);
+        expect(result.latestValue).toBe(1250);
+        expect(result.changeAbsolute).toBe(1250);
+        expect(result.changePercent).toBeNull();
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('applies an FX series when the position currency differs from the reporting currency', async () => {
@@ -518,7 +679,7 @@ describe('BrokerageService', () => {
       }
     });
 
-    it('keeps MAX chartable when historical series fetching fails', async () => {
+    it('returns an empty partial MAX chart when historical series fetching fails', async () => {
       const fixedNow = new Date('2026-06-13T10:00:00.000Z');
       const createdAt = new Date('2025-02-01T10:00:00.000Z');
 
@@ -560,19 +721,18 @@ describe('BrokerageService', () => {
           'MAX',
         );
 
-        expect(result.points).toEqual([
-          { t: createdAt.getTime(), value: 1234 },
-          { t: fixedNow.getTime(), value: 1234 },
-        ]);
-        expect(result.baselineValue).toBe(1234);
-        expect(result.latestValue).toBe(1234);
+        expect(result.points).toEqual([]);
+        expect(result.baselineValue).toBeNull();
+        expect(result.latestValue).toBeNull();
+        expect(result.changeAbsolute).toBeNull();
+        expect(result.changePercent).toBeNull();
         expect(result.pricingStatus.state).toBe('PARTIAL');
       } finally {
         jest.useRealTimers();
       }
     });
 
-    it('falls back to a constant valuation and reports PARTIAL when the price series fails', async () => {
+    it('returns an empty partial chart when every price series fails', async () => {
       prisma.account.findFirst.mockResolvedValue(
         createAccount({ currency: 'EUR' }),
       );
@@ -603,10 +763,51 @@ describe('BrokerageService', () => {
       const result = await service.getPerformance(OWNER_ID, 'account-1', '1M');
 
       expect(result.pricingStatus.state).toBe('PARTIAL');
-      expect(result.points).toHaveLength(2);
-      expect(result.points.every((point) => point.value === 1234)).toBe(true);
-      expect(result.baselineValue).toBe(1234);
-      expect(result.latestValue).toBe(1234);
+      expect(result.points).toEqual([]);
+      expect(result.baselineValue).toBeNull();
+      expect(result.latestValue).toBeNull();
+      expect(result.changeAbsolute).toBeNull();
+      expect(result.changePercent).toBeNull();
+    });
+
+    it('returns an empty fresh chart when positions have no tickers to reconstruct', async () => {
+      prisma.account.findFirst.mockResolvedValue(
+        createAccount({ currency: 'EUR' }),
+      );
+      assets.getDashboard.mockResolvedValue(
+        createDashboard({
+          reportingCurrency: 'EUR',
+          assets: [
+            createDashboardAsset({
+              id: 'asset-1',
+              ticker: null,
+              exchange: null,
+              currency: 'EUR',
+              quantity: 10,
+              currentValue: 1234,
+              referenceValue: 1000,
+            }),
+          ],
+        }),
+      );
+      prisma.asset.findMany.mockResolvedValue([
+        createAsset({
+          id: 'asset-1',
+          ticker: null,
+          exchange: null,
+          currency: 'EUR',
+          quantity: new Prisma.Decimal('10'),
+        }),
+      ]);
+
+      const result = await service.getPerformance(OWNER_ID, 'account-1', '1Y');
+
+      expect(prices.getMarketSeries).not.toHaveBeenCalled();
+      expect(result.pricingStatus.state).toBe('FRESH');
+      expect(result.points).toEqual([]);
+      expect(result.baselineValue).toBeNull();
+      expect(result.latestValue).toBeNull();
+      expect(result.changePercent).toBeNull();
     });
 
     it('uses the previous close as the 1D baseline when available', async () => {

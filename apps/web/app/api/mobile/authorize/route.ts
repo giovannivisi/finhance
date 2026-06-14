@@ -1,4 +1,4 @@
-import { auth } from "@lib/auth";
+import { auth, signIn } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
 import { areDevRedirectsAllowed, mintMobileSignInCode } from "@lib/mobile-auth";
 import {
@@ -11,6 +11,14 @@ import { buildSignInRedirectUrl } from "@lib/proxy-auth";
 export const runtime = "nodejs";
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
+const MOBILE_AUTH_PROVIDERS = new Set(["google", "github"]);
+
+function resolveMobileAuthProvider(provider: string | null): string | null {
+  const normalisedProvider = provider?.trim().toLowerCase();
+  return normalisedProvider && MOBILE_AUTH_PROVIDERS.has(normalisedProvider)
+    ? normalisedProvider
+    : null;
+}
 
 /**
  * Browser-based sign-in handoff for the mobile app.
@@ -57,6 +65,15 @@ export async function GET(request: Request) {
   const userId = session?.user?.id?.trim();
 
   if (!userId) {
+    const provider = resolveMobileAuthProvider(searchParams.get("provider"));
+
+    if (provider) {
+      const callbackUrl = new URL(request.url);
+      await signIn(provider, {
+        redirectTo: `${callbackUrl.pathname}${callbackUrl.search}`,
+      });
+    }
+
     return Response.redirect(buildSignInRedirectUrl(request.url), 302);
   }
 

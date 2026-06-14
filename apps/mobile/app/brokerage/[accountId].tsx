@@ -8,6 +8,7 @@ import type {
   BrokeragePositionResponse,
   BrokerageWorkspaceResponse,
   LiveAssetValuationResponse,
+  PortfolioAllocationSnapshotItemResponse,
 } from "@finhance/shared";
 
 import {
@@ -44,7 +45,11 @@ import {
   Stat,
   TextField,
 } from "@/components/ui";
-import { LiveDot, PerformanceChart } from "@/components/charts";
+import {
+  AllocationDonutChart,
+  LiveDot,
+  PerformanceChart,
+} from "@/components/charts";
 import {
   categoryLabel,
   isAssignableTransactionCategory,
@@ -73,6 +78,29 @@ const RANGE_OPTIONS: { value: BrokeragePerformanceRange; label: string }[] = [
 
 function formatChangePercent(percent: number): string {
   return `${Math.abs(percent).toFixed(2)}%`;
+}
+
+function formatAllocationPercent(value: number | null | undefined): string {
+  return value == null ? "—" : `${value.toFixed(1)}%`;
+}
+
+function performancePricingNote(
+  performance: BrokerageWorkspaceResponse["pricingStatus"] | null,
+  hasPoints: boolean,
+): string | null {
+  if (!performance || performance.state === "FRESH") {
+    return null;
+  }
+
+  if (performance.state === "PARTIAL" && !hasPoints) {
+    return "Historical prices could not be loaded for this range. Check tickers or try refreshing later.";
+  }
+
+  if (performance.state === "STALE") {
+    return "Some prices are stale; this chart may not reflect the latest market moves.";
+  }
+
+  return "Some prices are still updating; this chart may be partial.";
 }
 
 type OperationKind = "BUY" | "SELL" | "DIVIDEND" | "FEE";
@@ -139,6 +167,118 @@ function PositionRow({
         </View>
       }
     />
+  );
+}
+
+function AllocationTargetRow({
+  row,
+  currency,
+  showDivider,
+}: {
+  row: PortfolioAllocationSnapshotItemResponse;
+  currency: string;
+  showDivider: boolean;
+}) {
+  const largeDelta =
+    row.deltaPercent !== null && Math.abs(row.deltaPercent) > 5;
+  const deltaTone =
+    row.deltaPercent === null
+      ? "secondary"
+      : largeDelta
+        ? "warning"
+        : row.deltaPercent > 0
+          ? "income"
+          : row.deltaPercent < 0
+            ? "expense"
+            : "secondary";
+
+  return (
+    <View style={{ gap: spacing.sm }}>
+      {showDivider ? <Divider /> : null}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: spacing.md,
+        }}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <AppText variant="footnoteMedium" numberOfLines={1}>
+            {row.label}
+          </AppText>
+          {row.ticker ? (
+            <AppText variant="caption" tone="tertiary" numberOfLines={1}>
+              {row.exchange ? `${row.ticker} · ${row.exchange}` : row.ticker}
+            </AppText>
+          ) : null}
+        </View>
+        <MoneyText
+          amount={row.currentValue}
+          currency={currency}
+          variant="footnoteMedium"
+          tone="secondary"
+          maximumFractionDigits={0}
+        />
+      </View>
+
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          gap: spacing.md,
+        }}
+      >
+        <AppText variant="caption" tone="tertiary" tabular>
+          Current {formatAllocationPercent(row.currentPercent)}
+        </AppText>
+        <AppText variant="caption" tone="tertiary" tabular>
+          Target {formatAllocationPercent(row.targetPercent)}
+        </AppText>
+        <AppText variant="caption" tone={deltaTone} tabular>
+          Delta {formatAllocationPercent(row.deltaPercent)}
+        </AppText>
+      </View>
+
+      <ProgressBar
+        ratio={
+          row.currentPercent !== null ? row.currentPercent / 100 : null
+        }
+        tone={largeDelta ? "warning" : "accent"}
+      />
+    </View>
+  );
+}
+
+function AllocationSnapshotGroup({
+  title,
+  rows,
+  currency,
+}: {
+  title: string;
+  rows: PortfolioAllocationSnapshotItemResponse[];
+  currency: string;
+}) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={{ gap: spacing.md }}>
+      <AppText variant="kicker" tone="tertiary">
+        {title}
+      </AppText>
+      <View style={{ gap: spacing.md }}>
+        {rows.map((row, index) => (
+          <AllocationTargetRow
+            key={row.key}
+            row={row}
+            currency={currency}
+            showDivider={index > 0}
+          />
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -504,7 +644,21 @@ export default function BrokerageWorkspaceScreen() {
     );
   }
 
-  const kindTargets = workspace.allocation.assetKindTargets;
+  const assetKindTargets = workspace.allocation.assetKindTargets;
+  const securityTargets = workspace.allocation.securityTargets;
+  const allocationDistribution = assetKindTargets
+    .filter((target) => target.currentValue > 0)
+    .map((target) => ({
+      key: target.key,
+      label: target.label,
+      value: target.currentValue,
+    }));
+  const hasAllocationSnapshot =
+    assetKindTargets.length > 0 || securityTargets.length > 0;
+  const performanceNote = performancePricingNote(
+    performance?.pricingStatus ?? null,
+    (performance?.points.length ?? 0) > 0,
+  );
   const operationTitle =
     operation === "BUY"
       ? "Record buy"
@@ -602,13 +756,9 @@ export default function BrokerageWorkspaceScreen() {
                 currency={performance?.reportingCurrency ?? accountCurrency}
               />
             )}
-            {performance &&
-            (performance.pricingStatus.state === "PARTIAL" ||
-              performance.pricingStatus.state === "STALE") ? (
+            {performanceNote ? (
               <AppText variant="caption" tone="tertiary">
-                {performance.pricingStatus.state === "STALE"
-                  ? "Some prices are stale; this chart may not reflect the latest market moves."
-                  : "Some prices are still updating; this chart may be partial."}
+                {performanceNote}
               </AppText>
             ) : null}
           </View>
@@ -747,44 +897,42 @@ export default function BrokerageWorkspaceScreen() {
         )}
       </Section>
 
-      {kindTargets.length > 0 ? (
-        <Section kicker="Strategy" title="Allocation">
+      {hasAllocationSnapshot ? (
+        <Section
+          kicker="Strategy"
+          title="Portfolio allocation"
+          description="Across all investable holdings, not just this broker."
+        >
           <Card>
             <View style={{ gap: spacing.lg }}>
-              {kindTargets.map((target, index) => (
-                <View key={target.key} style={{ gap: spacing.sm }}>
-                  {index > 0 ? <Divider /> : null}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <AppText variant="footnoteMedium">{target.label}</AppText>
-                    <AppText variant="footnote" tone="secondary" tabular>
-                      {target.currentPercent !== null
-                        ? `${target.currentPercent.toFixed(1)}%`
-                        : "—"}
-                      {target.targetPercent !== null
-                        ? ` / ${target.targetPercent.toFixed(0)}%`
-                        : ""}
-                    </AppText>
-                  </View>
-                  <ProgressBar
-                    ratio={
-                      target.currentPercent !== null
-                        ? target.currentPercent / 100
-                        : null
-                    }
-                    tone={
-                      target.deltaPercent !== null &&
-                      Math.abs(target.deltaPercent) > 5
-                        ? "warning"
-                        : "accent"
-                    }
+              {allocationDistribution.length > 0 ? (
+                <>
+                  <AllocationDonutChart
+                    data={allocationDistribution}
+                    currency={workspace.reportingCurrency}
+                    size={136}
+                    totalLabel="Invested"
                   />
-                </View>
-              ))}
+                  <Divider />
+                </>
+              ) : null}
+
+              <AllocationSnapshotGroup
+                title="Asset classes"
+                rows={assetKindTargets}
+                currency={workspace.reportingCurrency}
+              />
+
+              {securityTargets.length > 0 ? (
+                <>
+                  <Divider />
+                  <AllocationSnapshotGroup
+                    title="Securities"
+                    rows={securityTargets}
+                    currency={workspace.reportingCurrency}
+                  />
+                </>
+              ) : null}
             </View>
           </Card>
         </Section>
