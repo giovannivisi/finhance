@@ -95,7 +95,9 @@ interface PerformancePricedPosition {
   currency: string;
   currentQuantity: Prisma.Decimal;
   costBasisValue: Prisma.Decimal;
+  costBasisUnitPrice: Prisma.Decimal;
   firstExposureAt: number;
+  useCostBasisPriceFallback: boolean;
   series: MarketSeries;
   /** Operation timestamps and signed quantity deltas, sorted ascending by postedAt. */
   quantityDeltas: Array<{ postedAt: number; delta: Prisma.Decimal }>;
@@ -393,6 +395,7 @@ export class BrokerageService {
           ops,
           BrokerageOperationKind.BUY,
         );
+        const currentQuantity = this.toDecimal(entry.record.quantity);
         const fallbackExposureAt =
           entry.record.importSource && accountStartAt !== null
             ? accountStartAt
@@ -408,16 +411,20 @@ export class BrokerageService {
         return {
           assetId: entry.record.id,
           currency: entry.record.currency,
-          currentQuantity: this.toDecimal(entry.record.quantity),
+          currentQuantity,
           costBasisValue: this.toDecimal(
             entry.asset.referenceValue ??
               entry.asset.currentValue ??
               entry.record.balance,
           ),
+          costBasisUnitPrice: currentQuantity.gt(ZERO)
+            ? this.toDecimal(entry.record.balance).div(currentQuantity)
+            : ZERO,
           firstExposureAt: Math.min(
             fallbackExposureAt,
             firstBuyAt ?? fallbackExposureAt,
           ),
+          useCostBasisPriceFallback: firstBuyAt === null,
           series: entry.series,
           quantityDeltas,
         };
@@ -511,7 +518,7 @@ export class BrokerageService {
 
       for (const position of pricedPositions) {
         const quantity = this.quantityAt(position, t);
-        const price = this.seriesValueAt(position.series, t);
+        const price = this.positionPriceAt(position, t);
         const fx =
           position.currency === reportingCurrency
             ? ZERO.add(1)
@@ -1738,6 +1745,24 @@ export class BrokerageService {
         },
       ];
     });
+  }
+
+  private positionPriceAt(
+    position: PerformancePricedPosition,
+    t: number,
+  ): Prisma.Decimal {
+    const firstMarketPointAt = position.series.points[0]?.t ?? null;
+
+    if (
+      position.useCostBasisPriceFallback &&
+      position.costBasisUnitPrice.gt(ZERO) &&
+      (t <= position.firstExposureAt ||
+        (firstMarketPointAt !== null && t < firstMarketPointAt))
+    ) {
+      return position.costBasisUnitPrice;
+    }
+
+    return this.seriesValueAt(position.series, t);
   }
 
   private sumPerformanceContributions(

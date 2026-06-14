@@ -525,6 +525,7 @@ describe('BrokerageService', () => {
             id: 'asset-1',
             currency: 'EUR',
             quantity: new Prisma.Decimal('10'),
+            balance: new Prisma.Decimal('1000'),
             createdAt: positionStartedAt,
           }),
         ]);
@@ -554,6 +555,75 @@ describe('BrokerageService', () => {
         expect(result.baselineValue).toBe(1000);
         expect(result.changeAbsolute).toBe(100);
         expect(result.changePercent).toBe(10);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('uses cost basis before the first market quote for imported holdings without buy history', async () => {
+      const fixedNow = new Date('2026-06-14T10:00:00.000Z');
+      const accountStartedAt = new Date('2025-10-03T10:00:00.000Z');
+      const firstProviderPoint = Date.UTC(2026, 5, 3, 10, 0);
+      const tLate = Date.UTC(2026, 5, 12, 10, 0);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR', createdAt: fixedNow }),
+        );
+        prisma.transaction.findFirst.mockResolvedValue({
+          postedAt: accountStartedAt,
+        });
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-1',
+                currency: 'EUR',
+                quantity: 10,
+                currentValue: 1137,
+                referenceValue: 1000,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-1',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('10'),
+            balance: new Prisma.Decimal('1000'),
+            createdAt: fixedNow,
+            importSource: ImportSource.CSV_TEMPLATE,
+          }),
+        ]);
+        prices.getMarketSeries.mockResolvedValue({
+          points: [
+            { t: firstProviderPoint, price: 106 },
+            { t: tLate, price: 113.7 },
+          ],
+          previousClose: null,
+          latestPrice: 113.7,
+        });
+        prisma.brokerageOperation.findMany.mockResolvedValue([]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          'MAX',
+        );
+
+        expect(result.points[0]).toEqual({
+          t: accountStartedAt.getTime(),
+          value: 1000,
+        });
+        expect(result.latestValue).toBe(1137);
+        expect(result.baselineValue).toBe(1000);
+        expect(result.changeAbsolute).toBe(137);
+        expect(result.changePercent).toBe(13.7);
       } finally {
         jest.useRealTimers();
       }
@@ -594,6 +664,7 @@ describe('BrokerageService', () => {
             id: 'asset-1',
             currency: 'EUR',
             quantity: new Prisma.Decimal('10'),
+            balance: new Prisma.Decimal('1000'),
             createdAt: fixedNow,
             importSource: ImportSource.CSV_TEMPLATE,
           }),
