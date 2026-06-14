@@ -8,7 +8,9 @@ import type {
   BrokeragePositionResponse,
   BrokerageWorkspaceResponse,
   LiveAssetValuationResponse,
+  PortfolioAssetKindTargetInput,
   PortfolioAllocationSnapshotItemResponse,
+  PortfolioSecurityTargetInput,
 } from "@finhance/shared";
 
 import {
@@ -21,6 +23,7 @@ import {
   useCategories,
   useLiveValuations,
   useRefreshAssets,
+  useUpdatePortfolioAllocationTargets,
 } from "@/api/queries";
 import {
   AmountField,
@@ -38,11 +41,13 @@ import {
   ProgressBar,
   Screen,
   Section,
+  SegmentedControl,
   SelectField,
   Sheet,
   Skeleton,
   SkeletonCard,
   Stat,
+  SwitchField,
   TextField,
 } from "@/components/ui";
 import {
@@ -104,6 +109,12 @@ function performancePricingNote(
 }
 
 type OperationKind = "BUY" | "SELL" | "DIVIDEND" | "FEE";
+type TargetTab = "assetClasses" | "securities";
+
+const TARGET_TAB_OPTIONS: { value: TargetTab; label: string }[] = [
+  { value: "assetClasses", label: "Asset classes" },
+  { value: "securities", label: "Securities" },
+];
 
 const SECURITY_KINDS: AssetKind[] = [
   "STOCK",
@@ -112,6 +123,103 @@ const SECURITY_KINDS: AssetKind[] = [
   "COMMODITY",
   "OTHER",
 ];
+
+interface AllocationTargetFormRow {
+  key: string;
+  label: string;
+  kind: AssetKind;
+  ticker: string | null;
+  exchange: string | null;
+  enabled: boolean;
+  targetPercent: string;
+}
+
+function createTargetFormRows(
+  rows: PortfolioAllocationSnapshotItemResponse[],
+): AllocationTargetFormRow[] {
+  return rows.map((row) => ({
+    key: row.key,
+    label: row.label,
+    kind: row.kind,
+    ticker: row.ticker,
+    exchange: row.exchange,
+    enabled: row.targetPercent !== null,
+    targetPercent: row.targetPercent === null ? "" : String(row.targetPercent),
+  }));
+}
+
+function parseTargetPercent(value: string): number | null {
+  const parsed = parseAmountInput(value);
+  return parsed === null || parsed < 0 ? null : parsed;
+}
+
+function sumEnabledTargetRows(rows: AllocationTargetFormRow[]): number {
+  return rows.reduce((sum, row) => {
+    if (!row.enabled) {
+      return sum;
+    }
+
+    return sum + (parseTargetPercent(row.targetPercent) ?? 0);
+  }, 0);
+}
+
+function validateTargetRows(
+  rows: AllocationTargetFormRow[],
+  label: string,
+): string | null {
+  const enabledRows = rows.filter((row) => row.enabled);
+
+  if (enabledRows.length === 0) {
+    return null;
+  }
+
+  let total = 0;
+  for (const row of enabledRows) {
+    const targetPercent = parseTargetPercent(row.targetPercent);
+    if (targetPercent === null) {
+      return `${label}: enter a non-negative target for ${row.label}.`;
+    }
+
+    total += targetPercent;
+  }
+
+  if (Math.abs(total - 100) > 0.01) {
+    return `${label}: enabled rows must total 100%. Current total is ${total.toFixed(2)}%.`;
+  }
+
+  return null;
+}
+
+function buildAssetKindTargets(
+  rows: AllocationTargetFormRow[],
+): PortfolioAssetKindTargetInput[] {
+  return rows
+    .filter((row) => row.enabled)
+    .map((row) => ({
+      kind: row.kind,
+      targetPercent: parseTargetPercent(row.targetPercent) ?? 0,
+    }));
+}
+
+function buildSecurityTargets(
+  rows: AllocationTargetFormRow[],
+): PortfolioSecurityTargetInput[] {
+  return rows.flatMap((row) => {
+    if (!row.enabled || !row.ticker) {
+      return [];
+    }
+
+    return [
+      {
+        kind: row.kind,
+        ticker: row.ticker,
+        exchange: row.exchange,
+        name: row.label,
+        targetPercent: parseTargetPercent(row.targetPercent) ?? 0,
+      },
+    ];
+  });
+}
 
 function PositionRow({
   position,
@@ -241,9 +349,7 @@ function AllocationTargetRow({
       </View>
 
       <ProgressBar
-        ratio={
-          row.currentPercent !== null ? row.currentPercent / 100 : null
-        }
+        ratio={row.currentPercent !== null ? row.currentPercent / 100 : null}
         tone={largeDelta ? "warning" : "accent"}
       />
     </View>
@@ -332,6 +438,7 @@ export default function BrokerageWorkspaceScreen() {
   const sellMutation = useBrokerageSell(accountId);
   const dividendMutation = useBrokerageDividend(accountId);
   const feeMutation = useBrokerageFee(accountId);
+  const targetsMutation = useUpdatePortfolioAllocationTargets();
 
   const [operation, setOperation] = useState<OperationKind | null>(null);
   const [form, setForm] = useState<OperationFormState>(() =>
@@ -339,6 +446,15 @@ export default function BrokerageWorkspaceScreen() {
   );
   const [formError, setFormError] = useState<string | null>(null);
   const [range, setRange] = useState<BrokeragePerformanceRange>("1D");
+  const [targetSheetOpen, setTargetSheetOpen] = useState(false);
+  const [targetTab, setTargetTab] = useState<TargetTab>("assetClasses");
+  const [assetKindTargetRows, setAssetKindTargetRows] = useState<
+    AllocationTargetFormRow[]
+  >([]);
+  const [securityTargetRows, setSecurityTargetRows] = useState<
+    AllocationTargetFormRow[]
+  >([]);
+  const [targetError, setTargetError] = useState<string | null>(null);
 
   const isActive = useIsScreenActive();
   const performanceQuery = useBrokeragePerformance(accountId, range, isActive);
@@ -512,6 +628,72 @@ export default function BrokerageWorkspaceScreen() {
     setOperation(kind);
   };
 
+  const openTargetEditor = () => {
+    setAssetKindTargetRows(createTargetFormRows(assetKindTargets));
+    setSecurityTargetRows(createTargetFormRows(securityTargets));
+    setTargetTab("assetClasses");
+    setTargetError(null);
+    setTargetSheetOpen(true);
+  };
+
+  const updateActiveTargetRow = (
+    index: number,
+    patch: Partial<AllocationTargetFormRow>,
+  ) => {
+    const updater =
+      targetTab === "assetClasses"
+        ? setAssetKindTargetRows
+        : setSecurityTargetRows;
+
+    updater((current) =>
+      current.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, ...patch } : row,
+      ),
+    );
+  };
+
+  const submitTargets = async () => {
+    setTargetError(null);
+
+    const assetKindError = validateTargetRows(
+      assetKindTargetRows,
+      "Asset classes",
+    );
+    if (assetKindError) {
+      setTargetTab("assetClasses");
+      setTargetError(assetKindError);
+      return;
+    }
+
+    const securityError = validateTargetRows(securityTargetRows, "Securities");
+    if (securityError) {
+      setTargetTab("securities");
+      setTargetError(securityError);
+      return;
+    }
+
+    const enabledSecurityWithoutTicker = securityTargetRows.find(
+      (row) => row.enabled && !row.ticker,
+    );
+    if (enabledSecurityWithoutTicker) {
+      setTargetTab("securities");
+      setTargetError(
+        `Securities: ${enabledSecurityWithoutTicker.label} cannot be targeted without a ticker.`,
+      );
+      return;
+    }
+
+    try {
+      await targetsMutation.mutateAsync({
+        assetKindTargets: buildAssetKindTargets(assetKindTargetRows),
+        securityTargets: buildSecurityTargets(securityTargetRows),
+      });
+      setTargetSheetOpen(false);
+    } catch (error) {
+      setTargetError(describeError(error));
+    }
+  };
+
   const operationPending =
     buyMutation.isPending ||
     sellMutation.isPending ||
@@ -646,6 +828,14 @@ export default function BrokerageWorkspaceScreen() {
 
   const assetKindTargets = workspace.allocation.assetKindTargets;
   const securityTargets = workspace.allocation.securityTargets;
+  const activeTargetRows =
+    targetTab === "assetClasses" ? assetKindTargetRows : securityTargetRows;
+  const activeTargetTotal = sumEnabledTargetRows(activeTargetRows);
+  const activeTargetEnabledCount = activeTargetRows.filter(
+    (row) => row.enabled,
+  ).length;
+  const activeTargetTotalIsValid =
+    activeTargetEnabledCount === 0 || Math.abs(activeTargetTotal - 100) <= 0.01;
   const allocationDistribution = assetKindTargets
     .filter((target) => target.currentValue > 0)
     .map((target) => ({
@@ -902,6 +1092,21 @@ export default function BrokerageWorkspaceScreen() {
           kicker="Strategy"
           title="Portfolio allocation"
           description="Across all investable holdings, not just this broker."
+          action={
+            <Button
+              label="Edit"
+              size="sm"
+              variant="secondary"
+              onPress={openTargetEditor}
+              icon={
+                <Ionicons
+                  name="options-outline"
+                  size={16}
+                  color={colors.textPrimary}
+                />
+              }
+            />
+          }
         >
           <Card>
             <View style={{ gap: spacing.lg }}>
@@ -971,6 +1176,93 @@ export default function BrokerageWorkspaceScreen() {
           </Card>
         )}
       </Section>
+
+      <Sheet
+        visible={targetSheetOpen}
+        onClose={() => setTargetSheetOpen(false)}
+        title="Edit allocation targets"
+      >
+        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+          <SegmentedControl
+            options={TARGET_TAB_OPTIONS}
+            value={targetTab}
+            onChange={setTargetTab}
+          />
+
+          <Card surface={activeTargetTotalIsValid ? "muted" : "warning"}>
+            <View style={{ gap: 4 }}>
+              <AppText variant="footnoteMedium">
+                Target total {activeTargetTotal.toFixed(2)}%
+              </AppText>
+              <AppText variant="caption" tone="secondary">
+                Switch rows off to exclude them. Enabled rows must total 100%.
+              </AppText>
+            </View>
+          </Card>
+
+          {activeTargetRows.length === 0 ? (
+            <Card surface="muted">
+              <AppText variant="footnote" tone="secondary">
+                No target rows available for this view yet.
+              </AppText>
+            </Card>
+          ) : (
+            <View style={{ gap: spacing.md }}>
+              {activeTargetRows.map((row, index) => (
+                <Card
+                  key={row.key}
+                  surface={row.enabled ? "default" : "muted"}
+                  style={row.enabled ? null : { opacity: 0.72 }}
+                >
+                  <View style={{ gap: spacing.md }}>
+                    <SwitchField
+                      label={row.label}
+                      description={
+                        row.ticker
+                          ? row.exchange
+                            ? `${row.ticker} · ${row.exchange}`
+                            : row.ticker
+                          : row.enabled
+                            ? "Included in target total"
+                            : "Ignored in target total"
+                      }
+                      value={row.enabled}
+                      onChange={(enabled) =>
+                        updateActiveTargetRow(index, { enabled })
+                      }
+                    />
+                    <TextField
+                      label="Target percent"
+                      value={row.targetPercent}
+                      editable={row.enabled}
+                      keyboardType="decimal-pad"
+                      inputMode="decimal"
+                      placeholder="0"
+                      onChangeText={(targetPercent) =>
+                        updateActiveTargetRow(index, { targetPercent })
+                      }
+                    />
+                  </View>
+                </Card>
+              ))}
+            </View>
+          )}
+
+          {targetError ? (
+            <Card surface="danger">
+              <AppText variant="footnote" tone="danger">
+                {targetError}
+              </AppText>
+            </Card>
+          ) : null}
+
+          <Button
+            label="Save targets"
+            onPress={submitTargets}
+            loading={targetsMutation.isPending}
+          />
+        </View>
+      </Sheet>
 
       <Sheet
         visible={operation !== null}

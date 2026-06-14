@@ -417,6 +417,82 @@ describe('BrokerageService', () => {
       expect(latePoint?.value).toBeCloseTo(10 * 110, 2); // 10 units held after the BUY
     });
 
+    it('normalises long-range performance for buys inside the selected range', async () => {
+      const fixedNow = new Date('2026-06-14T10:00:00.000Z');
+      const tEarly = Date.UTC(2026, 4, 15, 10, 0);
+      const buyPostedAt = new Date('2026-06-03T10:00:00.000Z');
+      const tLate = Date.UTC(2026, 5, 12, 10, 0);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR' }),
+        );
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-1',
+                currency: 'EUR',
+                quantity: 10,
+                currentValue: 1100,
+                referenceValue: 1000,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-1',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('10'),
+            createdAt: new Date('2026-04-01T10:00:00.000Z'),
+          }),
+        ]);
+        prices.getMarketSeries.mockResolvedValue({
+          points: [
+            { t: tEarly, price: 100 },
+            { t: buyPostedAt.getTime(), price: 100 },
+            { t: tLate, price: 110 },
+          ],
+          previousClose: null,
+          latestPrice: 110,
+        });
+        prisma.brokerageOperation.findMany.mockResolvedValue([
+          {
+            id: 'op-1',
+            assetId: 'asset-1',
+            kind: BrokerageOperationKind.BUY,
+            postedAt: buyPostedAt,
+            quantity: new Prisma.Decimal('5'),
+            currency: 'EUR',
+            cashAmount: new Prisma.Decimal('-500'),
+          },
+        ]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          '1M',
+        );
+        const buyPoint = result.points.find(
+          (point) => point.t === buyPostedAt.getTime(),
+        );
+
+        expect(result.points[0]?.value).toBe(1000);
+        expect(buyPoint?.value).toBe(1000);
+        expect(result.latestValue).toBe(1100);
+        expect(result.baselineValue).toBe(1000);
+        expect(result.changeAbsolute).toBe(100);
+        expect(result.changePercent).toBe(10);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('clips 1Y imported holdings to the first known brokerage activity', async () => {
       const fixedNow = new Date('2026-06-14T10:00:00.000Z');
       const accountStartedAt = new Date('2025-10-03T10:00:00.000Z');

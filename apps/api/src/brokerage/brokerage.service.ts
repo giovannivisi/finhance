@@ -100,6 +100,11 @@ interface PerformancePricedPosition {
   quantityDeltas: Array<{ postedAt: number; delta: Prisma.Decimal }>;
 }
 
+interface PerformanceContributionFlow {
+  postedAt: number;
+  amount: Prisma.Decimal;
+}
+
 interface AssetKindTargetModel {
   kind: AssetKind;
   targetPercent: Prisma.Decimal;
@@ -476,6 +481,17 @@ export class BrokerageService {
     const fxFallbackRate = (currency: string): Prisma.Decimal =>
       this.toDecimal(fxSnapshotByCurrency.get(currency)?.rate ?? 1);
 
+    const contributionFlows = this.buildPerformanceContributionFlows({
+      operations,
+      rangeStart,
+      nowMs: now.getTime(),
+      reportingCurrency,
+      fxSeriesByCurrency,
+      fxFallbackRate,
+    });
+    const totalContribution =
+      this.sumPerformanceContributions(contributionFlows);
+
     const points: BrokeragePerformancePointResponse[] = grid.map((t) => {
       let total = constantTotal;
 
@@ -496,9 +512,14 @@ export class BrokerageService {
 
       return { t, value: this.round2(total.toNumber()) };
     });
+    const adjustedPoints = this.adjustPerformancePointsForContributions(
+      points,
+      contributionFlows,
+      totalContribution,
+    );
 
     const downsampled = this.withCurrentPerformancePoint(
-      this.downsamplePoints(points, PERFORMANCE_MAX_POINTS),
+      this.downsamplePoints(adjustedPoints, PERFORMANCE_MAX_POINTS),
       { t: now.getTime(), value: currentTotalValue },
       PERFORMANCE_MAX_POINTS,
     );
@@ -525,14 +546,14 @@ export class BrokerageService {
               );
 
         baselineTotal = baselineTotal.plus(
-          position.currentQuantity
+          this.quantityAt(position, rangeStart)
             .mul(new Prisma.Decimal(position.series.previousClose.toString()))
             .mul(fx),
         );
       }
 
       baselineValue = hasPreviousClose
-        ? this.round2(baselineTotal.toNumber())
+        ? this.round2(baselineTotal.plus(totalContribution).toNumber())
         : (downsampled[0]?.value ?? null);
     } else {
       baselineValue = downsampled[0]?.value ?? null;
@@ -1636,6 +1657,79 @@ export class BrokerageService {
 
     const quantity = position.currentQuantity.sub(removed);
     return quantity.lt(ZERO) ? ZERO : quantity;
+  }
+
+  private buildPerformanceContributionFlows(input: {
+    operations: BrokerageOperation[];
+    rangeStart: number;
+    nowMs: number;
+    reportingCurrency: string;
+    fxSeriesByCurrency: Map<string, MarketSeries | null>;
+    fxFallbackRate: (currency: string) => Prisma.Decimal;
+  }): PerformanceContributionFlow[] {
+    return input.operations
+      .filter((operation) => {
+        const postedAt = operation.postedAt.getTime();
+        return postedAt > input.rangeStart && postedAt <= input.nowMs;
+      })
+      .map((operation) => {
+        const postedAt = operation.postedAt.getTime();
+        const fx =
+          operation.currency === input.reportingCurrency
+            ? ZERO.add(1)
+            : this.fxValueAt(
+                input.fxSeriesByCurrency.get(operation.currency) ?? null,
+                postedAt,
+                input.fxFallbackRate(operation.currency),
+              );
+
+        return {
+          postedAt,
+          amount: ZERO.sub(this.toDecimal(operation.cashAmount)).mul(fx),
+        };
+      })
+      .sort((left, right) => left.postedAt - right.postedAt);
+  }
+
+  private sumPerformanceContributions(
+    flows: PerformanceContributionFlow[],
+  ): Prisma.Decimal {
+    return flows.reduce((sum, flow) => sum.plus(flow.amount), ZERO);
+  }
+
+  /**
+   * Removes BUY/SELL cashflow jumps from the chart while keeping the latest
+   * point equal to the actual current portfolio value.
+   */
+  private adjustPerformancePointsForContributions(
+    points: BrokeragePerformancePointResponse[],
+    flows: PerformanceContributionFlow[],
+    totalContribution: Prisma.Decimal,
+  ): BrokeragePerformancePointResponse[] {
+    if (flows.length === 0) {
+      return points;
+    }
+
+    let flowIndex = 0;
+    let cumulativeContribution = ZERO;
+
+    return points.map((point) => {
+      while (flowIndex < flows.length && flows[flowIndex].postedAt <= point.t) {
+        cumulativeContribution = cumulativeContribution.plus(
+          flows[flowIndex].amount,
+        );
+        flowIndex += 1;
+      }
+
+      const adjustedValue = this.toDecimal(point.value)
+        .sub(cumulativeContribution)
+        .plus(totalContribution);
+
+      return {
+        ...point,
+        value: this.round2(adjustedValue.toNumber()),
+      };
+    });
   }
 
   private firstOperationAt(

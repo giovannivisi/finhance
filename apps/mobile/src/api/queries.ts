@@ -12,6 +12,7 @@ import type {
   CreateBrokerageSellRequest,
   CreateCategoryBudgetRequest,
   UpdateCategoryBudgetRequest,
+  UpdatePortfolioAllocationTargetsRequest,
   UpdateUserSettingsRequest,
   UpsertAccountRequest,
   UpsertAssetRequest,
@@ -765,6 +766,16 @@ export function useBrokerageFee(accountId: string) {
   return useMutation({
     mutationFn: (body: CreateBrokerageFeeRequest) =>
       api.brokerage.fee(client, accountId, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdatePortfolioAllocationTargets() {
+  const client = useApiClient();
+  const invalidate = useInvalidateData(BROKERAGE_INVALIDATION_ROOTS);
+  return useMutation({
+    mutationFn: (body: UpdatePortfolioAllocationTargetsRequest) =>
+      api.brokerage.updateTargets(client, body),
     onSuccess: invalidate,
   });
 }

@@ -27,6 +27,7 @@ import type {
   MonthlyCashflowResponse,
   MonthlyReviewPageDataResponse,
   NetWorthSnapshotResponse,
+  PortfolioAllocationTargetsResponse,
   RecurringOccurrenceResponse,
   RecurringPendingStatusResponse,
   RecurringTransactionRuleResponse,
@@ -36,6 +37,7 @@ import type {
   TransactionResponse,
   TransactionsPageDataResponse,
   UpdateCategoryBudgetRequest,
+  UpdatePortfolioAllocationTargetsRequest,
   UpdateUserSettingsRequest,
   UpsertAccountRequest,
   UpsertAssetRequest,
@@ -400,6 +402,14 @@ export const api = {
       client.request<BrokerageOperationResponse>(
         `/brokerage/${accountId}/fee`,
         mutation("POST", body),
+      ),
+    updateTargets: (
+      client: ApiClient,
+      body: UpdatePortfolioAllocationTargetsRequest,
+    ) =>
+      client.request<PortfolioAllocationTargetsResponse>(
+        "/brokerage/targets",
+        mutation("PUT", body),
       ),
   },
 
