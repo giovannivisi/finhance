@@ -113,7 +113,7 @@ type TargetTab = "assetClasses" | "securities";
 
 const TARGET_TAB_OPTIONS: { value: TargetTab; label: string }[] = [
   { value: "assetClasses", label: "Asset classes" },
-  { value: "securities", label: "Securities" },
+  { value: "securities", label: "Positions" },
 ];
 
 const SECURITY_KINDS: AssetKind[] = [
@@ -665,7 +665,7 @@ export default function BrokerageWorkspaceScreen() {
       return;
     }
 
-    const securityError = validateTargetRows(securityTargetRows, "Securities");
+    const securityError = validateTargetRows(securityTargetRows, "Positions");
     if (securityError) {
       setTargetTab("securities");
       setTargetError(securityError);
@@ -678,7 +678,7 @@ export default function BrokerageWorkspaceScreen() {
     if (enabledSecurityWithoutTicker) {
       setTargetTab("securities");
       setTargetError(
-        `Securities: ${enabledSecurityWithoutTicker.label} cannot be targeted without a ticker.`,
+        `Positions: ${enabledSecurityWithoutTicker.label} cannot be targeted without a ticker.`,
       );
       return;
     }
@@ -1132,7 +1132,7 @@ export default function BrokerageWorkspaceScreen() {
                 <>
                   <Divider />
                   <AllocationSnapshotGroup
-                    title="Securities"
+                    title="Positions"
                     rows={securityTargets}
                     currency={workspace.reportingCurrency}
                   />

@@ -273,6 +273,129 @@ describe('BrokerageService', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('calculates allocation deltas within enabled target groups', () => {
+    const allocation = (
+      service as unknown as {
+        buildAllocationSnapshot: (input: {
+          assets: Record<string, unknown>[];
+          reportingCurrency: string;
+          portfolioTotal: number;
+          assetKindTargets: Array<{
+            kind: AssetKind;
+            targetPercent: Prisma.Decimal;
+          }>;
+          securityTargets: Array<{
+            kind: AssetKind;
+            ticker: string;
+            exchange: string;
+            name: string | null;
+            targetPercent: Prisma.Decimal;
+          }>;
+        }) => {
+          assetKindTargets: Array<{
+            key: string;
+            currentPercent: number | null;
+            targetPercent: number | null;
+            deltaPercent: number | null;
+            deltaValue: number | null;
+          }>;
+          securityTargets: Array<{
+            key: string;
+            currentPercent: number | null;
+            targetPercent: number | null;
+            deltaPercent: number | null;
+            deltaValue: number | null;
+          }>;
+        };
+      }
+    ).buildAllocationSnapshot({
+      assets: [
+        createDashboardAsset({
+          id: 'cash-1',
+          kind: AssetKind.CASH,
+          ticker: null,
+          exchange: null,
+          quantity: null,
+          currentValue: 900,
+          referenceValue: 900,
+        }),
+        createDashboardAsset({
+          id: 'other-1',
+          kind: AssetKind.OTHER,
+          ticker: null,
+          exchange: null,
+          quantity: null,
+          currentValue: 50,
+          referenceValue: 50,
+        }),
+        createDashboardAsset({
+          id: 'stock-1',
+          name: 'A fund',
+          ticker: 'AAA',
+          exchange: 'XETRA',
+          kind: AssetKind.STOCK,
+          quantity: 1,
+          currentValue: 30,
+          referenceValue: 30,
+        }),
+        createDashboardAsset({
+          id: 'stock-2',
+          name: 'B fund',
+          ticker: 'BBB',
+          exchange: 'XETRA',
+          kind: AssetKind.STOCK,
+          quantity: 1,
+          currentValue: 20,
+          referenceValue: 20,
+        }),
+      ],
+      reportingCurrency: 'EUR',
+      portfolioTotal: 1000,
+      assetKindTargets: [
+        { kind: AssetKind.STOCK, targetPercent: new Prisma.Decimal(100) },
+      ],
+      securityTargets: [
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'AAA',
+          exchange: 'XETRA',
+          name: 'A fund',
+          targetPercent: new Prisma.Decimal(60),
+        },
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'BBB',
+          exchange: 'XETRA',
+          name: 'B fund',
+          targetPercent: new Prisma.Decimal(40),
+        },
+      ],
+    });
+
+    const stockRow = allocation.assetKindTargets.find(
+      (row) => row.key === AssetKind.STOCK,
+    );
+    const cashRow = allocation.assetKindTargets.find(
+      (row) => row.key === AssetKind.CASH,
+    );
+    const firstSecurity = allocation.securityTargets.find((row) =>
+      row.key.includes('AAA'),
+    );
+    const secondSecurity = allocation.securityTargets.find((row) =>
+      row.key.includes('BBB'),
+    );
+
+    expect(cashRow?.currentPercent).toBe(90);
+    expect(cashRow?.targetPercent).toBeNull();
+    expect(stockRow?.currentPercent).toBe(100);
+    expect(stockRow?.deltaPercent).toBe(0);
+    expect(stockRow?.deltaValue).toBe(0);
+    expect(firstSecurity?.currentPercent).toBe(60);
+    expect(firstSecurity?.deltaPercent).toBe(0);
+    expect(secondSecurity?.currentPercent).toBe(40);
+    expect(secondSecurity?.deltaPercent).toBe(0);
+  });
+
   it('blocks backdated buys before mutating brokerage cash', async () => {
     const openingBalanceDate = new Date('2026-05-20T00:00:00.000Z');
     prisma.account.findFirst.mockResolvedValue(

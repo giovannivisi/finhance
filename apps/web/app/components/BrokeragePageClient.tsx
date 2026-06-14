@@ -709,7 +709,7 @@ export default function BrokeragePageClient({
     }
 
     if (securityPayload.length > 0 && Math.abs(securityTotal - 100) > 0.001) {
-      setFormError("Security targets must sum to 100%.");
+      setFormError("Position targets must sum to 100%.");
       return;
     }
 
@@ -1374,7 +1374,7 @@ export default function BrokeragePageClient({
             </div>
 
             <div>
-              <h4 className="brokerage-subsection-title">Securities</h4>
+              <h4 className="brokerage-subsection-title">Positions</h4>
               <div className="brokerage-target-list">
                 {workspace.allocation.securityTargets.map((row) => (
                   <div key={row.key} className="brokerage-target-row">
@@ -2012,7 +2012,7 @@ export default function BrokeragePageClient({
                 className={`page-pill${targetTab === "securities" ? " is-active" : ""}`}
                 onClick={() => setTargetTab("securities")}
               >
-                Securities
+                Positions
               </button>
             </div>
 

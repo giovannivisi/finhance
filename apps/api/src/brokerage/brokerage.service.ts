@@ -1117,6 +1117,11 @@ export class BrokerageService {
     portfolioTotal: number,
   ): PortfolioAllocationSnapshotItemResponse[] {
     const rows = new Map<string, PortfolioAllocationSnapshotItemResponse>();
+    const targetKinds = new Set(targets.map((target) => target.kind));
+    const targetUniverseTotal = [...targetKinds].reduce(
+      (sum, kind) => sum + (byKind.get(kind)?.currentValue ?? 0),
+      0,
+    );
 
     for (const [kind, value] of byKind.entries()) {
       const currentPercent =
@@ -1148,15 +1153,17 @@ export class BrokerageService {
         deltaPercent: null,
         deltaValue: null,
       };
+      const currentPercent =
+        targetUniverseTotal > 0
+          ? (existing.currentValue / targetUniverseTotal) * 100
+          : 0;
       existing.targetPercent = target.targetPercent.toNumber();
-      existing.deltaPercent =
-        existing.currentPercent === null
-          ? null
-          : existing.targetPercent - existing.currentPercent;
+      existing.currentPercent = currentPercent;
+      existing.deltaPercent = existing.targetPercent - currentPercent;
       existing.deltaValue =
         existing.targetPercent === null
           ? null
-          : (portfolioTotal * existing.targetPercent) / 100 -
+          : (targetUniverseTotal * existing.targetPercent) / 100 -
             existing.currentValue;
       rows.set(target.kind, existing);
     }
@@ -1181,6 +1188,15 @@ export class BrokerageService {
     portfolioTotal: number,
   ): PortfolioAllocationSnapshotItemResponse[] {
     const rows = new Map<string, PortfolioAllocationSnapshotItemResponse>();
+    const targetKeys = new Set(
+      targets.map((target) =>
+        this.securityKey(target.kind, target.ticker, target.exchange),
+      ),
+    );
+    const targetUniverseTotal = [...targetKeys].reduce(
+      (sum, key) => sum + (bySecurity.get(key)?.currentValue ?? 0),
+      0,
+    );
 
     for (const [key, value] of bySecurity.entries()) {
       const currentPercent =
@@ -1213,15 +1229,17 @@ export class BrokerageService {
         deltaPercent: null,
         deltaValue: null,
       };
+      const currentPercent =
+        targetUniverseTotal > 0
+          ? (existing.currentValue / targetUniverseTotal) * 100
+          : 0;
       existing.targetPercent = target.targetPercent.toNumber();
-      existing.deltaPercent =
-        existing.currentPercent === null
-          ? null
-          : existing.targetPercent - existing.currentPercent;
+      existing.currentPercent = currentPercent;
+      existing.deltaPercent = existing.targetPercent - currentPercent;
       existing.deltaValue =
         existing.targetPercent === null
           ? null
-          : (portfolioTotal * existing.targetPercent) / 100 -
+          : (targetUniverseTotal * existing.targetPercent) / 100 -
             existing.currentValue;
       rows.set(key, existing);
     }
