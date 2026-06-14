@@ -493,6 +493,72 @@ describe('BrokerageService', () => {
       }
     });
 
+    it('normalises long-range performance when a position appears without a recorded buy', async () => {
+      const fixedNow = new Date('2026-06-14T10:00:00.000Z');
+      const tEarly = Date.UTC(2026, 4, 15, 10, 0);
+      const positionStartedAt = new Date('2026-06-03T10:00:00.000Z');
+      const tLate = Date.UTC(2026, 5, 12, 10, 0);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR' }),
+        );
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-1',
+                currency: 'EUR',
+                quantity: 10,
+                currentValue: 1100,
+                referenceValue: 1000,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-1',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('10'),
+            createdAt: positionStartedAt,
+          }),
+        ]);
+        prices.getMarketSeries.mockResolvedValue({
+          points: [
+            { t: tEarly, price: 100 },
+            { t: positionStartedAt.getTime(), price: 100 },
+            { t: tLate, price: 110 },
+          ],
+          previousClose: null,
+          latestPrice: 110,
+        });
+        prisma.brokerageOperation.findMany.mockResolvedValue([]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          '1M',
+        );
+        const exposurePoint = result.points.find(
+          (point) => point.t === positionStartedAt.getTime(),
+        );
+
+        expect(result.points[0]?.value).toBe(1000);
+        expect(exposurePoint?.value).toBe(1000);
+        expect(result.latestValue).toBe(1100);
+        expect(result.baselineValue).toBe(1000);
+        expect(result.changeAbsolute).toBe(100);
+        expect(result.changePercent).toBe(10);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('clips 1Y imported holdings to the first known brokerage activity', async () => {
       const fixedNow = new Date('2026-06-14T10:00:00.000Z');
       const accountStartedAt = new Date('2025-10-03T10:00:00.000Z');

@@ -94,6 +94,7 @@ interface PerformancePricedPosition {
   assetId: string;
   currency: string;
   currentQuantity: Prisma.Decimal;
+  costBasisValue: Prisma.Decimal;
   firstExposureAt: number;
   series: MarketSeries;
   /** Operation timestamps and signed quantity deltas, sorted ascending by postedAt. */
@@ -408,6 +409,11 @@ export class BrokerageService {
           assetId: entry.record.id,
           currency: entry.record.currency,
           currentQuantity: this.toDecimal(entry.record.quantity),
+          costBasisValue: this.toDecimal(
+            entry.asset.referenceValue ??
+              entry.asset.currentValue ??
+              entry.record.balance,
+          ),
           firstExposureAt: Math.min(
             fallbackExposureAt,
             firstBuyAt ?? fallbackExposureAt,
@@ -481,14 +487,22 @@ export class BrokerageService {
     const fxFallbackRate = (currency: string): Prisma.Decimal =>
       this.toDecimal(fxSnapshotByCurrency.get(currency)?.rate ?? 1);
 
-    const contributionFlows = this.buildPerformanceContributionFlows({
-      operations,
-      rangeStart,
-      nowMs: now.getTime(),
-      reportingCurrency,
-      fxSeriesByCurrency,
-      fxFallbackRate,
-    });
+    const contributionFlows = [
+      ...this.buildPerformanceContributionFlows({
+        operations,
+        rangeStart,
+        nowMs: now.getTime(),
+        reportingCurrency,
+        fxSeriesByCurrency,
+        fxFallbackRate,
+      }),
+      ...this.buildInferredPositionContributionFlows({
+        pricedPositions,
+        operationsByAsset: opsByAsset,
+        rangeStart,
+        nowMs: now.getTime(),
+      }),
+    ].sort((left, right) => left.postedAt - right.postedAt);
     const totalContribution =
       this.sumPerformanceContributions(contributionFlows);
 
@@ -1689,6 +1703,41 @@ export class BrokerageService {
         };
       })
       .sort((left, right) => left.postedAt - right.postedAt);
+  }
+
+  private buildInferredPositionContributionFlows(input: {
+    pricedPositions: PerformancePricedPosition[];
+    operationsByAsset: Map<string, BrokerageOperation[]>;
+    rangeStart: number;
+    nowMs: number;
+  }): PerformanceContributionFlow[] {
+    return input.pricedPositions.flatMap((position) => {
+      if (
+        position.firstExposureAt <= input.rangeStart ||
+        position.firstExposureAt > input.nowMs
+      ) {
+        return [];
+      }
+
+      const operations = input.operationsByAsset.get(position.assetId) ?? [];
+      const hasRecordedBuyInRange = operations.some(
+        (operation) =>
+          operation.kind === BrokerageOperationKind.BUY &&
+          operation.postedAt.getTime() > input.rangeStart &&
+          operation.postedAt.getTime() <= input.nowMs,
+      );
+
+      if (hasRecordedBuyInRange || !position.costBasisValue.gt(ZERO)) {
+        return [];
+      }
+
+      return [
+        {
+          postedAt: position.firstExposureAt,
+          amount: position.costBasisValue,
+        },
+      ];
+    });
   }
 
   private sumPerformanceContributions(
