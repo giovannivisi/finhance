@@ -464,6 +464,9 @@ export default function BrokerageWorkspaceScreen() {
     readonly LiveAssetValuationResponse[] | null
   >(null);
   const autoRefreshStartedRef = useRef(false);
+  const autoRefreshLastStoredAtRef = useRef<string | null | undefined>(
+    undefined,
+  );
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
@@ -496,6 +499,16 @@ export default function BrokerageWorkspaceScreen() {
   const accountCurrency = broker?.account.currency ?? "EUR";
 
   useEffect(() => {
+    const lastRefreshAt = workspace?.lastRefreshAt ?? null;
+    if (autoRefreshLastStoredAtRef.current !== lastRefreshAt) {
+      autoRefreshStartedRef.current = false;
+      autoRefreshLastStoredAtRef.current = lastRefreshAt;
+    }
+
+    if (workspace?.pricingStatus.refreshSuggested !== true) {
+      autoRefreshStartedRef.current = false;
+    }
+
     if (
       !shouldStartAutomaticPriceRefresh({
         isActive,
@@ -508,7 +521,12 @@ export default function BrokerageWorkspaceScreen() {
 
     autoRefreshStartedRef.current = true;
     refreshAssets.mutate();
-  }, [isActive, refreshAssets, workspace?.pricingStatus.refreshSuggested]);
+  }, [
+    isActive,
+    refreshAssets,
+    workspace?.lastRefreshAt,
+    workspace?.pricingStatus.refreshSuggested,
+  ]);
 
   const performance = performanceQuery.data;
 

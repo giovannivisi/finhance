@@ -597,7 +597,11 @@ export function PerformanceChart({
 
   const gridlines = computePercentGridlines(points, baselineValue);
   const axisLabels = buildAxisTimeLabels(points, range);
-  const positive = isPerformancePositive(latestValue, baselineValue);
+  const latestPerformanceValue =
+    points.length > 0
+      ? (points[points.length - 1]?.value ?? null)
+      : latestValue;
+  const positive = isPerformancePositive(latestPerformanceValue, baselineValue);
   const lineColor = positive ? colors.chartIncome : colors.chartExpense;
 
   if (points.length === 0) {

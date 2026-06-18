@@ -75,6 +75,7 @@ function buildWorkspace() {
       hasStaleFx: false,
       hasMissingFx: false,
     },
+    lastRefreshAt: "2026-05-19T10:00:00.000Z",
     brokers: [
       {
         account: {

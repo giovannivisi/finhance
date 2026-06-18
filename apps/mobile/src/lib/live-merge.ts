@@ -202,7 +202,7 @@ export function recomputeChangeFromLiveTotal(
     performanceChangeAbsolute === null
       ? liveTotal - baselineValue
       : performanceChangeAbsolute + liveDelta;
-  const changePercent = ((liveTotal - baselineValue) / baselineValue) * 100;
+  const changePercent = (changeAbsolute / baselineValue) * 100;
 
   return { changeAbsolute, changePercent };
 }

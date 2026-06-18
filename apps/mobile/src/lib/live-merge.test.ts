@@ -309,7 +309,8 @@ describe("recomputeChangeFromLiveTotal", () => {
   it("applies only the live repricing delta to the cashflow-adjusted P/L", () => {
     const result = recomputeChangeFromLiveTotal(10130, 10000, 10100, 80);
 
-    expect(result).toEqual({ changeAbsolute: 110, changePercent: 1.3 });
+    expect(result?.changeAbsolute).toBe(110);
+    expect(result?.changePercent).toBeCloseTo(1.1);
   });
 
   it("returns null when the baseline is missing or zero", () => {

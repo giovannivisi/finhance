@@ -1162,6 +1162,7 @@ const brokerSummary = {
 const workspace = {
   reportingCurrency: "EUR",
   pricingStatus: dashboard.pricingStatus,
+  lastRefreshAt: dashboard.lastRefreshAt,
   brokers: [brokerSummary],
   selectedBroker: brokerSummary,
   cashReconciliation: reconciliations[3],

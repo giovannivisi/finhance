@@ -699,6 +699,117 @@ describe('BrokerageService', () => {
       }
     });
 
+    it('does not count a large buy as portfolio performance', async () => {
+      const fixedNow = new Date('2026-06-14T10:00:00.000Z');
+      const tEarly = Date.UTC(2026, 4, 15, 10, 0);
+      const buyPostedAt = new Date('2026-06-13T10:00:00.000Z');
+      const tLate = Date.UTC(2026, 5, 14, 9, 0);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR' }),
+        );
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-a',
+                name: 'Existing position',
+                ticker: 'AAA',
+                currency: 'EUR',
+                quantity: 1,
+                currentValue: 15,
+                referenceValue: 10,
+              }),
+              createDashboardAsset({
+                id: 'asset-b',
+                name: 'New position',
+                ticker: 'BBB',
+                currency: 'EUR',
+                quantity: 1,
+                currentValue: 810,
+                referenceValue: 800,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-a',
+            name: 'Existing position',
+            ticker: 'AAA',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('1'),
+            balance: new Prisma.Decimal('10'),
+            createdAt: new Date('2026-04-01T10:00:00.000Z'),
+          }),
+          createAsset({
+            id: 'asset-b',
+            name: 'New position',
+            ticker: 'BBB',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('1'),
+            balance: new Prisma.Decimal('800'),
+            createdAt: buyPostedAt,
+          }),
+        ]);
+        prices.getMarketSeries
+          .mockResolvedValueOnce({
+            points: [
+              { t: tEarly, price: 10 },
+              { t: buyPostedAt.getTime(), price: 10 },
+              { t: tLate, price: 15 },
+            ],
+            previousClose: null,
+            latestPrice: 15,
+          })
+          .mockResolvedValueOnce({
+            points: [
+              { t: buyPostedAt.getTime(), price: 800 },
+              { t: tLate, price: 810 },
+            ],
+            previousClose: null,
+            latestPrice: 810,
+          });
+        prisma.brokerageOperation.findMany.mockResolvedValue([
+          {
+            id: 'op-1',
+            assetId: 'asset-b',
+            kind: BrokerageOperationKind.BUY,
+            postedAt: buyPostedAt,
+            quantity: new Prisma.Decimal('1'),
+            unitPrice: new Prisma.Decimal('800'),
+            grossAmount: new Prisma.Decimal('800'),
+            feeAmount: new Prisma.Decimal('0'),
+            currency: 'EUR',
+            cashAmount: new Prisma.Decimal('-800'),
+          },
+        ]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          '1M',
+        );
+        const buyPoint = result.points.find(
+          (point) => point.t === buyPostedAt.getTime(),
+        );
+
+        expect(result.points[0]?.value).toBe(810);
+        expect(buyPoint?.value).toBe(810);
+        expect(result.latestValue).toBe(825);
+        expect(result.baselineValue).toBe(810);
+        expect(result.changeAbsolute).toBe(15);
+        expect(result.changePercent).toBe(1.85);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('weights portfolio returns from the moment a new position is bought', async () => {
       const fixedNow = new Date('2026-06-14T10:00:00.000Z');
       const tEarly = Date.UTC(2026, 4, 15, 10, 0);
@@ -798,8 +909,8 @@ describe('BrokerageService', () => {
 
         expect(result.latestValue).toBe(31);
         expect(result.changeAbsolute).toBe(11);
-        expect(result.baselineValue).toBe(15);
-        expect(result.changePercent).toBe(106.67);
+        expect(result.baselineValue).toBe(20);
+        expect(result.changePercent).toBe(55);
       } finally {
         jest.useRealTimers();
       }

@@ -138,6 +138,9 @@ export default function DashboardScreen() {
     readonly LiveAssetValuationResponse[] | null
   >(null);
   const autoRefreshStartedRef = useRef(false);
+  const autoRefreshLastStoredAtRef = useRef<string | null | undefined>(
+    undefined,
+  );
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
@@ -162,6 +165,16 @@ export default function DashboardScreen() {
   const data = dashboardQuery.data;
 
   useEffect(() => {
+    const lastRefreshAt = data?.dashboard.lastRefreshAt ?? null;
+    if (autoRefreshLastStoredAtRef.current !== lastRefreshAt) {
+      autoRefreshStartedRef.current = false;
+      autoRefreshLastStoredAtRef.current = lastRefreshAt;
+    }
+
+    if (data?.dashboard.pricingStatus.refreshSuggested !== true) {
+      autoRefreshStartedRef.current = false;
+    }
+
     if (
       !shouldStartAutomaticPriceRefresh({
         isActive,
@@ -174,7 +187,12 @@ export default function DashboardScreen() {
 
     autoRefreshStartedRef.current = true;
     refreshAssets.mutate();
-  }, [data?.dashboard.pricingStatus.refreshSuggested, isActive, refreshAssets]);
+  }, [
+    data?.dashboard.lastRefreshAt,
+    data?.dashboard.pricingStatus.refreshSuggested,
+    isActive,
+    refreshAssets,
+  ]);
 
   const mergedAssets = useMemo(
     () =>

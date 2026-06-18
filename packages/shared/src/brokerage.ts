@@ -83,6 +83,7 @@ export interface BrokerageWorkspaceResponse {
   reportingCurrency: string;
   baseCurrency?: string;
   pricingStatus: AggregatePricingStatus;
+  lastRefreshAt: string | null;
   brokers: BrokerageAccountSummaryResponse[];
   selectedBroker: BrokerageAccountSummaryResponse;
   cashReconciliation: AccountReconciliationResponse | null;
