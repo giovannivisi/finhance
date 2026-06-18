@@ -55,6 +55,7 @@ import {
 } from '@/common/catalogues';
 
 const ZERO = new Prisma.Decimal(0);
+const ONE = new Prisma.Decimal(1);
 const HUNDRED = new Prisma.Decimal(100);
 const BROKERAGE_ACTIVITY_LIMIT = 200;
 const MARKET_KINDS = new Set<AssetKind>([
@@ -411,8 +412,9 @@ export class BrokerageService {
           (sum, delta) => sum.plus(delta.delta),
           ZERO,
         );
-        const hasUnrecordedQuantity =
-          currentQuantity.sub(recordedNetQuantity).gt(ZERO);
+        const hasUnrecordedQuantity = currentQuantity
+          .sub(recordedNetQuantity)
+          .gt(ZERO);
         const shouldFallbackForImportedQuantity =
           !!entry.record.importSource && hasUnrecordedQuantity;
 
@@ -519,8 +521,26 @@ export class BrokerageService {
         nowMs: now.getTime(),
       }),
     ].sort((left, right) => left.postedAt - right.postedAt);
-    const totalContribution =
-      this.sumPerformanceContributions(contributionFlows);
+    const returnFlows = [
+      ...this.buildPerformanceMarketValueFlows({
+        pricedPositions,
+        operations,
+        rangeStart,
+        nowMs: now.getTime(),
+        reportingCurrency,
+        fxSeriesByCurrency,
+        fxFallbackRate,
+      }),
+      ...this.buildInferredPositionMarketValueFlows({
+        pricedPositions,
+        operationsByAsset: opsByAsset,
+        rangeStart,
+        nowMs: now.getTime(),
+        reportingCurrency,
+        fxSeriesByCurrency,
+        fxFallbackRate,
+      }),
+    ].sort((left, right) => left.postedAt - right.postedAt);
 
     const points: BrokeragePerformancePointResponse[] = grid.map((t) => {
       let total = constantTotal;
@@ -542,20 +562,13 @@ export class BrokerageService {
 
       return { t, value: this.round2(total.toNumber()) };
     });
-    const adjustedPoints = this.adjustPerformancePointsForContributions(
+    const rawPoints = this.withCurrentPerformancePoint(
       points,
-      contributionFlows,
-      totalContribution,
-    );
-
-    const downsampled = this.withCurrentPerformancePoint(
-      this.downsamplePoints(adjustedPoints, PERFORMANCE_MAX_POINTS),
       { t: now.getTime(), value: currentTotalValue },
-      PERFORMANCE_MAX_POINTS,
+      Number.MAX_SAFE_INTEGER,
     );
 
-    // Baseline.
-    let baselineValue: number | null = null;
+    let performanceRawPoints = rawPoints;
     if (range === '1D') {
       let hasPreviousClose = pricedPositions.length > 0;
       let baselineTotal = constantTotal;
@@ -582,22 +595,27 @@ export class BrokerageService {
         );
       }
 
-      baselineValue = hasPreviousClose
-        ? this.round2(baselineTotal.plus(totalContribution).toNumber())
-        : (downsampled[0]?.value ?? null);
-    } else {
-      baselineValue = downsampled[0]?.value ?? null;
+      if (hasPreviousClose) {
+        performanceRawPoints = this.withPerformancePointAt(
+          performanceRawPoints,
+          {
+            t: rangeStart,
+            value: this.round2(baselineTotal.toNumber()),
+          },
+        );
+      }
     }
 
-    const latestValue = downsampled[downsampled.length - 1]?.value ?? null;
-    const changeAbsolute =
-      latestValue !== null && baselineValue !== null
-        ? this.round2(latestValue - baselineValue)
-        : null;
-    const changePercent =
-      changeAbsolute !== null && baselineValue !== null && baselineValue > 0
-        ? this.round2((changeAbsolute / baselineValue) * 100)
-        : null;
+    const performanceSeries = this.buildTimeWeightedPerformanceSeries({
+      rawPoints: performanceRawPoints,
+      cashFlows: contributionFlows,
+      returnFlows,
+      latestValue: currentTotalValue,
+    });
+    const downsampled = this.downsamplePoints(
+      performanceSeries.points,
+      PERFORMANCE_MAX_POINTS,
+    );
 
     return {
       range,
@@ -608,10 +626,10 @@ export class BrokerageService {
         hasMissingFx,
       ),
       points: downsampled,
-      baselineValue,
-      latestValue,
-      changeAbsolute,
-      changePercent,
+      baselineValue: performanceSeries.baselineValue,
+      latestValue: performanceSeries.latestValue,
+      changeAbsolute: performanceSeries.changeAbsolute,
+      changePercent: performanceSeries.changePercent,
       asOf: now.toISOString(),
     };
   }
@@ -1769,6 +1787,55 @@ export class BrokerageService {
     return ZERO.sub(cashAmount);
   }
 
+  private buildPerformanceMarketValueFlows(input: {
+    pricedPositions: PerformancePricedPosition[];
+    operations: BrokerageOperation[];
+    rangeStart: number;
+    nowMs: number;
+    reportingCurrency: string;
+    fxSeriesByCurrency: Map<string, MarketSeries | null>;
+    fxFallbackRate: (currency: string) => Prisma.Decimal;
+  }): PerformanceContributionFlow[] {
+    const positionByAssetId = new Map(
+      input.pricedPositions.map((position) => [position.assetId, position]),
+    );
+
+    return input.operations
+      .flatMap((operation): PerformanceContributionFlow[] => {
+        const postedAt = operation.postedAt.getTime();
+        if (postedAt <= input.rangeStart || postedAt > input.nowMs) {
+          return [];
+        }
+
+        if (!operation.assetId || !operation.quantity) {
+          return [];
+        }
+
+        const position = positionByAssetId.get(operation.assetId);
+        if (!position) {
+          return [];
+        }
+
+        const fx =
+          position.currency === input.reportingCurrency
+            ? ONE
+            : this.fxValueAt(
+                input.fxSeriesByCurrency.get(position.currency) ?? null,
+                postedAt,
+                input.fxFallbackRate(position.currency),
+              );
+        const direction =
+          operation.kind === BrokerageOperationKind.BUY ? ONE : ZERO.sub(ONE);
+        const amount = this.toDecimal(operation.quantity)
+          .mul(this.positionPriceAt(position, postedAt))
+          .mul(fx)
+          .mul(direction);
+
+        return [{ postedAt, amount }];
+      })
+      .sort((left, right) => left.postedAt - right.postedAt);
+  }
+
   private buildInferredPositionContributionFlows(input: {
     pricedPositions: PerformancePricedPosition[];
     operationsByAsset: Map<string, BrokerageOperation[]>;
@@ -1802,6 +1869,154 @@ export class BrokerageService {
         },
       ];
     });
+  }
+
+  private buildInferredPositionMarketValueFlows(input: {
+    pricedPositions: PerformancePricedPosition[];
+    operationsByAsset: Map<string, BrokerageOperation[]>;
+    rangeStart: number;
+    nowMs: number;
+    reportingCurrency: string;
+    fxSeriesByCurrency: Map<string, MarketSeries | null>;
+    fxFallbackRate: (currency: string) => Prisma.Decimal;
+  }): PerformanceContributionFlow[] {
+    return input.pricedPositions.flatMap((position) => {
+      if (
+        position.firstExposureAt <= input.rangeStart ||
+        position.firstExposureAt > input.nowMs
+      ) {
+        return [];
+      }
+
+      const operations = input.operationsByAsset.get(position.assetId) ?? [];
+      const hasRecordedBuyInRange = operations.some(
+        (operation) =>
+          operation.kind === BrokerageOperationKind.BUY &&
+          operation.postedAt.getTime() > input.rangeStart &&
+          operation.postedAt.getTime() <= input.nowMs,
+      );
+
+      if (hasRecordedBuyInRange) {
+        return [];
+      }
+
+      const fx =
+        position.currency === input.reportingCurrency
+          ? ONE
+          : this.fxValueAt(
+              input.fxSeriesByCurrency.get(position.currency) ?? null,
+              position.firstExposureAt,
+              input.fxFallbackRate(position.currency),
+            );
+      const amount = this.quantityAt(position, position.firstExposureAt)
+        .mul(this.positionPriceAt(position, position.firstExposureAt))
+        .mul(fx);
+
+      return amount.gt(ZERO)
+        ? [{ postedAt: position.firstExposureAt, amount }]
+        : [];
+    });
+  }
+
+  private buildTimeWeightedPerformanceSeries(input: {
+    rawPoints: BrokeragePerformancePointResponse[];
+    cashFlows: PerformanceContributionFlow[];
+    returnFlows: PerformanceContributionFlow[];
+    latestValue: number;
+  }): {
+    points: BrokeragePerformancePointResponse[];
+    baselineValue: number | null;
+    latestValue: number | null;
+    changeAbsolute: number | null;
+    changePercent: number | null;
+  } {
+    if (input.rawPoints.length === 0) {
+      return {
+        points: [],
+        baselineValue: null,
+        latestValue: null,
+        changeAbsolute: null,
+        changePercent: null,
+      };
+    }
+
+    const returnFlowByTimestamp = this.sumFlowsByTimestamp(input.returnFlows);
+    const factorPoints: Array<{ t: number; factor: Prisma.Decimal }> = [];
+    let cumulativeFactor = ONE;
+    let previousValue: Prisma.Decimal | null = null;
+
+    for (const point of input.rawPoints) {
+      const rawValue = this.toDecimal(point.value);
+      const returnFlow = returnFlowByTimestamp.get(point.t) ?? ZERO;
+
+      if (previousValue === null || !previousValue.gt(ZERO)) {
+        if (rawValue.gt(ZERO)) {
+          previousValue = rawValue;
+          factorPoints.push({ t: point.t, factor: cumulativeFactor });
+        }
+        continue;
+      }
+
+      const endValueBeforeFlow = rawValue.sub(returnFlow);
+      const periodFactor = endValueBeforeFlow.lte(ZERO)
+        ? ZERO
+        : endValueBeforeFlow.div(previousValue);
+      cumulativeFactor = cumulativeFactor.mul(periodFactor);
+      factorPoints.push({ t: point.t, factor: cumulativeFactor });
+      previousValue = rawValue.gt(ZERO) ? rawValue : null;
+    }
+
+    if (factorPoints.length === 0) {
+      return {
+        points: [],
+        baselineValue: null,
+        latestValue: null,
+        changeAbsolute: null,
+        changePercent: null,
+      };
+    }
+
+    const finalFactor = factorPoints[factorPoints.length - 1].factor;
+    const latestValue = this.toDecimal(input.latestValue);
+    const baseline =
+      finalFactor.gt(ZERO) && latestValue.gt(ZERO)
+        ? latestValue.div(finalFactor)
+        : this.toDecimal(input.rawPoints[0]?.value ?? input.latestValue);
+    const points = factorPoints.map((point) => ({
+      t: point.t,
+      value: this.round2(baseline.mul(point.factor).toNumber()),
+    }));
+    const totalCashContribution = this.sumPerformanceContributions(
+      input.cashFlows,
+    );
+    const rawStartValue = this.toDecimal(input.rawPoints[0]?.value ?? 0);
+    const changeAbsolute = latestValue
+      .sub(rawStartValue)
+      .sub(totalCashContribution);
+    const changePercent = finalFactor.sub(ONE).mul(HUNDRED);
+
+    return {
+      points,
+      baselineValue: this.round2(baseline.toNumber()),
+      latestValue: this.round2(latestValue.toNumber()),
+      changeAbsolute: this.round2(changeAbsolute.toNumber()),
+      changePercent: this.round2(changePercent.toNumber()),
+    };
+  }
+
+  private sumFlowsByTimestamp(
+    flows: PerformanceContributionFlow[],
+  ): Map<number, Prisma.Decimal> {
+    const byTimestamp = new Map<number, Prisma.Decimal>();
+
+    for (const flow of flows) {
+      byTimestamp.set(
+        flow.postedAt,
+        (byTimestamp.get(flow.postedAt) ?? ZERO).plus(flow.amount),
+      );
+    }
+
+    return byTimestamp;
   }
 
   private positionPriceAt(
@@ -1984,6 +2199,15 @@ export class BrokerageService {
     }
 
     return [...points, currentPoint];
+  }
+
+  private withPerformancePointAt(
+    points: BrokeragePerformancePointResponse[],
+    point: BrokeragePerformancePointResponse,
+  ): BrokeragePerformancePointResponse[] {
+    return [...points.filter((existing) => existing.t !== point.t), point].sort(
+      (left, right) => left.t - right.t,
+    );
   }
 
   private round2(value: number): number {

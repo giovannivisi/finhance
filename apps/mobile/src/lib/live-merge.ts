@@ -181,20 +181,28 @@ export interface ChangeRecompute {
 }
 
 /**
- * Recomputes the header change badge from a fresher live total against the
- * performance series baseline. Returns null when the baseline is missing or
- * zero (a percentage cannot be expressed).
+ * Recomputes the header change badge from a fresher live total. The percentage
+ * is still measured against the performance baseline, while the money amount
+ * preserves the API's cashflow-adjusted P/L and only applies the live repricing
+ * delta.
  */
 export function recomputeChangeFromLiveTotal(
   liveTotal: number,
   baselineValue: number | null,
+  performanceLatestValue: number | null = null,
+  performanceChangeAbsolute: number | null = null,
 ): ChangeRecompute | null {
   if (baselineValue === null || baselineValue === 0) {
     return null;
   }
 
-  const changeAbsolute = liveTotal - baselineValue;
-  const changePercent = (changeAbsolute / baselineValue) * 100;
+  const liveDelta =
+    performanceLatestValue === null ? 0 : liveTotal - performanceLatestValue;
+  const changeAbsolute =
+    performanceChangeAbsolute === null
+      ? liveTotal - baselineValue
+      : performanceChangeAbsolute + liveDelta;
+  const changePercent = ((liveTotal - baselineValue) / baselineValue) * 100;
 
   return { changeAbsolute, changePercent };
 }

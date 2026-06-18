@@ -528,6 +528,8 @@ export default function BrokerageWorkspaceScreen() {
       ? recomputeChangeFromLiveTotal(
           liveTotal,
           performance?.baselineValue ?? null,
+          performance?.latestValue ?? null,
+          performance?.changeAbsolute ?? null,
         )
       : performance &&
           performance.changeAbsolute !== null &&

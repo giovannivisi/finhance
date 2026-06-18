@@ -181,7 +181,7 @@ export type BrokeragePerformanceRange = "1D" | "1W" | "1M" | "1Y" | "MAX";
 
 export interface BrokeragePerformancePointResponse {
   t: number; // epoch milliseconds
-  value: number; // contribution-adjusted portfolio value in reporting currency
+  value: number; // time-weighted return curve value in reporting currency
 }
 
 export interface BrokeragePerformanceResponse {

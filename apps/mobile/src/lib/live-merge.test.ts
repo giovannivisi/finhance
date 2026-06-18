@@ -300,10 +300,16 @@ describe("applyLiveDeltaToSummary", () => {
 });
 
 describe("recomputeChangeFromLiveTotal", () => {
-  it("computes absolute and percent change from the baseline", () => {
+  it("computes absolute and percent change from the baseline as a fallback", () => {
     const result = recomputeChangeFromLiveTotal(10130, 10000);
 
     expect(result).toEqual({ changeAbsolute: 130, changePercent: 1.3 });
+  });
+
+  it("applies only the live repricing delta to the cashflow-adjusted P/L", () => {
+    const result = recomputeChangeFromLiveTotal(10130, 10000, 10100, 80);
+
+    expect(result).toEqual({ changeAbsolute: 110, changePercent: 1.3 });
   });
 
   it("returns null when the baseline is missing or zero", () => {
