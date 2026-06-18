@@ -407,6 +407,14 @@ export class BrokerageService {
               ? this.toDecimal(operation.quantity)
               : ZERO.sub(this.toDecimal(operation.quantity)),
         }));
+        const recordedNetQuantity = quantityDeltas.reduce(
+          (sum, delta) => sum.plus(delta.delta),
+          ZERO,
+        );
+        const hasUnrecordedQuantity =
+          currentQuantity.sub(recordedNetQuantity).gt(ZERO);
+        const shouldFallbackForImportedQuantity =
+          !!entry.record.importSource && hasUnrecordedQuantity;
 
         return {
           assetId: entry.record.id,
@@ -424,7 +432,8 @@ export class BrokerageService {
             fallbackExposureAt,
             firstBuyAt ?? fallbackExposureAt,
           ),
-          useCostBasisPriceFallback: firstBuyAt === null,
+          useCostBasisPriceFallback:
+            firstBuyAt === null || shouldFallbackForImportedQuantity,
           series: entry.series,
           quantityDeltas,
         };
@@ -1724,10 +1733,40 @@ export class BrokerageService {
 
         return {
           postedAt,
-          amount: ZERO.sub(this.toDecimal(operation.cashAmount)).mul(fx),
+          amount: this.performanceContributionAmount(operation).mul(fx),
         };
       })
       .sort((left, right) => left.postedAt - right.postedAt);
+  }
+
+  private performanceContributionAmount(
+    operation: BrokerageOperation,
+  ): Prisma.Decimal {
+    const cashAmount = this.toDecimal(operation.cashAmount);
+    const feeAmount = this.toDecimal(operation.feeAmount);
+    const grossAmount = this.toDecimal(operation.grossAmount);
+    const quantity = this.toDecimal(operation.quantity);
+    const unitPrice = this.toDecimal(operation.unitPrice);
+    const derivedGross = grossAmount.gt(ZERO)
+      ? grossAmount
+      : quantity.gt(ZERO) && unitPrice.gt(ZERO)
+        ? quantity.mul(unitPrice)
+        : ZERO;
+
+    if (operation.kind === BrokerageOperationKind.BUY) {
+      return derivedGross.gt(ZERO)
+        ? derivedGross.plus(feeAmount)
+        : cashAmount.abs();
+    }
+
+    if (operation.kind === BrokerageOperationKind.SELL) {
+      const derivedInflow = derivedGross.sub(feeAmount);
+      return ZERO.sub(
+        derivedInflow.gt(ZERO) ? derivedInflow : cashAmount.abs(),
+      );
+    }
+
+    return ZERO.sub(cashAmount);
   }
 
   private buildInferredPositionContributionFlows(input: {
