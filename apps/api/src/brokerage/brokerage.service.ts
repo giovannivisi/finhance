@@ -96,6 +96,7 @@ interface PerformancePricedPosition {
   currentQuantity: Prisma.Decimal;
   costBasisValue: Prisma.Decimal;
   costBasisUnitPrice: Prisma.Decimal;
+  unrecordedCostBasisValue: Prisma.Decimal;
   firstExposureAt: number;
   useCostBasisPriceFallback: boolean;
   series: MarketSeries;
@@ -415,6 +416,17 @@ export class BrokerageService {
         const hasUnrecordedQuantity = currentQuantity
           .sub(recordedNetQuantity)
           .gt(ZERO);
+        const unrecordedQuantity = hasUnrecordedQuantity
+          ? currentQuantity.sub(recordedNetQuantity)
+          : ZERO;
+        const costBasisValue = this.toDecimal(
+          entry.asset.referenceValue ??
+            entry.asset.currentValue ??
+            entry.record.balance,
+        );
+        const costBasisUnitPrice = currentQuantity.gt(ZERO)
+          ? this.toDecimal(entry.record.balance).div(currentQuantity)
+          : ZERO;
         const shouldFallbackForImportedQuantity =
           !!entry.record.importSource && hasUnrecordedQuantity;
 
@@ -422,14 +434,9 @@ export class BrokerageService {
           assetId: entry.record.id,
           currency: entry.record.currency,
           currentQuantity,
-          costBasisValue: this.toDecimal(
-            entry.asset.referenceValue ??
-              entry.asset.currentValue ??
-              entry.record.balance,
-          ),
-          costBasisUnitPrice: currentQuantity.gt(ZERO)
-            ? this.toDecimal(entry.record.balance).div(currentQuantity)
-            : ZERO,
+          costBasisValue,
+          costBasisUnitPrice,
+          unrecordedCostBasisValue: costBasisUnitPrice.mul(unrecordedQuantity),
           firstExposureAt: Math.min(
             fallbackExposureAt,
             firstBuyAt ?? fallbackExposureAt,
@@ -508,6 +515,7 @@ export class BrokerageService {
     const contributionFlows = [
       ...this.buildPerformanceContributionFlows({
         operations,
+        pricedPositions,
         rangeStart,
         nowMs: now.getTime(),
         reportingCurrency,
@@ -516,7 +524,6 @@ export class BrokerageService {
       }),
       ...this.buildInferredPositionContributionFlows({
         pricedPositions,
-        operationsByAsset: opsByAsset,
         rangeStart,
         nowMs: now.getTime(),
       }),
@@ -1705,12 +1712,17 @@ export class BrokerageService {
 
   private buildPerformanceContributionFlows(input: {
     operations: BrokerageOperation[];
+    pricedPositions: PerformancePricedPosition[];
     rangeStart: number;
     nowMs: number;
     reportingCurrency: string;
     fxSeriesByCurrency: Map<string, MarketSeries | null>;
     fxFallbackRate: (currency: string) => Prisma.Decimal;
   }): PerformanceContributionFlow[] {
+    const positionByAssetId = new Map(
+      input.pricedPositions.map((position) => [position.assetId, position]),
+    );
+
     return input.operations
       .filter((operation) => {
         const postedAt = operation.postedAt.getTime();
@@ -1729,7 +1741,13 @@ export class BrokerageService {
 
         return {
           postedAt,
-          amount: this.performanceContributionAmount(operation).mul(fx),
+          amount: this.performanceContributionAmount(
+            operation,
+            operation.assetId
+              ? (positionByAssetId.get(operation.assetId)?.costBasisUnitPrice ??
+                  ZERO)
+              : ZERO,
+          ).mul(fx),
         };
       })
       .sort((left, right) => left.postedAt - right.postedAt);
@@ -1737,29 +1755,48 @@ export class BrokerageService {
 
   private performanceContributionAmount(
     operation: BrokerageOperation,
+    fallbackUnitPrice: Prisma.Decimal = ZERO,
   ): Prisma.Decimal {
     const cashAmount = this.toDecimal(operation.cashAmount);
     const feeAmount = this.toDecimal(operation.feeAmount);
     const grossAmount = this.toDecimal(operation.grossAmount);
     const quantity = this.toDecimal(operation.quantity);
     const unitPrice = this.toDecimal(operation.unitPrice);
-    const derivedGross = grossAmount.gt(ZERO)
+    const explicitGross = grossAmount.gt(ZERO)
       ? grossAmount
       : quantity.gt(ZERO) && unitPrice.gt(ZERO)
         ? quantity.mul(unitPrice)
         : ZERO;
+    const fallbackGross =
+      quantity.gt(ZERO) && fallbackUnitPrice.gt(ZERO)
+        ? quantity.mul(fallbackUnitPrice)
+        : ZERO;
+    const cashMagnitude = cashAmount.abs();
 
     if (operation.kind === BrokerageOperationKind.BUY) {
-      return derivedGross.gt(ZERO)
-        ? derivedGross.plus(feeAmount)
-        : cashAmount.abs();
+      if (explicitGross.gt(ZERO)) {
+        return explicitGross.plus(feeAmount);
+      }
+
+      if (cashMagnitude.gt(ZERO)) {
+        return cashMagnitude;
+      }
+
+      return fallbackGross.gt(ZERO) ? fallbackGross.plus(feeAmount) : ZERO;
     }
 
     if (operation.kind === BrokerageOperationKind.SELL) {
-      const derivedInflow = derivedGross.sub(feeAmount);
-      return ZERO.sub(
-        derivedInflow.gt(ZERO) ? derivedInflow : cashAmount.abs(),
-      );
+      const explicitInflow = explicitGross.sub(feeAmount);
+      if (explicitInflow.gt(ZERO)) {
+        return ZERO.sub(explicitInflow);
+      }
+
+      if (cashMagnitude.gt(ZERO)) {
+        return ZERO.sub(cashMagnitude);
+      }
+
+      const fallbackInflow = fallbackGross.sub(feeAmount);
+      return ZERO.sub(fallbackInflow.gt(ZERO) ? fallbackInflow : ZERO);
     }
 
     return ZERO.sub(cashAmount);
@@ -1767,7 +1804,6 @@ export class BrokerageService {
 
   private buildInferredPositionContributionFlows(input: {
     pricedPositions: PerformancePricedPosition[];
-    operationsByAsset: Map<string, BrokerageOperation[]>;
     rangeStart: number;
     nowMs: number;
   }): PerformanceContributionFlow[] {
@@ -1779,22 +1815,14 @@ export class BrokerageService {
         return [];
       }
 
-      const operations = input.operationsByAsset.get(position.assetId) ?? [];
-      const hasRecordedBuyInRange = operations.some(
-        (operation) =>
-          operation.kind === BrokerageOperationKind.BUY &&
-          operation.postedAt.getTime() > input.rangeStart &&
-          operation.postedAt.getTime() <= input.nowMs,
-      );
-
-      if (hasRecordedBuyInRange || !position.costBasisValue.gt(ZERO)) {
+      if (!position.unrecordedCostBasisValue.gt(ZERO)) {
         return [];
       }
 
       return [
         {
           postedAt: position.firstExposureAt,
-          amount: position.costBasisValue,
+          amount: position.unrecordedCostBasisValue,
         },
       ];
     });
