@@ -1,39 +1,8 @@
 # Contributing
 
-## Prerequisites
+## Prerequisites, project's setup and structure
 
-- Node.js 20–22
-- pnpm 9
-- PostgreSQL (local or Docker)
-- Python + [pre-commit](https://pre-commit.com) (`pip install pre-commit`)
-
-## Local setup
-
-```bash
-pnpm install
-pre-commit install
-pre-commit install --hook-type commit-msg
-pnpm db:generate
-pnpm db:migrate:reset --force
-```
-
-Start the dev servers (two terminals):
-
-```bash
-pnpm --filter api dev
-pnpm --filter web dev
-```
-
-Open `http://localhost:3001`.
-
-## Project structure
-
-```
-apps/api      NestJS API (TypeScript, moduleResolution: nodenext)
-apps/web      Next.js 16 frontend (App Router, Turbopack)
-packages/db   Prisma schema and migrations
-packages/shared  Shared types consumed by both apps
-```
+For info about prerequisites or the project's structure and setup process (local or remote), please refer to the README.md file.
 
 ## Branches and commits
 
@@ -80,8 +49,8 @@ Use the PR template — it prompts for _What_, _Why_, _Test plan_, and _Breaking
 
 ## Code conventions
 
-See the CLAUDE.md file in each app directory for the conventions that apply there:
+See the AGENTS.md file in each app directory for the conventions that apply there, for example:
 
-- [`apps/api/CLAUDE.md`](apps/api/CLAUDE.md) — NestJS module structure, DTOs, Prisma patterns, error handling
-- [`apps/web/CLAUDE.md`](apps/web/CLAUDE.md) — component model, path aliases, UI patterns, CSS conventions
-- [`packages/shared/CLAUDE.md`](packages/shared/CLAUDE.md) — shared types, internal import rules
+- [`apps/api/AGENTS.md`](apps/api/CLAUDE.md) — NestJS module structure, DTOs, Prisma patterns, error handling
+- [`apps/web/AGENTS.md`](apps/web/CLAUDE.md) — component model, path aliases, UI patterns, CSS conventions
+- [`packages/shared/AGENTS.md`](packages/shared/CLAUDE.md) — shared types, internal import rules

@@ -7,7 +7,7 @@ and a short lowercase description:
 
 | Prefix     | Use when                                              |
 | ---------- | ----------------------------------------------------- |
-| `feat`     | adding new **user-facing** functionality              |
+| `feat`     | adding new**user-facing** functionality               |
 | `fix`      | correcting broken behaviour                           |
 | `perf`     | improving speed or efficiency                         |
 | `refactor` | restructuring without changing behaviour              |
@@ -20,7 +20,7 @@ and a short lowercase description:
 ### Common mistakes
 
 - `feat` is strictly for user-facing features. Any documentation file
-  (README, CONTRIBUTING.md, ADR, CLAUDE.md) is `docs:`.
+  (README, CONTRIBUTING.md, ADR, AGENTS.md) is `docs:`.
 - Scopes (`feat(scope):`) are rarely needed. Never use a scope that repeats
   the prefix (`docs(docs):` is redundant). Omit the scope unless it
   meaningfully narrows the context (e.g. `fix(brokerage):`).
