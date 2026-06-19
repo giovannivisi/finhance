@@ -23,9 +23,11 @@ import { toAssetResponse } from '@assets/assets.mapper';
 import {
   DEFAULT_REPORTING_CURRENCY,
   MARKET_KINDS,
+  MAX_QUOTE_AGE_MS,
   REFRESH_COOLDOWN_MS,
   VALUATION_STALE_MS,
 } from '@assets/assets.types';
+import { getMarketOpenState } from '@prices/market-hours';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
 import { ensureOwnerUserRecord } from '@/security/owner-user';
 import type {
@@ -955,18 +957,22 @@ export class AssetsService {
         )
       : null;
     const quoteTimestamp = this.minDate([asset.lastPriceAt, fxTimestamp]);
-    const quoteStale =
-      !!quoteTimestamp &&
-      now.getTime() - quoteTimestamp.getTime() > VALUATION_STALE_MS;
+    const quoteAgeMs = quoteTimestamp
+      ? now.getTime() - quoteTimestamp.getTime()
+      : null;
+    // A quote only counts as "live" right after a fetch with usable FX. Outside
+    // that window we still show it, but as the latest stored quote.
+    const isLiveQuote =
+      quoteAgeMs !== null && quoteAgeMs <= VALUATION_STALE_MS && !fxStale;
+    const quoteStale = this.isQuoteStale(asset, quoteAgeMs, now);
 
     if (currentValue) {
-      const useLatestStoredQuote = quoteStale || fxStale;
       return {
         currentValue,
         referenceValue,
-        valuationSource: useLatestStoredQuote ? 'LAST_QUOTE' : 'LIVE',
+        valuationSource: isLiveQuote ? 'LIVE' : 'LAST_QUOTE',
         valuationAsOf: quoteTimestamp,
-        isStale: useLatestStoredQuote,
+        isStale: quoteStale || fxStale,
       };
     }
 
@@ -987,6 +993,29 @@ export class AssetsService {
       valuationAsOf: priceTimestamp ?? fxTimestamp ?? null,
       isStale: true,
     };
+  }
+
+  /**
+   * Decides whether a stored market quote is genuinely behind the market.
+   *
+   * Age alone is not enough: outside trading hours the last close is the most
+   * recent price the venue has produced, so an "old" quote is not stale. A
+   * quote is therefore only stale when it is older than the live window *and*
+   * either its venue is currently trading (so a newer price should exist) or it
+   * has aged past {@link MAX_QUOTE_AGE_MS} (a sign refreshes have been failing).
+   */
+  private isQuoteStale(
+    asset: Pick<Asset, 'exchange' | 'kind'>,
+    quoteAgeMs: number | null,
+    now: Date,
+  ): boolean {
+    if (quoteAgeMs === null || quoteAgeMs <= VALUATION_STALE_MS) {
+      return false;
+    }
+    if (quoteAgeMs > MAX_QUOTE_AGE_MS) {
+      return true;
+    }
+    return getMarketOpenState(asset.exchange, asset.kind, now) !== 'CLOSED';
   }
 
   private buildSummary(assets: DashboardAssetResponse[]): DashboardSummary {
@@ -1043,8 +1072,9 @@ export class AssetsService {
   ): AggregatePricingStatus {
     const hasStaleQuotes = assets.some(
       (asset) =>
-        asset.valuationSource === 'LAST_QUOTE' ||
-        asset.valuationSource === 'AVG_COST',
+        asset.isStale &&
+        (asset.valuationSource === 'LAST_QUOTE' ||
+          asset.valuationSource === 'AVG_COST'),
     );
     const hasStaleFx = [...fxRates.values()].some(
       (entry) => entry.status === 'STALE',

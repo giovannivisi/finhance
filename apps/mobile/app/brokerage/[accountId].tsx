@@ -135,6 +135,7 @@ function getLiveAdjustedPricingStatus(input: {
   );
   const hasUncoveredStaleQuotes = input.positions.some(
     (position) =>
+      position.isStale &&
       (position.valuationSource === "LAST_QUOTE" ||
         position.valuationSource === "AVG_COST") &&
       !liveAssetIds.has(position.assetId),
