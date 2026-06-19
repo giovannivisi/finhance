@@ -25,6 +25,7 @@ import {
 import { formatSensitiveNumber } from "@lib/money";
 import { useLiveValuations } from "@lib/useLiveValuations";
 import type {
+  AggregatePricingStatus,
   AssetKind,
   BrokerageActivityItemResponse,
   BrokeragePositionResponse,
@@ -37,6 +38,49 @@ import type {
 // Stable fallback so the live-merge memos don't recompute on every render
 // while there is no live data yet.
 const EMPTY_LIVE_QUOTES: LiveAssetValuationResponse[] = [];
+
+function getLiveAdjustedPricingStatus({
+  pricingStatus,
+  positions,
+  quotes,
+}: {
+  pricingStatus: AggregatePricingStatus;
+  positions: readonly BrokeragePositionResponse[];
+  quotes: readonly LiveAssetValuationResponse[];
+}): AggregatePricingStatus {
+  if (
+    quotes.length === 0 ||
+    pricingStatus.state === "FRESH" ||
+    pricingStatus.hasMissingFx ||
+    pricingStatus.hasStaleFx
+  ) {
+    return pricingStatus;
+  }
+
+  const liveAssetIds = new Set(
+    quotes
+      .filter((quote) => quote.valueInReporting != null)
+      .map((quote) => quote.assetId),
+  );
+  const hasUncoveredStaleQuotes = positions.some(
+    (position) =>
+      (position.valuationSource === "LAST_QUOTE" ||
+        position.valuationSource === "AVG_COST") &&
+      !liveAssetIds.has(position.assetId),
+  );
+
+  if (hasUncoveredStaleQuotes) {
+    return pricingStatus;
+  }
+
+  return {
+    state: "FRESH",
+    refreshSuggested: false,
+    hasStaleQuotes: false,
+    hasStaleFx: false,
+    hasMissingFx: false,
+  };
+}
 
 type OperationModalKind =
   | "BUY"
@@ -397,9 +441,32 @@ export default function BrokeragePageClient({
           : "status-chip is-danger";
   const { data: liveValuationsData } = useLiveValuations();
   const liveQuotes = liveValuationsData?.quotes ?? EMPTY_LIVE_QUOTES;
+  const displayPricingStatus = useMemo(
+    () =>
+      getLiveAdjustedPricingStatus({
+        pricingStatus: workspace.pricingStatus,
+        positions: workspace.positions,
+        quotes: liveQuotes,
+      }),
+    [liveQuotes, workspace.positions, workspace.pricingStatus],
+  );
   const mergedPositions = useMemo(
-    () => mergeLivePositions(workspace.positions, liveQuotes),
-    [workspace.positions, liveQuotes],
+    () =>
+      mergeLivePositions(workspace.positions, liveQuotes, {
+        asOf: liveValuationsData?.asOf ?? null,
+        reportingCurrency: workspace.reportingCurrency,
+        hasFreshFx:
+          !workspace.pricingStatus.hasMissingFx &&
+          !workspace.pricingStatus.hasStaleFx,
+      }),
+    [
+      workspace.positions,
+      workspace.pricingStatus.hasMissingFx,
+      workspace.pricingStatus.hasStaleFx,
+      workspace.reportingCurrency,
+      liveQuotes,
+      liveValuationsData?.asOf,
+    ],
   );
   const liveValueDelta = useMemo(
     () => computeLiveValueDelta(workspace.positions, liveQuotes),
@@ -425,9 +492,9 @@ export default function BrokeragePageClient({
         ? "var(--color-expense)"
         : undefined;
   const pricingStatusMessage =
-    workspace.pricingStatus.state === "PARTIAL"
+    displayPricingStatus.state === "PARTIAL"
       ? "Latest stored prices are shown."
-      : workspace.pricingStatus.state === "STALE"
+      : displayPricingStatus.state === "STALE"
         ? "Latest stored prices are shown while brokerage data refreshes in the background."
         : "Price snapshot is current.";
   const runAutoRefresh = useEffectEvent(
@@ -482,8 +549,8 @@ export default function BrokeragePageClient({
   }, [groupedActivity]);
 
   useEffect(() => {
-    if (!isHydrated || !workspace.pricingStatus.refreshSuggested) {
-      if (!workspace.pricingStatus.refreshSuggested) {
+    if (!isHydrated || !displayPricingStatus.refreshSuggested) {
+      if (!displayPricingStatus.refreshSuggested) {
         autoRefreshAttemptedSnapshotRef.current = null;
       }
       return;
@@ -497,9 +564,9 @@ export default function BrokeragePageClient({
     autoRefreshAttemptedSnapshotRef.current = snapshotKey;
     runAutoRefresh(snapshotKey, workspace.lastRefreshAt);
   }, [
+    displayPricingStatus.refreshSuggested,
     isHydrated,
     workspace.lastRefreshAt,
-    workspace.pricingStatus.refreshSuggested,
   ]);
 
   async function handleRefreshPrices(): Promise<
@@ -891,7 +958,7 @@ export default function BrokeragePageClient({
                     {workspace.selectedBroker.account.institution}
                   </p>
                 ) : null}
-                {workspace.pricingStatus.state !== "FRESH" ||
+                {displayPricingStatus.state !== "FRESH" ||
                 isRefreshingPrices ||
                 refreshNotice ||
                 refreshError ? (

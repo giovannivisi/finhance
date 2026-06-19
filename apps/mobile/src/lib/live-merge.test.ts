@@ -90,10 +90,20 @@ function dashboardAsset(
 
 describe("mergePositionsWithLiveQuotes", () => {
   it("updates currentPrice, currentValue and unrealisedGainLoss for matched positions", () => {
-    const positions = [position({})];
+    const positions = [
+      position({
+        currency: "USD",
+        valuationSource: "LAST_QUOTE",
+        valuationAsOf: "2026-06-12T09:00:00.000Z",
+        isStale: true,
+      }),
+    ];
     const quotes = [quote({})];
 
-    const merged = mergePositionsWithLiveQuotes(positions, quotes);
+    const merged = mergePositionsWithLiveQuotes(positions, quotes, {
+      asOf: "2026-06-12T09:05:00.000Z",
+      reportingCurrency: "USD",
+    });
 
     // Unit price comes from the asset-currency quote price.
     expect(merged[0]!.currentPrice).toBe(113);
@@ -102,6 +112,52 @@ describe("mergePositionsWithLiveQuotes", () => {
     expect(merged[0]!.currentValue).toBe(12500);
     // Unrealised P/L is recomputed from the new reporting-currency value.
     expect(merged[0]!.unrealisedGainLoss).toBe(12500 - 11820);
+    expect(merged[0]!.valuationSource).toBe("LIVE");
+    expect(merged[0]!.valuationAsOf).toBe("2026-06-12T09:05:00.000Z");
+    expect(merged[0]!.isStale).toBe(false);
+  });
+
+  it("preserves position stale state when FX may still be stale", () => {
+    const positions = [
+      position({
+        currency: "USD",
+        valuationSource: "LAST_QUOTE",
+        isStale: true,
+      }),
+    ];
+    const quotes = [quote({ currency: "USD", valueInReporting: 12500 })];
+
+    const merged = mergePositionsWithLiveQuotes(positions, quotes, {
+      asOf: "2026-06-12T09:05:00.000Z",
+      reportingCurrency: "EUR",
+    });
+
+    expect(merged[0]!.currentValue).toBe(12500);
+    expect(merged[0]!.valuationSource).toBe("LAST_QUOTE");
+    expect(merged[0]!.isStale).toBe(true);
+  });
+
+  it("clears cross-currency position stale state when FX is fresh", () => {
+    const positions = [
+      position({
+        currency: "USD",
+        valuationSource: "LAST_QUOTE",
+        valuationAsOf: "2026-06-12T09:00:00.000Z",
+        isStale: true,
+      }),
+    ];
+    const quotes = [quote({ currency: "USD", valueInReporting: 12500 })];
+
+    const merged = mergePositionsWithLiveQuotes(positions, quotes, {
+      asOf: "2026-06-12T09:05:00.000Z",
+      reportingCurrency: "EUR",
+      hasFreshFx: true,
+    });
+
+    expect(merged[0]!.currentValue).toBe(12500);
+    expect(merged[0]!.valuationSource).toBe("LIVE");
+    expect(merged[0]!.valuationAsOf).toBe("2026-06-12T09:05:00.000Z");
+    expect(merged[0]!.isStale).toBe(false);
   });
 
   it("leaves positions unchanged when there is no matching quote", () => {
@@ -162,16 +218,72 @@ describe("mergePositionsWithLiveQuotes", () => {
 
 describe("mergeDashboardAssetsWithLiveQuotes", () => {
   it("updates currentValue and lastPrice for matched assets with a quantity", () => {
-    const assets = [dashboardAsset({})];
+    const assets = [
+      dashboardAsset({
+        currency: "USD",
+        valuationSource: "LAST_QUOTE",
+        valuationAsOf: "2026-06-12T09:00:00.000Z",
+        isStale: true,
+      }),
+    ];
     const quotes = [quote({})];
 
-    const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+    const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes, {
+      asOf: "2026-06-12T09:05:00.000Z",
+      reportingCurrency: "USD",
+    });
 
     // Current value comes from the reporting-currency valuation, not the
     // asset-currency `value`.
     expect(merged[0]!.currentValue).toBe(12500);
     // Last price comes from the asset-currency quote price.
     expect(merged[0]!.lastPrice).toBe(113);
+    expect(merged[0]!.valuationSource).toBe("LIVE");
+    expect(merged[0]!.valuationAsOf).toBe("2026-06-12T09:05:00.000Z");
+    expect(merged[0]!.isStale).toBe(false);
+  });
+
+  it("preserves dashboard stale state when FX may still be stale", () => {
+    const assets = [
+      dashboardAsset({
+        currency: "USD",
+        valuationSource: "LAST_QUOTE",
+        isStale: true,
+      }),
+    ];
+    const quotes = [quote({ currency: "USD", valueInReporting: 12500 })];
+
+    const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes, {
+      asOf: "2026-06-12T09:05:00.000Z",
+      reportingCurrency: "EUR",
+    });
+
+    expect(merged[0]!.currentValue).toBe(12500);
+    expect(merged[0]!.valuationSource).toBe("LAST_QUOTE");
+    expect(merged[0]!.isStale).toBe(true);
+  });
+
+  it("clears cross-currency dashboard stale state when FX is fresh", () => {
+    const assets = [
+      dashboardAsset({
+        currency: "USD",
+        valuationSource: "LAST_QUOTE",
+        valuationAsOf: "2026-06-12T09:00:00.000Z",
+        isStale: true,
+      }),
+    ];
+    const quotes = [quote({ currency: "USD", valueInReporting: 12500 })];
+
+    const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes, {
+      asOf: "2026-06-12T09:05:00.000Z",
+      reportingCurrency: "EUR",
+      hasFreshFx: true,
+    });
+
+    expect(merged[0]!.currentValue).toBe(12500);
+    expect(merged[0]!.valuationSource).toBe("LIVE");
+    expect(merged[0]!.valuationAsOf).toBe("2026-06-12T09:05:00.000Z");
+    expect(merged[0]!.isStale).toBe(false);
   });
 
   it("does not update lastPrice for assets without a quantity", () => {

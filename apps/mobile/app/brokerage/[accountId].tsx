@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, View } from "react-native";
 import type {
+  AggregatePricingStatus,
   AssetKind,
   BrokeragePerformanceRange,
   BrokeragePositionResponse,
@@ -110,6 +111,46 @@ function performancePricingNote(
   }
 
   return "Some prices are still updating; this chart may be partial.";
+}
+
+function getLiveAdjustedPricingStatus(input: {
+  pricingStatus: AggregatePricingStatus;
+  positions: readonly BrokeragePositionResponse[];
+  quotes?: readonly LiveAssetValuationResponse[];
+}): AggregatePricingStatus {
+  if (
+    !input.quotes ||
+    input.quotes.length === 0 ||
+    input.pricingStatus.state === "FRESH" ||
+    input.pricingStatus.hasMissingFx ||
+    input.pricingStatus.hasStaleFx
+  ) {
+    return input.pricingStatus;
+  }
+
+  const liveAssetIds = new Set(
+    input.quotes
+      .filter((quote) => quote.valueInReporting != null)
+      .map((quote) => quote.assetId),
+  );
+  const hasUncoveredStaleQuotes = input.positions.some(
+    (position) =>
+      (position.valuationSource === "LAST_QUOTE" ||
+        position.valuationSource === "AVG_COST") &&
+      !liveAssetIds.has(position.assetId),
+  );
+
+  if (hasUncoveredStaleQuotes) {
+    return input.pricingStatus;
+  }
+
+  return {
+    state: "FRESH",
+    refreshSuggested: false,
+    hasStaleQuotes: false,
+    hasStaleFx: false,
+    hasMissingFx: false,
+  };
 }
 
 type OperationKind = "BUY" | "SELL" | "DIVIDEND" | "FEE";
@@ -469,11 +510,12 @@ export default function BrokerageWorkspaceScreen() {
   const previousQuotesRef = useRef<
     readonly LiveAssetValuationResponse[] | null
   >(null);
-  const autoRefreshAttemptRef =
-    useRef<AutomaticPriceRefreshAttempt | null>(null);
-  const autoRefreshRetryTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
+  const autoRefreshAttemptRef = useRef<AutomaticPriceRefreshAttempt | null>(
+    null,
+  );
+  const autoRefreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [autoRefreshRetryTick, setAutoRefreshRetryTick] = useState(0);
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
@@ -505,10 +547,21 @@ export default function BrokerageWorkspaceScreen() {
   const workspace: BrokerageWorkspaceResponse | undefined = workspaceQuery.data;
   const broker = workspace?.selectedBroker;
   const accountCurrency = broker?.account.currency ?? "EUR";
+  const displayPricingStatus = useMemo(
+    () =>
+      workspace
+        ? getLiveAdjustedPricingStatus({
+            pricingStatus: workspace.pricingStatus,
+            positions: workspace.positions,
+            quotes: liveQuotes,
+          })
+        : null,
+    [liveQuotes, workspace],
+  );
 
   useEffect(() => {
     const lastRefreshAt = workspace?.lastRefreshAt ?? null;
-    const refreshSuggested = workspace?.pricingStatus.refreshSuggested;
+    const refreshSuggested = displayPricingStatus?.refreshSuggested;
 
     if (autoRefreshRetryTimerRef.current) {
       clearTimeout(autoRefreshRetryTimerRef.current);
@@ -565,8 +618,8 @@ export default function BrokerageWorkspaceScreen() {
     isActive,
     refreshAssetsIsPending,
     refreshAssetsMutate,
+    displayPricingStatus?.refreshSuggested,
     workspace?.lastRefreshAt,
-    workspace?.pricingStatus.refreshSuggested,
   ]);
 
   const performance = performanceQuery.data;
@@ -602,9 +655,15 @@ export default function BrokerageWorkspaceScreen() {
   const mergedPositions = useMemo(
     () =>
       workspace && liveQuotes
-        ? mergePositionsWithLiveQuotes(workspace.positions, liveQuotes)
+        ? mergePositionsWithLiveQuotes(workspace.positions, liveQuotes, {
+            asOf: liveQuery.data?.asOf ?? null,
+            reportingCurrency: workspace.reportingCurrency,
+            hasFreshFx:
+              !workspace.pricingStatus.hasMissingFx &&
+              !workspace.pricingStatus.hasStaleFx,
+          })
         : (workspace?.positions ?? []),
-    [workspace, liveQuotes],
+    [workspace, liveQuery.data?.asOf, liveQuotes],
   );
 
   const liveSummary =
@@ -1063,7 +1122,8 @@ export default function BrokerageWorkspaceScreen() {
               style={{ flex: 1, minWidth: 90 }}
             />
           </View>
-          {workspace.pricingStatus.state !== "FRESH" ? (
+          {(displayPricingStatus?.state ?? workspace.pricingStatus.state) !==
+          "FRESH" ? (
             <Chip label="Some prices are stale" tone="warning" />
           ) : null}
         </View>

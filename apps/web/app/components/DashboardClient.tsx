@@ -103,6 +103,49 @@ function getPricingStatusLabel(pricingStatus: AggregatePricingStatus): string {
   }
 }
 
+function getLiveAdjustedPricingStatus({
+  pricingStatus,
+  assets,
+  quotes,
+}: {
+  pricingStatus: AggregatePricingStatus;
+  assets: readonly DashboardAssetResponse[];
+  quotes: readonly LiveAssetValuationResponse[];
+}): AggregatePricingStatus {
+  if (
+    quotes.length === 0 ||
+    pricingStatus.state === "FRESH" ||
+    pricingStatus.hasMissingFx ||
+    pricingStatus.hasStaleFx
+  ) {
+    return pricingStatus;
+  }
+
+  const liveAssetIds = new Set(
+    quotes
+      .filter((quote) => quote.valueInReporting != null)
+      .map((quote) => quote.assetId),
+  );
+  const hasUncoveredStaleQuotes = assets.some(
+    (asset) =>
+      (asset.valuationSource === "LAST_QUOTE" ||
+        asset.valuationSource === "AVG_COST") &&
+      !liveAssetIds.has(asset.id),
+  );
+
+  if (hasUncoveredStaleQuotes) {
+    return pricingStatus;
+  }
+
+  return {
+    state: "FRESH",
+    refreshSuggested: false,
+    hasStaleQuotes: false,
+    hasStaleFx: false,
+    hasMissingFx: false,
+  };
+}
+
 function SortableKindBlock({
   id,
   isEditing,
@@ -480,9 +523,11 @@ export default function DashboardClient({
     }
 
     const mergedById = new Map(
-      mergeDashboardAssetsWithLiveQuotes(flatAssets, liveQuotes).map(
-        (asset) => [asset.id, asset],
-      ),
+      mergeDashboardAssetsWithLiveQuotes(flatAssets, liveQuotes, {
+        asOf: liveValuationsData?.asOf ?? null,
+        reportingCurrency: baseCurrency,
+        hasFreshFx: !pricingStatus.hasMissingFx && !pricingStatus.hasStaleFx,
+      }).map((asset) => [asset.id, asset]),
     );
 
     const next: Record<string, DashboardAssetResponse[]> = {};
@@ -490,7 +535,15 @@ export default function DashboardClient({
       next[kind] = assets.map((asset) => mergedById.get(asset.id) ?? asset);
     }
     return next;
-  }, [grouped, flatAssets, liveQuotes]);
+  }, [
+    baseCurrency,
+    grouped,
+    flatAssets,
+    liveQuotes,
+    liveValuationsData?.asOf,
+    pricingStatus.hasMissingFx,
+    pricingStatus.hasStaleFx,
+  ]);
 
   const liveKindTotalsArray = useMemo(
     () =>
@@ -501,6 +554,15 @@ export default function DashboardClient({
   const liveSummary = useMemo(
     () => applyLiveDeltasToSummary(summary, flatAssets, liveValueDeltas),
     [summary, flatAssets, liveValueDeltas],
+  );
+  const displayPricingStatus = useMemo(
+    () =>
+      getLiveAdjustedPricingStatus({
+        pricingStatus,
+        assets: flatAssets,
+        quotes: liveQuotes,
+      }),
+    [flatAssets, liveQuotes, pricingStatus],
   );
 
   const [assetKindOrderState, setAssetKindOrderState] = useState<string[]>(() =>
@@ -637,12 +699,12 @@ export default function DashboardClient({
   });
 
   useEffect(() => {
-    if (!isHydrated || !pricingStatus.refreshSuggested) {
+    if (!isHydrated || !displayPricingStatus.refreshSuggested) {
       return;
     }
 
     runAutoRefresh();
-  }, [isHydrated, lastRefreshAt, pricingStatus.refreshSuggested]);
+  }, [displayPricingStatus.refreshSuggested, isHydrated, lastRefreshAt]);
 
   const handleKindDragEnd = useCallback(
     (event: DragEndEvent, type: "ASSET" | "LIABILITY") => {
@@ -746,10 +808,16 @@ export default function DashboardClient({
           )} min ago`;
   const liveStatusDetail =
     liveQuotes.length > 0 ? "Live quotes updating every 15s" : null;
+  const hasLivePricingOverride =
+    displayPricingStatus.state === "FRESH" &&
+    pricingStatus.state !== "FRESH" &&
+    liveQuotes.length > 0;
   const refreshStatus = isRefreshing
     ? "Refreshing latest prices..."
     : [
-        getPricingStatusLabel(pricingStatus),
+        hasLivePricingOverride
+          ? "Live prices current"
+          : getPricingStatusLabel(displayPricingStatus),
         liveStatusDetail,
         refreshStatusDetail,
       ]
@@ -758,7 +826,7 @@ export default function DashboardClient({
 
   const refreshToneClass = refreshError
     ? "is-error"
-    : pricingStatus.state === "FRESH" && lastRefreshAt != null
+    : displayPricingStatus.state === "FRESH" && lastRefreshAt != null
       ? ""
       : "is-warning";
 

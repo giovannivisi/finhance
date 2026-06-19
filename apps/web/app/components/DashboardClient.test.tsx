@@ -240,9 +240,7 @@ describe("DashboardClient", () => {
             hasMissingFx: false,
           }
         }
-        lastRefreshAt={
-          options?.lastRefreshAt ?? "2026-05-20T10:00:00.000Z"
-        }
+        lastRefreshAt={options?.lastRefreshAt ?? "2026-05-20T10:00:00.000Z"}
         summary={{ assets: 120, liabilities: 80, netWorth: 40 }}
         assetKindOrder={["STOCK", "DEBT"]}
         brokerageAccountIds={["broker-1"]}
@@ -370,6 +368,44 @@ describe("DashboardClient", () => {
       ),
     ).toBeNull();
     expect(screen.getByText(/Stored refresh \d+ min ago/)).toBeInTheDocument();
+  });
+
+  it("shows a fresh live status when live quotes cover same-currency stale rows", () => {
+    useLiveValuationsMock.mockReturnValue({
+      data: {
+        asOf: "2026-05-20T10:05:00.000Z",
+        reportingCurrency: "EUR",
+        quotes: [
+          {
+            assetId: "asset-brokerage",
+            price: 61,
+            currency: "EUR",
+            value: 122,
+            valueInReporting: 122,
+          },
+        ],
+      },
+      error: null,
+    });
+
+    renderDashboard({
+      pricingStatus: {
+        state: "STALE",
+        refreshSuggested: true,
+        hasStaleQuotes: true,
+        hasStaleFx: false,
+        hasMissingFx: false,
+      },
+      assetOverrides: {
+        currency: "EUR",
+        valuationSource: "LAST_QUOTE",
+        isStale: true,
+      },
+    });
+
+    expect(screen.getByText(/Live prices current/)).toBeInTheDocument();
+    expect(screen.queryByText(/Stored prices stale/)).toBeNull();
+    expect(requestDashboardRefresh).not.toHaveBeenCalled();
   });
 
   it("does not store a session attempt when automatic refresh fails", async () => {

@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import type {
+  AggregatePricingStatus,
   DashboardAssetResponse,
   LiveAssetValuationResponse,
 } from "@finhance/shared";
@@ -61,6 +62,46 @@ function PricingStatusChip({
   }
 
   return <Chip label="Prices stale" tone="warning" />;
+}
+
+function getLiveAdjustedPricingStatus(input: {
+  pricingStatus: AggregatePricingStatus;
+  assets: readonly DashboardAssetResponse[];
+  quotes?: readonly LiveAssetValuationResponse[];
+}): AggregatePricingStatus {
+  if (
+    !input.quotes ||
+    input.quotes.length === 0 ||
+    input.pricingStatus.state === "FRESH" ||
+    input.pricingStatus.hasMissingFx ||
+    input.pricingStatus.hasStaleFx
+  ) {
+    return input.pricingStatus;
+  }
+
+  const liveAssetIds = new Set(
+    input.quotes
+      .filter((quote) => quote.valueInReporting != null)
+      .map((quote) => quote.assetId),
+  );
+  const hasUncoveredStaleQuotes = input.assets.some(
+    (asset) =>
+      (asset.valuationSource === "LAST_QUOTE" ||
+        asset.valuationSource === "AVG_COST") &&
+      !liveAssetIds.has(asset.id),
+  );
+
+  if (hasUncoveredStaleQuotes) {
+    return input.pricingStatus;
+  }
+
+  return {
+    state: "FRESH",
+    refreshSuggested: false,
+    hasStaleQuotes: false,
+    hasStaleFx: false,
+    hasMissingFx: false,
+  };
 }
 
 function HoldingRow({
@@ -141,11 +182,12 @@ export default function DashboardScreen() {
   const previousQuotesRef = useRef<
     readonly LiveAssetValuationResponse[] | null
   >(null);
-  const autoRefreshAttemptRef =
-    useRef<AutomaticPriceRefreshAttempt | null>(null);
-  const autoRefreshRetryTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
+  const autoRefreshAttemptRef = useRef<AutomaticPriceRefreshAttempt | null>(
+    null,
+  );
+  const autoRefreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [autoRefreshRetryTick, setAutoRefreshRetryTick] = useState(0);
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
@@ -169,10 +211,21 @@ export default function DashboardScreen() {
   }, [liveQuotes]);
 
   const data = dashboardQuery.data;
+  const displayPricingStatus = useMemo(
+    () =>
+      data
+        ? getLiveAdjustedPricingStatus({
+            pricingStatus: data.dashboard.pricingStatus,
+            assets: data.dashboard.assets,
+            quotes: liveQuotes,
+          })
+        : null,
+    [data, liveQuotes],
+  );
 
   useEffect(() => {
     const lastRefreshAt = data?.dashboard.lastRefreshAt ?? null;
-    const refreshSuggested = data?.dashboard.pricingStatus.refreshSuggested;
+    const refreshSuggested = displayPricingStatus?.refreshSuggested;
 
     if (autoRefreshRetryTimerRef.current) {
       clearTimeout(autoRefreshRetryTimerRef.current);
@@ -227,7 +280,7 @@ export default function DashboardScreen() {
   }, [
     autoRefreshRetryTick,
     data?.dashboard.lastRefreshAt,
-    data?.dashboard.pricingStatus.refreshSuggested,
+    displayPricingStatus?.refreshSuggested,
     isActive,
     refreshAssetsIsPending,
     refreshAssetsMutate,
@@ -236,9 +289,19 @@ export default function DashboardScreen() {
   const mergedAssets = useMemo(
     () =>
       data && liveQuotes
-        ? mergeDashboardAssetsWithLiveQuotes(data.dashboard.assets, liveQuotes)
+        ? mergeDashboardAssetsWithLiveQuotes(
+            data.dashboard.assets,
+            liveQuotes,
+            {
+              asOf: liveQuery.data?.asOf ?? null,
+              reportingCurrency: data.dashboard.reportingCurrency,
+              hasFreshFx:
+                !data.dashboard.pricingStatus.hasMissingFx &&
+                !data.dashboard.pricingStatus.hasStaleFx,
+            },
+          )
         : (data?.dashboard.assets ?? []),
-    [data, liveQuotes],
+    [data, liveQuery.data?.asOf, liveQuotes],
   );
 
   const holdings = useMemo(
@@ -436,7 +499,11 @@ export default function DashboardScreen() {
               flexWrap: "wrap",
             }}
           >
-            <PricingStatusChip state={dashboard.pricingStatus.state} />
+            <PricingStatusChip
+              state={
+                displayPricingStatus?.state ?? dashboard.pricingStatus.state
+              }
+            />
             {refreshStatusText ? (
               <AppText variant="caption" tone="tertiary">
                 {refreshStatusText}
