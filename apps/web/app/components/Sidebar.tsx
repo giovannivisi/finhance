@@ -10,6 +10,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   DESKTOP_NAV_ITEMS,
   isActivePath,
+  isPublicAuthPath,
   isRedundantTabNavigation,
   shouldPrefetchNavPath,
   type AppNavItem,
@@ -85,6 +86,8 @@ export default function Sidebar() {
   const [pendingNavigation, setPendingNavigation] =
     useState<PendingNavigationState | null>(null);
   const currentPath = pathname ?? "/";
+  const shouldHideNavigation = isPublicAuthPath(currentPath);
+
   const activePendingPath =
     pendingNavigation?.originPath === currentPath
       ? pendingNavigation.targetPath
@@ -133,6 +136,10 @@ export default function Sidebar() {
     },
     [prefetchPath],
   );
+
+  if (shouldHideNavigation) {
+    return null;
+  }
 
   return (
     <aside className="desktop-nav" aria-label="Primary navigation">

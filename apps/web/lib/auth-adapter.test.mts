@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import type { AdapterAccount } from "next-auth/adapters";
+import type { AdapterAccount, AdapterAuthenticator } from "next-auth/adapters";
 import { FinhanceAuthAdapter } from "./auth-adapter-core.ts";
 
 function hashStoredAuthToken(
@@ -45,6 +45,40 @@ test("linkAccount persists only the provider identity fields", async () => {
       provider: "github",
       providerAccountId: "provider-user",
     },
+  });
+});
+
+test("getAccount returns a linked provider account", async () => {
+  let findUniqueInput: unknown;
+  const adapter = FinhanceAuthAdapter({
+    authProviderAccount: {
+      findUnique: async (input: unknown) => {
+        findUniqueInput = input;
+        return {
+          userId: "user-1",
+          type: "webauthn",
+          provider: "passkey",
+          providerAccountId: "credential-owner",
+        };
+      },
+    },
+  } as never);
+
+  const result = await adapter.getAccount?.("credential-owner", "passkey");
+
+  assert.deepEqual(findUniqueInput, {
+    where: {
+      provider_providerAccountId: {
+        provider: "passkey",
+        providerAccountId: "credential-owner",
+      },
+    },
+  });
+  assert.deepEqual(result, {
+    userId: "user-1",
+    type: "webauthn",
+    provider: "passkey",
+    providerAccountId: "credential-owner",
   });
 });
 
@@ -310,5 +344,99 @@ test("verification tokens are hashed at rest and returned in raw form", async ()
     identifier: "person@example.com",
     token: "plain-verification-token",
     expires: new Date("2030-01-01T00:00:00.000Z"),
+  });
+});
+
+test("passkey authenticators are created, listed, fetched, and counter-updated", async () => {
+  let createInput: unknown;
+  let findUniqueInput: unknown;
+  let findManyInput: unknown;
+  let updateInput: unknown;
+  const storedAuthenticator = {
+    userId: "user-1",
+    providerAccountId: "credential-owner",
+    credentialID: "credential-id",
+    credentialPublicKey: "public-key",
+    counter: 0,
+    credentialDeviceType: "singleDevice",
+    credentialBackedUp: false,
+    transports: "internal",
+  };
+  const adapter = FinhanceAuthAdapter({
+    authAuthenticator: {
+      create: async (input: unknown) => {
+        createInput = input;
+        return storedAuthenticator;
+      },
+      findUnique: async (input: unknown) => {
+        findUniqueInput = input;
+        return storedAuthenticator;
+      },
+      findMany: async (input: unknown) => {
+        findManyInput = input;
+        return [storedAuthenticator];
+      },
+      update: async (input: unknown) => {
+        updateInput = input;
+        return {
+          ...storedAuthenticator,
+          counter: 4,
+        };
+      },
+    },
+  } as never);
+
+  const authenticator: AdapterAuthenticator = {
+    ...storedAuthenticator,
+    transports: undefined,
+  };
+
+  const created = await adapter.createAuthenticator?.(authenticator);
+  const fetched = await adapter.getAuthenticator?.("credential-id");
+  const listed = await adapter.listAuthenticatorsByUserId?.("user-1");
+  const updated = await adapter.updateAuthenticatorCounter?.(
+    "credential-id",
+    4,
+  );
+
+  assert.deepEqual(createInput, {
+    data: {
+      userId: "user-1",
+      providerAccountId: "credential-owner",
+      credentialID: "credential-id",
+      credentialPublicKey: "public-key",
+      counter: 0,
+      credentialDeviceType: "singleDevice",
+      credentialBackedUp: false,
+      transports: null,
+    },
+  });
+  assert.deepEqual(findUniqueInput, {
+    where: {
+      credentialID: "credential-id",
+    },
+  });
+  assert.deepEqual(findManyInput, {
+    where: {
+      userId: "user-1",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+  assert.deepEqual(updateInput, {
+    where: {
+      credentialID: "credential-id",
+    },
+    data: {
+      counter: 4,
+    },
+  });
+  assert.deepEqual(created, storedAuthenticator);
+  assert.deepEqual(fetched, storedAuthenticator);
+  assert.deepEqual(listed, [storedAuthenticator]);
+  assert.deepEqual(updated, {
+    ...storedAuthenticator,
+    counter: 4,
   });
 });

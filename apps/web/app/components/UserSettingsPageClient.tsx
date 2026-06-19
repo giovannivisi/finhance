@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type {
+  DeleteUserPasskeyRequest,
   UpdateUserSettingsRequest,
+  UserPasskeyResponse,
   UserSettingsResponse,
 } from "@finhance/shared/users";
+import { KeyRound, Trash2 } from "lucide-react";
+import { signIn as signInWithPasskey } from "next-auth/webauthn";
 import { apiMutation } from "@lib/api";
 import ConfirmActionModal from "@components/ConfirmActionModal";
 import SearchablePicker from "@components/SearchablePicker";
@@ -15,12 +19,31 @@ import {
 } from "@lib/user-settings";
 import { useSingleFlightActions } from "@lib/single-flight";
 
+const PASSKEY_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+
+function formatPasskeyTitle(passkey: UserPasskeyResponse): string {
+  const deviceType = passkey.credentialDeviceType
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase();
+  const title = deviceType
+    ? `${deviceType[0]?.toUpperCase() ?? ""}${deviceType.slice(1)} passkey`
+    : "Passkey";
+
+  return passkey.credentialBackedUp ? `${title} (backed up)` : title;
+}
+
 export default function UserSettingsPageClient({
   initialSettings,
   canSignOutMobileDevices = false,
+  canManagePasskeys = false,
 }: {
   initialSettings: UserSettingsResponse;
   canSignOutMobileDevices?: boolean;
+  canManagePasskeys?: boolean;
 }) {
   const router = useRouter();
   const fieldPrefix = useId();
@@ -33,7 +56,40 @@ export default function UserSettingsPageClient({
     null,
   );
   const [isMobileSignOutPending, setIsMobileSignOutPending] = useState(false);
+  const [passkeys, setPasskeys] = useState<UserPasskeyResponse[]>([]);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  const [passkeysLoaded, setPasskeysLoaded] = useState(false);
+  const [isAddingPasskey, setIsAddingPasskey] = useState(false);
+  const [deletingPasskeyId, setDeletingPasskeyId] = useState<string | null>(
+    null,
+  );
   const actions = useSingleFlightActions<"submit">();
+
+  const loadPasskeys = useCallback(async () => {
+    if (!canManagePasskeys) {
+      return;
+    }
+
+    setPasskeyError(null);
+
+    try {
+      const response = await fetch("/api/passkeys", { cache: "no-store" });
+
+      if (!response.ok) {
+        throw new Error("Passkeys are currently unavailable.");
+      }
+
+      setPasskeys((await response.json()) as UserPasskeyResponse[]);
+    } catch (loadError) {
+      setPasskeyError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load passkeys.",
+      );
+    } finally {
+      setPasskeysLoaded(true);
+    }
+  }, [canManagePasskeys]);
 
   async function handleMobileSignOut() {
     setMobileSignOutError(null);
@@ -64,6 +120,66 @@ export default function UserSettingsPageClient({
   useEffect(() => {
     setForm(initialSettings);
   }, [initialSettings]);
+
+  useEffect(() => {
+    void loadPasskeys();
+  }, [loadPasskeys]);
+
+  async function handleAddPasskey() {
+    setPasskeyError(null);
+    setIsAddingPasskey(true);
+
+    try {
+      const result = await signInWithPasskey("passkey", {
+        action: "register",
+        redirect: false,
+      });
+
+      if (result?.error) {
+        throw new Error("The passkey could not be added.");
+      }
+
+      await loadPasskeys();
+      setNotice("Passkey added.");
+    } catch (addError) {
+      setPasskeyError(
+        addError instanceof Error ? addError.message : "Unable to add passkey.",
+      );
+    } finally {
+      setIsAddingPasskey(false);
+    }
+  }
+
+  async function handleDeletePasskey(credentialId: string) {
+    setPasskeyError(null);
+    setDeletingPasskeyId(credentialId);
+
+    try {
+      const payload: DeleteUserPasskeyRequest = { credentialId };
+      const response = await fetch("/api/passkeys", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error("The passkey could not be removed.");
+      }
+
+      setPasskeys((current) =>
+        current.filter((passkey) => passkey.credentialId !== credentialId),
+      );
+      setNotice("Passkey removed.");
+    } catch (deleteError) {
+      setPasskeyError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Unable to remove passkey.",
+      );
+    } finally {
+      setDeletingPasskeyId(null);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -246,6 +362,70 @@ export default function UserSettingsPageClient({
             error={mobileSignOutError}
             isPending={isMobileSignOutPending}
           />
+        </section>
+      ) : null}
+
+      {canManagePasskeys ? (
+        <section className="glass-card page-section">
+          <div className="page-section-heading">
+            <div>
+              <p className="section-kicker">Security</p>
+              <h2 className="section-title">Passkeys</h2>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary passkey-add-button"
+              disabled={isAddingPasskey}
+              onClick={handleAddPasskey}
+            >
+              <KeyRound size={17} aria-hidden="true" />
+              <span>{isAddingPasskey ? "Adding..." : "Add passkey"}</span>
+            </button>
+          </div>
+
+          {passkeyError ? (
+            <p role="alert" className="app-form-error">
+              {passkeyError}
+            </p>
+          ) : null}
+
+          <div className="passkey-list">
+            {!passkeysLoaded ? (
+              <p className="section-subtitle">Loading passkeys...</p>
+            ) : passkeys.length === 0 ? (
+              <p className="section-subtitle">No passkeys yet.</p>
+            ) : (
+              passkeys.map((passkey) => (
+                <div key={passkey.credentialId} className="passkey-row">
+                  <div className="passkey-row-main">
+                    <span className="passkey-row-icon" aria-hidden="true">
+                      <KeyRound size={17} />
+                    </span>
+                    <div>
+                      <p className="passkey-row-title">
+                        {formatPasskeyTitle(passkey)}
+                      </p>
+                      <p className="passkey-row-meta">
+                        Added{" "}
+                        {PASSKEY_DATE_FORMATTER.format(
+                          new Date(passkey.createdAt),
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="asset-row-action-trigger passkey-delete-button"
+                    aria-label="Remove passkey"
+                    disabled={deletingPasskeyId === passkey.credentialId}
+                    onClick={() => handleDeletePasskey(passkey.credentialId)}
+                  >
+                    <Trash2 size={17} aria-hidden="true" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </section>
       ) : null}
 

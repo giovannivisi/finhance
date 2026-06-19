@@ -4,11 +4,13 @@ import GitHub, {
   type GitHubProfile,
 } from "next-auth/providers/github";
 import Google from "next-auth/providers/google";
+import Passkey from "next-auth/providers/passkey";
 import { FinhanceAuthAdapter } from "@lib/auth-adapter";
 import { isHostedAuthMode } from "@lib/auth-mode";
 import { resolveHostedSignInDecision } from "@lib/auth-policy";
 import {
   readRequiredHostedEnv,
+  resolveAuthSignupMode,
   resolveAuthSecret,
   resolveBootstrapEmail,
 } from "@lib/auth-config";
@@ -82,6 +84,10 @@ function createProviders() {
       clientSecret: readRequiredHostedEnv("AUTH_GOOGLE_SECRET"),
       allowDangerousEmailAccountLinking: true,
     }),
+    Passkey({
+      name: "Passkey",
+      getUserInfo: async () => null,
+    }),
     createGitHubProvider(),
   ];
 }
@@ -134,6 +140,7 @@ function buildAuthConfig(): NextAuthConfig {
           userEmail: normalizedEmail,
           existingUser,
           bootstrapEmail: resolveBootstrapEmail(),
+          signupMode: resolveAuthSignupMode(),
         });
 
         // Accounts auto-link across providers by verified email, so record
@@ -154,6 +161,9 @@ function buildAuthConfig(): NextAuthConfig {
 
         return session;
       },
+    },
+    experimental: {
+      enableWebAuthn: true,
     },
   };
 }

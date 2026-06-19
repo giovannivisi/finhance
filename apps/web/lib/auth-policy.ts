@@ -1,5 +1,10 @@
 import type { GitHubProfile } from "next-auth/providers/github";
 import type { GoogleProfile } from "next-auth/providers/google";
+import {
+  AUTH_SIGNUP_MODE_BOOTSTRAP,
+  AUTH_SIGNUP_MODE_OPEN,
+  type AuthSignupMode,
+} from "./auth-config.ts";
 
 type VerifiedGitHubProfile = GitHubProfile & {
   email_verified?: boolean;
@@ -40,7 +45,8 @@ export function resolveHostedSignInDecision(input: {
   profile: Record<string, unknown> | undefined;
   userEmail: string | null | undefined;
   existingUser: { isActive: boolean } | null;
-  bootstrapEmail: string;
+  bootstrapEmail: string | null;
+  signupMode?: AuthSignupMode;
 }): boolean {
   const normalizedEmail =
     normalizeEmailAddress(input.userEmail) ??
@@ -48,15 +54,26 @@ export function resolveHostedSignInDecision(input: {
       typeof input.profile?.email === "string" ? input.profile.email : null,
     );
 
-  if (
-    !normalizedEmail ||
-    !hasVerifiedProviderEmail(input.provider, input.profile)
-  ) {
+  if (!normalizedEmail) {
+    return false;
+  }
+
+  if (input.provider === "passkey") {
+    return input.existingUser?.isActive === true;
+  }
+
+  if (!hasVerifiedProviderEmail(input.provider, input.profile)) {
     return false;
   }
 
   if (input.existingUser) {
     return input.existingUser.isActive;
+  }
+
+  if (
+    (input.signupMode ?? AUTH_SIGNUP_MODE_BOOTSTRAP) === AUTH_SIGNUP_MODE_OPEN
+  ) {
+    return true;
   }
 
   return normalizedEmail === normalizeEmailAddress(input.bootstrapEmail);

@@ -8,19 +8,21 @@ import { getStartPageHref } from "@lib/user-settings";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
-  if (isHostedAuthMode()) {
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return (
-        <Container>
-          <AuthPageClient mode="landing" callbackUrl="/dashboard" />
-        </Container>
-      );
-    }
+export default async function SignupPage() {
+  if (!isHostedAuthMode()) {
+    return redirect("/");
   }
 
-  const settings = await getUserSettingsOrDefaults();
-  redirect(getStartPageHref(settings.startPage));
+  const session = await auth();
+
+  if (session?.user?.id) {
+    const settings = await getUserSettingsOrDefaults();
+    return redirect(getStartPageHref(settings.startPage));
+  }
+
+  return (
+    <Container>
+      <AuthPageClient mode="signup" callbackUrl="/dashboard" />
+    </Container>
+  );
 }

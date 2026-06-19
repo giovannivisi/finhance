@@ -1,7 +1,7 @@
 import type React from "react";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import Home from "@/page";
+import SignupPage from "@/signup/page";
 
 const { authMock, hostedModeMock, redirectMock, settingsMock } = vi.hoisted(
   () => ({
@@ -20,6 +20,14 @@ vi.mock("@lib/auth-mode", () => ({
   isHostedAuthMode: hostedModeMock,
 }));
 
+vi.mock("@lib/server-user-settings", () => ({
+  getUserSettingsOrDefaults: settingsMock,
+}));
+
+vi.mock("next/navigation", () => ({
+  redirect: redirectMock,
+}));
+
 vi.mock("@components/Container", () => ({
   default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -32,56 +40,40 @@ vi.mock("@components/AuthPageClient", () => ({
   ),
 }));
 
-vi.mock("next/navigation", () => ({
-  redirect: redirectMock,
-}));
-
-vi.mock("@lib/server-user-settings", () => ({
-  getUserSettingsOrDefaults: settingsMock,
-}));
-
-describe("Home start page redirect", () => {
+describe("SignupPage", () => {
   beforeEach(() => {
     authMock.mockReset();
     authMock.mockResolvedValue(null);
     hostedModeMock.mockReset();
-    hostedModeMock.mockReturnValue(false);
+    hostedModeMock.mockReturnValue(true);
     redirectMock.mockReset();
     settingsMock.mockReset();
   });
 
-  it("redirects to the configured start page", async () => {
+  it("redirects away outside hosted mode", async () => {
+    hostedModeMock.mockReturnValue(false);
+
+    await SignupPage();
+
+    expect(redirectMock).toHaveBeenCalledWith("/");
+    expect(authMock).not.toHaveBeenCalled();
+  });
+
+  it("renders hosted signup", async () => {
+    render((await SignupPage()) as React.ReactElement);
+
+    expect(screen.getByText("Auth page signup /dashboard")).toBeInTheDocument();
+  });
+
+  it("redirects signed-in users to their start page", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
     settingsMock.mockResolvedValue({
       showTransactionTimes: true,
       startPage: "ANALYTICS",
     });
 
-    await Home();
+    await SignupPage();
 
     expect(redirectMock).toHaveBeenCalledWith("/analytics");
-  });
-
-  it("renders the hosted landing page when no session exists", async () => {
-    hostedModeMock.mockReturnValue(true);
-
-    render((await Home()) as React.ReactElement);
-
-    expect(
-      screen.getByText("Auth page landing /dashboard"),
-    ).toBeInTheDocument();
-    expect(settingsMock).not.toHaveBeenCalled();
-  });
-
-  it("redirects hosted signed-in users to their configured start page", async () => {
-    hostedModeMock.mockReturnValue(true);
-    authMock.mockResolvedValue({ user: { id: "user-1" } });
-    settingsMock.mockResolvedValue({
-      showTransactionTimes: true,
-      startPage: "BROKERAGE",
-    });
-
-    await Home();
-
-    expect(redirectMock).toHaveBeenCalledWith("/brokerage");
   });
 });

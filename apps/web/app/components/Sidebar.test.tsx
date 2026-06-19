@@ -61,6 +61,16 @@ describe("Sidebar", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hides the desktop sidebar on public auth pages", () => {
+    usePathnameMock.mockReturnValue("/login");
+
+    render(<Sidebar />);
+
+    expect(
+      screen.queryByRole("link", { name: "Wallets" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("starts delayed navigation feedback before pushing a new route", async () => {
     const user = userEvent.setup();
     render(<Sidebar />);

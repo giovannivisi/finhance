@@ -27,6 +27,7 @@ import {
   PRIMARY_NAV_ITEMS,
   SECONDARY_NAV_ITEMS,
   isActivePath,
+  isPublicAuthPath,
   isRedundantTabNavigation,
   shouldPrefetchNavPath,
 } from "@lib/navigation";
@@ -70,6 +71,8 @@ export default function TabBar() {
   const animationRunIdRef = useRef(0);
 
   const currentPath = pathname ?? "/";
+
+  const shouldHideNavigation = isPublicAuthPath(currentPath);
   const activePendingPath =
     pendingNavigation?.originPath === currentPath
       ? pendingNavigation.targetPath
@@ -187,7 +190,7 @@ export default function TabBar() {
   );
 
   useEffect(() => {
-    if (!showMore) {
+    if (shouldHideNavigation || !showMore) {
       return;
     }
 
@@ -219,7 +222,7 @@ export default function TabBar() {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [prefetchPath, showMore]);
+  }, [prefetchPath, shouldHideNavigation, showMore]);
 
   useEffect(() => {
     if (!isPointerTracking) {
@@ -417,6 +420,10 @@ export default function TabBar() {
     wasDraggingRef.current = false;
     event.preventDefault();
     event.stopPropagation();
+  }
+
+  if (shouldHideNavigation) {
+    return null;
   }
 
   return (

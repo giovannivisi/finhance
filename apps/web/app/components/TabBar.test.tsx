@@ -91,6 +91,14 @@ describe("TabBar", () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
+  it("hides the mobile tab bar on public auth pages", () => {
+    usePathnameMock.mockReturnValue("/signup");
+
+    render(<TabBar />);
+
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
+
   it("clears a completed pending route so the same destination can be revisited later", async () => {
     const user = userEvent.setup();
     usePathnameMock.mockReturnValue("/analytics");

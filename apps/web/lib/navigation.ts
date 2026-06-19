@@ -66,6 +66,7 @@ const ROUTE_SUCCESSOR_PREFETCH_PATHS: Record<string, readonly string[]> = {
 
 const MORE_MENU_EXPANDED_PREFETCH_PATHS = ["/history", "/review"] as const;
 const DEFAULT_RETURN_PREFETCH_PATH = "/dashboard";
+const PUBLIC_AUTH_PATHS = new Set(["/", "/login", "/signup"]);
 
 export function shouldPrefetchNavPath(path: string): boolean {
   return PREFETCH_NAV_PATHS.has(normalizeNavigationPath(path) ?? path);
@@ -112,6 +113,11 @@ export function normalizeNavigationPath(path: string | null): string | null {
   return path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
+export function isPublicAuthPath(path: string | null): boolean {
+  const normalizedPath = normalizeNavigationPath(path);
+  return normalizedPath ? PUBLIC_AUTH_PATHS.has(normalizedPath) : false;
+}
+
 export function isRedundantTabNavigation(input: {
   currentPath: string;
   targetPath: string;
@@ -149,7 +155,11 @@ export function isActivePath(
 export function getNavigationTitle(path: string | null): string {
   const normalizedPath = normalizeNavigationPath(path);
 
-  if (!normalizedPath || normalizedPath === "/" || normalizedPath === "/dashboard") {
+  if (
+    !normalizedPath ||
+    normalizedPath === "/" ||
+    normalizedPath === "/dashboard"
+  ) {
     return "Dashboard";
   }
 
@@ -157,6 +167,8 @@ export function getNavigationTitle(path: string | null): string {
     return "Setup";
   }
 
-  const item = DESKTOP_NAV_ITEMS.find((candidate) => candidate.href === normalizedPath);
+  const item = DESKTOP_NAV_ITEMS.find(
+    (candidate) => candidate.href === normalizedPath,
+  );
   return item?.label ?? "Loading";
 }

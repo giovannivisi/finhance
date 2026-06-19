@@ -4,7 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ShellAccountMenu from "@components/ShellAccountMenu";
 
-const toggleThemeMock = vi.fn();
+const { signOutMock, toggleThemeMock } = vi.hoisted(() => ({
+  signOutMock: vi.fn(),
+  toggleThemeMock: vi.fn(),
+}));
 
 vi.mock("next/link", () => ({
   default: ({
@@ -31,9 +34,14 @@ vi.mock("@components/ThemeProvider", () => ({
   }),
 }));
 
+vi.mock("next-auth/react", () => ({
+  signOut: signOutMock,
+}));
+
 describe("ShellAccountMenu", () => {
   beforeEach(() => {
     toggleThemeMock.mockReset();
+    signOutMock.mockReset();
   });
 
   it("renders local identity, links, and the remaining future settings placeholder", async () => {
@@ -89,6 +97,28 @@ describe("ShellAccountMenu", () => {
     );
 
     expect(toggleThemeMock).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.queryByRole("menu", { name: "Account menu" })).toBeNull(),
+    );
+  });
+
+  it("logs out hosted users from the account menu", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ShellAccountMenu
+        identity={{
+          title: "Giovanni Visi",
+          subtitle: "giovanni@example.com",
+        }}
+        canSignOut
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open account menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Log out" }));
+
+    expect(signOutMock).toHaveBeenCalledWith({ redirectTo: "/" });
     await waitFor(() =>
       expect(screen.queryByRole("menu", { name: "Account menu" })).toBeNull(),
     );
