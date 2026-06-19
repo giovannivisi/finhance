@@ -208,48 +208,43 @@ export class AssetsService {
       }),
     );
 
-    const quotes = await Promise.all(
-      candidates.map(async (asset) => {
-        const price = await this.pricesService.getMarketPrice(
-          {
-            kind: asset.kind!,
-            ticker: asset.ticker!,
-            exchange: asset.exchange,
-            quoteCurrency: asset.currency,
-          },
-          { maxAgeMs: 15000 },
-        );
+    const quotes: LiveAssetValuationResponse[] = [];
+    for (const asset of candidates) {
+      const price = await this.pricesService.getMarketPrice(
+        {
+          kind: asset.kind!,
+          ticker: asset.ticker!,
+          exchange: asset.exchange,
+          quoteCurrency: asset.currency,
+        },
+        { maxAgeMs: 15000 },
+      );
 
-        if (price === null) {
-          return null;
-        }
+      if (price === null) {
+        continue;
+      }
 
-        const quantity = this.toDecimal(asset.quantity);
-        const value = quantity.mul(price);
-        const fxRate =
-          asset.currency === reportingCurrency
-            ? new Prisma.Decimal(1)
-            : (fxSnapshots.get(asset.currency)?.rate ?? null);
-        const valueInReporting = fxRate ? value.mul(fxRate) : null;
+      const quantity = this.toDecimal(asset.quantity);
+      const value = quantity.mul(price);
+      const fxRate =
+        asset.currency === reportingCurrency
+          ? new Prisma.Decimal(1)
+          : (fxSnapshots.get(asset.currency)?.rate ?? null);
+      const valueInReporting = fxRate ? value.mul(fxRate) : null;
 
-        const quote: LiveAssetValuationResponse = {
-          assetId: asset.id,
-          price: price.toNumber(),
-          currency: asset.currency,
-          value: value.toNumber(),
-          valueInReporting: valueInReporting?.toNumber() ?? null,
-        };
-
-        return quote;
-      }),
-    );
+      quotes.push({
+        assetId: asset.id,
+        price: price.toNumber(),
+        currency: asset.currency,
+        value: value.toNumber(),
+        valueInReporting: valueInReporting?.toNumber() ?? null,
+      });
+    }
 
     return {
       asOf: now.toISOString(),
       reportingCurrency,
-      quotes: quotes.filter(
-        (quote): quote is LiveAssetValuationResponse => quote !== null,
-      ),
+      quotes,
     };
   }
 
@@ -320,46 +315,42 @@ export class AssetsService {
         const quoteResults = new Map<string, Prisma.Decimal | null>();
         const fxResults = new Map<string, Prisma.Decimal | null>();
 
-        await Promise.all(
-          Array.from(quoteKeys.keys()).map(async (symbol) => {
-            const sample = quoteKeys.get(symbol);
-            if (!sample?.kind || !sample.ticker) {
-              quoteResults.set(symbol, null);
-              return;
-            }
+        for (const symbol of quoteKeys.keys()) {
+          const sample = quoteKeys.get(symbol);
+          if (!sample?.kind || !sample.ticker) {
+            quoteResults.set(symbol, null);
+            continue;
+          }
 
-            quoteResults.set(
-              symbol,
-              await this.pricesService.getMarketPrice(
-                {
-                  kind: sample.kind,
-                  ticker: sample.ticker,
-                  exchange: sample.exchange,
-                  quoteCurrency: sample.currency,
-                },
-                { forceRefresh: true },
-              ),
-            );
-          }),
-        );
+          quoteResults.set(
+            symbol,
+            await this.pricesService.getMarketPrice(
+              {
+                kind: sample.kind,
+                ticker: sample.ticker,
+                exchange: sample.exchange,
+                quoteCurrency: sample.currency,
+              },
+              { forceRefresh: true },
+            ),
+          );
+        }
 
-        await Promise.all(
-          Array.from(fxPairs).map(async (pairKey) => {
-            const [fromCurrency, toCurrency] = pairKey.split(':');
-            fxResults.set(
-              pairKey,
-              await this.pricesService.getFxRateForDate(
-                ownerId,
-                refreshedAt,
-                fromCurrency,
-                toCurrency,
-                {
-                  forceRefresh: true,
-                },
-              ),
-            );
-          }),
-        );
+        for (const pairKey of fxPairs) {
+          const [fromCurrency, toCurrency] = pairKey.split(':');
+          fxResults.set(
+            pairKey,
+            await this.pricesService.getFxRateForDate(
+              ownerId,
+              refreshedAt,
+              fromCurrency,
+              toCurrency,
+              {
+                forceRefresh: true,
+              },
+            ),
+          );
+        }
 
         let updatedCount = 0;
 

@@ -1,10 +1,14 @@
 import { AssetKind } from '@finhance/db';
 import { PricesService } from '@prices/prices.service';
 
-function jsonResponse(body: unknown, ok = true): Response {
+function jsonResponse(
+  body: unknown,
+  ok = true,
+  status = ok ? 200 : 500,
+): Response {
   return {
     ok,
-    status: ok ? 200 : 500,
+    status,
     json: () => Promise.resolve(body),
   } as unknown as Response;
 }
@@ -310,6 +314,11 @@ describe('PricesService', () => {
       expect(first?.toString()).toBe('150');
       expect(second?.toString()).toBe('150');
       expect(fetchMock).toHaveBeenCalledTimes(1);
+      const firstCall = fetchMock.mock.calls[0] as [string, RequestInit];
+      const headers = firstCall[1].headers as Record<string, string>;
+      expect(firstCall[0]).toContain('AAPLNASDAQ');
+      expect(headers.Accept).toContain('application/json');
+      expect(headers['User-Agent']).toContain('Mozilla/5.0');
     });
 
     it('forces a refetch when maxAgeMs is smaller than the cached entry age', async () => {
@@ -358,6 +367,59 @@ describe('PricesService', () => {
       await service.getMarketPrice(marketInput, { maxAgeMs: 1 });
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      jest.spyOn(Date, 'now').mockRestore();
+    });
+
+    it('backs off after Yahoo rate limits a symbol', async () => {
+      let now = 0;
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+
+      fetchMock.mockResolvedValue(jsonResponse({}, false, 429));
+
+      const first = await service.getMarketPrice(marketInput, {
+        forceRefresh: true,
+      });
+      now = 60_000;
+      const second = await service.getMarketPrice(marketInput, {
+        forceRefresh: true,
+      });
+
+      expect(first).toBeNull();
+      expect(second).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      jest.spyOn(Date, 'now').mockRestore();
+    });
+
+    it('returns the cached quote during rate-limit backoff', async () => {
+      let now = 0;
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse({
+            chart: { result: [{ meta: { regularMarketPrice: 150 } }] },
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse({}, false, 429));
+
+      const first = await service.getMarketPrice(marketInput, {
+        maxAgeMs: 5000,
+      });
+      now = 10_000;
+      const second = await service.getMarketPrice(marketInput, {
+        forceRefresh: true,
+      });
+      now = 60_000;
+      const third = await service.getMarketPrice(marketInput, {
+        forceRefresh: true,
+      });
+
+      expect(first?.toString()).toBe('150');
+      expect(second?.toString()).toBe('150');
+      expect(third?.toString()).toBe('150');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
 
       jest.spyOn(Date, 'now').mockRestore();
     });
