@@ -173,7 +173,10 @@ describe("DashboardClient", () => {
     refreshMock.mockReset();
     vi.mocked(apiMutation).mockReset();
     vi.mocked(requestDashboardRefresh).mockReset();
-    vi.mocked(requestDashboardRefresh).mockResolvedValue({ ok: true });
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({
+      ok: true,
+      refreshedAt: "2026-05-20T10:01:00.000Z",
+    });
     hasAttemptedDashboardRefreshMock.mockReset();
     hasAttemptedDashboardRefreshMock.mockReturnValue(false);
     markDashboardRefreshAttemptedMock.mockReset();
@@ -191,6 +194,7 @@ describe("DashboardClient", () => {
       hasStaleFx: boolean;
       hasMissingFx: boolean;
     };
+    lastRefreshAt?: string | null;
     assetOverrides?: Partial<DashboardAssetResponse>;
   }) {
     const assetWithBrokerage = buildAsset({
@@ -236,7 +240,9 @@ describe("DashboardClient", () => {
             hasMissingFx: false,
           }
         }
-        lastRefreshAt="2026-05-20T10:00:00.000Z"
+        lastRefreshAt={
+          options?.lastRefreshAt ?? "2026-05-20T10:00:00.000Z"
+        }
         summary={{ assets: 120, liabilities: 80, netWorth: 40 }}
         assetKindOrder={["STOCK", "DEBT"]}
         brokerageAccountIds={["broker-1"]}
@@ -295,7 +301,10 @@ describe("DashboardClient", () => {
   });
 
   it("auto-refreshes stale pricing on hydration", async () => {
-    let resolveRefresh: (value: { ok: true }) => void = () => {};
+    let resolveRefresh: (value: {
+      ok: true;
+      refreshedAt: string | null;
+    }) => void = () => {};
     vi.mocked(requestDashboardRefresh).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -316,18 +325,28 @@ describe("DashboardClient", () => {
     await waitFor(() => {
       expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
     });
-    expect(markDashboardRefreshAttemptedMock).toHaveBeenCalledTimes(1);
+    expect(hasAttemptedDashboardRefreshMock).toHaveBeenCalledWith(
+      "2026-05-20T10:00:00.000Z",
+    );
+    expect(markDashboardRefreshAttemptedMock).not.toHaveBeenCalled();
     expect(screen.getByText(/Refreshing latest prices/)).toBeInTheDocument();
 
-    resolveRefresh({ ok: true });
+    resolveRefresh({ ok: true, refreshedAt: "2026-05-20T10:01:00.000Z" });
 
     await waitFor(() => {
       expect(refreshMock).toHaveBeenCalledTimes(1);
     });
+    await waitFor(() => {
+      expect(markDashboardRefreshAttemptedMock).toHaveBeenCalledWith(
+        "2026-05-20T10:01:00.000Z",
+      );
+    });
   });
 
   it("does not repeat stale pricing auto-refresh after the session attempt", () => {
-    hasAttemptedDashboardRefreshMock.mockReturnValue(true);
+    hasAttemptedDashboardRefreshMock.mockImplementation(
+      (snapshotKey) => snapshotKey === "2026-05-20T10:00:00.000Z",
+    );
 
     renderDashboard({
       pricingStatus: {
@@ -340,6 +359,9 @@ describe("DashboardClient", () => {
     });
 
     expect(requestDashboardRefresh).not.toHaveBeenCalled();
+    expect(hasAttemptedDashboardRefreshMock).toHaveBeenCalledWith(
+      "2026-05-20T10:00:00.000Z",
+    );
     expect(markDashboardRefreshAttemptedMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
     expect(
@@ -348,6 +370,31 @@ describe("DashboardClient", () => {
       ),
     ).toBeNull();
     expect(screen.getByText(/Stored refresh \d+ min ago/)).toBeInTheDocument();
+  });
+
+  it("does not store a session attempt when automatic refresh fails", async () => {
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({
+      ok: false,
+      status: null,
+      error: "Network down",
+    });
+
+    renderDashboard({
+      pricingStatus: {
+        state: "STALE",
+        refreshSuggested: true,
+        hasStaleQuotes: true,
+        hasStaleFx: false,
+        hasMissingFx: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    expect(markDashboardRefreshAttemptedMock).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it("shows latest labels for stale stored valuations", () => {

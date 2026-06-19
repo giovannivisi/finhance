@@ -24,10 +24,22 @@ test("requestDashboardRefresh returns success for a successful refresh call", as
   setApiUrlForTest();
   try {
     const result = await requestDashboardRefresh(
-      async () => new Response(null, { status: 201 }),
+      async () =>
+        new Response(
+          JSON.stringify({ refreshedAt: "2026-06-19T16:45:00.000Z" }),
+          {
+            status: 201,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        ),
     );
 
-    assert.deepEqual(result, { ok: true });
+    assert.deepEqual(result, {
+      ok: true,
+      refreshedAt: "2026-06-19T16:45:00.000Z",
+    });
   } finally {
     restoreApiUrl();
   }

@@ -39,8 +39,10 @@ import {
 } from "@/lib/live-merge";
 import { formatMoney } from "@/lib/money";
 import {
+  createAutomaticPriceRefreshAttempt,
   formatPriceRefreshStatusText,
-  shouldStartAutomaticPriceRefresh,
+  getAutomaticPriceRefreshDelay,
+  type AutomaticPriceRefreshAttempt,
 } from "@/lib/price-refresh";
 import { useIsScreenActive } from "@/lib/screen-active";
 import { spacing, useTheme } from "@/theme";
@@ -130,6 +132,8 @@ export default function DashboardScreen() {
   const { colors, hideMoney, setHideMoney } = useTheme();
   const dashboardQuery = useDashboard();
   const refreshAssets = useRefreshAssets();
+  const refreshAssetsIsPending = refreshAssets.isPending;
+  const refreshAssetsMutate = refreshAssets.mutate;
 
   const isActive = useIsScreenActive();
   const liveQuery = useLiveValuations(isActive);
@@ -137,10 +141,12 @@ export default function DashboardScreen() {
   const previousQuotesRef = useRef<
     readonly LiveAssetValuationResponse[] | null
   >(null);
-  const autoRefreshStartedRef = useRef(false);
-  const autoRefreshLastStoredAtRef = useRef<string | null | undefined>(
-    undefined,
-  );
+  const autoRefreshAttemptRef =
+    useRef<AutomaticPriceRefreshAttempt | null>(null);
+  const autoRefreshRetryTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const [autoRefreshRetryTick, setAutoRefreshRetryTick] = useState(0);
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
@@ -166,32 +172,65 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     const lastRefreshAt = data?.dashboard.lastRefreshAt ?? null;
-    if (autoRefreshLastStoredAtRef.current !== lastRefreshAt) {
-      autoRefreshStartedRef.current = false;
-      autoRefreshLastStoredAtRef.current = lastRefreshAt;
+    const refreshSuggested = data?.dashboard.pricingStatus.refreshSuggested;
+
+    if (autoRefreshRetryTimerRef.current) {
+      clearTimeout(autoRefreshRetryTimerRef.current);
+      autoRefreshRetryTimerRef.current = null;
     }
 
-    if (data?.dashboard.pricingStatus.refreshSuggested !== true) {
-      autoRefreshStartedRef.current = false;
+    if (refreshSuggested !== true) {
+      autoRefreshAttemptRef.current = null;
     }
 
-    if (
-      !shouldStartAutomaticPriceRefresh({
-        isActive,
-        refreshSuggested: data?.dashboard.pricingStatus.refreshSuggested,
-        alreadyStarted: autoRefreshStartedRef.current,
-      })
-    ) {
+    const retryDelay = getAutomaticPriceRefreshDelay({
+      isActive,
+      refreshSuggested,
+      isRefreshing: refreshAssetsIsPending,
+      lastRefreshAt,
+      lastAttempt: autoRefreshAttemptRef.current,
+      nowMs: Date.now(),
+    });
+
+    if (retryDelay === null) {
       return;
     }
 
-    autoRefreshStartedRef.current = true;
-    refreshAssets.mutate();
+    if (retryDelay > 0) {
+      autoRefreshRetryTimerRef.current = setTimeout(() => {
+        autoRefreshRetryTimerRef.current = null;
+        setAutoRefreshRetryTick((value) => value + 1);
+      }, retryDelay);
+
+      return () => {
+        if (autoRefreshRetryTimerRef.current) {
+          clearTimeout(autoRefreshRetryTimerRef.current);
+          autoRefreshRetryTimerRef.current = null;
+        }
+      };
+    }
+
+    const startedLastRefreshAt = lastRefreshAt;
+    autoRefreshAttemptRef.current = createAutomaticPriceRefreshAttempt({
+      lastRefreshAt: startedLastRefreshAt,
+      nowMs: Date.now(),
+    });
+    refreshAssetsMutate(undefined, {
+      onSuccess: (result) => {
+        autoRefreshAttemptRef.current = createAutomaticPriceRefreshAttempt({
+          lastRefreshAt: startedLastRefreshAt,
+          refreshedAt: result.refreshedAt,
+          nowMs: Date.now(),
+        });
+      },
+    });
   }, [
+    autoRefreshRetryTick,
     data?.dashboard.lastRefreshAt,
     data?.dashboard.pricingStatus.refreshSuggested,
     isActive,
-    refreshAssets,
+    refreshAssetsIsPending,
+    refreshAssetsMutate,
   ]);
 
   const mergedAssets = useMemo(

@@ -595,8 +595,10 @@ export default function DashboardClient({
     }));
   }
 
-  async function handleRefresh() {
-    await actions.run("refresh", async () => {
+  async function handleRefresh(): Promise<
+    { ok: true; refreshedAt: string | null } | { ok: false }
+  > {
+    return actions.run("refresh", async () => {
       setRefreshError(null);
       setRefreshNotice(null);
       setIsRefreshing(true);
@@ -608,13 +610,14 @@ export default function DashboardClient({
           const notice = getDashboardRefreshNotice(result.status, result.error);
           if (notice) {
             setRefreshNotice(notice);
-            return;
+            return { ok: false };
           }
           setRefreshError(result.error);
-          return;
+          return { ok: false };
         }
 
         router.refresh();
+        return { ok: true, refreshedAt: result.refreshedAt };
       } finally {
         setIsRefreshing(false);
       }
@@ -622,12 +625,15 @@ export default function DashboardClient({
   }
 
   const runAutoRefresh = useEffectEvent(() => {
-    if (hasAttemptedDashboardRefresh()) {
+    if (hasAttemptedDashboardRefresh(lastRefreshAt)) {
       return;
     }
 
-    markDashboardRefreshAttempted();
-    void handleRefresh();
+    void handleRefresh().then((result) => {
+      if (result.ok) {
+        markDashboardRefreshAttempted(result.refreshedAt ?? lastRefreshAt);
+      }
+    });
   });
 
   useEffect(() => {
@@ -636,7 +642,7 @@ export default function DashboardClient({
     }
 
     runAutoRefresh();
-  }, [isHydrated, pricingStatus.refreshSuggested]);
+  }, [isHydrated, lastRefreshAt, pricingStatus.refreshSuggested]);
 
   const handleKindDragEnd = useCallback(
     (event: DragEndEvent, type: "ASSET" | "LIABILITY") => {

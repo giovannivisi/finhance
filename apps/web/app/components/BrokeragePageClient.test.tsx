@@ -377,7 +377,10 @@ describe("BrokeragePageClient", () => {
     prefetchMock.mockReset();
     vi.mocked(apiMutation).mockReset();
     vi.mocked(requestDashboardRefresh).mockReset();
-    vi.mocked(requestDashboardRefresh).mockResolvedValue({ ok: true });
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({
+      ok: true,
+      refreshedAt: "2026-05-19T10:01:00.000Z",
+    });
     vi.mocked(api).mockReset();
     vi.mocked(api).mockImplementation((path: string) => {
       if (path.includes("/performance")) {
@@ -664,5 +667,40 @@ describe("BrokeragePageClient", () => {
       expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
     });
     expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not immediately repeat brokerage auto-refresh for the returned snapshot", async () => {
+    const workspace = buildWorkspace();
+    workspace.pricingStatus = {
+      state: "STALE",
+      refreshSuggested: true,
+      hasStaleQuotes: true,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    };
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({
+      ok: true,
+      refreshedAt: "2026-05-19T10:01:00.000Z",
+    });
+
+    const { rerender } = render(
+      <BrokeragePageClient workspace={workspace} categories={categories} />,
+    );
+
+    await waitFor(() => {
+      expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <BrokeragePageClient
+        workspace={{
+          ...workspace,
+          lastRefreshAt: "2026-05-19T10:01:00.000Z",
+        }}
+        categories={categories}
+      />,
+    );
+
+    expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
   });
 });
