@@ -1,14 +1,20 @@
 import type { NextConfig } from "next";
 
 const distDir = process.env.NEXT_DIST_DIR?.trim();
-const themeScriptHash =
-  "'sha256-0sz8XWenEQYegE5RSoh9Y2TjZS3c0u/2EpkpVIim/CU='";
+const scriptSrc = [
+  "'self'",
+  "'unsafe-inline'",
+  ...(process.env.NODE_ENV === "production" ? [] : ["'unsafe-eval'"]),
+].join(" ");
 
 // Browsers ignore Strict-Transport-Security over plain HTTP, so serving these
 // in local development is harmless.
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' ${themeScriptHash}`,
+  // Next App Router emits inline bootstrap and RSC scripts. Without a nonce
+  // pipeline, blocking inline scripts leaves pages visible but unhydrated.
+  // React also needs eval in development for debugging call stacks.
+  `script-src ${scriptSrc}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
