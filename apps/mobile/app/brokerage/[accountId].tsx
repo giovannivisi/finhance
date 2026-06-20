@@ -274,13 +274,13 @@ function PositionRow({
   position: BrokeragePositionResponse;
   showDivider: boolean;
 }) {
-  // "@ avg" makes clear this is the average buy-in, not the current price: the
-  // row's value is current (quantity × current price), so an unqualified "@
-  // price" looked wrong because it multiplies to the cost basis, not the value.
-  const quantityLabel = `${position.quantity} @ avg ${formatMoney(
+  // The "(avg)" suffix makes clear this is the average buy-in, not the current
+  // price: the row's value is current (quantity × current price), so an
+  // unqualified "@ price" multiplies to the cost basis, not the value shown.
+  const quantityLabel = `${position.quantity} @ ${formatMoney(
     position.averageCostPerUnit,
     position.currency,
-  )}`;
+  )} (avg)`;
 
   return (
     <ListRow
@@ -960,8 +960,18 @@ export default function BrokerageWorkspaceScreen() {
   ).length;
   const activeTargetTotalIsValid =
     activeTargetEnabledCount === 0 || Math.abs(activeTargetTotal - 100) <= 0.01;
+  // Once any asset class has a target, classes turned OFF (no target) drop out
+  // of the donut so it reflects the strategy rather than raw holdings. With no
+  // targets at all the donut still shows the full current allocation.
+  const anyAssetKindTarget = assetKindTargets.some(
+    (target) => target.targetPercent !== null,
+  );
   const allocationDistribution = assetKindTargets
-    .filter((target) => target.currentValue > 0)
+    .filter(
+      (target) =>
+        target.currentValue > 0 &&
+        (!anyAssetKindTarget || target.targetPercent !== null),
+    )
     .map((target) => ({
       key: target.key,
       label: target.label,

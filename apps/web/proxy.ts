@@ -43,6 +43,9 @@ export default proxy;
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
+    // `.well-known` is excluded so the Apple App Site Association file (and any
+    // other well-known resource) is served publicly without an auth redirect —
+    // Apple requires it reachable with no redirect.
+    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|\\.well-known).*)",
   ],
 };

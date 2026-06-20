@@ -116,26 +116,6 @@ const SERIES_TIMEOUT_MS: Record<BrokeragePerformanceRange, number> = {
   MAX: 10_000,
 };
 
-/**
- * German regional venues (Hamburg, Hanover, Frankfurt, Munich, …) carry the
- * same securities as Xetra but Yahoo holds almost no historical series for
- * them — the `close` arrays come back essentially all-null. Their quotes are
- * fine, so only the performance *chart* needs to fall back to the primary
- * Xetra listing of the same ticker.
- */
-const SERIES_FALLBACK_EXCHANGE: Record<string, string> = {
-  '.HM': '.DE',
-  '.HA': '.DE',
-  '.F': '.DE',
-  '.MU': '.DE',
-  '.BE': '.DE',
-  '.SG': '.DE',
-  '.DU': '.DE',
-};
-
-/** A series needs at least this many points to plot or reconstruct anything. */
-const MIN_USABLE_SERIES_POINTS = 2;
-
 @Injectable()
 export class PricesService {
   private readonly logger = new Logger(PricesService.name);
@@ -232,41 +212,7 @@ export class PricesService {
       return null;
     }
 
-    const series = await this.fetchSeries(symbol, range);
-    if (series && series.points.length >= MIN_USABLE_SERIES_POINTS) {
-      return series;
-    }
-
-    // A thinly-traded regional listing (e.g. Hamburg) returned no usable
-    // history; retry the chart against the primary listing of the same
-    // security, which Yahoo does keep series for.
-    const exchange = (input.exchange ?? '').trim().toUpperCase();
-    const fallbackExchange = SERIES_FALLBACK_EXCHANGE[exchange];
-    if (
-      input.kind !== AssetKind.CRYPTO &&
-      fallbackExchange &&
-      fallbackExchange !== exchange
-    ) {
-      try {
-        const fallbackSymbol = this.buildMarketSymbol({
-          ...input,
-          exchange: fallbackExchange,
-        });
-        const fallbackSeries = await this.fetchSeries(fallbackSymbol, range);
-        if (
-          fallbackSeries &&
-          (!series || fallbackSeries.points.length > series.points.length)
-        ) {
-          return fallbackSeries;
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Cannot build fallback market symbol for series request: ${(error as Error).message}`,
-        );
-      }
-    }
-
-    return series;
+    return this.fetchSeries(symbol, range);
   }
 
   /**
