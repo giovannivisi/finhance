@@ -71,6 +71,8 @@ export default function AuthScreen({ mode }: { mode: AuthMode }) {
     inspectServer,
     saveLocalServer,
     signInHosted,
+    signInWithPasskey,
+    passkeysSupported,
   } = useServerConnection();
 
   const copy = COPY[mode];
@@ -86,6 +88,7 @@ export default function AuthScreen({ mode }: { mode: AuthMode }) {
   const [busyProvider, setBusyProvider] = useState<HostedSignInProvider | null>(
     null,
   );
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
   const logoSource =
     scheme === "light"
       ? require("../../assets/icon.png")
@@ -120,6 +123,22 @@ export default function AuthScreen({ mode }: { mode: AuthMode }) {
     } finally {
       setBusy(false);
       setBusyProvider(null);
+    }
+  };
+
+  const handlePasskey = async (target: string) => {
+    setPasskeyBusy(true);
+    setBusy(true);
+    setError(null);
+
+    try {
+      await signInWithPasskey(target);
+      // The connection gate flips to the tabs once the token is stored.
+    } catch (passkeyError) {
+      setError(describeError(passkeyError));
+    } finally {
+      setPasskeyBusy(false);
+      setBusy(false);
     }
   };
 
@@ -219,12 +238,30 @@ export default function AuthScreen({ mode }: { mode: AuthMode }) {
                   />
                 }
               />
+              {mode === "login" && passkeysSupported ? (
+                <Button
+                  label="Sign in with a passkey"
+                  onPress={() => handlePasskey(signInTarget)}
+                  loading={passkeyBusy}
+                  disabled={busy}
+                  variant="secondary"
+                  icon={
+                    <Ionicons
+                      name="finger-print"
+                      size={17}
+                      color={colors.textPrimary}
+                    />
+                  }
+                />
+              ) : null}
               <AppText
                 variant="caption"
                 tone="tertiary"
                 style={{ textAlign: "center" }}
               >
-                Continue in your browser.
+                {mode === "login" && passkeysSupported
+                  ? "Passkeys use Face ID or Touch ID. Google and GitHub open your browser."
+                  : "Continue in your browser."}
               </AppText>
             </>
           ) : (

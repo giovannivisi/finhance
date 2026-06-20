@@ -274,7 +274,10 @@ function PositionRow({
   position: BrokeragePositionResponse;
   showDivider: boolean;
 }) {
-  const quantityLabel = `${position.quantity} @ ${formatMoney(
+  // "@ avg" makes clear this is the average buy-in, not the current price: the
+  // row's value is current (quantity × current price), so an unqualified "@
+  // price" looked wrong because it multiplies to the cost basis, not the value.
+  const quantityLabel = `${position.quantity} @ avg ${formatMoney(
     position.averageCostPerUnit,
     position.currency,
   )}`;

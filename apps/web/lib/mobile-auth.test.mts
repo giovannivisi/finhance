@@ -5,11 +5,13 @@ import {
   computePkceChallenge,
   isValidPkceChallenge,
   mintMobileAuthCode,
+  mintMobilePasskeyChallengeToken,
   mintMobileSessionToken,
   readBearerToken,
   resolveActiveMobileTokenClaims,
   resolveMobileRedirectTarget,
   verifyMobileAuthCode,
+  verifyMobilePasskeyChallengeToken,
   verifyMobileSessionToken,
   verifyPkceVerifier,
 } from "./mobile-auth.core.ts";
@@ -86,6 +88,40 @@ test("verification rejects expired tokens", async () => {
 
 test("verification rejects garbage tokens", async () => {
   assert.equal(await verifyMobileSessionToken("not-a-jwt", AUTH_SECRET), null);
+});
+
+test("passkey challenge tokens round-trip the embedded challenge", async () => {
+  const challenge = "Zm9vYmFyLWNoYWxsZW5nZQ"; // base64url-ish value
+  const token = await mintMobilePasskeyChallengeToken({
+    challenge,
+    authSecret: AUTH_SECRET,
+  });
+
+  assert.equal(
+    await verifyMobilePasskeyChallengeToken(token, AUTH_SECRET),
+    challenge,
+  );
+});
+
+test("passkey challenge tokens reject the wrong secret and a session token", async () => {
+  const token = await mintMobilePasskeyChallengeToken({
+    challenge: "abc123",
+    authSecret: AUTH_SECRET,
+  });
+  assert.equal(
+    await verifyMobilePasskeyChallengeToken(token, "other-secret"),
+    null,
+  );
+
+  // A session token must not satisfy the challenge audience.
+  const sessionToken = await mintMobileSessionToken({
+    userId: "user-123",
+    authSecret: AUTH_SECRET,
+  });
+  assert.equal(
+    await verifyMobilePasskeyChallengeToken(sessionToken, AUTH_SECRET),
+    null,
+  );
 });
 
 test("sign-in codes round-trip with the bound challenge", async () => {

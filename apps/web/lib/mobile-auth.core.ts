@@ -17,6 +17,9 @@ export const MOBILE_CODE_AUDIENCE = "finhance-mobile-code";
 export const MOBILE_TOKEN_ISSUER = "finhance-web";
 export const MOBILE_TOKEN_DEFAULT_TTL = "30d";
 export const MOBILE_CODE_TTL = "5m";
+export const MOBILE_PASSKEY_CHALLENGE_AUDIENCE =
+  "finhance-mobile-passkey-challenge";
+export const MOBILE_PASSKEY_CHALLENGE_TTL = "5m";
 
 /** Fragment key used when handing the sign-in code back to the app. */
 export const MOBILE_AUTH_CODE_FRAGMENT_KEY = "code";
@@ -227,6 +230,48 @@ export async function verifyMobileAuthCode(
         typeof result.payload.email === "string" ? result.payload.email : null,
       challenge,
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Wraps a WebAuthn authentication challenge in a short-lived signed token so
+ * the mobile passkey ceremony stays stateless: the app carries the token
+ * between the options and verify calls, and the server trusts the embedded
+ * challenge only because it signed it (HS256 with AUTH_SECRET). The challenge
+ * is the base64url value from `generateAuthenticationOptions`, not the hex
+ * PKCE format, so it is validated only as a non-empty string.
+ */
+export async function mintMobilePasskeyChallengeToken(input: {
+  challenge: string;
+  authSecret: string;
+}): Promise<string> {
+  return new SignJWT({ challenge: input.challenge })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuer(MOBILE_TOKEN_ISSUER)
+    .setAudience(MOBILE_PASSKEY_CHALLENGE_AUDIENCE)
+    .setJti(crypto.randomUUID())
+    .setIssuedAt()
+    .setExpirationTime(MOBILE_PASSKEY_CHALLENGE_TTL)
+    .sign(toSecretKey(input.authSecret));
+}
+
+export async function verifyMobilePasskeyChallengeToken(
+  token: string,
+  authSecret: string,
+): Promise<string | null> {
+  try {
+    const result = await jwtVerify(token, toSecretKey(authSecret), {
+      issuer: MOBILE_TOKEN_ISSUER,
+      audience: MOBILE_PASSKEY_CHALLENGE_AUDIENCE,
+      algorithms: ["HS256"],
+    });
+
+    const challenge = result.payload.challenge;
+    return typeof challenge === "string" && challenge.length > 0
+      ? challenge
+      : null;
   } catch {
     return null;
   }

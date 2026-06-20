@@ -86,6 +86,27 @@ Key hosted requirements:
 passkeys are account security credentials: users first create an account with a
 verified OAuth provider, then register passkeys from user settings.
 
+### Mobile passkey sign-in (iOS)
+
+The mobile app can sign in with a passkey natively (Face/Touch ID) via
+`/api/mobile/passkey/options` and `/api/mobile/passkey/verify`, reusing the same
+`auth_authenticators` records as the web. For the app to assert those passkeys,
+iOS requires an Associated Domain, so the web app serves an Apple App Site
+Association file at `/.well-known/apple-app-site-association`:
+
+- `APPLE_TEAM_ID` — required to serve the AASA (the route returns 404 until it
+  is set). The published app identifier is `<APPLE_TEAM_ID>.app.finhance.mobile`.
+- `IOS_BUNDLE_ID` — optional override; defaults to `app.finhance.mobile`.
+- `AUTH_WEBAUTHN_RP_ID` — optional; defaults to `finhance-web.vercel.app`. Must
+  match the host your web passkeys were registered against and the app's
+  `webcredentials:` Associated Domain.
+- `AUTH_WEBAUTHN_ORIGIN` — optional; defaults to `https://<AUTH_WEBAUTHN_RP_ID>`.
+
+The app side needs `ios.associatedDomains` (already set to
+`webcredentials:finhance-web.vercel.app` in `apps/mobile/app.json`) and a native
+build — passkeys need `react-native-passkeys`, which is not available in Expo
+Go, so use an EAS build or a local dev client.
+
 ## Privacy Notice Configuration
 
 `/privacy` is backed by a server-side notice resolver. For purely local

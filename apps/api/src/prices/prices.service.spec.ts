@@ -254,6 +254,51 @@ describe('PricesService', () => {
       await service.getMarketSeries(input, '1W');
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
+
+    it('falls back to the primary Xetra listing when a regional series is too sparse', async () => {
+      fetchMock.mockImplementation((url: string) => {
+        // Hamburg (.HM) keeps almost no history: a single usable close.
+        if (url.includes('VWCE.HM')) {
+          return Promise.resolve(
+            jsonResponse(
+              chartSeriesBody({
+                timestamps: [1000, 2000, 3000],
+                closes: [null, 165, null],
+                previousClose: 165.8,
+              }),
+            ),
+          );
+        }
+        // Xetra (.DE) carries the full series for the same security.
+        return Promise.resolve(
+          jsonResponse(
+            chartSeriesBody({
+              timestamps: [1000, 2000, 3000],
+              closes: [164, 165, 166],
+              previousClose: 163,
+            }),
+          ),
+        );
+      });
+
+      const series = await service.getMarketSeries(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'VWCE',
+          exchange: '.HM',
+          quoteCurrency: 'EUR',
+        },
+        '1Y',
+      );
+
+      expect(series?.points.length).toBe(3);
+      expect(series?.latestPrice).toBe(166);
+      const urls = (fetchMock.mock.calls as unknown[][]).map(
+        (call) => call[0] as string,
+      );
+      expect(urls[0]).toContain('VWCE.HM');
+      expect(urls[1]).toContain('VWCE.DE');
+    });
   });
 
   describe('getFxSeries', () => {

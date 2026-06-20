@@ -4,6 +4,10 @@ import * as Linking from "expo-linking";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import {
+  get as passkeyGet,
+  isSupported as passkeysSupported,
+} from "react-native-passkeys";
+import {
   createContext,
   useCallback,
   useContext,
@@ -54,6 +58,10 @@ interface ServerConnectionContextValue {
     normalizedUrl: string,
     provider?: HostedSignInProvider,
   ) => Promise<void>;
+  /** Native passkey sign-in against a hosted deployment (no browser). */
+  signInWithPasskey: (normalizedUrl: string) => Promise<void>;
+  /** Whether this device's platform supports passkeys. */
+  passkeysSupported: boolean;
   clearServer: () => Promise<void>;
 }
 
@@ -222,61 +230,114 @@ export function ServerConnectionProvider({
     setServerUrl(normalizedUrl);
   }, []);
 
-  const signInHosted = useCallback(async (
-    normalizedUrl: string,
-    provider?: HostedSignInProvider,
-  ) => {
-    // The session token rides on every request; never send it in the clear.
+  const signInHosted = useCallback(
+    async (normalizedUrl: string, provider?: HostedSignInProvider) => {
+      // The session token rides on every request; never send it in the clear.
+      if (!normalizedUrl.startsWith("https://") && !__DEV__) {
+        throw new ApiError(
+          "Hosted sign-in needs an https:// server URL so your session is never sent unencrypted.",
+        );
+      }
+
+      // PKCE: the browser handoff only ever carries a short-lived code bound to
+      // this challenge; the verifier below never leaves the app.
+      const verifier = bytesToHex(Crypto.getRandomBytes(32));
+      const challenge = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        verifier,
+      );
+
+      const redirectUri = Linking.createURL("auth");
+      const authorizeUrl = new URL(`${normalizedUrl}/api/mobile/authorize`);
+      authorizeUrl.searchParams.set("redirect", redirectUri);
+      authorizeUrl.searchParams.set("challenge", challenge.toLowerCase());
+      if (provider) {
+        authorizeUrl.searchParams.set("provider", provider);
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        authorizeUrl.toString(),
+        redirectUri,
+      );
+
+      if (result.type !== "success") {
+        throw new ApiError("Sign-in was cancelled before it completed.");
+      }
+
+      const code = parseMobileAuthCallback(result.url);
+
+      if (!code) {
+        throw new ApiError(
+          "The server did not return a sign-in code. Make sure the deployment includes mobile sign-in support.",
+        );
+      }
+
+      const exchangeClient = createApiClient(normalizedUrl);
+      const { token: nextToken } = await exchangeClient.request<{
+        token?: string;
+      }>("/api/mobile/token", {
+        method: "POST",
+        body: { code, verifier },
+      });
+
+      if (!nextToken) {
+        throw new ApiError(
+          "The server did not return a session token. Make sure the deployment includes mobile sign-in support.",
+        );
+      }
+
+      await AsyncStorage.setItem(SERVER_URL_KEY, normalizedUrl);
+      await AsyncStorage.setItem(SERVER_MODE_KEY, "hosted");
+      await writeStoredToken(nextToken);
+      setServerMode("hosted");
+      setToken(nextToken);
+      setServerUrl(normalizedUrl);
+    },
+    [],
+  );
+
+  const signInWithPasskey = useCallback(async (normalizedUrl: string) => {
     if (!normalizedUrl.startsWith("https://") && !__DEV__) {
       throw new ApiError(
-        "Hosted sign-in needs an https:// server URL so your session is never sent unencrypted.",
+        "Passkey sign-in needs an https:// server URL so your session is never sent unencrypted.",
       );
     }
 
-    // PKCE: the browser handoff only ever carries a short-lived code bound to
-    // this challenge; the verifier below never leaves the app.
-    const verifier = bytesToHex(Crypto.getRandomBytes(32));
-    const challenge = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      verifier,
+    let supported = false;
+    try {
+      supported = passkeysSupported();
+    } catch {
+      supported = false;
+    }
+    if (!supported) {
+      throw new ApiError("This device does not support passkeys.");
+    }
+
+    // The web routes mint the challenge and the session token; the assertion is
+    // produced by the platform authenticator (Face/Touch ID) and never leaves
+    // the device except as a signed WebAuthn response.
+    const client = createApiClient(normalizedUrl);
+    const { options, challenge } = await client.request<{
+      options: Parameters<typeof passkeyGet>[0];
+      challenge: string;
+    }>("/api/mobile/passkey/options", { method: "POST" });
+
+    const assertion = await passkeyGet(options);
+    if (!assertion) {
+      throw new ApiError("Passkey sign-in was cancelled before it completed.");
+    }
+
+    const { token: nextToken } = await client.request<{ token?: string }>(
+      "/api/mobile/passkey/verify",
+      {
+        method: "POST",
+        body: { response: assertion, challenge },
+      },
     );
-
-    const redirectUri = Linking.createURL("auth");
-    const authorizeUrl = new URL(`${normalizedUrl}/api/mobile/authorize`);
-    authorizeUrl.searchParams.set("redirect", redirectUri);
-    authorizeUrl.searchParams.set("challenge", challenge.toLowerCase());
-    if (provider) {
-      authorizeUrl.searchParams.set("provider", provider);
-    }
-
-    const result = await WebBrowser.openAuthSessionAsync(
-      authorizeUrl.toString(),
-      redirectUri,
-    );
-
-    if (result.type !== "success") {
-      throw new ApiError("Sign-in was cancelled before it completed.");
-    }
-
-    const code = parseMobileAuthCallback(result.url);
-
-    if (!code) {
-      throw new ApiError(
-        "The server did not return a sign-in code. Make sure the deployment includes mobile sign-in support.",
-      );
-    }
-
-    const exchangeClient = createApiClient(normalizedUrl);
-    const { token: nextToken } = await exchangeClient.request<{
-      token?: string;
-    }>("/api/mobile/token", {
-      method: "POST",
-      body: { code, verifier },
-    });
 
     if (!nextToken) {
       throw new ApiError(
-        "The server did not return a session token. Make sure the deployment includes mobile sign-in support.",
+        "The server did not return a session token. Make sure the deployment includes mobile passkey support.",
       );
     }
 
@@ -324,6 +385,14 @@ export function ServerConnectionProvider({
       inspectServer,
       saveLocalServer,
       signInHosted,
+      signInWithPasskey,
+      passkeysSupported: (() => {
+        try {
+          return passkeysSupported();
+        } catch {
+          return false;
+        }
+      })(),
       clearServer,
     };
   }, [
@@ -334,6 +403,7 @@ export function ServerConnectionProvider({
     inspectServer,
     saveLocalServer,
     signInHosted,
+    signInWithPasskey,
     clearServer,
   ]);
 

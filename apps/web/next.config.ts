@@ -42,6 +42,16 @@ const nextConfig: NextConfig = {
   },
   devIndicators: false,
   ...(distDir ? { distDir } : {}),
+  async rewrites() {
+    return [
+      // Apple requires the AASA at this exact path; the handler builds it from
+      // env so the team id is not committed.
+      {
+        source: "/.well-known/apple-app-site-association",
+        destination: "/api/well-known/apple-app-site-association",
+      },
+    ];
+  },
   async headers() {
     return [
       {
