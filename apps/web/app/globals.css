@@ -4619,6 +4619,73 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   padding-inline: 18px;
 }
 
+.passkey-add-button {
+  gap: 8px;
+  min-width: 136px;
+}
+
+.passkey-list {
+  display: grid;
+  gap: 12px;
+}
+
+.passkey-row {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-card-muted);
+}
+
+.passkey-row-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.passkey-row-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid var(--border-glass);
+  background: var(--bg-card-hover);
+  color: var(--text-secondary);
+}
+
+.passkey-row-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.94rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: capitalize;
+}
+
+.passkey-row-meta {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.passkey-delete-button {
+  flex-shrink: 0;
+}
+
+.passkey-delete-button:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
 .text-button {
   color: var(--text-secondary);
   font-size: 0.875rem;
@@ -6018,11 +6085,79 @@ html[data-theme="dark"] .text-red-800 {
   flex-shrink: 0;
 }
 
+.top-header-auth-link {
+  min-width: 108px;
+  min-height: 44px;
+  padding-inline: 18px;
+  white-space: nowrap;
+}
+
 .top-header-wordmark {
   font-size: clamp(1.8rem, 3vw, 2.2rem);
   font-weight: 800;
   color: var(--text-primary);
   letter-spacing: -0.04em;
+}
+
+.auth-page {
+  width: 100%;
+  min-height: calc(
+    100dvh - var(--top-header-height) - 72px -
+      env(safe-area-inset-bottom, 0px)
+  );
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  align-items: center;
+  gap: 32px;
+}
+
+.auth-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.auth-panel {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  border-radius: 28px;
+}
+
+.auth-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-provider-button {
+  width: 100%;
+  min-height: 52px;
+  gap: 10px;
+}
+
+.auth-panel-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.auth-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.auth-inline-link:hover,
+.auth-inline-link:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
 }
 
 .shell-account-menu-trigger {
@@ -6716,6 +6851,23 @@ html[data-theme="dark"] .text-red-800 {
     margin-left: 12px;
   }
 
+  .top-header-auth-link {
+    min-width: auto;
+    min-height: 40px;
+    padding-inline: 12px;
+  }
+
+  .auth-page {
+    min-height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 22px;
+  }
+
+  .auth-panel {
+    padding: 20px;
+  }
+
   .shell-account-menu-trigger {
     min-width: 52px;
     min-height: 44px;
@@ -6750,6 +6902,14 @@ html[data-theme="dark"] .text-red-800 {
 
   .page-title {
     font-size: clamp(1.8rem, 8vw, 2.4rem);
+  }
+
+  .passkey-add-button {
+    width: 100%;
+  }
+
+  .passkey-row {
+    align-items: flex-start;
   }
 
   .privacy-basis-pill {

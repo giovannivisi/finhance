@@ -75,10 +75,37 @@ Key hosted requirements:
 
 - Vercel project Root Directory set to `apps/web`
 - `AUTH_MODE=hosted`
+- `AUTH_SIGNUP_MODE=bootstrap` or unset to keep private bootstrap-only signup
+- `AUTH_SIGNUP_MODE=open` to allow new verified Google/GitHub OAuth users
 - `AUTH_URL` set to the public web URL
 - `NEXT_PUBLIC_API_URL` set to the public API URL
 - provider credentials for both Google and GitHub
 - ES256 private key configured on the web side
+
+`AUTH_BOOTSTRAP_EMAIL` is required only in bootstrap signup mode. Hosted
+passkeys are account security credentials: users first create an account with a
+verified OAuth provider, then register passkeys from user settings.
+
+### Mobile passkey sign-in (iOS)
+
+The mobile app can sign in with a passkey natively (Face/Touch ID) via
+`/api/mobile/passkey/options` and `/api/mobile/passkey/verify`, reusing the same
+`auth_authenticators` records as the web. For the app to assert those passkeys,
+iOS requires an Associated Domain, so the web app serves an Apple App Site
+Association file at `/.well-known/apple-app-site-association`:
+
+- `APPLE_TEAM_ID` — optional override; defaults to this project's public Apple
+  Team ID. The published app identifier is `<APPLE_TEAM_ID>.<IOS_BUNDLE_ID>`.
+- `IOS_BUNDLE_ID` — optional override; defaults to `app.finhance.mobile`.
+- `AUTH_WEBAUTHN_RP_ID` — optional; defaults to `finhance-web.vercel.app`. Must
+  match the host your web passkeys were registered against and the app's
+  `webcredentials:` Associated Domain.
+- `AUTH_WEBAUTHN_ORIGIN` — optional; defaults to `https://<AUTH_WEBAUTHN_RP_ID>`.
+
+The app side needs `ios.associatedDomains` (already set to
+`webcredentials:finhance-web.vercel.app` in `apps/mobile/app.json`) and a native
+build — passkeys need `react-native-passkeys`, which is not available in Expo
+Go, so use an EAS build or a local dev client.
 
 ## Privacy Notice Configuration
 

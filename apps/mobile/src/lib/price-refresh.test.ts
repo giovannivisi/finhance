@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AUTOMATIC_PRICE_REFRESH_RETRY_MS,
+  createAutomaticPriceRefreshAttempt,
   formatPriceRefreshStatusText,
+  getAutomaticPriceRefreshDelay,
   shouldStartAutomaticPriceRefresh,
 } from "./price-refresh";
 
@@ -70,5 +73,98 @@ describe("price refresh helpers", () => {
         lastRefreshAt: null,
       }),
     ).toBe("Prices not refreshed yet");
+  });
+
+  it("starts automatic refresh immediately when a stale snapshot has not been attempted", () => {
+    expect(
+      getAutomaticPriceRefreshDelay({
+        isActive: true,
+        refreshSuggested: true,
+        isRefreshing: false,
+        lastRefreshAt: "2026-06-13T08:00:00.000Z",
+        lastAttempt: null,
+        nowMs: 1_000,
+      }),
+    ).toBe(0);
+  });
+
+  it("does not automatically refresh while inactive, fresh, or already refreshing", () => {
+    const input = {
+      isActive: true,
+      refreshSuggested: true,
+      isRefreshing: false,
+      lastRefreshAt: "2026-06-13T08:00:00.000Z",
+      lastAttempt: null,
+      nowMs: 1_000,
+    };
+
+    expect(
+      getAutomaticPriceRefreshDelay({ ...input, isActive: false }),
+    ).toBeNull();
+    expect(
+      getAutomaticPriceRefreshDelay({ ...input, refreshSuggested: false }),
+    ).toBeNull();
+    expect(
+      getAutomaticPriceRefreshDelay({ ...input, isRefreshing: true }),
+    ).toBeNull();
+  });
+
+  it("retries an attempted stale snapshot after the refresh cooldown", () => {
+    const attempt = createAutomaticPriceRefreshAttempt({
+      lastRefreshAt: "2026-06-13T08:00:00.000Z",
+      nowMs: 1_000,
+    });
+
+    expect(
+      getAutomaticPriceRefreshDelay({
+        isActive: true,
+        refreshSuggested: true,
+        isRefreshing: false,
+        lastRefreshAt: "2026-06-13T08:00:00.000Z",
+        lastAttempt: attempt,
+        nowMs: 31_000,
+      }),
+    ).toBe(AUTOMATIC_PRICE_REFRESH_RETRY_MS - 30_000);
+
+    expect(
+      getAutomaticPriceRefreshDelay({
+        isActive: true,
+        refreshSuggested: true,
+        isRefreshing: false,
+        lastRefreshAt: "2026-06-13T08:00:00.000Z",
+        lastAttempt: attempt,
+        nowMs: 61_000,
+      }),
+    ).toBe(0);
+  });
+
+  it("treats the stored and returned refresh snapshots as the same automatic attempt", () => {
+    const attempt = createAutomaticPriceRefreshAttempt({
+      lastRefreshAt: "2026-06-13T08:00:00.000Z",
+      refreshedAt: "2026-06-13T08:01:00.000Z",
+      nowMs: 1_000,
+    });
+
+    expect(
+      getAutomaticPriceRefreshDelay({
+        isActive: true,
+        refreshSuggested: true,
+        isRefreshing: false,
+        lastRefreshAt: "2026-06-13T08:00:00.000Z",
+        lastAttempt: attempt,
+        nowMs: 2_000,
+      }),
+    ).toBe(AUTOMATIC_PRICE_REFRESH_RETRY_MS - 1_000);
+
+    expect(
+      getAutomaticPriceRefreshDelay({
+        isActive: true,
+        refreshSuggested: true,
+        isRefreshing: false,
+        lastRefreshAt: "2026-06-13T08:01:00.000Z",
+        lastAttempt: attempt,
+        nowMs: 2_000,
+      }),
+    ).toBe(AUTOMATIC_PRICE_REFRESH_RETRY_MS - 1_000);
   });
 });

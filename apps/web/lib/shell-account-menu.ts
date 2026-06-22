@@ -1,5 +1,6 @@
 import {
   FileText,
+  LogOut,
   MonitorCog,
   Moon,
   Settings,
@@ -25,6 +26,7 @@ export interface ShellAccountMenuButtonAction {
   key: string;
   label: string;
   ariaLabel: string;
+  action: "toggle-theme" | "sign-out";
   icon: LucideIcon;
 }
 
@@ -49,8 +51,9 @@ export interface ShellAccountMenuSection {
 
 export function buildShellAccountMenuSections(input: {
   theme: "light" | "dark";
+  canSignOut?: boolean;
 }): ShellAccountMenuSection[] {
-  return [
+  const sections: ShellAccountMenuSection[] = [
     {
       key: "workspace",
       title: "Workspace",
@@ -76,6 +79,7 @@ export function buildShellAccountMenuSections(input: {
             input.theme === "dark"
               ? "Switch to light mode"
               : "Switch to dark mode",
+          action: "toggle-theme",
           icon: input.theme === "dark" ? Sun : Moon,
         },
       ],
@@ -101,4 +105,23 @@ export function buildShellAccountMenuSections(input: {
       ],
     },
   ];
+
+  if (input.canSignOut) {
+    sections.push({
+      key: "account",
+      title: "Account",
+      items: [
+        {
+          type: "button",
+          key: "sign-out",
+          label: "Log out",
+          ariaLabel: "Log out",
+          action: "sign-out",
+          icon: LogOut,
+        },
+      ],
+    });
+  }
+
+  return sections;
 }

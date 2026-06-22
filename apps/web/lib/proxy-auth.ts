@@ -3,7 +3,12 @@ type SessionUserLike = {
   email?: string | null;
 };
 
-const PUBLIC_HOSTED_PROXY_PATHS = new Set(["/privacy"]);
+const PUBLIC_HOSTED_PROXY_PATHS = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/privacy",
+]);
 
 export function isPublicHostedProxyPath(pathname: string): boolean {
   const normalizedPath =
@@ -16,7 +21,7 @@ export function isPublicHostedProxyPath(pathname: string): boolean {
 
 export function buildSignInRedirectUrl(requestUrl: string): string {
   const currentUrl = new URL(requestUrl);
-  const signInUrl = new URL("/api/auth/signin", currentUrl.origin);
+  const signInUrl = new URL("/login", currentUrl.origin);
   signInUrl.searchParams.set(
     "callbackUrl",
     `${currentUrl.pathname}${currentUrl.search}`,

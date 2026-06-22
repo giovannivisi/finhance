@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, View } from "react-native";
 import type {
+  AggregatePricingStatus,
   AssetKind,
   BrokeragePerformanceRange,
   BrokeragePositionResponse,
@@ -69,7 +70,11 @@ import {
   resolveHeaderTotal,
 } from "@/lib/live-merge";
 import { formatMoney, parseAmountInput } from "@/lib/money";
-import { shouldStartAutomaticPriceRefresh } from "@/lib/price-refresh";
+import {
+  createAutomaticPriceRefreshAttempt,
+  getAutomaticPriceRefreshDelay,
+  type AutomaticPriceRefreshAttempt,
+} from "@/lib/price-refresh";
 import { useIsScreenActive } from "@/lib/screen-active";
 import { spacing, useTheme } from "@/theme";
 
@@ -106,6 +111,47 @@ function performancePricingNote(
   }
 
   return "Some prices are still updating; this chart may be partial.";
+}
+
+function getLiveAdjustedPricingStatus(input: {
+  pricingStatus: AggregatePricingStatus;
+  positions: readonly BrokeragePositionResponse[];
+  quotes?: readonly LiveAssetValuationResponse[];
+}): AggregatePricingStatus {
+  if (
+    !input.quotes ||
+    input.quotes.length === 0 ||
+    input.pricingStatus.state === "FRESH" ||
+    input.pricingStatus.hasMissingFx ||
+    input.pricingStatus.hasStaleFx
+  ) {
+    return input.pricingStatus;
+  }
+
+  const liveAssetIds = new Set(
+    input.quotes
+      .filter((quote) => quote.valueInReporting != null)
+      .map((quote) => quote.assetId),
+  );
+  const hasUncoveredStaleQuotes = input.positions.some(
+    (position) =>
+      position.isStale &&
+      (position.valuationSource === "LAST_QUOTE" ||
+        position.valuationSource === "AVG_COST") &&
+      !liveAssetIds.has(position.assetId),
+  );
+
+  if (hasUncoveredStaleQuotes) {
+    return input.pricingStatus;
+  }
+
+  return {
+    state: "FRESH",
+    refreshSuggested: false,
+    hasStaleQuotes: false,
+    hasStaleFx: false,
+    hasMissingFx: false,
+  };
 }
 
 type OperationKind = "BUY" | "SELL" | "DIVIDEND" | "FEE";
@@ -228,10 +274,13 @@ function PositionRow({
   position: BrokeragePositionResponse;
   showDivider: boolean;
 }) {
+  // The "(avg)" suffix makes clear this is the average buy-in, not the current
+  // price: the row's value is current (quantity × current price), so an
+  // unqualified "@ price" multiplies to the cost basis, not the value shown.
   const quantityLabel = `${position.quantity} @ ${formatMoney(
     position.averageCostPerUnit,
     position.currency,
-  )}`;
+  )} (avg)`;
 
   return (
     <ListRow
@@ -433,6 +482,8 @@ export default function BrokerageWorkspaceScreen() {
   const workspaceQuery = useBrokerageWorkspace(accountId);
   const categoriesQuery = useCategories(false);
   const refreshAssets = useRefreshAssets();
+  const refreshAssetsIsPending = refreshAssets.isPending;
+  const refreshAssetsMutate = refreshAssets.mutate;
 
   const buyMutation = useBrokerageBuy(accountId);
   const sellMutation = useBrokerageSell(accountId);
@@ -463,10 +514,13 @@ export default function BrokerageWorkspaceScreen() {
   const previousQuotesRef = useRef<
     readonly LiveAssetValuationResponse[] | null
   >(null);
-  const autoRefreshStartedRef = useRef(false);
-  const autoRefreshLastStoredAtRef = useRef<string | null | undefined>(
-    undefined,
+  const autoRefreshAttemptRef = useRef<AutomaticPriceRefreshAttempt | null>(
+    null,
   );
+  const autoRefreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [autoRefreshRetryTick, setAutoRefreshRetryTick] = useState(0);
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
@@ -497,35 +551,79 @@ export default function BrokerageWorkspaceScreen() {
   const workspace: BrokerageWorkspaceResponse | undefined = workspaceQuery.data;
   const broker = workspace?.selectedBroker;
   const accountCurrency = broker?.account.currency ?? "EUR";
+  const displayPricingStatus = useMemo(
+    () =>
+      workspace
+        ? getLiveAdjustedPricingStatus({
+            pricingStatus: workspace.pricingStatus,
+            positions: workspace.positions,
+            quotes: liveQuotes,
+          })
+        : null,
+    [liveQuotes, workspace],
+  );
 
   useEffect(() => {
     const lastRefreshAt = workspace?.lastRefreshAt ?? null;
-    if (autoRefreshLastStoredAtRef.current !== lastRefreshAt) {
-      autoRefreshStartedRef.current = false;
-      autoRefreshLastStoredAtRef.current = lastRefreshAt;
+    const refreshSuggested = displayPricingStatus?.refreshSuggested;
+
+    if (autoRefreshRetryTimerRef.current) {
+      clearTimeout(autoRefreshRetryTimerRef.current);
+      autoRefreshRetryTimerRef.current = null;
     }
 
-    if (workspace?.pricingStatus.refreshSuggested !== true) {
-      autoRefreshStartedRef.current = false;
+    if (refreshSuggested !== true) {
+      autoRefreshAttemptRef.current = null;
     }
 
-    if (
-      !shouldStartAutomaticPriceRefresh({
-        isActive,
-        refreshSuggested: workspace?.pricingStatus.refreshSuggested,
-        alreadyStarted: autoRefreshStartedRef.current,
-      })
-    ) {
+    const retryDelay = getAutomaticPriceRefreshDelay({
+      isActive,
+      refreshSuggested,
+      isRefreshing: refreshAssetsIsPending,
+      lastRefreshAt,
+      lastAttempt: autoRefreshAttemptRef.current,
+      nowMs: Date.now(),
+    });
+
+    if (retryDelay === null) {
       return;
     }
 
-    autoRefreshStartedRef.current = true;
-    refreshAssets.mutate();
+    if (retryDelay > 0) {
+      autoRefreshRetryTimerRef.current = setTimeout(() => {
+        autoRefreshRetryTimerRef.current = null;
+        setAutoRefreshRetryTick((value) => value + 1);
+      }, retryDelay);
+
+      return () => {
+        if (autoRefreshRetryTimerRef.current) {
+          clearTimeout(autoRefreshRetryTimerRef.current);
+          autoRefreshRetryTimerRef.current = null;
+        }
+      };
+    }
+
+    const startedLastRefreshAt = lastRefreshAt;
+    autoRefreshAttemptRef.current = createAutomaticPriceRefreshAttempt({
+      lastRefreshAt: startedLastRefreshAt,
+      nowMs: Date.now(),
+    });
+    refreshAssetsMutate(undefined, {
+      onSuccess: (result) => {
+        autoRefreshAttemptRef.current = createAutomaticPriceRefreshAttempt({
+          lastRefreshAt: startedLastRefreshAt,
+          refreshedAt: result.refreshedAt,
+          nowMs: Date.now(),
+        });
+      },
+    });
   }, [
+    autoRefreshRetryTick,
     isActive,
-    refreshAssets,
+    refreshAssetsIsPending,
+    refreshAssetsMutate,
+    displayPricingStatus?.refreshSuggested,
     workspace?.lastRefreshAt,
-    workspace?.pricingStatus.refreshSuggested,
   ]);
 
   const performance = performanceQuery.data;
@@ -561,9 +659,15 @@ export default function BrokerageWorkspaceScreen() {
   const mergedPositions = useMemo(
     () =>
       workspace && liveQuotes
-        ? mergePositionsWithLiveQuotes(workspace.positions, liveQuotes)
+        ? mergePositionsWithLiveQuotes(workspace.positions, liveQuotes, {
+            asOf: liveQuery.data?.asOf ?? null,
+            reportingCurrency: workspace.reportingCurrency,
+            hasFreshFx:
+              !workspace.pricingStatus.hasMissingFx &&
+              !workspace.pricingStatus.hasStaleFx,
+          })
         : (workspace?.positions ?? []),
-    [workspace, liveQuotes],
+    [workspace, liveQuery.data?.asOf, liveQuotes],
   );
 
   const liveSummary =
@@ -856,8 +960,18 @@ export default function BrokerageWorkspaceScreen() {
   ).length;
   const activeTargetTotalIsValid =
     activeTargetEnabledCount === 0 || Math.abs(activeTargetTotal - 100) <= 0.01;
+  // Once any asset class has a target, classes turned OFF (no target) drop out
+  // of the donut so it reflects the strategy rather than raw holdings. With no
+  // targets at all the donut still shows the full current allocation.
+  const anyAssetKindTarget = assetKindTargets.some(
+    (target) => target.targetPercent !== null,
+  );
   const allocationDistribution = assetKindTargets
-    .filter((target) => target.currentValue > 0)
+    .filter(
+      (target) =>
+        target.currentValue > 0 &&
+        (!anyAssetKindTarget || target.targetPercent !== null),
+    )
     .map((target) => ({
       key: target.key,
       label: target.label,
@@ -1022,7 +1136,8 @@ export default function BrokerageWorkspaceScreen() {
               style={{ flex: 1, minWidth: 90 }}
             />
           </View>
-          {workspace.pricingStatus.state !== "FRESH" ? (
+          {(displayPricingStatus?.state ?? workspace.pricingStatus.state) !==
+          "FRESH" ? (
             <Chip label="Some prices are stale" tone="warning" />
           ) : null}
         </View>

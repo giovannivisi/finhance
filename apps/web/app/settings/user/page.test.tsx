@@ -3,8 +3,9 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import UserSettingsPage from "@/settings/user/page";
 
-const { apiMock } = vi.hoisted(() => ({
+const { apiMock, hostedModeMock } = vi.hoisted(() => ({
   apiMock: vi.fn(),
+  hostedModeMock: vi.fn(),
 }));
 
 vi.mock("@lib/server-api", () => ({
@@ -12,7 +13,7 @@ vi.mock("@lib/server-api", () => ({
 }));
 
 vi.mock("@lib/auth-mode", () => ({
-  isHostedAuthMode: () => false,
+  isHostedAuthMode: hostedModeMock,
 }));
 
 vi.mock("@components/Container", () => ({
@@ -21,8 +22,12 @@ vi.mock("@components/Container", () => ({
 
 vi.mock("@components/UserSettingsPageClient", () => ({
   default: ({
+    canManagePasskeys,
+    canSignOutMobileDevices,
     initialSettings,
   }: {
+    canManagePasskeys?: boolean;
+    canSignOutMobileDevices?: boolean;
     initialSettings: {
       showTransactionTimes: boolean;
       startPage: string;
@@ -32,6 +37,8 @@ vi.mock("@components/UserSettingsPageClient", () => ({
     <div>
       User settings client {String(initialSettings.showTransactionTimes)}{" "}
       {initialSettings.startPage} {initialSettings.reportingCurrency}
+      {canSignOutMobileDevices ? " mobile hosted" : " mobile local"}
+      {canManagePasskeys ? " passkeys hosted" : " passkeys local"}
     </div>
   ),
 }));
@@ -39,6 +46,8 @@ vi.mock("@components/UserSettingsPageClient", () => ({
 describe("UserSettingsPage", () => {
   beforeEach(() => {
     apiMock.mockReset();
+    hostedModeMock.mockReset();
+    hostedModeMock.mockReturnValue(false);
   });
 
   it("renders the user settings client with current values", async () => {
@@ -51,7 +60,26 @@ describe("UserSettingsPage", () => {
     render(await UserSettingsPage());
 
     expect(
-      screen.getByText("User settings client true DASHBOARD EUR"),
+      screen.getByText(
+        "User settings client true DASHBOARD EUR mobile local passkeys local",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("enables hosted security controls in hosted mode", async () => {
+    hostedModeMock.mockReturnValue(true);
+    apiMock.mockResolvedValue({
+      showTransactionTimes: true,
+      startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
+    });
+
+    render(await UserSettingsPage());
+
+    expect(
+      screen.getByText(
+        "User settings client true DASHBOARD EUR mobile hosted passkeys hosted",
+      ),
     ).toBeInTheDocument();
   });
 

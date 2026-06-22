@@ -7,6 +7,7 @@ type Theme = "light" | "dark";
 const THEME_STORAGE_KEY = "finhance-theme";
 const HIDE_MONEY_STORAGE_KEY = "finhance-hide-money";
 const DASHBOARD_REFRESH_SESSION_KEY = "finhance-dashboard-refresh-attempted";
+const MISSING_DASHBOARD_REFRESH_SNAPSHOT_KEY = "__missing__";
 
 interface AppPreferencesContextType {
   theme: Theme;
@@ -14,8 +15,8 @@ interface AppPreferencesContextType {
   hideMoney: boolean;
   toggleTheme: () => void;
   toggleHideMoney: () => void;
-  hasAttemptedDashboardRefresh: () => boolean;
-  markDashboardRefreshAttempted: () => void;
+  hasAttemptedDashboardRefresh: (snapshotKey?: string | null) => boolean;
+  markDashboardRefreshAttempted: (snapshotKey?: string | null) => void;
 }
 
 const AppPreferencesContext = createContext<
@@ -69,17 +70,27 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  function hasAttemptedDashboardRefresh() {
+  function getDashboardRefreshSnapshotKey(snapshotKey?: string | null) {
+    return snapshotKey?.trim() || MISSING_DASHBOARD_REFRESH_SNAPSHOT_KEY;
+  }
+
+  function hasAttemptedDashboardRefresh(snapshotKey?: string | null) {
     try {
-      return sessionStorage.getItem(DASHBOARD_REFRESH_SESSION_KEY) === "true";
+      return (
+        sessionStorage.getItem(DASHBOARD_REFRESH_SESSION_KEY) ===
+        getDashboardRefreshSnapshotKey(snapshotKey)
+      );
     } catch {
       return false;
     }
   }
 
-  function markDashboardRefreshAttempted() {
+  function markDashboardRefreshAttempted(snapshotKey?: string | null) {
     try {
-      sessionStorage.setItem(DASHBOARD_REFRESH_SESSION_KEY, "true");
+      sessionStorage.setItem(
+        DASHBOARD_REFRESH_SESSION_KEY,
+        getDashboardRefreshSnapshotKey(snapshotKey),
+      );
     } catch {
       // Ignore storage errors
     }

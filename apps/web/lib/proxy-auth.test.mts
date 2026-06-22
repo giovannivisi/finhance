@@ -9,11 +9,15 @@ import {
 test("buildSignInRedirectUrl preserves the requested path and query", () => {
   assert.equal(
     buildSignInRedirectUrl("https://finhance.test/review?month=2026-05"),
-    "https://finhance.test/api/auth/signin?callbackUrl=%2Freview%3Fmonth%3D2026-05",
+    "https://finhance.test/login?callbackUrl=%2Freview%3Fmonth%3D2026-05",
   );
 });
 
-test("isPublicHostedProxyPath allows the privacy notice without a hosted session", () => {
+test("isPublicHostedProxyPath allows public auth pages and the privacy notice without a hosted session", () => {
+  assert.equal(isPublicHostedProxyPath("/"), true);
+  assert.equal(isPublicHostedProxyPath("/login"), true);
+  assert.equal(isPublicHostedProxyPath("/login/"), true);
+  assert.equal(isPublicHostedProxyPath("/signup"), true);
   assert.equal(isPublicHostedProxyPath("/privacy"), true);
   assert.equal(isPublicHostedProxyPath("/privacy/"), true);
 });

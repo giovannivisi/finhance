@@ -24,6 +24,7 @@ import Sidebar from "@components/Sidebar";
 import NavigationPrefetchCoordinator from "@components/NavigationPrefetchCoordinator";
 import NavigationTransitionOverlay from "@components/NavigationTransitionOverlay";
 import { ThemeProvider } from "@components/ThemeProvider";
+import { headers } from "next/headers";
 import Script from "next/script";
 
 const themeScript = `
@@ -38,16 +39,19 @@ const themeScript = `
   })();
 `;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <Script
           id="theme-script"
+          nonce={nonce}
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: themeScript }}
         />

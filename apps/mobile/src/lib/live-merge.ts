@@ -4,6 +4,27 @@ import type {
   LiveAssetValuationResponse,
 } from "@finhance/shared";
 
+interface LiveMergeOptions {
+  asOf?: string | null;
+  reportingCurrency?: string | null;
+  hasFreshFx?: boolean;
+}
+
+function hasFreshReportingCurrencyQuote(
+  assetCurrency: string,
+  options: LiveMergeOptions,
+): boolean {
+  if (!options.reportingCurrency) {
+    return true;
+  }
+
+  if (assetCurrency.toUpperCase() === options.reportingCurrency.toUpperCase()) {
+    return true;
+  }
+
+  return options.hasFreshFx === true;
+}
+
 /**
  * Pure helpers for merging `/assets/live-valuations` quotes into the
  * positions/holdings the user is currently looking at, and for recomputing
@@ -33,6 +54,7 @@ function indexQuotes(
 export function mergePositionsWithLiveQuotes(
   positions: readonly BrokeragePositionResponse[],
   quotes: readonly LiveAssetValuationResponse[],
+  options: LiveMergeOptions = {},
 ): BrokeragePositionResponse[] {
   if (quotes.length === 0) {
     return [...positions];
@@ -55,12 +77,21 @@ export function mergePositionsWithLiveQuotes(
       position.costBasis !== null && position.costBasis !== undefined
         ? quote.valueInReporting - position.costBasis
         : position.unrealisedGainLoss;
+    const clearsStale = hasFreshReportingCurrencyQuote(
+      position.currency,
+      options,
+    );
 
     return {
       ...position,
       currentPrice: quote.price,
       currentValue: quote.valueInReporting,
       unrealisedGainLoss,
+      valuationSource: clearsStale ? "LIVE" : position.valuationSource,
+      valuationAsOf: clearsStale
+        ? (options.asOf ?? position.valuationAsOf)
+        : position.valuationAsOf,
+      isStale: clearsStale ? false : position.isStale,
     };
   });
 }
@@ -78,6 +109,7 @@ export function mergePositionsWithLiveQuotes(
 export function mergeDashboardAssetsWithLiveQuotes(
   assets: readonly DashboardAssetResponse[],
   quotes: readonly LiveAssetValuationResponse[],
+  options: LiveMergeOptions = {},
 ): DashboardAssetResponse[] {
   if (quotes.length === 0) {
     return [...assets];
@@ -96,10 +128,17 @@ export function mergeDashboardAssetsWithLiveQuotes(
       return asset;
     }
 
+    const clearsStale = hasFreshReportingCurrencyQuote(asset.currency, options);
+
     return {
       ...asset,
       currentValue: quote.valueInReporting,
       lastPrice: asset.quantity !== null ? quote.price : asset.lastPrice,
+      valuationSource: clearsStale ? "LIVE" : asset.valuationSource,
+      valuationAsOf: clearsStale
+        ? (options.asOf ?? asset.valuationAsOf)
+        : asset.valuationAsOf,
+      isStale: clearsStale ? false : asset.isStale,
     };
   });
 }

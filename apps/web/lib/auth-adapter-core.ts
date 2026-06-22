@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type {
   Adapter,
   AdapterAccount,
+  AdapterAuthenticator,
   AdapterSession,
   AdapterUser,
 } from "next-auth/adapters";
@@ -9,7 +10,7 @@ import { Prisma, PrismaClient } from "@finhance/db";
 
 const STORED_AUTH_TOKEN_NAMESPACE = "finhance:auth-token";
 
-function hashStoredAuthToken(
+export function hashStoredAuthToken(
   token: string,
   purpose: "session" | "verification",
 ): string {
@@ -50,6 +51,20 @@ function mapSession(session: {
   };
 }
 
+function mapAccount(account: {
+  userId: string;
+  type: string;
+  provider: string;
+  providerAccountId: string;
+}): AdapterAccount {
+  return {
+    userId: account.userId,
+    type: account.type as AdapterAccount["type"],
+    provider: account.provider,
+    providerAccountId: account.providerAccountId,
+  };
+}
+
 function mapVerificationToken(token: {
   identifier: string;
   token: string;
@@ -59,6 +74,28 @@ function mapVerificationToken(token: {
     identifier: token.identifier,
     token: token.token,
     expires: token.expires,
+  };
+}
+
+function mapAuthenticator(authenticator: {
+  userId: string;
+  providerAccountId: string;
+  credentialID: string;
+  credentialPublicKey: string;
+  counter: number;
+  credentialDeviceType: string;
+  credentialBackedUp: boolean;
+  transports: string | null;
+}): AdapterAuthenticator {
+  return {
+    userId: authenticator.userId,
+    providerAccountId: authenticator.providerAccountId,
+    credentialID: authenticator.credentialID,
+    credentialPublicKey: authenticator.credentialPublicKey,
+    counter: authenticator.counter,
+    credentialDeviceType: authenticator.credentialDeviceType,
+    credentialBackedUp: authenticator.credentialBackedUp,
+    transports: authenticator.transports,
   };
 }
 
@@ -174,6 +211,18 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
         }
       }
     },
+    async getAccount(providerAccountId, provider) {
+      const account = await prisma.authProviderAccount.findUnique({
+        where: {
+          provider_providerAccountId: {
+            provider,
+            providerAccountId,
+          },
+        },
+      });
+
+      return account ? mapAccount(account) : null;
+    },
     async createSession(session) {
       const sessionTokenHash = hashStoredAuthToken(
         session.sessionToken,
@@ -185,6 +234,7 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
             sessionToken: sessionTokenHash,
             userId: session.userId,
             expires: session.expires,
+            authenticatedAt: new Date(),
           },
         })),
         sessionToken: session.sessionToken,
@@ -299,6 +349,45 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
 
         throw error;
       }
+    },
+    async getAuthenticator(credentialID) {
+      const authenticator = await prisma.authAuthenticator.findUnique({
+        where: { credentialID },
+      });
+
+      return authenticator ? mapAuthenticator(authenticator) : null;
+    },
+    async createAuthenticator(authenticator) {
+      return mapAuthenticator(
+        await prisma.authAuthenticator.create({
+          data: {
+            userId: authenticator.userId,
+            providerAccountId: authenticator.providerAccountId,
+            credentialID: authenticator.credentialID,
+            credentialPublicKey: authenticator.credentialPublicKey,
+            counter: authenticator.counter,
+            credentialDeviceType: authenticator.credentialDeviceType,
+            credentialBackedUp: authenticator.credentialBackedUp,
+            transports: authenticator.transports ?? null,
+          },
+        }),
+      );
+    },
+    async listAuthenticatorsByUserId(userId) {
+      const authenticators = await prisma.authAuthenticator.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return authenticators.map(mapAuthenticator);
+    },
+    async updateAuthenticatorCounter(credentialID, newCounter) {
+      return mapAuthenticator(
+        await prisma.authAuthenticator.update({
+          where: { credentialID },
+          data: { counter: newCounter },
+        }),
+      );
     },
   };
 }

@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import type {
+  AggregatePricingStatus,
   DashboardAssetResponse,
   LiveAssetValuationResponse,
 } from "@finhance/shared";
@@ -39,8 +40,10 @@ import {
 } from "@/lib/live-merge";
 import { formatMoney } from "@/lib/money";
 import {
+  createAutomaticPriceRefreshAttempt,
   formatPriceRefreshStatusText,
-  shouldStartAutomaticPriceRefresh,
+  getAutomaticPriceRefreshDelay,
+  type AutomaticPriceRefreshAttempt,
 } from "@/lib/price-refresh";
 import { useIsScreenActive } from "@/lib/screen-active";
 import { spacing, useTheme } from "@/theme";
@@ -59,6 +62,47 @@ function PricingStatusChip({
   }
 
   return <Chip label="Prices stale" tone="warning" />;
+}
+
+function getLiveAdjustedPricingStatus(input: {
+  pricingStatus: AggregatePricingStatus;
+  assets: readonly DashboardAssetResponse[];
+  quotes?: readonly LiveAssetValuationResponse[];
+}): AggregatePricingStatus {
+  if (
+    !input.quotes ||
+    input.quotes.length === 0 ||
+    input.pricingStatus.state === "FRESH" ||
+    input.pricingStatus.hasMissingFx ||
+    input.pricingStatus.hasStaleFx
+  ) {
+    return input.pricingStatus;
+  }
+
+  const liveAssetIds = new Set(
+    input.quotes
+      .filter((quote) => quote.valueInReporting != null)
+      .map((quote) => quote.assetId),
+  );
+  const hasUncoveredStaleQuotes = input.assets.some(
+    (asset) =>
+      asset.isStale &&
+      (asset.valuationSource === "LAST_QUOTE" ||
+        asset.valuationSource === "AVG_COST") &&
+      !liveAssetIds.has(asset.id),
+  );
+
+  if (hasUncoveredStaleQuotes) {
+    return input.pricingStatus;
+  }
+
+  return {
+    state: "FRESH",
+    refreshSuggested: false,
+    hasStaleQuotes: false,
+    hasStaleFx: false,
+    hasMissingFx: false,
+  };
 }
 
 function HoldingRow({
@@ -130,6 +174,8 @@ export default function DashboardScreen() {
   const { colors, hideMoney, setHideMoney } = useTheme();
   const dashboardQuery = useDashboard();
   const refreshAssets = useRefreshAssets();
+  const refreshAssetsIsPending = refreshAssets.isPending;
+  const refreshAssetsMutate = refreshAssets.mutate;
 
   const isActive = useIsScreenActive();
   const liveQuery = useLiveValuations(isActive);
@@ -137,10 +183,13 @@ export default function DashboardScreen() {
   const previousQuotesRef = useRef<
     readonly LiveAssetValuationResponse[] | null
   >(null);
-  const autoRefreshStartedRef = useRef(false);
-  const autoRefreshLastStoredAtRef = useRef<string | null | undefined>(
-    undefined,
+  const autoRefreshAttemptRef = useRef<AutomaticPriceRefreshAttempt | null>(
+    null,
   );
+  const autoRefreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const [autoRefreshRetryTick, setAutoRefreshRetryTick] = useState(0);
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
@@ -163,43 +212,97 @@ export default function DashboardScreen() {
   }, [liveQuotes]);
 
   const data = dashboardQuery.data;
+  const displayPricingStatus = useMemo(
+    () =>
+      data
+        ? getLiveAdjustedPricingStatus({
+            pricingStatus: data.dashboard.pricingStatus,
+            assets: data.dashboard.assets,
+            quotes: liveQuotes,
+          })
+        : null,
+    [data, liveQuotes],
+  );
 
   useEffect(() => {
     const lastRefreshAt = data?.dashboard.lastRefreshAt ?? null;
-    if (autoRefreshLastStoredAtRef.current !== lastRefreshAt) {
-      autoRefreshStartedRef.current = false;
-      autoRefreshLastStoredAtRef.current = lastRefreshAt;
+    const refreshSuggested = displayPricingStatus?.refreshSuggested;
+
+    if (autoRefreshRetryTimerRef.current) {
+      clearTimeout(autoRefreshRetryTimerRef.current);
+      autoRefreshRetryTimerRef.current = null;
     }
 
-    if (data?.dashboard.pricingStatus.refreshSuggested !== true) {
-      autoRefreshStartedRef.current = false;
+    if (refreshSuggested !== true) {
+      autoRefreshAttemptRef.current = null;
     }
 
-    if (
-      !shouldStartAutomaticPriceRefresh({
-        isActive,
-        refreshSuggested: data?.dashboard.pricingStatus.refreshSuggested,
-        alreadyStarted: autoRefreshStartedRef.current,
-      })
-    ) {
+    const retryDelay = getAutomaticPriceRefreshDelay({
+      isActive,
+      refreshSuggested,
+      isRefreshing: refreshAssetsIsPending,
+      lastRefreshAt,
+      lastAttempt: autoRefreshAttemptRef.current,
+      nowMs: Date.now(),
+    });
+
+    if (retryDelay === null) {
       return;
     }
 
-    autoRefreshStartedRef.current = true;
-    refreshAssets.mutate();
+    if (retryDelay > 0) {
+      autoRefreshRetryTimerRef.current = setTimeout(() => {
+        autoRefreshRetryTimerRef.current = null;
+        setAutoRefreshRetryTick((value) => value + 1);
+      }, retryDelay);
+
+      return () => {
+        if (autoRefreshRetryTimerRef.current) {
+          clearTimeout(autoRefreshRetryTimerRef.current);
+          autoRefreshRetryTimerRef.current = null;
+        }
+      };
+    }
+
+    const startedLastRefreshAt = lastRefreshAt;
+    autoRefreshAttemptRef.current = createAutomaticPriceRefreshAttempt({
+      lastRefreshAt: startedLastRefreshAt,
+      nowMs: Date.now(),
+    });
+    refreshAssetsMutate(undefined, {
+      onSuccess: (result) => {
+        autoRefreshAttemptRef.current = createAutomaticPriceRefreshAttempt({
+          lastRefreshAt: startedLastRefreshAt,
+          refreshedAt: result.refreshedAt,
+          nowMs: Date.now(),
+        });
+      },
+    });
   }, [
+    autoRefreshRetryTick,
     data?.dashboard.lastRefreshAt,
-    data?.dashboard.pricingStatus.refreshSuggested,
+    displayPricingStatus?.refreshSuggested,
     isActive,
-    refreshAssets,
+    refreshAssetsIsPending,
+    refreshAssetsMutate,
   ]);
 
   const mergedAssets = useMemo(
     () =>
       data && liveQuotes
-        ? mergeDashboardAssetsWithLiveQuotes(data.dashboard.assets, liveQuotes)
+        ? mergeDashboardAssetsWithLiveQuotes(
+            data.dashboard.assets,
+            liveQuotes,
+            {
+              asOf: liveQuery.data?.asOf ?? null,
+              reportingCurrency: data.dashboard.reportingCurrency,
+              hasFreshFx:
+                !data.dashboard.pricingStatus.hasMissingFx &&
+                !data.dashboard.pricingStatus.hasStaleFx,
+            },
+          )
         : (data?.dashboard.assets ?? []),
-    [data, liveQuotes],
+    [data, liveQuery.data?.asOf, liveQuotes],
   );
 
   const holdings = useMemo(
@@ -397,7 +500,11 @@ export default function DashboardScreen() {
               flexWrap: "wrap",
             }}
           >
-            <PricingStatusChip state={dashboard.pricingStatus.state} />
+            <PricingStatusChip
+              state={
+                displayPricingStatus?.state ?? dashboard.pricingStatus.state
+              }
+            />
             {refreshStatusText ? (
               <AppText variant="caption" tone="tertiary">
                 {refreshStatusText}

@@ -297,6 +297,63 @@ describe('AssetsService', () => {
     expect(dashboard.assets[0].isStale).toBe(true);
   });
 
+  it('keeps a quote current when its market is closed, even past the live window', async () => {
+    jest.useFakeTimers();
+    // Saturday 12:00 CEST — Xetra (.DE) is shut, so Friday's close is current.
+    jest.setSystemTime(new Date('2026-06-20T10:00:00.000Z'));
+    try {
+      prisma.asset.findMany.mockResolvedValue([
+        createAsset({
+          kind: AssetKind.STOCK,
+          exchange: '.DE',
+          currency: 'EUR',
+          quantity: new Prisma.Decimal('2'),
+          balance: new Prisma.Decimal('300'),
+          lastPrice: new Prisma.Decimal('165'),
+          // Friday 17:30 CEST close.
+          lastPriceAt: new Date('2026-06-19T15:30:00.000Z'),
+        }),
+      ]);
+
+      const dashboard = await service.getDashboard(OWNER_ID);
+
+      expect(dashboard.assets[0].valuationSource).toBe('LAST_QUOTE');
+      expect(dashboard.assets[0].isStale).toBe(false);
+      expect(dashboard.pricingStatus.state).toBe('FRESH');
+      expect(dashboard.pricingStatus.hasStaleQuotes).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('marks a quote stale when its market is open and the quote has aged out', async () => {
+    jest.useFakeTimers();
+    // Friday 16:00 CEST — Xetra (.DE) is trading, so an hour-old quote is stale.
+    jest.setSystemTime(new Date('2026-06-19T14:00:00.000Z'));
+    try {
+      prisma.asset.findMany.mockResolvedValue([
+        createAsset({
+          kind: AssetKind.STOCK,
+          exchange: '.DE',
+          currency: 'EUR',
+          quantity: new Prisma.Decimal('2'),
+          balance: new Prisma.Decimal('300'),
+          lastPrice: new Prisma.Decimal('165'),
+          lastPriceAt: new Date('2026-06-19T13:00:00.000Z'),
+        }),
+      ]);
+
+      const dashboard = await service.getDashboard(OWNER_ID);
+
+      expect(dashboard.assets[0].valuationSource).toBe('LAST_QUOTE');
+      expect(dashboard.assets[0].isStale).toBe(true);
+      expect(dashboard.pricingStatus.state).toBe('STALE');
+      expect(dashboard.pricingStatus.hasStaleQuotes).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('falls back to average cost when no quote is available', async () => {
     const now = new Date();
     prisma.asset.findMany.mockResolvedValue([

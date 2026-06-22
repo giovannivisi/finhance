@@ -9,6 +9,11 @@ interface CachedPrice {
   ts: number;
 }
 
+interface QuoteBackoff {
+  until: number;
+  status: number;
+}
+
 interface PriceResponseShape {
   chart?: {
     result?: Array<{
@@ -77,6 +82,12 @@ const ROME_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
 });
 
 const MIN_MAX_AGE_MS = 5000;
+const RATE_LIMIT_BACKOFF_MS = 1000 * 60 * 5;
+const YAHOO_REQUEST_HEADERS = {
+  Accept: 'application/json,text/plain,*/*',
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+};
 
 const SERIES_RANGE_PARAMS: Record<
   BrokeragePerformanceRange,
@@ -109,6 +120,7 @@ const SERIES_TIMEOUT_MS: Record<BrokeragePerformanceRange, number> = {
 export class PricesService {
   private readonly logger = new Logger(PricesService.name);
   private readonly cache = new Map<string, CachedPrice>();
+  private readonly quoteBackoff = new Map<string, QuoteBackoff>();
   private readonly inFlight = new Map<string, Promise<Prisma.Decimal | null>>();
   private readonly seriesCache = new Map<string, CachedSeries>();
   private readonly seriesInFlight = new Map<
@@ -463,6 +475,18 @@ export class PricesService {
       return cached.price;
     }
 
+    const backoff = this.quoteBackoff.get(symbol);
+    if (backoff && now < backoff.until) {
+      if (cached) {
+        return cached.price;
+      }
+
+      this.logger.warn(
+        `Skipping Yahoo quote for ${symbol}: prior ${backoff.status} response is cooling down.`,
+      );
+      return null;
+    }
+
     const inFlight = this.inFlight.get(symbol);
     if (inFlight) {
       return inFlight;
@@ -486,15 +510,23 @@ export class PricesService {
       const response = await fetch(
         `${BASE_QUOTE_URL}${encodeURIComponent(symbol)}`,
         {
+          headers: YAHOO_REQUEST_HEADERS,
           signal: AbortSignal.timeout(this.requestTimeoutMs),
         },
       );
 
       if (!response.ok) {
+        if (response.status === 429) {
+          this.quoteBackoff.set(symbol, {
+            until: now + RATE_LIMIT_BACKOFF_MS,
+            status: response.status,
+          });
+        }
+
         this.logger.warn(
           `Yahoo quote failed for ${symbol}: ${response.status}`,
         );
-        return null;
+        return this.cache.get(symbol)?.price ?? null;
       }
 
       const body = (await response.json()) as PriceResponseShape;
@@ -505,6 +537,7 @@ export class PricesService {
       }
 
       const decimal = new Prisma.Decimal(price.toString());
+      this.quoteBackoff.delete(symbol);
       this.cache.set(symbol, { price: decimal, ts: now });
       return decimal;
     } catch (error) {
@@ -551,6 +584,7 @@ export class PricesService {
       const params = SERIES_RANGE_PARAMS[range];
       const url = `${BASE_QUOTE_URL}${encodeURIComponent(symbol)}?range=${params.range}&interval=${params.interval}`;
       const response = await fetch(url, {
+        headers: YAHOO_REQUEST_HEADERS,
         signal: AbortSignal.timeout(SERIES_TIMEOUT_MS[range]),
       });
 

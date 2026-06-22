@@ -92,10 +92,19 @@ function buildDashboardAsset(
 }
 
 test("mergeLivePositions replaces price, value and P/L for matched positions", () => {
-  const positions = [buildPosition()];
+  const positions = [
+    buildPosition({
+      valuationSource: "LAST_QUOTE",
+      valuationAsOf: "2026-06-12T08:00:00.000Z",
+      isStale: true,
+    }),
+  ];
   const quotes = [buildQuote({ value: 1120, valueInReporting: 560 })];
 
-  const merged = mergeLivePositions(positions, quotes);
+  const merged = mergeLivePositions(positions, quotes, {
+    asOf: "2026-06-12T08:05:00.000Z",
+    reportingCurrency: "EUR",
+  });
 
   // Unit price comes from the asset-currency quote price.
   assert.equal(merged[0].currentPrice, 56);
@@ -104,8 +113,54 @@ test("mergeLivePositions replaces price, value and P/L for matched positions", (
   assert.equal(merged[0].currentValue, 560);
   // Unrealised P/L is recomputed from the new reporting-currency value.
   assert.equal(merged[0].unrealisedGainLoss, 560 - positions[0].costBasis);
+  assert.equal(merged[0].valuationSource, "LIVE");
+  assert.equal(merged[0].valuationAsOf, "2026-06-12T08:05:00.000Z");
+  assert.equal(merged[0].isStale, false);
   // Unrelated fields are preserved.
   assert.equal(merged[0].quantity, 10);
+});
+
+test("mergeLivePositions preserves stale state when FX may still be stale", () => {
+  const positions = [
+    buildPosition({
+      currency: "USD",
+      valuationSource: "LAST_QUOTE",
+      isStale: true,
+    }),
+  ];
+  const quotes = [buildQuote({ currency: "USD", valueInReporting: 520 })];
+
+  const merged = mergeLivePositions(positions, quotes, {
+    asOf: "2026-06-12T08:05:00.000Z",
+    reportingCurrency: "EUR",
+  });
+
+  assert.equal(merged[0].currentValue, 520);
+  assert.equal(merged[0].valuationSource, "LAST_QUOTE");
+  assert.equal(merged[0].isStale, true);
+});
+
+test("mergeLivePositions clears cross-currency stale state when FX is fresh", () => {
+  const positions = [
+    buildPosition({
+      currency: "USD",
+      valuationSource: "LAST_QUOTE",
+      valuationAsOf: "2026-06-12T08:00:00.000Z",
+      isStale: true,
+    }),
+  ];
+  const quotes = [buildQuote({ currency: "USD", valueInReporting: 520 })];
+
+  const merged = mergeLivePositions(positions, quotes, {
+    asOf: "2026-06-12T08:05:00.000Z",
+    reportingCurrency: "EUR",
+    hasFreshFx: true,
+  });
+
+  assert.equal(merged[0].currentValue, 520);
+  assert.equal(merged[0].valuationSource, "LIVE");
+  assert.equal(merged[0].valuationAsOf, "2026-06-12T08:05:00.000Z");
+  assert.equal(merged[0].isStale, false);
 });
 
 test("mergeLivePositions leaves unmatched positions untouched", () => {
@@ -201,13 +256,72 @@ test("computeLiveChangePercent returns null when the baseline is missing or zero
 });
 
 test("mergeDashboardAssetsWithLiveQuotes updates currentValue and lastPrice for matched assets with a quantity", () => {
-  const assets = [buildDashboardAsset()];
+  const assets = [
+    buildDashboardAsset({
+      valuationSource: "LAST_QUOTE",
+      valuationAsOf: "2026-06-12T08:00:00.000Z",
+      isStale: true,
+    }),
+  ];
   const quotes = [buildQuote({ price: 56, value: 560 })];
 
-  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes);
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes, {
+    asOf: "2026-06-12T08:05:00.000Z",
+    reportingCurrency: "EUR",
+  });
 
   assert.equal(merged[0].currentValue, 560);
   assert.equal(merged[0].lastPrice, 56);
+  assert.equal(merged[0].valuationSource, "LIVE");
+  assert.equal(merged[0].valuationAsOf, "2026-06-12T08:05:00.000Z");
+  assert.equal(merged[0].isStale, false);
+});
+
+test("mergeDashboardAssetsWithLiveQuotes preserves stale state when FX may still be stale", () => {
+  const assets = [
+    buildDashboardAsset({
+      currency: "USD",
+      valuationSource: "LAST_QUOTE",
+      isStale: true,
+    }),
+  ];
+  const quotes = [
+    buildQuote({ currency: "USD", value: 560, valueInReporting: 520 }),
+  ];
+
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes, {
+    asOf: "2026-06-12T08:05:00.000Z",
+    reportingCurrency: "EUR",
+  });
+
+  assert.equal(merged[0].currentValue, 520);
+  assert.equal(merged[0].valuationSource, "LAST_QUOTE");
+  assert.equal(merged[0].isStale, true);
+});
+
+test("mergeDashboardAssetsWithLiveQuotes clears cross-currency stale state when FX is fresh", () => {
+  const assets = [
+    buildDashboardAsset({
+      currency: "USD",
+      valuationSource: "LAST_QUOTE",
+      valuationAsOf: "2026-06-12T08:00:00.000Z",
+      isStale: true,
+    }),
+  ];
+  const quotes = [
+    buildQuote({ currency: "USD", value: 560, valueInReporting: 520 }),
+  ];
+
+  const merged = mergeDashboardAssetsWithLiveQuotes(assets, quotes, {
+    asOf: "2026-06-12T08:05:00.000Z",
+    reportingCurrency: "EUR",
+    hasFreshFx: true,
+  });
+
+  assert.equal(merged[0].currentValue, 520);
+  assert.equal(merged[0].valuationSource, "LIVE");
+  assert.equal(merged[0].valuationAsOf, "2026-06-12T08:05:00.000Z");
+  assert.equal(merged[0].isStale, false);
 });
 
 test("mergeDashboardAssetsWithLiveQuotes does not update lastPrice for assets without a quantity", () => {

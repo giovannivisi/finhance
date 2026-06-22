@@ -350,7 +350,9 @@ The hosted rollout depends on the Phase 1 auth foundation:
 
 - web-owned Auth.js sessions
 - Google + GitHub providers
-- single bootstrap email allowlist at first access
+- bootstrap-only signup by default, with `AUTH_SIGNUP_MODE=open` available for
+  verified Google/GitHub OAuth signup
+- passkeys registered from signed-in user settings
 - short-lived ES256 API JWTs minted by the web app
 
 Before the first hosted deploy, and after any future Prisma migration changes,

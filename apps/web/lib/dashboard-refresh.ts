@@ -6,6 +6,7 @@ export type DashboardRefreshMode = "auto" | "manual";
 export type DashboardRefreshResult =
   | {
       ok: true;
+      refreshedAt: string | null;
     }
   | {
       ok: false;
@@ -33,7 +34,22 @@ export async function requestDashboardRefresh(
     );
 
     if (response.ok) {
-      return { ok: true };
+      let refreshedAt: string | null = null;
+      try {
+        const payload = (await response.json()) as unknown;
+        if (
+          payload &&
+          typeof payload === "object" &&
+          "refreshedAt" in payload &&
+          typeof payload.refreshedAt === "string"
+        ) {
+          refreshedAt = payload.refreshedAt;
+        }
+      } catch {
+        // Older/local endpoints may return an empty success body.
+      }
+
+      return { ok: true, refreshedAt };
     }
 
     return {

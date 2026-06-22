@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isRedundantTabNavigation, SECONDARY_NAV_ITEMS } from "./navigation.ts";
+import {
+  isPublicAuthPath,
+  isRedundantTabNavigation,
+  SECONDARY_NAV_ITEMS,
+} from "./navigation.ts";
 
 test("isRedundantTabNavigation blocks navigation to the current page", () => {
   assert.equal(
@@ -49,4 +53,11 @@ test("secondary navigation exposes monthly close by label", () => {
     SECONDARY_NAV_ITEMS.find((item) => item.href === "/review")?.label,
     "Monthly close",
   );
+});
+
+test("isPublicAuthPath recognises the unauthenticated hosted pages", () => {
+  assert.equal(isPublicAuthPath("/"), true);
+  assert.equal(isPublicAuthPath("/login/"), true);
+  assert.equal(isPublicAuthPath("/signup"), true);
+  assert.equal(isPublicAuthPath("/dashboard"), false);
 });

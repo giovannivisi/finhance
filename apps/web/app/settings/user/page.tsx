@@ -38,6 +38,7 @@ export default async function UserSettingsPage() {
         <UserSettingsPageClient
           initialSettings={settings}
           canSignOutMobileDevices={isHostedAuthMode()}
+          canManagePasskeys={isHostedAuthMode()}
         />
       )}
     </Container>

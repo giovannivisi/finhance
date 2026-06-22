@@ -26,6 +26,19 @@ export interface UpdateUserSettingsRequest {
   reportingCurrency?: string;
 }
 
+export interface UserPasskeyResponse {
+  credentialId: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  credentialDeviceType: string;
+  credentialBackedUp: boolean;
+  transports: string | null;
+}
+
+export interface DeleteUserPasskeyRequest {
+  credentialId?: string;
+}
+
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   showTransactionTimes: true,
   startPage: "DASHBOARD",

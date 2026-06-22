@@ -5,6 +5,10 @@ import {
   normalizeEmailAddress,
   resolveHostedSignInDecision,
 } from "./auth-policy.ts";
+import {
+  AUTH_SIGNUP_MODE_BOOTSTRAP,
+  AUTH_SIGNUP_MODE_OPEN,
+} from "./auth-config.ts";
 
 test("normalizeEmailAddress trims and lowercases emails", () => {
   assert.equal(
@@ -55,6 +59,37 @@ test("resolveHostedSignInDecision rejects inactive existing users", () => {
   );
 });
 
+test("resolveHostedSignInDecision allows new verified OAuth users in open signup mode", () => {
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "google",
+      profile: {
+        email: "new@example.com",
+        email_verified: true,
+      },
+      userEmail: null,
+      existingUser: null,
+      bootstrapEmail: null,
+      signupMode: AUTH_SIGNUP_MODE_OPEN,
+    }),
+    true,
+  );
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "github",
+      profile: {
+        email: "new@example.com",
+        email_verified: true,
+      },
+      userEmail: null,
+      existingUser: null,
+      bootstrapEmail: null,
+      signupMode: AUTH_SIGNUP_MODE_OPEN,
+    }),
+    true,
+  );
+});
+
 test("resolveHostedSignInDecision allows the bootstrap email for first sign-in", () => {
   assert.equal(
     resolveHostedSignInDecision({
@@ -66,6 +101,7 @@ test("resolveHostedSignInDecision allows the bootstrap email for first sign-in",
       userEmail: null,
       existingUser: null,
       bootstrapEmail: "owner@example.com",
+      signupMode: AUTH_SIGNUP_MODE_BOOTSTRAP,
     }),
     true,
   );
@@ -82,6 +118,7 @@ test("resolveHostedSignInDecision rejects unverified or unexpected emails", () =
       userEmail: null,
       existingUser: null,
       bootstrapEmail: "owner@example.com",
+      signupMode: AUTH_SIGNUP_MODE_OPEN,
     }),
     false,
   );
@@ -95,6 +132,43 @@ test("resolveHostedSignInDecision rejects unverified or unexpected emails", () =
       userEmail: null,
       existingUser: null,
       bootstrapEmail: "owner@example.com",
+      signupMode: AUTH_SIGNUP_MODE_BOOTSTRAP,
+    }),
+    false,
+  );
+});
+
+test("resolveHostedSignInDecision only allows passkey sign-in for existing active users", () => {
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "passkey",
+      profile: undefined,
+      userEmail: "member@example.com",
+      existingUser: { isActive: true },
+      bootstrapEmail: null,
+      signupMode: AUTH_SIGNUP_MODE_OPEN,
+    }),
+    true,
+  );
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "passkey",
+      profile: undefined,
+      userEmail: "member@example.com",
+      existingUser: { isActive: false },
+      bootstrapEmail: null,
+      signupMode: AUTH_SIGNUP_MODE_OPEN,
+    }),
+    false,
+  );
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "passkey",
+      profile: { email: "new@example.com" },
+      userEmail: null,
+      existingUser: null,
+      bootstrapEmail: null,
+      signupMode: AUTH_SIGNUP_MODE_OPEN,
     }),
     false,
   );

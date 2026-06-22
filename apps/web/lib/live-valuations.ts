@@ -4,6 +4,27 @@ import type {
   LiveAssetValuationResponse,
 } from "@finhance/shared";
 
+interface LiveMergeOptions {
+  asOf?: string | null;
+  reportingCurrency?: string | null;
+  hasFreshFx?: boolean;
+}
+
+function hasFreshReportingCurrencyQuote(
+  assetCurrency: string,
+  options: LiveMergeOptions,
+): boolean {
+  if (!options.reportingCurrency) {
+    return true;
+  }
+
+  if (assetCurrency.toUpperCase() === options.reportingCurrency.toUpperCase()) {
+    return true;
+  }
+
+  return options.hasFreshFx === true;
+}
+
 /**
  * Indexes live valuation quotes by asset id for quick lookup during merges.
  */
@@ -27,6 +48,7 @@ export function indexLiveQuotesByAssetId(
 export function mergeLivePositions(
   positions: BrokeragePositionResponse[],
   quotes: LiveAssetValuationResponse[],
+  options: LiveMergeOptions = {},
 ): BrokeragePositionResponse[] {
   if (quotes.length === 0) {
     return positions;
@@ -41,12 +63,21 @@ export function mergeLivePositions(
     }
 
     const currentValue = quote.valueInReporting;
+    const clearsStale = hasFreshReportingCurrencyQuote(
+      position.currency,
+      options,
+    );
 
     return {
       ...position,
       currentPrice: quote.price,
       currentValue,
       unrealisedGainLoss: currentValue - position.costBasis,
+      valuationSource: clearsStale ? "LIVE" : position.valuationSource,
+      valuationAsOf: clearsStale
+        ? (options.asOf ?? position.valuationAsOf)
+        : position.valuationAsOf,
+      isStale: clearsStale ? false : position.isStale,
     };
   });
 }
@@ -66,6 +97,7 @@ export function mergeLivePositions(
 export function mergeDashboardAssetsWithLiveQuotes(
   assets: readonly DashboardAssetResponse[],
   quotes: readonly LiveAssetValuationResponse[],
+  options: LiveMergeOptions = {},
 ): DashboardAssetResponse[] {
   if (quotes.length === 0) {
     return [...assets];
@@ -84,10 +116,17 @@ export function mergeDashboardAssetsWithLiveQuotes(
       return asset;
     }
 
+    const clearsStale = hasFreshReportingCurrencyQuote(asset.currency, options);
+
     return {
       ...asset,
       currentValue: quote.valueInReporting,
       lastPrice: asset.quantity !== null ? quote.price : asset.lastPrice,
+      valuationSource: clearsStale ? "LIVE" : asset.valuationSource,
+      valuationAsOf: clearsStale
+        ? (options.asOf ?? asset.valuationAsOf)
+        : asset.valuationAsOf,
+      isStale: clearsStale ? false : asset.isStale,
     };
   });
 }

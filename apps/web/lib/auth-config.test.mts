@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AUTH_SIGNUP_MODE_BOOTSTRAP,
+  AUTH_SIGNUP_MODE_OPEN,
   LOCAL_DEV_AUTH_SECRET,
+  resolveAuthSignupMode,
   resolveAuthSecret,
   resolveBootstrapEmail,
 } from "./auth-config.ts";
@@ -54,5 +57,50 @@ test("resolveBootstrapEmail normalizes the configured bootstrap email", () => {
       }),
     ),
     "owner@example.com",
+  );
+});
+
+test("resolveBootstrapEmail only requires the bootstrap email in hosted bootstrap mode", () => {
+  assert.equal(
+    resolveBootstrapEmail(
+      createEnv({
+        AUTH_MODE: "hosted",
+        AUTH_SIGNUP_MODE: "open",
+      }),
+    ),
+    null,
+  );
+  assert.equal(
+    resolveBootstrapEmail(
+      createEnv({
+        AUTH_MODE: "local",
+      }),
+    ),
+    null,
+  );
+  assert.throws(
+    () =>
+      resolveBootstrapEmail(
+        createEnv({
+          AUTH_MODE: "hosted",
+          AUTH_SIGNUP_MODE: "bootstrap",
+        }),
+      ),
+    /AUTH_BOOTSTRAP_EMAIL/,
+  );
+});
+
+test("resolveAuthSignupMode defaults to bootstrap and accepts open mode", () => {
+  assert.equal(
+    resolveAuthSignupMode(createEnv({})),
+    AUTH_SIGNUP_MODE_BOOTSTRAP,
+  );
+  assert.equal(
+    resolveAuthSignupMode(createEnv({ AUTH_SIGNUP_MODE: " open " })),
+    AUTH_SIGNUP_MODE_OPEN,
+  );
+  assert.throws(
+    () => resolveAuthSignupMode(createEnv({ AUTH_SIGNUP_MODE: "public" })),
+    /AUTH_SIGNUP_MODE/,
   );
 });

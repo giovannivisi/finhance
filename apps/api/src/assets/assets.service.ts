@@ -23,9 +23,11 @@ import { toAssetResponse } from '@assets/assets.mapper';
 import {
   DEFAULT_REPORTING_CURRENCY,
   MARKET_KINDS,
+  MAX_QUOTE_AGE_MS,
   REFRESH_COOLDOWN_MS,
   VALUATION_STALE_MS,
 } from '@assets/assets.types';
+import { getMarketOpenState } from '@prices/market-hours';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
 import { ensureOwnerUserRecord } from '@/security/owner-user';
 import type {
@@ -68,6 +70,7 @@ interface ValuationModel {
 type FxResolutionMap = Map<string, StoredFxRateSnapshot>;
 
 const ZERO = new Prisma.Decimal(0);
+const MARKET_FETCH_BATCH_SIZE = 4;
 @Injectable()
 export class AssetsService {
   constructor(
@@ -208,48 +211,48 @@ export class AssetsService {
       }),
     );
 
-    const quotes = await Promise.all(
-      candidates.map(async (asset) => {
-        const price = await this.pricesService.getMarketPrice(
-          {
-            kind: asset.kind!,
-            ticker: asset.ticker!,
-            exchange: asset.exchange,
-            quoteCurrency: asset.currency,
-          },
-          { maxAgeMs: 15000 },
-        );
+    const quotes = (
+      await this.mapInBatches(
+        candidates,
+        MARKET_FETCH_BATCH_SIZE,
+        async (asset): Promise<LiveAssetValuationResponse | null> => {
+          const price = await this.pricesService.getMarketPrice(
+            {
+              kind: asset.kind!,
+              ticker: asset.ticker!,
+              exchange: asset.exchange,
+              quoteCurrency: asset.currency,
+            },
+            { maxAgeMs: 15000 },
+          );
 
-        if (price === null) {
-          return null;
-        }
+          if (price === null) {
+            return null;
+          }
 
-        const quantity = this.toDecimal(asset.quantity);
-        const value = quantity.mul(price);
-        const fxRate =
-          asset.currency === reportingCurrency
-            ? new Prisma.Decimal(1)
-            : (fxSnapshots.get(asset.currency)?.rate ?? null);
-        const valueInReporting = fxRate ? value.mul(fxRate) : null;
+          const quantity = this.toDecimal(asset.quantity);
+          const value = quantity.mul(price);
+          const fxRate =
+            asset.currency === reportingCurrency
+              ? new Prisma.Decimal(1)
+              : (fxSnapshots.get(asset.currency)?.rate ?? null);
+          const valueInReporting = fxRate ? value.mul(fxRate) : null;
 
-        const quote: LiveAssetValuationResponse = {
-          assetId: asset.id,
-          price: price.toNumber(),
-          currency: asset.currency,
-          value: value.toNumber(),
-          valueInReporting: valueInReporting?.toNumber() ?? null,
-        };
-
-        return quote;
-      }),
-    );
+          return {
+            assetId: asset.id,
+            price: price.toNumber(),
+            currency: asset.currency,
+            value: value.toNumber(),
+            valueInReporting: valueInReporting?.toNumber() ?? null,
+          };
+        },
+      )
+    ).filter((quote): quote is LiveAssetValuationResponse => quote !== null);
 
     return {
       asOf: now.toISOString(),
       reportingCurrency,
-      quotes: quotes.filter(
-        (quote): quote is LiveAssetValuationResponse => quote !== null,
-      ),
+      quotes,
     };
   }
 
@@ -320,8 +323,10 @@ export class AssetsService {
         const quoteResults = new Map<string, Prisma.Decimal | null>();
         const fxResults = new Map<string, Prisma.Decimal | null>();
 
-        await Promise.all(
-          Array.from(quoteKeys.keys()).map(async (symbol) => {
+        await this.mapInBatches(
+          [...quoteKeys.keys()],
+          MARKET_FETCH_BATCH_SIZE,
+          async (symbol) => {
             const sample = quoteKeys.get(symbol);
             if (!sample?.kind || !sample.ticker) {
               quoteResults.set(symbol, null);
@@ -340,11 +345,13 @@ export class AssetsService {
                 { forceRefresh: true },
               ),
             );
-          }),
+          },
         );
 
-        await Promise.all(
-          Array.from(fxPairs).map(async (pairKey) => {
+        await this.mapInBatches(
+          [...fxPairs],
+          MARKET_FETCH_BATCH_SIZE,
+          async (pairKey) => {
             const [fromCurrency, toCurrency] = pairKey.split(':');
             fxResults.set(
               pairKey,
@@ -358,7 +365,7 @@ export class AssetsService {
                 },
               ),
             );
-          }),
+          },
         );
 
         let updatedCount = 0;
@@ -964,18 +971,22 @@ export class AssetsService {
         )
       : null;
     const quoteTimestamp = this.minDate([asset.lastPriceAt, fxTimestamp]);
-    const quoteStale =
-      !!quoteTimestamp &&
-      now.getTime() - quoteTimestamp.getTime() > VALUATION_STALE_MS;
+    const quoteAgeMs = quoteTimestamp
+      ? now.getTime() - quoteTimestamp.getTime()
+      : null;
+    // A quote only counts as "live" right after a fetch with usable FX. Outside
+    // that window we still show it, but as the latest stored quote.
+    const isLiveQuote =
+      quoteAgeMs !== null && quoteAgeMs <= VALUATION_STALE_MS && !fxStale;
+    const quoteStale = this.isQuoteStale(asset, quoteAgeMs, now);
 
     if (currentValue) {
-      const useLatestStoredQuote = quoteStale || fxStale;
       return {
         currentValue,
         referenceValue,
-        valuationSource: useLatestStoredQuote ? 'LAST_QUOTE' : 'LIVE',
+        valuationSource: isLiveQuote ? 'LIVE' : 'LAST_QUOTE',
         valuationAsOf: quoteTimestamp,
-        isStale: useLatestStoredQuote,
+        isStale: quoteStale || fxStale,
       };
     }
 
@@ -996,6 +1007,48 @@ export class AssetsService {
       valuationAsOf: priceTimestamp ?? fxTimestamp ?? null,
       isStale: true,
     };
+  }
+
+  private async mapInBatches<T, R>(
+    items: readonly T[],
+    batchSize: number,
+    mapper: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results: R[] = [];
+    const effectiveBatchSize = Math.max(1, batchSize);
+
+    for (let start = 0; start < items.length; start += effectiveBatchSize) {
+      results.push(
+        ...(await Promise.all(
+          items.slice(start, start + effectiveBatchSize).map(mapper),
+        )),
+      );
+    }
+
+    return results;
+  }
+
+  /**
+   * Decides whether a stored market quote is genuinely behind the market.
+   *
+   * Age alone is not enough: outside trading hours the last close is the most
+   * recent price the venue has produced, so an "old" quote is not stale. A
+   * quote is therefore only stale when it is older than the live window *and*
+   * either its venue is currently trading (so a newer price should exist) or it
+   * has aged past {@link MAX_QUOTE_AGE_MS} (a sign refreshes have been failing).
+   */
+  private isQuoteStale(
+    asset: Pick<Asset, 'exchange' | 'kind'>,
+    quoteAgeMs: number | null,
+    now: Date,
+  ): boolean {
+    if (quoteAgeMs === null || quoteAgeMs <= VALUATION_STALE_MS) {
+      return false;
+    }
+    if (quoteAgeMs > MAX_QUOTE_AGE_MS) {
+      return true;
+    }
+    return getMarketOpenState(asset.exchange, asset.kind, now) !== 'CLOSED';
   }
 
   private buildSummary(assets: DashboardAssetResponse[]): DashboardSummary {
@@ -1052,8 +1105,9 @@ export class AssetsService {
   ): AggregatePricingStatus {
     const hasStaleQuotes = assets.some(
       (asset) =>
-        asset.valuationSource === 'LAST_QUOTE' ||
-        asset.valuationSource === 'AVG_COST',
+        asset.isStale &&
+        (asset.valuationSource === 'LAST_QUOTE' ||
+          asset.valuationSource === 'AVG_COST'),
     );
     const hasStaleFx = [...fxRates.values()].some(
       (entry) => entry.status === 'STALE',

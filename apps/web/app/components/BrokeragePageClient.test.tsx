@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BrokerageWorkspaceResponse } from "@finhance/shared";
 import BrokeragePageClient from "@components/BrokeragePageClient";
 import { api, apiMutation } from "@lib/api";
 import { requestDashboardRefresh } from "@lib/dashboard-refresh";
@@ -64,7 +65,7 @@ vi.mock("@components/Modal", () => ({
     ) : null,
 }));
 
-function buildWorkspace() {
+function buildWorkspace(): BrokerageWorkspaceResponse {
   return {
     reportingCurrency: "EUR",
     baseCurrency: "EUR",
@@ -292,7 +293,7 @@ function buildWorkspace() {
   };
 }
 
-function buildWorkspaceWithoutPositions() {
+function buildWorkspaceWithoutPositions(): BrokerageWorkspaceResponse {
   const workspace = buildWorkspace();
   return {
     ...workspace,
@@ -377,7 +378,10 @@ describe("BrokeragePageClient", () => {
     prefetchMock.mockReset();
     vi.mocked(apiMutation).mockReset();
     vi.mocked(requestDashboardRefresh).mockReset();
-    vi.mocked(requestDashboardRefresh).mockResolvedValue({ ok: true });
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({
+      ok: true,
+      refreshedAt: "2026-05-19T10:01:00.000Z",
+    });
     vi.mocked(api).mockReset();
     vi.mocked(api).mockImplementation((path: string) => {
       if (path.includes("/performance")) {
@@ -664,5 +668,84 @@ describe("BrokeragePageClient", () => {
       expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
     });
     expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides stale brokerage status when live quotes cover stale positions", async () => {
+    const workspace = buildWorkspace();
+    workspace.pricingStatus = {
+      state: "STALE",
+      refreshSuggested: true,
+      hasStaleQuotes: true,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    };
+    workspace.positions = workspace.positions.map((position) => ({
+      ...position,
+      valuationSource: "LAST_QUOTE" as const,
+      isStale: true,
+    }));
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path.includes("/performance")) {
+        return Promise.resolve(buildPerformanceResponse());
+      }
+      if (path.includes("/assets/live-valuations")) {
+        return Promise.resolve({
+          ...buildLiveValuationsResponse(),
+          quotes: [
+            {
+              assetId: "asset-stock",
+              price: 61,
+              currency: "EUR",
+              value: 732,
+              valueInReporting: 732,
+            },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected api call: ${path}`));
+    });
+
+    render(
+      <BrokeragePageClient workspace={workspace} categories={categories} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Latest stored prices/)).toBeNull();
+    });
+  });
+
+  it("does not immediately repeat brokerage auto-refresh for the returned snapshot", async () => {
+    const workspace = buildWorkspace();
+    workspace.pricingStatus = {
+      state: "STALE",
+      refreshSuggested: true,
+      hasStaleQuotes: true,
+      hasStaleFx: false,
+      hasMissingFx: false,
+    };
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({
+      ok: true,
+      refreshedAt: "2026-05-19T10:01:00.000Z",
+    });
+
+    const { rerender } = render(
+      <BrokeragePageClient workspace={workspace} categories={categories} />,
+    );
+
+    await waitFor(() => {
+      expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <BrokeragePageClient
+        workspace={{
+          ...workspace,
+          lastRefreshAt: "2026-05-19T10:01:00.000Z",
+        }}
+        categories={categories}
+      />,
+    );
+
+    expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
   });
 });

@@ -94,7 +94,7 @@ export default function SettingsScreen() {
 
       setConfirmMobileSignOut(false);
       await clearServer();
-      router.replace("/connect");
+      router.replace("/login");
     } catch (signOutError) {
       setConfirmMobileSignOut(false);
       setError(describeError(signOutError));
@@ -253,7 +253,7 @@ export default function SettingsScreen() {
             onPress={async () => {
               setConfirmDisconnect(false);
               await clearServer();
-              router.replace("/connect");
+              router.replace("/login");
             }}
           />
           <Button

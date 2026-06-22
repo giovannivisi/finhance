@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
+import { signOut } from "next-auth/react";
 import OverflowMenu from "@components/OverflowMenu";
 import {
   buildShellAccountMenuSections,
@@ -28,10 +29,12 @@ function AccountMenuActionItem({
   action,
   closeMenu,
   onToggleTheme,
+  onSignOut,
 }: {
   action: ShellAccountMenuAction;
   closeMenu: (options?: { restoreFocus?: boolean }) => void;
   onToggleTheme: () => void;
+  onSignOut: () => void;
 }) {
   const Icon = action.icon;
 
@@ -59,7 +62,11 @@ function AccountMenuActionItem({
         className="overflow-menu-item shell-account-menu-item"
         aria-label={action.ariaLabel}
         onClick={() => {
-          onToggleTheme();
+          if (action.action === "toggle-theme") {
+            onToggleTheme();
+          } else {
+            onSignOut();
+          }
           closeMenu();
         }}
       >
@@ -89,12 +96,17 @@ function AccountMenuActionItem({
 
 export default function ShellAccountMenu({
   identity,
+  canSignOut = false,
 }: {
   identity: ShellAccountIdentity;
+  canSignOut?: boolean;
 }) {
   const { theme, toggleTheme } = useAppPreferences();
-  const sections = buildShellAccountMenuSections({ theme });
+  const sections = buildShellAccountMenuSections({ theme, canSignOut });
   const initials = deriveInitials(identity.title);
+  const handleSignOut = () => {
+    void signOut({ redirectTo: "/" });
+  };
 
   return (
     <OverflowMenu
@@ -149,6 +161,7 @@ export default function ShellAccountMenu({
                     action={action}
                     closeMenu={closeMenu}
                     onToggleTheme={toggleTheme}
+                    onSignOut={handleSignOut}
                   />
                 ))}
               </div>

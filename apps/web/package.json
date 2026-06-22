@@ -24,6 +24,8 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@finhance/db": "workspace:^",
     "@finhance/shared": "workspace:^",
+    "@simplewebauthn/browser": "^9.0.1",
+    "@simplewebauthn/server": "^9.0.3",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "jose": "^6.2.3",

@@ -119,7 +119,8 @@ function ThemedApp() {
             />
           </Stack.Protected>
           <Stack.Protected guard={!connected}>
-            <Stack.Screen name="connect" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="login" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="signup" options={{ gestureEnabled: false }} />
           </Stack.Protected>
         </Stack>
       </View>
