@@ -5,13 +5,16 @@ import {
   verifyAuthenticationResponse,
   type VerifyAuthenticationResponseOpts,
 } from "@simplewebauthn/server";
-import { isoBase64URL } from "@simplewebauthn/server/helpers";
 
 import { mintMobileToken } from "./mobile-auth";
 import {
   mintMobilePasskeyChallengeToken,
   verifyMobilePasskeyChallengeToken,
 } from "./mobile-auth.core";
+import {
+  decodeStoredPasskeyBytes,
+  toStoredPasskeyCredentialId,
+} from "./passkey-encoding";
 import { prisma } from "./prisma";
 
 // Derive the WebAuthn shapes from the verify options so we do not depend on the
@@ -98,16 +101,17 @@ export async function verifyMobilePasskeyAuthentication(
     return null;
   }
 
+  const storedCredentialId = toStoredPasskeyCredentialId(credentialId);
   const stored = await prisma.authAuthenticator.findUnique({
-    where: { credentialID: credentialId },
+    where: { credentialID: storedCredentialId },
   });
   if (!stored) {
     return null;
   }
 
   const authenticator: AuthenticatorDevice = {
-    credentialID: isoBase64URL.toBuffer(stored.credentialID),
-    credentialPublicKey: isoBase64URL.toBuffer(stored.credentialPublicKey),
+    credentialID: decodeStoredPasskeyBytes(stored.credentialID),
+    credentialPublicKey: decodeStoredPasskeyBytes(stored.credentialPublicKey),
     counter: stored.counter,
     transports: stored.transports
       ? (stored.transports
