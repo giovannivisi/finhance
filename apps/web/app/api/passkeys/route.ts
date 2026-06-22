@@ -6,6 +6,10 @@ import { resolveCrossOriginRejection } from "@lib/api-proxy";
 import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
 import { prisma } from "@lib/prisma";
+import {
+  RECENT_AUTH_REQUIRED_MESSAGE,
+  hasRecentSessionAuthentication,
+} from "@lib/recent-auth";
 
 export const runtime = "nodejs";
 
@@ -79,6 +83,13 @@ export async function DELETE(request: Request) {
     return Response.json(
       { message: "Authentication is required." },
       { status: 401, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  if (!(await hasRecentSessionAuthentication(userId))) {
+    return Response.json(
+      { message: RECENT_AUTH_REQUIRED_MESSAGE },
+      { status: 403, headers: NO_STORE_HEADERS },
     );
   }
 

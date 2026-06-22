@@ -58,11 +58,12 @@ model AuthProviderAccount {
 }
 
 model AuthSession {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique @map("session_token")
-  userId       String   @map("user_id")
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String    @id @default(cuid())
+  sessionToken    String    @unique @map("session_token")
+  userId          String    @map("user_id")
+  expires         DateTime
+  authenticatedAt DateTime? @map("authenticated_at")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("auth_sessions")

@@ -10,7 +10,7 @@ import { Prisma, PrismaClient } from "@finhance/db";
 
 const STORED_AUTH_TOKEN_NAMESPACE = "finhance:auth-token";
 
-function hashStoredAuthToken(
+export function hashStoredAuthToken(
   token: string,
   purpose: "session" | "verification",
 ): string {
@@ -234,6 +234,7 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
             sessionToken: sessionTokenHash,
             userId: session.userId,
             expires: session.expires,
+            authenticatedAt: new Date(),
           },
         })),
         sessionToken: session.sessionToken,

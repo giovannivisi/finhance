@@ -58,7 +58,7 @@ export async function createMobilePasskeyAuthentication(
 ): Promise<MobilePasskeyChallenge> {
   const options = await generateAuthenticationOptions({
     rpID: resolveRpId(env),
-    userVerification: "preferred",
+    userVerification: "required",
     // No allowCredentials -> the authenticator offers its resident keys, the
     // same usernameless flow the web "Log in with passkey" button uses.
   });
@@ -125,7 +125,7 @@ export async function verifyMobilePasskeyAuthentication(
       expectedOrigin: resolveExpectedOrigin(env),
       expectedRPID: resolveRpId(env),
       authenticator,
-      requireUserVerification: false,
+      requireUserVerification: true,
     });
   } catch {
     return null;

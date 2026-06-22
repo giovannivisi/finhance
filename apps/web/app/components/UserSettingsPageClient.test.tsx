@@ -212,4 +212,32 @@ describe("UserSettingsPageClient", () => {
     });
     expect(screen.getByText("Passkey removed.")).toBeInTheDocument();
   });
+
+  it("shows a re-authentication error when passkey registration is refused", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    });
+    signInWithPasskeyMock.mockResolvedValue(undefined);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+        }}
+        canManagePasskeys
+      />,
+    );
+
+    await screen.findByText("No passkeys yet.");
+    await user.click(screen.getByRole("button", { name: /add passkey/i }));
+
+    expect(
+      await screen.findByText("Sign in again before changing passkeys."),
+    ).toBeInTheDocument();
+  });
 });

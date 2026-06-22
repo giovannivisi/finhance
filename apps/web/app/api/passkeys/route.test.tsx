@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET } from "@/api/passkeys/route";
 
-const { authMock, hostedModeMock, prismaMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  hostedModeMock: vi.fn(),
-  prismaMock: {
-    authAuthenticator: {
-      deleteMany: vi.fn(),
-      findMany: vi.fn(),
+const { authMock, hostedModeMock, prismaMock, recentAuthMock } = vi.hoisted(
+  () => ({
+    authMock: vi.fn(),
+    hostedModeMock: vi.fn(),
+    recentAuthMock: vi.fn(),
+    prismaMock: {
+      authAuthenticator: {
+        deleteMany: vi.fn(),
+        findMany: vi.fn(),
+      },
     },
-  },
-}));
+  }),
+);
 
 vi.mock("@lib/auth", () => ({
   auth: authMock,
@@ -24,12 +27,19 @@ vi.mock("@lib/prisma", () => ({
   prisma: prismaMock,
 }));
 
+vi.mock("@lib/recent-auth", () => ({
+  RECENT_AUTH_REQUIRED_MESSAGE: "Sign in again before changing passkeys.",
+  hasRecentSessionAuthentication: recentAuthMock,
+}));
+
 describe("/api/passkeys", () => {
   beforeEach(() => {
     authMock.mockReset();
     authMock.mockResolvedValue(null);
     hostedModeMock.mockReset();
     hostedModeMock.mockReturnValue(true);
+    recentAuthMock.mockReset();
+    recentAuthMock.mockResolvedValue(true);
     prismaMock.authAuthenticator.deleteMany.mockReset();
     prismaMock.authAuthenticator.findMany.mockReset();
   });
@@ -108,5 +118,27 @@ describe("/api/passkeys", () => {
         credentialID: "credential-1",
       },
     });
+  });
+
+  it("rejects passkey deletion without recent authentication", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    recentAuthMock.mockResolvedValue(false);
+
+    const response = await DELETE(
+      new Request("https://finhance.test/api/passkeys", {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://finhance.test",
+        },
+        body: JSON.stringify({ credentialId: "credential-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      message: "Sign in again before changing passkeys.",
+    });
+    expect(prismaMock.authAuthenticator.deleteMany).not.toHaveBeenCalled();
   });
 });

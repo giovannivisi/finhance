@@ -189,13 +189,18 @@ test("createSession stores a hash while returning the raw session token", async 
     expires: new Date("2030-01-01T00:00:00.000Z"),
   });
 
-  assert.deepEqual(createInput, {
-    data: {
+  const createData = (createInput as { data: Record<string, unknown> }).data;
+  assert.ok(createData.authenticatedAt instanceof Date);
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(createData).filter(([key]) => key !== "authenticatedAt"),
+    ),
+    {
       sessionToken: hashStoredAuthToken("plain-session-token", "session"),
       userId: "user-1",
       expires: new Date("2030-01-01T00:00:00.000Z"),
     },
-  });
+  );
   assert.deepEqual(result, {
     sessionToken: "plain-session-token",
     userId: "user-1",

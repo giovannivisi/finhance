@@ -135,6 +135,10 @@ export default function UserSettingsPageClient({
         redirect: false,
       });
 
+      if (!result) {
+        throw new Error("Sign in again before changing passkeys.");
+      }
+
       if (result?.error) {
         throw new Error("The passkey could not be added.");
       }
