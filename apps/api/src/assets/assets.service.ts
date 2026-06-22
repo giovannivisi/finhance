@@ -70,6 +70,7 @@ interface ValuationModel {
 type FxResolutionMap = Map<string, StoredFxRateSnapshot>;
 
 const ZERO = new Prisma.Decimal(0);
+const MARKET_FETCH_BATCH_SIZE = 4;
 @Injectable()
 export class AssetsService {
   constructor(
@@ -210,38 +211,43 @@ export class AssetsService {
       }),
     );
 
-    const quotes: LiveAssetValuationResponse[] = [];
-    for (const asset of candidates) {
-      const price = await this.pricesService.getMarketPrice(
-        {
-          kind: asset.kind!,
-          ticker: asset.ticker!,
-          exchange: asset.exchange,
-          quoteCurrency: asset.currency,
+    const quotes = (
+      await this.mapInBatches(
+        candidates,
+        MARKET_FETCH_BATCH_SIZE,
+        async (asset): Promise<LiveAssetValuationResponse | null> => {
+          const price = await this.pricesService.getMarketPrice(
+            {
+              kind: asset.kind!,
+              ticker: asset.ticker!,
+              exchange: asset.exchange,
+              quoteCurrency: asset.currency,
+            },
+            { maxAgeMs: 15000 },
+          );
+
+          if (price === null) {
+            return null;
+          }
+
+          const quantity = this.toDecimal(asset.quantity);
+          const value = quantity.mul(price);
+          const fxRate =
+            asset.currency === reportingCurrency
+              ? new Prisma.Decimal(1)
+              : (fxSnapshots.get(asset.currency)?.rate ?? null);
+          const valueInReporting = fxRate ? value.mul(fxRate) : null;
+
+          return {
+            assetId: asset.id,
+            price: price.toNumber(),
+            currency: asset.currency,
+            value: value.toNumber(),
+            valueInReporting: valueInReporting?.toNumber() ?? null,
+          };
         },
-        { maxAgeMs: 15000 },
-      );
-
-      if (price === null) {
-        continue;
-      }
-
-      const quantity = this.toDecimal(asset.quantity);
-      const value = quantity.mul(price);
-      const fxRate =
-        asset.currency === reportingCurrency
-          ? new Prisma.Decimal(1)
-          : (fxSnapshots.get(asset.currency)?.rate ?? null);
-      const valueInReporting = fxRate ? value.mul(fxRate) : null;
-
-      quotes.push({
-        assetId: asset.id,
-        price: price.toNumber(),
-        currency: asset.currency,
-        value: value.toNumber(),
-        valueInReporting: valueInReporting?.toNumber() ?? null,
-      });
-    }
+      )
+    ).filter((quote): quote is LiveAssetValuationResponse => quote !== null);
 
     return {
       asOf: now.toISOString(),
@@ -317,42 +323,50 @@ export class AssetsService {
         const quoteResults = new Map<string, Prisma.Decimal | null>();
         const fxResults = new Map<string, Prisma.Decimal | null>();
 
-        for (const symbol of quoteKeys.keys()) {
-          const sample = quoteKeys.get(symbol);
-          if (!sample?.kind || !sample.ticker) {
-            quoteResults.set(symbol, null);
-            continue;
-          }
+        await this.mapInBatches(
+          [...quoteKeys.keys()],
+          MARKET_FETCH_BATCH_SIZE,
+          async (symbol) => {
+            const sample = quoteKeys.get(symbol);
+            if (!sample?.kind || !sample.ticker) {
+              quoteResults.set(symbol, null);
+              return;
+            }
 
-          quoteResults.set(
-            symbol,
-            await this.pricesService.getMarketPrice(
-              {
-                kind: sample.kind,
-                ticker: sample.ticker,
-                exchange: sample.exchange,
-                quoteCurrency: sample.currency,
-              },
-              { forceRefresh: true },
-            ),
-          );
-        }
+            quoteResults.set(
+              symbol,
+              await this.pricesService.getMarketPrice(
+                {
+                  kind: sample.kind,
+                  ticker: sample.ticker,
+                  exchange: sample.exchange,
+                  quoteCurrency: sample.currency,
+                },
+                { forceRefresh: true },
+              ),
+            );
+          },
+        );
 
-        for (const pairKey of fxPairs) {
-          const [fromCurrency, toCurrency] = pairKey.split(':');
-          fxResults.set(
-            pairKey,
-            await this.pricesService.getFxRateForDate(
-              ownerId,
-              refreshedAt,
-              fromCurrency,
-              toCurrency,
-              {
-                forceRefresh: true,
-              },
-            ),
-          );
-        }
+        await this.mapInBatches(
+          [...fxPairs],
+          MARKET_FETCH_BATCH_SIZE,
+          async (pairKey) => {
+            const [fromCurrency, toCurrency] = pairKey.split(':');
+            fxResults.set(
+              pairKey,
+              await this.pricesService.getFxRateForDate(
+                ownerId,
+                refreshedAt,
+                fromCurrency,
+                toCurrency,
+                {
+                  forceRefresh: true,
+                },
+              ),
+            );
+          },
+        );
 
         let updatedCount = 0;
 
@@ -993,6 +1007,25 @@ export class AssetsService {
       valuationAsOf: priceTimestamp ?? fxTimestamp ?? null,
       isStale: true,
     };
+  }
+
+  private async mapInBatches<T, R>(
+    items: readonly T[],
+    batchSize: number,
+    mapper: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results: R[] = [];
+    const effectiveBatchSize = Math.max(1, batchSize);
+
+    for (let start = 0; start < items.length; start += effectiveBatchSize) {
+      results.push(
+        ...(await Promise.all(
+          items.slice(start, start + effectiveBatchSize).map(mapper),
+        )),
+      );
+    }
+
+    return results;
   }
 
   /**

@@ -94,8 +94,8 @@ The mobile app can sign in with a passkey natively (Face/Touch ID) via
 iOS requires an Associated Domain, so the web app serves an Apple App Site
 Association file at `/.well-known/apple-app-site-association`:
 
-- `APPLE_TEAM_ID` — required to serve the AASA (the route returns 404 until it
-  is set). The published app identifier is `<APPLE_TEAM_ID>.app.finhance.mobile`.
+- `APPLE_TEAM_ID` — optional override; defaults to this project's public Apple
+  Team ID. The published app identifier is `<APPLE_TEAM_ID>.<IOS_BUNDLE_ID>`.
 - `IOS_BUNDLE_ID` — optional override; defaults to `app.finhance.mobile`.
 - `AUTH_WEBAUTHN_RP_ID` — optional; defaults to `finhance-web.vercel.app`. Must
   match the host your web passkeys were registered against and the app's
