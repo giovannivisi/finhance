@@ -72,6 +72,10 @@ The API exposes:
 This route is intentionally public so hosted platforms can perform health
 checks. Domain routes remain protected in hosted mode.
 
+For an optional GitHub Actions keepalive workflow that pings this route on free
+Render instances, see
+[docs/deploy/render-keepalive.md](/Users/giovannivisi/Code/finhance/docs/deploy/render-keepalive.md).
+
 ## Production migration routine
 
 Before the first hosted deploy, and after any future Prisma migration change,
