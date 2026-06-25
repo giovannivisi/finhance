@@ -9,7 +9,7 @@ interface CachedPrice {
   ts: number;
 }
 
-interface QuoteBackoff {
+interface YahooBackoff {
   until: number;
   status: number;
 }
@@ -59,6 +59,7 @@ export interface MarketSeries {
   points: MarketSeriesPoint[];
   previousClose: number | null;
   latestPrice: number | null;
+  isStale?: boolean;
 }
 
 interface CachedSeries {
@@ -82,7 +83,7 @@ const ROME_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
 });
 
 const MIN_MAX_AGE_MS = 5000;
-const RATE_LIMIT_BACKOFF_MS = 1000 * 60 * 5;
+const RATE_LIMIT_BACKOFF_MS = 1000 * 60 * 30;
 const YAHOO_REQUEST_HEADERS = {
   Accept: 'application/json,text/plain,*/*',
   'User-Agent':
@@ -101,9 +102,9 @@ const SERIES_RANGE_PARAMS: Record<
 };
 
 const SERIES_TTL_MS: Record<BrokeragePerformanceRange, number> = {
-  '1D': 1000 * 60,
-  '1W': 1000 * 60 * 5,
-  '1M': 1000 * 60 * 30,
+  '1D': 1000 * 60 * 5,
+  '1W': 1000 * 60 * 15,
+  '1M': 1000 * 60 * 60,
   '1Y': 1000 * 60 * 60 * 6,
   MAX: 1000 * 60 * 60 * 24,
 };
@@ -120,13 +121,13 @@ const SERIES_TIMEOUT_MS: Record<BrokeragePerformanceRange, number> = {
 export class PricesService {
   private readonly logger = new Logger(PricesService.name);
   private readonly cache = new Map<string, CachedPrice>();
-  private readonly quoteBackoff = new Map<string, QuoteBackoff>();
   private readonly inFlight = new Map<string, Promise<Prisma.Decimal | null>>();
   private readonly seriesCache = new Map<string, CachedSeries>();
   private readonly seriesInFlight = new Map<
     string,
     Promise<MarketSeries | null>
   >();
+  private yahooBackoff: YahooBackoff | null = null;
   private readonly cacheTtlMs = 1000 * 60 * 5;
   private readonly requestTimeoutMs = 3000;
 
@@ -475,15 +476,7 @@ export class PricesService {
       return cached.price;
     }
 
-    const backoff = this.quoteBackoff.get(symbol);
-    if (backoff && now < backoff.until) {
-      if (cached) {
-        return cached.price;
-      }
-
-      this.logger.warn(
-        `Skipping Yahoo quote for ${symbol}: prior ${backoff.status} response is cooling down.`,
-      );
+    if (this.isYahooCoolingDown(now)) {
       return null;
     }
 
@@ -517,16 +510,13 @@ export class PricesService {
 
       if (!response.ok) {
         if (response.status === 429) {
-          this.quoteBackoff.set(symbol, {
-            until: now + RATE_LIMIT_BACKOFF_MS,
-            status: response.status,
-          });
+          this.startYahooBackoff(now, response.status);
         }
 
         this.logger.warn(
           `Yahoo quote failed for ${symbol}: ${response.status}`,
         );
-        return this.cache.get(symbol)?.price ?? null;
+        return null;
       }
 
       const body = (await response.json()) as PriceResponseShape;
@@ -537,7 +527,6 @@ export class PricesService {
       }
 
       const decimal = new Prisma.Decimal(price.toString());
-      this.quoteBackoff.delete(symbol);
       this.cache.set(symbol, { price: decimal, ts: now });
       return decimal;
     } catch (error) {
@@ -557,6 +546,10 @@ export class PricesService {
 
     if (cached && now - cached.ts < ttlMs) {
       return cached.series;
+    }
+
+    if (this.isYahooCoolingDown(now)) {
+      return this.getStaleSeries(cacheKey);
     }
 
     const inFlight = this.seriesInFlight.get(cacheKey);
@@ -589,10 +582,14 @@ export class PricesService {
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+          this.startYahooBackoff(now, response.status);
+        }
+
         this.logger.warn(
           `Yahoo series failed for ${symbol} (${range}): ${response.status}`,
         );
-        return null;
+        return this.getStaleSeries(cacheKey);
       }
 
       const body = (await response.json()) as SeriesResponseShape;
@@ -633,8 +630,38 @@ export class PricesService {
         `Series fetch failed for ${symbol} (${range})`,
         error as Error,
       );
-      return null;
+      return this.getStaleSeries(cacheKey);
     }
+  }
+
+  private isYahooCoolingDown(now: number): boolean {
+    if (!this.yahooBackoff) {
+      return false;
+    }
+
+    if (now >= this.yahooBackoff.until) {
+      this.yahooBackoff = null;
+      return false;
+    }
+
+    return true;
+  }
+
+  private startYahooBackoff(now: number, status: number): void {
+    const until = now + RATE_LIMIT_BACKOFF_MS;
+    if (this.yahooBackoff && this.yahooBackoff.until >= until) {
+      return;
+    }
+
+    this.yahooBackoff = { until, status };
+    this.logger.warn(
+      `Yahoo requests paused for ${RATE_LIMIT_BACKOFF_MS / 60_000} minutes after HTTP ${status}.`,
+    );
+  }
+
+  private getStaleSeries(cacheKey: string): MarketSeries | null {
+    const cached = this.seriesCache.get(cacheKey);
+    return cached ? { ...cached.series, isStale: true } : null;
   }
 
   private toRomeDateValue(date: Date): Date {

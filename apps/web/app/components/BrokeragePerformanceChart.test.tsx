@@ -226,4 +226,40 @@ describe("BrokeragePerformanceChart", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it("explains when historical data is unavailable from the provider", async () => {
+    vi.mocked(api).mockResolvedValue(
+      buildPerformanceResponse({
+        points: [],
+        baselineValue: null,
+        latestValue: null,
+        changePercent: null,
+        pricingStatus: {
+          ...PRICING_STATUS_FRESH,
+          state: "PARTIAL",
+        },
+      }),
+    );
+
+    render(
+      <BrokeragePerformanceChart
+        accountId="broker-1"
+        reportingCurrency="EUR"
+        fallbackTotalValue={1450}
+        liveTotalValue={null}
+        isLivePolling={false}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        "Historical performance is temporarily unavailable.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The market-data provider did not return historical prices. Holdings and stored values are unaffected.",
+      ),
+    ).toBeInTheDocument();
+  });
 });

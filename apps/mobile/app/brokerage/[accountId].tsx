@@ -1078,6 +1078,11 @@ export default function BrokerageWorkspaceScreen() {
                 baselineValue={performance?.baselineValue ?? null}
                 latestValue={performance?.latestValue ?? null}
                 currency={performance?.reportingCurrency ?? accountCurrency}
+                emptyMessage={
+                  performance?.pricingStatus.state === "PARTIAL"
+                    ? "Historical performance is temporarily unavailable."
+                    : undefined
+                }
               />
             )}
             {performanceNote ? (

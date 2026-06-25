@@ -254,6 +254,69 @@ describe('PricesService', () => {
       await service.getMarketSeries(input, '1W');
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
+
+    it('keeps the last successful series during a later rate limit', async () => {
+      let now = 0;
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse(
+            chartSeriesBody({
+              timestamps: [1000, 2000],
+              closes: [100, 101],
+              previousClose: 99,
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(jsonResponse({}, false, 429));
+
+      const input = {
+        kind: AssetKind.STOCK,
+        ticker: 'AAPL',
+        exchange: '',
+        quoteCurrency: 'USD',
+      };
+
+      const first = await service.getMarketSeries(input, '1D');
+      now = 6 * 60_000;
+      const second = await service.getMarketSeries(input, '1D');
+      now = 7 * 60_000;
+      const third = await service.getMarketSeries(input, '1D');
+
+      expect(first?.latestPrice).toBe(101);
+      expect(second).toEqual({ ...first, isStale: true });
+      expect(third).toEqual({ ...first, isStale: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      jest.spyOn(Date, 'now').mockRestore();
+    });
+
+    it('shares rate-limit backoff between quotes and historical series', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}, false, 429));
+
+      await service.getMarketPrice(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'AAPL',
+          exchange: '',
+          quoteCurrency: 'USD',
+        },
+        { forceRefresh: true },
+      );
+      const series = await service.getMarketSeries(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'MSFT',
+          exchange: '',
+          quoteCurrency: 'USD',
+        },
+        '1D',
+      );
+
+      expect(series).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('getFxSeries', () => {
@@ -392,7 +455,7 @@ describe('PricesService', () => {
       jest.spyOn(Date, 'now').mockRestore();
     });
 
-    it('returns the cached quote during rate-limit backoff', async () => {
+    it('does not present an expired cached quote as a successful refresh', async () => {
       let now = 0;
       jest.spyOn(Date, 'now').mockImplementation(() => now);
 
@@ -417,8 +480,8 @@ describe('PricesService', () => {
       });
 
       expect(first?.toString()).toBe('150');
-      expect(second?.toString()).toBe('150');
-      expect(third?.toString()).toBe('150');
+      expect(second).toBeNull();
+      expect(third).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(2);
 
       jest.spyOn(Date, 'now').mockRestore();

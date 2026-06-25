@@ -142,11 +142,15 @@ export default function BrokeragePerformanceChart({
   const lineColor = isPositive ? "var(--color-income)" : "var(--color-expense)";
 
   const axisLabelPoints = pickAxisLabelPoints(points, MAX_BOTTOM_LABELS);
+  const isHistoricalProviderUnavailable =
+    performance?.pricingStatus.state === "PARTIAL" && points.length === 0;
 
   const pricingNote =
     performance != null && performance.pricingStatus.state !== "FRESH"
       ? performance.pricingStatus.state === "PARTIAL"
-        ? "Some positions are missing live prices; the chart reflects the latest available data."
+        ? isHistoricalProviderUnavailable
+          ? "The market-data provider did not return historical prices. Holdings and stored values are unaffected."
+          : "Some positions are missing live prices; the chart reflects the latest available data."
         : "Latest stored prices are shown while brokerage data refreshes in the background."
       : null;
 
@@ -250,7 +254,9 @@ export default function BrokeragePerformanceChart({
           />
         ) : (
           <div className="brokerage-performance-empty">
-            Not enough data yet to chart this range.
+            {isHistoricalProviderUnavailable
+              ? "Historical performance is temporarily unavailable."
+              : "Not enough data yet to chart this range."}
           </div>
         )}
       </div>

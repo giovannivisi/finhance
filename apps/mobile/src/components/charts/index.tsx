@@ -570,6 +570,7 @@ export interface PerformanceChartProps {
   latestValue: number | null;
   currency: string;
   height?: number;
+  emptyMessage?: string;
 }
 
 /**
@@ -585,6 +586,7 @@ export function PerformanceChart({
   latestValue,
   currency,
   height = 240,
+  emptyMessage = "No performance data for this range yet.",
 }: PerformanceChartProps) {
   const { colors, hideMoney } = useTheme();
   const [width, setWidth] = useState(0);
@@ -614,7 +616,7 @@ export function PerformanceChart({
         }}
       >
         <AppText variant="footnote" tone="tertiary">
-          No performance data for this range yet.
+          {emptyMessage}
         </AppText>
       </View>
     );

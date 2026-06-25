@@ -577,6 +577,24 @@ describe('AssetsService', () => {
     expect(response.staleCount).toBe(0);
   });
 
+  it('does not advance stored quote timestamps when the provider refresh fails', async () => {
+    const lastPriceAt = new Date('2026-06-25T12:00:00.000Z');
+    const asset = createAsset({
+      currency: 'EUR',
+      lastPrice: new Prisma.Decimal('50'),
+      lastPriceAt,
+    });
+    prisma.asset.findMany
+      .mockResolvedValueOnce([asset])
+      .mockResolvedValueOnce([asset]);
+    prices.getMarketPrice.mockResolvedValue(null);
+
+    const response = await service.refreshAssets(OWNER_ID);
+
+    expect(prisma.asset.update).not.toHaveBeenCalled();
+    expect(response.updatedCount).toBe(0);
+  });
+
   it('rejects refreshes during the success-based cooldown window', async () => {
     operationLocks.runExclusive.mockRejectedValueOnce(
       new Error('Refresh is cooling down. Try again in 1s.'),
