@@ -1,5 +1,6 @@
 import { AssetKind } from '@finhance/db';
 import { PricesService } from '@prices/prices.service';
+import { YahooFinanceProvider } from '@prices/yahoo-finance.provider';
 
 function jsonResponse(
   body: unknown,
@@ -55,7 +56,7 @@ describe('PricesService', () => {
         upsert: jest.fn(),
       },
     };
-    service = new PricesService(prisma as never);
+    service = new PricesService(prisma as never, new YahooFinanceProvider());
 
     originalFetch = global.fetch;
     fetchMock = jest.fn();
@@ -434,7 +435,7 @@ describe('PricesService', () => {
       jest.spyOn(Date, 'now').mockRestore();
     });
 
-    it('backs off after Yahoo rate limits a symbol', async () => {
+    it('backs off after the provider rate limits a symbol', async () => {
       let now = 0;
       jest.spyOn(Date, 'now').mockImplementation(() => now);
 

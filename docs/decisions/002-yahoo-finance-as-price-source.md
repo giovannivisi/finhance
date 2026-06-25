@@ -1,4 +1,4 @@
-# ADR 002 — Yahoo Finance as the sole market price and FX rate source
+# ADR 002 — Market data provider boundary with Yahoo Finance as default
 
 ## Status
 
@@ -17,9 +17,21 @@ markets.
 
 ## Decision
 
-Yahoo Finance is used as the sole external price source, queried via the
-undocumented `v8/finance/chart/` endpoint. No API key is required. Both
-market prices and FX rates use the same endpoint:
+The pricing domain depends on a provider-neutral `MarketDataProvider`
+interface. Providers own symbol mapping, quote transport, historical-series
+transport, and response parsing. Application-level caching, circuit breaking,
+stored-value persistence, valuation, and portfolio reconstruction stay
+provider-neutral.
+
+The application does not select providers or alter refresh behaviour by stock
+exchange. Every supported exchange follows the same path. A provider receives
+the asset's stored exchange identifier and is responsible for translating it
+to its own symbol convention.
+
+Yahoo Finance is the default implementation, selected by
+`MARKET_DATA_PROVIDER=yahoo` (or when the setting is omitted). It is queried
+via the undocumented `v8/finance/chart/` endpoint and requires no API key.
+Both market prices and FX rates use the same endpoint:
 
 - Market price: ticker + exchange suffix (e.g. `CSSPX.DE`, `AAPL`)
 - FX rate: currency pair (e.g. `EURUSD=X`, `GBPEUR=X`)
@@ -44,8 +56,14 @@ service applies two caching layers:
   app degrades gracefully — the affected asset shows its stored value without
   FX conversion.
 - **Unofficial API**: Yahoo may change or rate-limit this endpoint without
-  notice. If it breaks, a drop-in replacement (e.g. `yfinance`-compatible
-  proxy) would be the migration path.
+  notice. A replacement should be implemented behind `MarketDataProvider`,
+  with provider-specific symbol mapping and credentials isolated from
+  `PricesService`.
+- **Legacy exchange identifiers**: stored exchange values currently match the
+  Yahoo suffix catalogue. A provider with a different exchange convention must
+  translate those identifiers inside its adapter. Moving persisted data to
+  provider-neutral MIC codes is a separate migration, not a prerequisite for
+  the transport abstraction.
 - **Dashboard blocking** (open issue): currently the dashboard waits on live
   Yahoo calls if no DB rate exists for today. The fix — always serve stale
   rates and refresh in the background — is tracked separately.

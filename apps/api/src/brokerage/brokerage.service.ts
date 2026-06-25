@@ -10,10 +10,8 @@ import { AccountsService } from '@accounts/accounts.service';
 import { toAccountResponse } from '@accounts/accounts.mapper';
 import { AssetsService } from '@assets/assets.service';
 import { PricesService } from '@prices/prices.service';
-import type {
-  MarketSeries,
-  StoredFxRateSnapshot,
-} from '@prices/prices.service';
+import type { MarketDataSeries as MarketSeries } from '@prices/market-data-provider';
+import type { StoredFxRateSnapshot } from '@prices/prices.service';
 import { TransactionsService } from '@transactions/transactions.service';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
 import { toTransactionResponse } from '@transactions/transactions.mapper';

@@ -15,6 +15,7 @@
         "AUTH_GOOGLE_SECRET",
         "AUTH_GITHUB_ID",
         "AUTH_GITHUB_SECRET",
+        "MARKET_DATA_PROVIDER",
         "AUTH_API_JWT_ISSUER",
         "AUTH_API_JWT_AUDIENCE",
         "AUTH_API_JWT_KID",
