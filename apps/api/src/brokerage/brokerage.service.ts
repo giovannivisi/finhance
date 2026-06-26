@@ -10,10 +10,8 @@ import { AccountsService } from '@accounts/accounts.service';
 import { toAccountResponse } from '@accounts/accounts.mapper';
 import { AssetsService } from '@assets/assets.service';
 import { PricesService } from '@prices/prices.service';
-import type {
-  MarketSeries,
-  StoredFxRateSnapshot,
-} from '@prices/prices.service';
+import type { MarketDataSeries as MarketSeries } from '@prices/market-data-provider';
+import type { StoredFxRateSnapshot } from '@prices/prices.service';
 import { TransactionsService } from '@transactions/transactions.service';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
 import { toTransactionResponse } from '@transactions/transactions.mapper';
@@ -300,22 +298,26 @@ export class BrokerageService {
       ),
     );
 
-    // Fetch a price series for every priced position in parallel.
-    const seriesResults = await Promise.all(
-      pricedViews.map(async (asset) => {
-        const record = assetById.get(asset.id)!;
-        const series = await this.pricesService.getMarketSeries(
-          {
-            kind: asset.kind!,
-            ticker: record.ticker!,
-            exchange: record.exchange,
-            quoteCurrency: record.currency,
-          },
-          range,
-        );
-        return { asset, record, series };
-      }),
-    );
+    // Keep provider requests sequential so a rate-limit response can pause the
+    // remaining work instead of allowing the whole portfolio to fan out.
+    const seriesResults: Array<{
+      asset: (typeof pricedViews)[number];
+      record: (typeof positionAssets)[number];
+      series: MarketSeries | null;
+    }> = [];
+    for (const asset of pricedViews) {
+      const record = assetById.get(asset.id)!;
+      const series = await this.pricesService.getMarketSeries(
+        {
+          kind: asset.kind!,
+          ticker: record.ticker!,
+          exchange: record.exchange,
+          quoteCurrency: record.currency,
+        },
+        range,
+      );
+      seriesResults.push({ asset, record, series });
+    }
 
     let hasFailedSeries = false;
     const reconstructable = seriesResults.filter(
@@ -325,6 +327,9 @@ export class BrokerageService {
         series: MarketSeries;
       } => {
         if (entry.series) {
+          if (entry.series.isStale) {
+            hasFailedSeries = true;
+          }
           return true;
         }
 
@@ -460,26 +465,30 @@ export class BrokerageService {
     ];
     const fxSeriesByCurrency = new Map<string, MarketSeries | null>();
     const fxSnapshotByCurrency = new Map<string, StoredFxRateSnapshot>();
-    await Promise.all(
-      fxCurrencies.map(async (currency) => {
-        const [series, snapshot] = await Promise.all([
-          this.pricesService.getFxSeries(currency, reportingCurrency, range),
-          this.pricesService.getStoredFxRateSnapshot(
-            ownerId,
-            now,
-            currency,
-            reportingCurrency,
-          ),
-        ]);
-        fxSeriesByCurrency.set(currency, series);
-        fxSnapshotByCurrency.set(currency, snapshot);
-      }),
-    );
+    for (const currency of fxCurrencies) {
+      const snapshot = await this.pricesService.getStoredFxRateSnapshot(
+        ownerId,
+        now,
+        currency,
+        reportingCurrency,
+      );
+      const series = await this.pricesService.getFxSeries(
+        currency,
+        reportingCurrency,
+        range,
+      );
+      fxSeriesByCurrency.set(currency, series);
+      fxSnapshotByCurrency.set(currency, snapshot);
+    }
 
     // An FX series gap is only a real problem if the stored snapshot fallback
     // is also stale or missing; an EXACT snapshot covers the gap cleanly.
     const hasStaleFx = fxCurrencies.some((currency) => {
-      if (fxSeriesByCurrency.get(currency)) {
+      const series = fxSeriesByCurrency.get(currency);
+      if (series?.isStale) {
+        return true;
+      }
+      if (series) {
         return false;
       }
 

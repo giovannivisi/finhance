@@ -18,6 +18,8 @@ const IDEMPOTENCY_KEY_IN_PROGRESS_MESSAGE =
   'A request with this Idempotency-Key is already in progress.';
 const IDEMPOTENCY_KEY_CONFLICT_MESSAGE =
   'This Idempotency-Key was already used for a different request.';
+const IDEMPOTENCY_RESPONSE_NOT_REPLAYABLE_MESSAGE =
+  'This Idempotency-Key completed successfully, but its response is no longer available for replay.';
 
 export const IDEMPOTENCY_MAX_CACHED_BODY_BYTES = 1024 * 1024;
 export const IDEMPOTENCY_COMPLETED_TTL_MS = 1000 * 60 * 60 * 24;
@@ -242,6 +244,15 @@ export class IdempotencyService implements OnModuleInit, OnModuleDestroy {
         throw new ConflictException(IDEMPOTENCY_KEY_IN_PROGRESS_MESSAGE);
       }
 
+      if (
+        existing.responseStatusCode !== 204 &&
+        existing.responseJson === null
+      ) {
+        throw new ConflictException(
+          IDEMPOTENCY_RESPONSE_NOT_REPLAYABLE_MESSAGE,
+        );
+      }
+
       return {
         statusCode: existing.responseStatusCode ?? 200,
         body:
@@ -294,7 +305,16 @@ export class IdempotencyService implements OnModuleInit, OnModuleDestroy {
       return false;
     }
 
-    return JSON.stringify(body) !== undefined;
+    const serializedBody = JSON.stringify(body);
+
+    if (serializedBody === undefined) {
+      return false;
+    }
+
+    return (
+      Buffer.byteLength(serializedBody, 'utf8') <=
+      IDEMPOTENCY_MAX_CACHED_BODY_BYTES
+    );
   }
 
   private async releaseInProgressRequest(

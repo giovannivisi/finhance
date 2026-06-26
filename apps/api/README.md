@@ -87,3 +87,11 @@ pnpm db:migrate:deploy
 
 This repo does not rely on a local Postgres container workflow. Use Neon-backed
 URLs for both local and hosted environments.
+
+## Market data provider
+
+`MARKET_DATA_PROVIDER` selects the server-side quote, FX, and historical-series
+adapter. It defaults to `yahoo`; `yahoo` is currently the only implemented
+provider. Provider-specific symbol mapping and HTTP parsing live behind the
+`MarketDataProvider` interface so a keyed provider can be added without
+changing valuation or brokerage logic.

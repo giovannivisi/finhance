@@ -1,5 +1,5 @@
 import { AssetKind } from '@finhance/db';
-import { getMarketOpenState } from './market-hours';
+import { getMarketOpenState } from '@prices/market-hours';
 
 describe('getMarketOpenState', () => {
   it('reports Eurozone venues open during the CET session on a weekday', () => {

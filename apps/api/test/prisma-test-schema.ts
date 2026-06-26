@@ -1,5 +1,5 @@
 import { loadApiEnv } from '@/config/env-loader';
-import { createPrismaTestSchema as createSharedPrismaTestSchema } from '../../../test-support/disposable-prisma-schema';
+import { createPrismaTestSchema as createSharedPrismaTestSchema } from '../../../test-support/disposable-prisma-schema.js';
 
 export async function createPrismaTestSchema(prefix: string) {
   loadApiEnv();

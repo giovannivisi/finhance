@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { createPrismaTestSchema } from '../../../test-support/disposable-prisma-schema';
+import { createPrismaTestSchema } from '../../../test-support/disposable-prisma-schema.js';
 
 const API_PORT = 3100;
 const WEB_PORT = 3101;

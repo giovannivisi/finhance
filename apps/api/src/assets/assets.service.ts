@@ -70,7 +70,7 @@ interface ValuationModel {
 type FxResolutionMap = Map<string, StoredFxRateSnapshot>;
 
 const ZERO = new Prisma.Decimal(0);
-const MARKET_FETCH_BATCH_SIZE = 4;
+const MARKET_FETCH_BATCH_SIZE = 1;
 @Injectable()
 export class AssetsService {
   constructor(

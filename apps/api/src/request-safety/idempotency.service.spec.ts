@@ -55,7 +55,7 @@ describe('IdempotencyService', () => {
     return calls[index]?.[0] as T;
   }
 
-  it('replays completed responses even when the body exceeds the former cache cap', async () => {
+  it('rejects replays whose completed response body exceeded the cache cap', async () => {
     const body = {
       payload: 'x'.repeat(IDEMPOTENCY_MAX_CACHED_BODY_BYTES + 128),
     };
@@ -74,7 +74,7 @@ describe('IdempotencyService', () => {
         requestFingerprint: storedFingerprint,
         status: IdempotencyRequestStatus.COMPLETED,
         responseStatusCode: 201,
-        responseJson: body as Prisma.JsonObject,
+        responseJson: null,
       }));
 
     prisma.idempotencyRequest.create.mockImplementation(
@@ -107,32 +107,30 @@ describe('IdempotencyService', () => {
         }),
     });
 
-    const secondResult = await service.executeJson({
-      ...requestKey,
-      fingerprint: { files: ['accounts.csv'] },
-      handler: () =>
-        Promise.resolve({
-          statusCode: 201,
-          body: { payload: 'should not run' },
-        }),
-    });
-
     expect(firstResult).toEqual({
       statusCode: 201,
       body,
       replayed: false,
     });
-    expect(secondResult).toEqual({
-      statusCode: 201,
-      body,
-      replayed: true,
-    });
+    await expect(
+      service.executeJson({
+        ...requestKey,
+        fingerprint: { files: ['accounts.csv'] },
+        handler: () =>
+          Promise.resolve({
+            statusCode: 201,
+            body: { payload: 'should not run' },
+          }),
+      }),
+    ).rejects.toThrow(
+      'This Idempotency-Key completed successfully, but its response is no longer available for replay.',
+    );
     const updateCall = nthCallArg<{
       data: {
         responseJson: unknown;
       };
     }>(prisma.idempotencyRequest.update, 0);
-    expect(updateCall.data.responseJson).toEqual(body);
+    expect(updateCall.data.responseJson).toBe(Prisma.JsonNull);
   });
 
   it('recovers and retries when reserving an idempotent request times out starting a transaction', async () => {

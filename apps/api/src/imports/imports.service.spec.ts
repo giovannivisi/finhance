@@ -1,5 +1,8 @@
 import { ConflictException } from '@nestjs/common';
-import { ImportsService } from '@imports/imports.service';
+import {
+  ImportsService,
+  MAX_IMPORT_ROWS_PER_FILE,
+} from '@imports/imports.service';
 import { IMPORT_TEMPLATE_HEADERS } from '@imports/imports.types';
 import { PrismaService } from '@prisma/prisma.service';
 import { PricesService } from '@prices/prices.service';
@@ -525,6 +528,46 @@ describe('ImportsService', () => {
       expenseCategoryHierarchy: [],
       expenseValidationRules: [],
     });
+  });
+
+  it('rejects a CSV file that exceeds the per-file row limit', async () => {
+    const rows = Array.from(
+      { length: MAX_IMPORT_ROWS_PER_FILE + 1 },
+      (_, index) => {
+        const rowNumber = index + 1;
+
+        return `account-${rowNumber},Account ${rowNumber},BANK,EUR,,,0,false`;
+      },
+    );
+
+    const result = await service.previewCsv(OWNER_ID, {
+      accounts: {
+        originalName: 'accounts.csv',
+        buffer: Buffer.from(
+          [
+            'importKey,name,type,currency,institution,notes,order,archived',
+            ...rows,
+          ].join('\n'),
+        ),
+      },
+    });
+
+    expect(result.status).toBe('FAILED');
+    expect(result.canApply).toBe(false);
+    expect(
+      result.issues.some(
+        (issue) =>
+          issue.file === 'accounts' &&
+          issue.rowNumber === 1 &&
+          issue.message.includes(
+            `${MAX_IMPORT_ROWS_PER_FILE} row limit per file`,
+          ),
+      ),
+    ).toBe(true);
+    expect(
+      nthCallArg<ImportBatchCreateCall>(prisma.importBatch.create, 0).data
+        .payloadJson,
+    ).toBe(Prisma.DbNull);
   });
 
   it('stores a failed preview when headers do not match the template', async () => {

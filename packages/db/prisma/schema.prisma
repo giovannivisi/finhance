@@ -97,6 +97,19 @@ model AuthAuthenticator {
   @@map("auth_authenticators")
 }
 
+model RequestRateLimit {
+  key       String   @id
+  scope     String
+  clientKey String   @map("client_key")
+  count     Int
+  resetAt   DateTime @map("reset_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([scope, resetAt])
+  @@map("request_rate_limits")
+}
+
 model Asset {
   id            String         @id @default(cuid())
   userId        String

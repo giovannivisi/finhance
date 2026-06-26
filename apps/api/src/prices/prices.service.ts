@@ -1,43 +1,27 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { AssetKind, FxRateSource, Prisma } from '@finhance/db';
 import type { BrokeragePerformanceRange } from '@finhance/shared';
 import { isSupportedCurrencyCode } from '@/common/catalogues';
 import { PrismaService } from '@prisma/prisma.service';
+import {
+  MARKET_DATA_PROVIDER,
+  type MarketDataProvider,
+  type MarketDataSeries,
+} from '@prices/market-data-provider';
 
 interface CachedPrice {
   price: Prisma.Decimal;
   ts: number;
 }
 
-interface QuoteBackoff {
+interface ProviderBackoff {
   until: number;
   status: number;
-}
-
-interface PriceResponseShape {
-  chart?: {
-    result?: Array<{
-      meta?: {
-        regularMarketPrice?: number;
-      };
-    }>;
-  };
-}
-
-interface SeriesResponseShape {
-  chart?: {
-    result?: Array<{
-      meta?: {
-        chartPreviousClose?: number;
-      };
-      timestamp?: number[];
-      indicators?: {
-        quote?: Array<{
-          close?: Array<number | null>;
-        }>;
-      };
-    }>;
-  };
 }
 
 export type StoredFxRateStatus = 'EXACT' | 'STALE' | 'MISSING';
@@ -50,30 +34,14 @@ export interface StoredFxRateSnapshot {
   updatedAt: Date | null;
 }
 
-export interface MarketSeriesPoint {
-  t: number; // epoch milliseconds
-  price: number;
-}
-
-export interface MarketSeries {
-  points: MarketSeriesPoint[];
-  previousClose: number | null;
-  latestPrice: number | null;
-}
+export type MarketSeries = MarketDataSeries;
 
 interface CachedSeries {
   series: MarketSeries;
   ts: number;
 }
 
-interface SeriesRangeParams {
-  range: string;
-  interval: string;
-}
-
-const BASE_QUOTE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
-const YAHOO_SYMBOL_PATTERN = /^[A-Z0-9.\-=^]{1,32}$/;
 const ROME_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Rome',
   year: 'numeric',
@@ -82,28 +50,12 @@ const ROME_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
 });
 
 const MIN_MAX_AGE_MS = 5000;
-const RATE_LIMIT_BACKOFF_MS = 1000 * 60 * 5;
-const YAHOO_REQUEST_HEADERS = {
-  Accept: 'application/json,text/plain,*/*',
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
-};
-
-const SERIES_RANGE_PARAMS: Record<
-  BrokeragePerformanceRange,
-  SeriesRangeParams
-> = {
-  '1D': { range: '1d', interval: '5m' },
-  '1W': { range: '5d', interval: '15m' },
-  '1M': { range: '1mo', interval: '60m' },
-  '1Y': { range: '1y', interval: '1d' },
-  MAX: { range: 'max', interval: '1wk' },
-};
+const RATE_LIMIT_BACKOFF_MS = 1000 * 60 * 30;
 
 const SERIES_TTL_MS: Record<BrokeragePerformanceRange, number> = {
-  '1D': 1000 * 60,
-  '1W': 1000 * 60 * 5,
-  '1M': 1000 * 60 * 30,
+  '1D': 1000 * 60 * 5,
+  '1W': 1000 * 60 * 15,
+  '1M': 1000 * 60 * 60,
   '1Y': 1000 * 60 * 60 * 6,
   MAX: 1000 * 60 * 60 * 24,
 };
@@ -120,17 +72,21 @@ const SERIES_TIMEOUT_MS: Record<BrokeragePerformanceRange, number> = {
 export class PricesService {
   private readonly logger = new Logger(PricesService.name);
   private readonly cache = new Map<string, CachedPrice>();
-  private readonly quoteBackoff = new Map<string, QuoteBackoff>();
   private readonly inFlight = new Map<string, Promise<Prisma.Decimal | null>>();
   private readonly seriesCache = new Map<string, CachedSeries>();
   private readonly seriesInFlight = new Map<
     string,
     Promise<MarketSeries | null>
   >();
+  private providerBackoff: ProviderBackoff | null = null;
   private readonly cacheTtlMs = 1000 * 60 * 5;
   private readonly requestTimeoutMs = 3000;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(MARKET_DATA_PROVIDER)
+    private readonly provider: MarketDataProvider,
+  ) {}
 
   normalizeCurrency(currency?: string | null): string {
     const normalized = (currency ?? 'EUR').trim().toUpperCase();
@@ -157,22 +113,12 @@ export class PricesService {
     exchange?: string | null;
     quoteCurrency: string;
   }): string {
-    const ticker = this.normalizeTicker(input.ticker);
-    const quoteCurrency = this.normalizeCurrency(input.quoteCurrency);
-    const exchange = (input.exchange ?? '').trim().toUpperCase();
-
-    if (input.kind === AssetKind.CRYPTO) {
-      const cryptoTicker = ticker.includes('-')
-        ? ticker
-        : `${ticker}-${quoteCurrency}`;
-
-      this.assertYahooSymbol(cryptoTicker);
-      return cryptoTicker;
-    }
-
-    const symbol = `${ticker}${exchange}`;
-    this.assertYahooSymbol(symbol);
-    return symbol;
+    return this.provider.buildMarketSymbol({
+      kind: input.kind,
+      ticker: this.normalizeTicker(input.ticker),
+      exchange: input.exchange,
+      quoteCurrency: this.normalizeCurrency(input.quoteCurrency),
+    });
   }
 
   async getMarketPrice(
@@ -232,8 +178,7 @@ export class PricesService {
       return null;
     }
 
-    const symbol = `${from}${to}=X`;
-    this.assertYahooSymbol(symbol);
+    const symbol = this.provider.buildFxSymbol(from, to);
     return this.fetchSeries(symbol, range);
   }
 
@@ -249,8 +194,7 @@ export class PricesService {
       return new Prisma.Decimal(1);
     }
 
-    const symbol = `${from}${to}=X`;
-    this.assertYahooSymbol(symbol);
+    const symbol = this.provider.buildFxSymbol(from, to);
     return this.fetchQuote(symbol, opts);
   }
 
@@ -454,12 +398,6 @@ export class PricesService {
     return saved.rate;
   }
 
-  private assertYahooSymbol(symbol: string): void {
-    if (!YAHOO_SYMBOL_PATTERN.test(symbol)) {
-      throw new BadRequestException(`Unsupported Yahoo symbol "${symbol}".`);
-    }
-  }
-
   private async fetchQuote(
     symbol: string,
     opts?: { forceRefresh?: boolean; maxAgeMs?: number },
@@ -475,15 +413,7 @@ export class PricesService {
       return cached.price;
     }
 
-    const backoff = this.quoteBackoff.get(symbol);
-    if (backoff && now < backoff.until) {
-      if (cached) {
-        return cached.price;
-      }
-
-      this.logger.warn(
-        `Skipping Yahoo quote for ${symbol}: prior ${backoff.status} response is cooling down.`,
-      );
+    if (this.isProviderCoolingDown(now)) {
       return null;
     }
 
@@ -507,37 +437,36 @@ export class PricesService {
     now: number,
   ): Promise<Prisma.Decimal | null> {
     try {
-      const response = await fetch(
-        `${BASE_QUOTE_URL}${encodeURIComponent(symbol)}`,
-        {
-          headers: YAHOO_REQUEST_HEADERS,
-          signal: AbortSignal.timeout(this.requestTimeoutMs),
-        },
+      const result = await this.provider.fetchQuote(
+        symbol,
+        this.requestTimeoutMs,
       );
 
-      if (!response.ok) {
-        if (response.status === 429) {
-          this.quoteBackoff.set(symbol, {
-            until: now + RATE_LIMIT_BACKOFF_MS,
-            status: response.status,
-          });
+      if (!result.ok) {
+        if (result.status === 429) {
+          this.startProviderBackoff(now, result.status);
         }
 
-        this.logger.warn(
-          `Yahoo quote failed for ${symbol}: ${response.status}`,
-        );
-        return this.cache.get(symbol)?.price ?? null;
-      }
-
-      const body = (await response.json()) as PriceResponseShape;
-      const price = body.chart?.result?.[0]?.meta?.regularMarketPrice;
-
-      if (typeof price !== 'number' || !Number.isFinite(price)) {
+        if (result.error) {
+          this.logger.error(
+            `${this.provider.displayName} quote fetch failed for ${symbol}`,
+            result.error as Error,
+          );
+        } else {
+          this.logger.warn(
+            `${this.provider.displayName} quote failed for ${symbol}: ${
+              result.status ?? 'unknown'
+            }`,
+          );
+        }
         return null;
       }
 
-      const decimal = new Prisma.Decimal(price.toString());
-      this.quoteBackoff.delete(symbol);
+      if (result.data === null) {
+        return null;
+      }
+
+      const decimal = new Prisma.Decimal(result.data.toString());
       this.cache.set(symbol, { price: decimal, ts: now });
       return decimal;
     } catch (error) {
@@ -557,6 +486,10 @@ export class PricesService {
 
     if (cached && now - cached.ts < ttlMs) {
       return cached.series;
+    }
+
+    if (this.isProviderCoolingDown(now)) {
+      return this.getStaleSeries(cacheKey);
     }
 
     const inFlight = this.seriesInFlight.get(cacheKey);
@@ -581,60 +514,77 @@ export class PricesService {
     now: number,
   ): Promise<MarketSeries | null> {
     try {
-      const params = SERIES_RANGE_PARAMS[range];
-      const url = `${BASE_QUOTE_URL}${encodeURIComponent(symbol)}?range=${params.range}&interval=${params.interval}`;
-      const response = await fetch(url, {
-        headers: YAHOO_REQUEST_HEADERS,
-        signal: AbortSignal.timeout(SERIES_TIMEOUT_MS[range]),
-      });
+      const result = await this.provider.fetchSeries(
+        symbol,
+        range,
+        SERIES_TIMEOUT_MS[range],
+      );
 
-      if (!response.ok) {
-        this.logger.warn(
-          `Yahoo series failed for ${symbol} (${range}): ${response.status}`,
-        );
-        return null;
-      }
-
-      const body = (await response.json()) as SeriesResponseShape;
-      const result = body.chart?.result?.[0];
-      const timestamps = result?.timestamp ?? [];
-      const closes = result?.indicators?.quote?.[0]?.close ?? [];
-      const previousCloseRaw = result?.meta?.chartPreviousClose;
-      const previousClose =
-        typeof previousCloseRaw === 'number' &&
-        Number.isFinite(previousCloseRaw)
-          ? previousCloseRaw
-          : null;
-
-      const points: MarketSeriesPoint[] = [];
-      for (let i = 0; i < timestamps.length; i += 1) {
-        const close = closes[i];
-        if (typeof close !== 'number' || !Number.isFinite(close)) {
-          continue;
+      if (!result.ok) {
+        if (result.status === 429) {
+          this.startProviderBackoff(now, result.status);
         }
 
-        points.push({ t: timestamps[i] * 1000, price: close });
+        if (result.error) {
+          this.logger.error(
+            `${this.provider.displayName} series fetch failed for ${symbol} (${range})`,
+            result.error as Error,
+          );
+        } else {
+          this.logger.warn(
+            `${this.provider.displayName} series failed for ${symbol} (${range}): ${
+              result.status ?? 'unknown'
+            }`,
+          );
+        }
+        return this.getStaleSeries(cacheKey);
       }
 
-      if (points.length === 0) {
+      if (result.data === null) {
         return null;
       }
 
-      const series: MarketSeries = {
-        points,
-        previousClose,
-        latestPrice: points[points.length - 1].price,
-      };
-
-      this.seriesCache.set(cacheKey, { series, ts: now });
-      return series;
+      this.seriesCache.set(cacheKey, { series: result.data, ts: now });
+      return result.data;
     } catch (error) {
       this.logger.error(
         `Series fetch failed for ${symbol} (${range})`,
         error as Error,
       );
-      return null;
+      return this.getStaleSeries(cacheKey);
     }
+  }
+
+  private isProviderCoolingDown(now: number): boolean {
+    if (!this.providerBackoff) {
+      return false;
+    }
+
+    if (now >= this.providerBackoff.until) {
+      this.providerBackoff = null;
+      return false;
+    }
+
+    return true;
+  }
+
+  private startProviderBackoff(now: number, status: number): void {
+    const until = now + RATE_LIMIT_BACKOFF_MS;
+    if (this.providerBackoff && this.providerBackoff.until >= until) {
+      return;
+    }
+
+    this.providerBackoff = { until, status };
+    this.logger.warn(
+      `${this.provider.displayName} requests paused for ${
+        RATE_LIMIT_BACKOFF_MS / 60_000
+      } minutes after HTTP ${status}.`,
+    );
+  }
+
+  private getStaleSeries(cacheKey: string): MarketSeries | null {
+    const cached = this.seriesCache.get(cacheKey);
+    return cached ? { ...cached.series, isStale: true } : null;
   }
 
   private toRomeDateValue(date: Date): Date {
