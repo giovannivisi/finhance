@@ -1,9 +1,14 @@
 import { isHostedAuthMode } from "@lib/auth-mode";
 import { exchangeMobileSignInCode } from "@lib/mobile-auth";
+import {
+  MOBILE_AUTH_RATE_LIMITS,
+  rateLimitRequest,
+} from "@lib/request-rate-limit";
 
 export const runtime = "nodejs";
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
+const RATE_LIMIT_MESSAGE = "Too many mobile sign-in attempts. Try again soon.";
 
 /**
  * Exchanges the sign-in code from the authorize handoff plus the app-held
@@ -15,6 +20,21 @@ export async function POST(request: Request) {
     return Response.json(
       { message: "Mobile sign-in is only available on hosted deployments." },
       { status: 404, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  const rateLimit = await rateLimitRequest(
+    request,
+    MOBILE_AUTH_RATE_LIMITS.tokenExchange,
+  );
+
+  if (!rateLimit.allowed) {
+    return Response.json(
+      { message: RATE_LIMIT_MESSAGE },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, ...rateLimit.headers },
+      },
     );
   }
 

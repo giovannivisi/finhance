@@ -121,6 +121,9 @@ const IMPORT_PREVIEW_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const IMPORT_APPLY_TRANSACTION_MAX_WAIT_MS = 15_000;
 const IMPORT_APPLY_TRANSACTION_TIMEOUT_MS = 120_000;
 const MAX_UPLOAD_FILE_BYTES = 1024 * 1024;
+export const MAX_IMPORT_ROWS_PER_FILE = 5_000;
+export const MAX_IMPORT_TOTAL_ROWS = 20_000;
+export const MAX_IMPORT_PREVIEW_PAYLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_IMPORT_KEY_LENGTH = 128;
 const MAX_NAME_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 240;
@@ -202,6 +205,7 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     await this.clearExpiredPersistedPreviewPayloads(ownerId);
 
     const parsed = this.parseUploadedFiles(files);
+    this.enforcePreviewPayloadSize(parsed.payload, parsed.issues);
     const analysis = await this.analyzePayload(
       this.prisma,
       ownerId,
@@ -419,6 +423,7 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
       expenseValidationRules: [],
     };
     const issues: ImportRowIssueResponse[] = [];
+    let totalRows = 0;
 
     for (const fileType of Object.keys(files) as ImportFileType[]) {
       const file = files[fileType];
@@ -447,6 +452,32 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
         issues.push(this.issue(fileType, 1, null, this.describeError(error)));
         continue;
       }
+
+      if (records.length > MAX_IMPORT_ROWS_PER_FILE) {
+        issues.push(
+          this.issue(
+            fileType,
+            1,
+            null,
+            `${fileType}.csv has ${records.length} rows, which exceeds the ${MAX_IMPORT_ROWS_PER_FILE} row limit per file.`,
+          ),
+        );
+        continue;
+      }
+
+      if (totalRows + records.length > MAX_IMPORT_TOTAL_ROWS) {
+        issues.push(
+          this.issue(
+            fileType,
+            1,
+            null,
+            `The CSV import has more than ${MAX_IMPORT_TOTAL_ROWS} rows across all files.`,
+          ),
+        );
+        continue;
+      }
+
+      totalRows += records.length;
 
       switch (fileType) {
         case 'accounts':
@@ -537,6 +568,27 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     }
 
     return { payload, issues };
+  }
+
+  private enforcePreviewPayloadSize(
+    payload: ImportPayload,
+    issues: ImportRowIssueResponse[],
+  ): void {
+    const payloadJson = JSON.stringify(payload);
+    const payloadBytes = Buffer.byteLength(payloadJson, 'utf8');
+
+    if (payloadBytes <= MAX_IMPORT_PREVIEW_PAYLOAD_BYTES) {
+      return;
+    }
+
+    issues.push(
+      this.issue(
+        payload.providedFiles[0] ?? 'accounts',
+        1,
+        null,
+        `The import preview payload is ${payloadBytes} bytes, which exceeds the ${MAX_IMPORT_PREVIEW_PAYLOAD_BYTES} byte limit.`,
+      ),
+    );
   }
 
   private parseRows<T>(
