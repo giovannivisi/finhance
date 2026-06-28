@@ -48,8 +48,10 @@ const authenticatedProxy = auth((request) => {
   const nonce = createNonce();
   const contentSecurityPolicy = buildContentSecurityPolicy(nonce);
   const requestHeaders = new Headers(request.headers);
+  const pathname = new URL(request.url).pathname;
   requestHeaders.set(CSP_NONCE_HEADER, nonce);
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
+  requestHeaders.set("x-finhance-pathname", pathname);
 
   const localRequestRejection = resolveLocalRequestRejection(request);
 
@@ -73,7 +75,7 @@ const authenticatedProxy = auth((request) => {
     );
   }
 
-  if (isPublicHostedProxyPath(new URL(request.url).pathname)) {
+  if (isPublicHostedProxyPath(pathname)) {
     return withContentSecurityPolicy(
       NextResponse.next({ request: { headers: requestHeaders } }),
       contentSecurityPolicy,

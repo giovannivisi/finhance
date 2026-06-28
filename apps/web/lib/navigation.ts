@@ -66,7 +66,12 @@ const ROUTE_SUCCESSOR_PREFETCH_PATHS: Record<string, readonly string[]> = {
 
 const MORE_MENU_EXPANDED_PREFETCH_PATHS = ["/history", "/review"] as const;
 const DEFAULT_RETURN_PREFETCH_PATH = "/dashboard";
-const PUBLIC_AUTH_PATHS = new Set(["/", "/login", "/signup"]);
+const PUBLIC_AUTH_PATHS = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/account-deleted",
+]);
 
 export function shouldPrefetchNavPath(path: string): boolean {
   return PREFETCH_NAV_PATHS.has(normalizeNavigationPath(path) ?? path);

@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@finhance/db';
 import type {
   UpdateUserSettingsRequest,
@@ -50,6 +54,64 @@ export class UsersService {
     });
 
     return normalizeUserSettings(toUserSettingsRecord(user.userSettings));
+  }
+
+  async deleteAccount(
+    ownerId: string,
+    confirmationEmail: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(
+      async (tx) => {
+        const user = await tx.user.findUnique({
+          where: { id: ownerId },
+          select: { email: true },
+        });
+
+        if (!user) {
+          throw new NotFoundException('User account not found.');
+        }
+
+        if (confirmationEmail !== user.email) {
+          throw new BadRequestException('Confirmation email does not match.');
+        }
+
+        await tx.brokerageOperation.deleteMany({ where: { userId: ownerId } });
+        await tx.transaction.deleteMany({ where: { userId: ownerId } });
+        await tx.recurringTransactionOccurrence.deleteMany({
+          where: { userId: ownerId },
+        });
+        await tx.recurringTransactionRule.deleteMany({
+          where: { userId: ownerId },
+        });
+        await tx.categoryBudgetOverride.deleteMany({
+          where: { userId: ownerId },
+        });
+        await tx.categoryBudget.deleteMany({ where: { userId: ownerId } });
+        await tx.expenseValidationRule.deleteMany({
+          where: { userId: ownerId },
+        });
+        await tx.asset.deleteMany({ where: { userId: ownerId } });
+        await tx.account.deleteMany({ where: { userId: ownerId } });
+        await tx.category.deleteMany({ where: { userId: ownerId } });
+        await tx.netWorthSnapshot.deleteMany({ where: { userId: ownerId } });
+        await tx.importBatch.deleteMany({ where: { userId: ownerId } });
+        await tx.fxRate.deleteMany({ where: { userId: ownerId } });
+        await tx.portfolioAssetKindTarget.deleteMany({
+          where: { userId: ownerId },
+        });
+        await tx.portfolioSecurityTarget.deleteMany({
+          where: { userId: ownerId },
+        });
+        await tx.portfolioState.deleteMany({ where: { userId: ownerId } });
+        await tx.idempotencyRequest.deleteMany({ where: { userId: ownerId } });
+        await tx.operationState.deleteMany({ where: { userId: ownerId } });
+        await tx.authVerificationToken.deleteMany({
+          where: { identifier: user.email },
+        });
+        await tx.user.delete({ where: { id: ownerId } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 }
 

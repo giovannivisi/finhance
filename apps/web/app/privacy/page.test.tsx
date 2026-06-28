@@ -94,9 +94,10 @@ vi.mock("@lib/privacy-notice", () => ({
       {
         key: "snapshotHistory",
         title: "Net-worth snapshot history",
-        retention: "Stored until the operator removes the records.",
+        retention:
+          "Stored until the operator removes the records or the account is deleted.",
         detail:
-          "The current product version does not provide an end-user self-service delete action for snapshot history.",
+          "Hosted account deletion removes snapshot history in the same database transaction.",
       },
     ],
     automatedDecisionMaking:
@@ -150,7 +151,15 @@ describe("PrivacyPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /snapshot erasure or restriction requests must be handled by the configured rights contact/i,
+        /hosted users can permanently delete their account from the avatar menu/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/application retains no separate audit copy/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /infrastructure backups, security logs, or processor records/i,
       ),
     ).toBeInTheDocument();
     expect(

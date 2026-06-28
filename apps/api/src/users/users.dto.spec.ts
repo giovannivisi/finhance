@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
+import { DeleteUserAccountDto } from '@/users/dto/delete-user-account.dto';
 import { UpdateUserSettingsDto } from '@/users/dto/update-user-settings.dto';
 
 function collectMessages(errors: ReturnType<typeof validateSync>): string[] {
@@ -29,5 +30,26 @@ describe('UpdateUserSettingsDto', () => {
     });
 
     expect(validateSync(dto)).toEqual([]);
+  });
+});
+
+describe('DeleteUserAccountDto', () => {
+  it('requires a valid confirmation email', () => {
+    const dto = plainToInstance(DeleteUserAccountDto, { email: 'not-email' });
+
+    expect(collectMessages(validateSync(dto))).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('email must be an email'),
+      ]),
+    );
+  });
+
+  it('accepts a valid confirmation email without normalising it', () => {
+    const dto = plainToInstance(DeleteUserAccountDto, {
+      email: 'Person@example.com',
+    });
+
+    expect(validateSync(dto)).toEqual([]);
+    expect(dto.email).toBe('Person@example.com');
   });
 });

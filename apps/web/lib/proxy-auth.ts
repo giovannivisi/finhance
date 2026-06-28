@@ -7,6 +7,7 @@ const PUBLIC_HOSTED_PROXY_PATHS = new Set([
   "/",
   "/login",
   "/signup",
+  "/account-deleted",
   "/privacy",
 ]);
 

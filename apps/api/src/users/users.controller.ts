@@ -1,9 +1,18 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+} from '@nestjs/common';
 import type {
   UpdateUserSettingsRequest,
   UserSettingsResponse,
 } from '@finhance/shared';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { DeleteUserAccountDto } from '@/users/dto/delete-user-account.dto';
 import { UpdateUserSettingsDto } from '@/users/dto/update-user-settings.dto';
 import { UsersService } from '@/users/users.service';
 
@@ -31,5 +40,11 @@ export class UsersController {
       this.resolveOwnerId(),
       dto as UpdateUserSettingsRequest,
     );
+  }
+
+  @Delete()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAccount(@Body() dto: DeleteUserAccountDto): Promise<void> {
+    await this.usersService.deleteAccount(this.resolveOwnerId(), dto.email);
   }
 }

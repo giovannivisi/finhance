@@ -1,10 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
+import { headers } from "next/headers";
 import ShellAccountMenu from "@components/ShellAccountMenu";
 import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
 
 export default async function TopHeader() {
+  const pathname = (await headers()).get("x-finhance-pathname");
+  const hideAccountActions = pathname === "/account-deleted";
   const hostedAuthMode = isHostedAuthMode();
   const session = hostedAuthMode ? await auth() : null;
 
@@ -32,14 +35,16 @@ export default async function TopHeader() {
           />
           <span className="top-header-wordmark">finhance</span>
         </Link>
-        <div className="top-header-actions">
-          <Link href="/login" className="btn-secondary top-header-auth-link">
-            Log in
-          </Link>
-          <Link href="/signup" className="btn-primary top-header-auth-link">
-            Create account
-          </Link>
-        </div>
+        {hideAccountActions ? null : (
+          <div className="top-header-actions">
+            <Link href="/login" className="btn-secondary top-header-auth-link">
+              Log in
+            </Link>
+            <Link href="/signup" className="btn-primary top-header-auth-link">
+              Create account
+            </Link>
+          </div>
+        )}
       </header>
     );
   }
@@ -76,9 +81,15 @@ export default async function TopHeader() {
         />
         <span className="top-header-wordmark">finhance</span>
       </Link>
-      <div className="top-header-actions">
-        <ShellAccountMenu identity={identity} canSignOut={hostedAuthMode} />
-      </div>
+      {hideAccountActions ? null : (
+        <div className="top-header-actions">
+          <ShellAccountMenu
+            identity={identity}
+            canSignOut={hostedAuthMode}
+            accountEmail={session?.user?.email ?? undefined}
+          />
+        </div>
+      )}
     </header>
   );
 }

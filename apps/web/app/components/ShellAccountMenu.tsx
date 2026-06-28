@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { useState } from "react";
+import AccountDeletionDialog from "@components/AccountDeletionDialog";
 import OverflowMenu from "@components/OverflowMenu";
 import {
   buildShellAccountMenuSections,
@@ -30,11 +32,13 @@ function AccountMenuActionItem({
   closeMenu,
   onToggleTheme,
   onSignOut,
+  onDeleteAccount,
 }: {
   action: ShellAccountMenuAction;
   closeMenu: (options?: { restoreFocus?: boolean }) => void;
   onToggleTheme: () => void;
   onSignOut: () => void;
+  onDeleteAccount: () => void;
 }) {
   const Icon = action.icon;
 
@@ -59,13 +63,19 @@ function AccountMenuActionItem({
       <button
         type="button"
         role="menuitem"
-        className="overflow-menu-item shell-account-menu-item"
+        className={`overflow-menu-item shell-account-menu-item${action.tone === "danger" ? " is-danger" : ""}`}
         aria-label={action.ariaLabel}
         onClick={() => {
-          if (action.action === "toggle-theme") {
-            onToggleTheme();
-          } else {
-            onSignOut();
+          switch (action.action) {
+            case "toggle-theme":
+              onToggleTheme();
+              break;
+            case "sign-out":
+              onSignOut();
+              break;
+            case "delete-account":
+              onDeleteAccount();
+              break;
           }
           closeMenu();
         }}
@@ -97,78 +107,98 @@ function AccountMenuActionItem({
 export default function ShellAccountMenu({
   identity,
   canSignOut = false,
+  accountEmail,
 }: {
   identity: ShellAccountIdentity;
   canSignOut?: boolean;
+  accountEmail?: string;
 }) {
   const { theme, toggleTheme } = useAppPreferences();
-  const sections = buildShellAccountMenuSections({ theme, canSignOut });
+  const [isDeletionOpen, setIsDeletionOpen] = useState(false);
+  const sections = buildShellAccountMenuSections({
+    theme,
+    canSignOut,
+    canDeleteAccount: canSignOut && Boolean(accountEmail),
+  });
   const initials = deriveInitials(identity.title);
   const handleSignOut = () => {
     void signOut({ redirectTo: "/" });
   };
 
   return (
-    <OverflowMenu
-      label="Account menu"
-      panelClassName="shell-account-menu-panel"
-      renderTrigger={({ isOpen, triggerProps, setTriggerNode }) => (
-        <button
-          {...triggerProps}
-          ref={setTriggerNode}
-          className={`shell-account-menu-trigger${isOpen ? " is-open" : ""}`}
-          aria-label={isOpen ? "Close account menu" : "Open account menu"}
-        >
-          <span className="shell-account-menu-avatar">
-            <span className="shell-account-menu-avatar-copy">{initials}</span>
-          </span>
-          <span className="shell-account-menu-trigger-mark" aria-hidden="true">
-            <ChevronDown
-              size={14}
-              className="shell-account-menu-trigger-icon"
-            />
-          </span>
-        </button>
-      )}
-    >
-      {({ closeMenu }) => (
-        <div className="shell-account-menu-content">
-          <div className="shell-account-menu-identity">
-            <div className="shell-account-menu-identity-row">
-              <span
-                className="shell-account-menu-identity-avatar"
-                aria-hidden="true"
-              >
-                {initials}
-              </span>
-              <div className="shell-account-menu-identity-copy">
-                <p className="shell-account-menu-kicker">Account</p>
-                <p className="shell-account-menu-title">{identity.title}</p>
+    <>
+      <OverflowMenu
+        label="Account menu"
+        panelClassName="shell-account-menu-panel"
+        renderTrigger={({ isOpen, triggerProps, setTriggerNode }) => (
+          <button
+            {...triggerProps}
+            ref={setTriggerNode}
+            className={`shell-account-menu-trigger${isOpen ? " is-open" : ""}`}
+            aria-label={isOpen ? "Close account menu" : "Open account menu"}
+          >
+            <span className="shell-account-menu-avatar">
+              <span className="shell-account-menu-avatar-copy">{initials}</span>
+            </span>
+            <span
+              className="shell-account-menu-trigger-mark"
+              aria-hidden="true"
+            >
+              <ChevronDown
+                size={14}
+                className="shell-account-menu-trigger-icon"
+              />
+            </span>
+          </button>
+        )}
+      >
+        {({ closeMenu }) => (
+          <div className="shell-account-menu-content">
+            <div className="shell-account-menu-identity">
+              <div className="shell-account-menu-identity-row">
+                <span
+                  className="shell-account-menu-identity-avatar"
+                  aria-hidden="true"
+                >
+                  {initials}
+                </span>
+                <div className="shell-account-menu-identity-copy">
+                  <p className="shell-account-menu-kicker">Account</p>
+                  <p className="shell-account-menu-title">{identity.title}</p>
+                </div>
               </div>
+              <p className="shell-account-menu-subtitle">{identity.subtitle}</p>
             </div>
-            <p className="shell-account-menu-subtitle">{identity.subtitle}</p>
-          </div>
 
-          {sections.map((section) => (
-            <section key={section.key} className="shell-account-menu-section">
-              <p className="shell-account-menu-section-title">
-                {section.title}
-              </p>
-              <div className="shell-account-menu-section-items">
-                {section.items.map((action) => (
-                  <AccountMenuActionItem
-                    key={action.key}
-                    action={action}
-                    closeMenu={closeMenu}
-                    onToggleTheme={toggleTheme}
-                    onSignOut={handleSignOut}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
-    </OverflowMenu>
+            {sections.map((section) => (
+              <section key={section.key} className="shell-account-menu-section">
+                <p className="shell-account-menu-section-title">
+                  {section.title}
+                </p>
+                <div className="shell-account-menu-section-items">
+                  {section.items.map((action) => (
+                    <AccountMenuActionItem
+                      key={action.key}
+                      action={action}
+                      closeMenu={closeMenu}
+                      onToggleTheme={toggleTheme}
+                      onSignOut={handleSignOut}
+                      onDeleteAccount={() => setIsDeletionOpen(true)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </OverflowMenu>
+      {accountEmail ? (
+        <AccountDeletionDialog
+          email={accountEmail}
+          open={isDeletionOpen}
+          onClose={() => setIsDeletionOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }

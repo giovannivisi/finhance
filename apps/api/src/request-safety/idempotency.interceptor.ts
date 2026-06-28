@@ -102,7 +102,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return false;
     }
 
-    return normalizedRoutePath !== '/imports/csv/export';
+    // Account deletion removes its own idempotency rows inside the transaction,
+    // so there is no record left for the interceptor to finalise afterwards.
+    return !['/imports/csv/export', '/users/me'].includes(normalizedRoutePath);
   }
 
   private normalizeRoutePath(

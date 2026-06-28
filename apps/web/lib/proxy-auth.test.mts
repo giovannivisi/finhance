@@ -18,6 +18,8 @@ test("isPublicHostedProxyPath allows public auth pages and the privacy notice wi
   assert.equal(isPublicHostedProxyPath("/login"), true);
   assert.equal(isPublicHostedProxyPath("/login/"), true);
   assert.equal(isPublicHostedProxyPath("/signup"), true);
+  assert.equal(isPublicHostedProxyPath("/account-deleted"), true);
+  assert.equal(isPublicHostedProxyPath("/account-deleted/"), true);
   assert.equal(isPublicHostedProxyPath("/privacy"), true);
   assert.equal(isPublicHostedProxyPath("/privacy/"), true);
 });
