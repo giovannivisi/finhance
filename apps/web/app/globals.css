@@ -315,6 +315,7 @@ textarea,
 .glass-pill-v4,
 .btn-primary,
 .btn-secondary,
+.btn-danger,
 input,
 select,
 textarea,
@@ -5082,8 +5083,31 @@ input[type="checkbox"]:disabled {
   border-color: var(--border-glass-strong);
 }
 
+.btn-danger {
+  min-height: 46px;
+  padding: 10px 22px;
+  border: 1px solid color-mix(in srgb, var(--color-expense) 78%, white 8%);
+  border-radius: var(--radius-control);
+  background: var(--color-expense);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    filter 0.2s,
+    transform 0.2s;
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
 .btn-secondary:disabled,
-.btn-primary:disabled {
+.btn-primary:disabled,
+.btn-danger:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -6160,6 +6184,29 @@ html[data-theme="dark"] .text-red-800 {
   background: var(--bg-card-hover);
 }
 
+.account-deleted-page {
+  min-height: calc(
+    100dvh - var(--top-header-height) - 72px -
+      env(safe-area-inset-bottom, 0px)
+  );
+  max-width: 680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.account-deleted-page svg {
+  color: var(--color-income);
+}
+
+.account-deleted-page .page-subtitle {
+  max-width: 600px;
+}
+
 .shell-account-menu-trigger {
   display: inline-flex;
   align-items: center;
@@ -6365,6 +6412,61 @@ html[data-theme="dark"] .text-red-800 {
 
 .shell-account-menu-item:disabled .shell-account-menu-icon-frame {
   opacity: 0.72;
+}
+
+.shell-account-menu-item.is-danger .shell-account-menu-icon {
+  color: var(--color-expense);
+}
+
+.account-deletion-dialog {
+  display: grid;
+  gap: 18px;
+}
+
+.account-deletion-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--surface-danger-border);
+  border-radius: 8px;
+  color: var(--text-primary);
+}
+
+.account-deletion-warning svg {
+  flex-shrink: 0;
+  color: var(--color-expense);
+}
+
+.account-deletion-warning p,
+.account-deletion-copy p {
+  margin: 0;
+}
+
+.account-deletion-copy {
+  display: grid;
+  gap: 10px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.account-deletion-copy ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.account-deletion-field {
+  display: grid;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.account-deletion-field input {
+  width: 100%;
 }
 
 [data-theme="light"] .shell-account-menu-item {

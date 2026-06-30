@@ -112,6 +112,7 @@ describe("ShellAccountMenu", () => {
           subtitle: "giovanni@example.com",
         }}
         canSignOut
+        accountEmail="giovanni@example.com"
       />,
     );
 
@@ -122,5 +123,43 @@ describe("ShellAccountMenu", () => {
     await waitFor(() =>
       expect(screen.queryByRole("menu", { name: "Account menu" })).toBeNull(),
     );
+  });
+
+  it("opens the destructive account deletion flow for hosted users", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ShellAccountMenu
+        identity={{
+          title: "Giovanni Visi",
+          subtitle: "giovanni@example.com",
+        }}
+        canSignOut
+        accountEmail="giovanni@example.com"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open account menu" }));
+
+    const sectionTitles = Array.from(
+      document.querySelectorAll(".shell-account-menu-section-title"),
+      (element) => element.textContent,
+    );
+    expect(sectionTitles).toEqual([
+      "Settings",
+      "Appearance",
+      "Legal",
+      "Account",
+    ]);
+
+    const deleteAction = screen.getByRole("menuitem", {
+      name: "Delete account",
+    });
+    expect(deleteAction).toHaveClass("is-danger");
+    await user.click(deleteAction);
+
+    expect(
+      screen.getByRole("dialog", { name: "Delete your account?" }),
+    ).toBeInTheDocument();
   });
 });

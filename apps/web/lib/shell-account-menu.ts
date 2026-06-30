@@ -5,6 +5,7 @@ import {
   Moon,
   Settings,
   Sun,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,8 +27,9 @@ export interface ShellAccountMenuButtonAction {
   key: string;
   label: string;
   ariaLabel: string;
-  action: "toggle-theme" | "sign-out";
+  action: "toggle-theme" | "sign-out" | "delete-account";
   icon: LucideIcon;
+  tone?: "danger";
 }
 
 export interface ShellAccountMenuPlaceholderAction {
@@ -52,18 +54,26 @@ export interface ShellAccountMenuSection {
 export function buildShellAccountMenuSections(input: {
   theme: "light" | "dark";
   canSignOut?: boolean;
+  canDeleteAccount?: boolean;
 }): ShellAccountMenuSection[] {
   const sections: ShellAccountMenuSection[] = [
     {
-      key: "workspace",
-      title: "Workspace",
+      key: "settings",
+      title: "Settings",
       items: [
         {
           type: "link",
-          key: "privacy",
-          label: "Privacy notice",
-          href: "/privacy",
-          icon: FileText,
+          key: "user-settings",
+          label: "User settings",
+          href: "/settings/user",
+          icon: Settings,
+        },
+        {
+          type: "placeholder",
+          key: "app-settings",
+          label: "App settings (soon)",
+          icon: MonitorCog,
+          disabledReason: "App settings will land in a later pass.",
         },
       ],
     },
@@ -85,41 +95,50 @@ export function buildShellAccountMenuSections(input: {
       ],
     },
     {
-      key: "settings",
-      title: "Settings",
+      key: "legal",
+      title: "Legal",
       items: [
         {
           type: "link",
-          key: "user-settings",
-          label: "User settings",
-          href: "/settings/user",
-          icon: Settings,
-        },
-        {
-          type: "placeholder",
-          key: "app-settings",
-          label: "App settings (soon)",
-          icon: MonitorCog,
-          disabledReason: "App settings will land in a later pass.",
+          key: "privacy",
+          label: "Privacy notice",
+          href: "/privacy",
+          icon: FileText,
         },
       ],
     },
   ];
 
+  const accountItems: ShellAccountMenuAction[] = [];
+
   if (input.canSignOut) {
+    accountItems.push({
+      type: "button",
+      key: "sign-out",
+      label: "Log out",
+      ariaLabel: "Log out",
+      action: "sign-out",
+      icon: LogOut,
+    });
+  }
+
+  if (input.canDeleteAccount) {
+    accountItems.push({
+      type: "button",
+      key: "delete-account",
+      label: "Delete account",
+      ariaLabel: "Delete account",
+      action: "delete-account",
+      icon: Trash2,
+      tone: "danger",
+    });
+  }
+
+  if (accountItems.length > 0) {
     sections.push({
       key: "account",
       title: "Account",
-      items: [
-        {
-          type: "button",
-          key: "sign-out",
-          label: "Log out",
-          ariaLabel: "Log out",
-          action: "sign-out",
-          icon: LogOut,
-        },
-      ],
+      items: accountItems,
     });
   }
 

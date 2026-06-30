@@ -357,23 +357,23 @@ const DEFAULT_RETENTION: Record<
   workspaceData: {
     title: "Workspace finance records",
     retention:
-      "Stored until the operator edits or removes the relevant record, or until the deployment's own database retention/back-up policy removes it.",
+      "Stored until the operator edits or removes the relevant record, or until a hosted user permanently deletes their account.",
     detail:
-      "This includes accounts, transactions, categories, assets, recurring rules, and budgets. The product stores them as the working dataset for the workspace.",
+      "This includes accounts, transactions, categories, assets, recurring rules, budgets, brokerage records, and settings. Hosted account deletion removes the live user-owned dataset immediately.",
   },
   importPreviewPayloads: {
     title: "Import preview payloads and import batches",
     retention:
-      "Successful preview payloads are stripped after about 15 minutes. Import batch summaries and issue metadata can remain until the underlying records are removed from the database.",
+      "Successful preview payloads are stripped after about 15 minutes. Import batch summaries and issue metadata remain until the underlying records are removed or the hosted account is deleted.",
     detail:
       "The current API clears expired preview payloads from storage after the preview TTL, but batch-level metadata is still retained for workflow history.",
   },
   snapshotHistory: {
     title: "Net-worth snapshot history",
     retention:
-      "Stored until the operator removes the records or applies an external retention policy.",
+      "Stored until the operator removes the records, a hosted user permanently deletes their account, or an external retention policy applies.",
     detail:
-      "The current product version does not provide an end-user self-service delete action for snapshot history, so erasure requests must go through the configured rights contact.",
+      "Hosted account deletion permanently removes all snapshot and net-worth history owned by that user as part of the same database transaction.",
   },
   requestSafety: {
     title: "Idempotency and request-safety records",

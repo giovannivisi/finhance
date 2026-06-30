@@ -393,10 +393,19 @@ export default function PrivacyPage() {
                   {notice.importSummary.rights}
                 </p>
                 <p className="privacy-detail-copy text-blue-950">
-                  The current product does not provide an end-user self-service
-                  delete action for snapshot history, so snapshot erasure or
-                  restriction requests must be handled by the configured rights
-                  contact.
+                  Hosted users can permanently delete their account from the
+                  avatar menu under Account, then Delete account. The flow
+                  requires recent authentication and an exact email
+                  confirmation. It immediately removes all live user-owned
+                  application records, including snapshot history; the
+                  application retains no separate audit copy.
+                </p>
+                <p className="privacy-detail-copy text-blue-950">
+                  Infrastructure backups, security logs, or processor records,
+                  where configured by the deployment operator, follow the
+                  operator&apos;s and processor&apos;s separate retention
+                  schedules and are not selectively restored after account
+                  deletion.
                 </p>
               </div>
 

@@ -39,6 +39,10 @@ export interface DeleteUserPasskeyRequest {
   credentialId?: string;
 }
 
+export interface DeleteUserAccountRequest {
+  email: string;
+}
+
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   showTransactionTimes: true,
   startPage: "DASHBOARD",

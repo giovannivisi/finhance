@@ -59,5 +59,6 @@ test("isPublicAuthPath recognises the unauthenticated hosted pages", () => {
   assert.equal(isPublicAuthPath("/"), true);
   assert.equal(isPublicAuthPath("/login/"), true);
   assert.equal(isPublicAuthPath("/signup"), true);
+  assert.equal(isPublicAuthPath("/account-deleted"), true);
   assert.equal(isPublicAuthPath("/dashboard"), false);
 });
