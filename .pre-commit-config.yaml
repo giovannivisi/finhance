@@ -35,7 +35,7 @@ repos:
 
       - id: api-tests
         name: api unit tests
-        entry: pnpm --filter api test -- --runInBand
+        entry: pnpm --filter api test --runInBand
         language: system
         pass_filenames: false
         files: '^(apps/api/|packages/shared/).*\.(ts|js|json|mjs|prisma|sql)$'
