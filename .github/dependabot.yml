@@ -8,7 +8,39 @@ updates:
     schedule:
       interval: "weekly"
     groups:
-      minor-and-patch:
+      production-patches:
+        dependency-type: "production"
+        patterns:
+          - "*"
         update-types:
-          - "minor"
           - "patch"
+      development-patches:
+        dependency-type: "development"
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+    # Expo SDK upgrades must be applied as a compatible set with `expo install`.
+    # React Native versions are also constrained by the selected SDK.
+    ignore:
+      - dependency-name: "expo"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "expo-*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "@expo/*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "react-native"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "react-native-*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "@react-native*/*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
