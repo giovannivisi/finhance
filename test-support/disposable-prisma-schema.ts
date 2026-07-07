@@ -17,6 +17,21 @@ function buildOwnerPlaceholderEmail(userId: string): string {
   return `finhance-user+${userId}@${PLACEHOLDER_EMAIL_DOMAIN}`;
 }
 
+function createClientForDatabase(databaseUrl: string): PrismaClient {
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = databaseUrl;
+
+  try {
+    return new PrismaClient();
+  } finally {
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  }
+}
+
 async function ensureOwnerUserRecord(
   client: PrismaClient,
   input: {
@@ -57,13 +72,7 @@ export async function createPrismaTestSchema(
   const schema = `${prefix}_${randomUUID().replace(/-/g, "")}`;
   const databaseUrl = buildSchemaDatabaseUrl(baseUrl, schema);
   const adminUrl = buildSchemaDatabaseUrl(baseUrl, "public");
-  const admin = new PrismaClient({
-    datasources: {
-      db: {
-        url: adminUrl,
-      },
-    },
-  });
+  const admin = createClientForDatabase(adminUrl);
 
   await admin.$connect();
   await admin.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
@@ -77,13 +86,7 @@ export async function createPrismaTestSchema(
     stdio: "pipe",
   });
 
-  const seeded = new PrismaClient({
-    datasources: {
-      db: {
-        url: databaseUrl,
-      },
-    },
-  });
+  const seeded = createClientForDatabase(databaseUrl);
   await seeded.$connect();
   await ensureOwnerUserRecord(seeded, {
     userId: options?.ownerId ?? DEFAULT_LOCAL_DEV_OWNER_ID,
