@@ -18,6 +18,7 @@ repos:
         entry: pnpm exec prettier --write
         language: system
         files: '\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|json|md|ya?ml)$'
+        exclude: '^pnpm-lock\.yaml$'
 
       - id: prisma-format
         name: prisma format
