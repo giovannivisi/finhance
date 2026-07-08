@@ -82,8 +82,27 @@ function createPrismaClient() {
   }) as PrismaClient;
 }
 
-export const prisma = globalThis.__finhancePrisma__ ?? createPrismaClient();
+function getPrismaClient() {
+  const existingClient = globalThis.__finhancePrisma__;
 
-if (process.env.NODE_ENV !== "production") {
-  globalThis.__finhancePrisma__ = prisma;
+  if (existingClient) {
+    return existingClient;
+  }
+
+  const client = createPrismaClient();
+
+  if (process.env.NODE_ENV !== "production") {
+    globalThis.__finhancePrisma__ = client;
+  }
+
+  return client;
 }
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, property) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, property, client);
+
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});

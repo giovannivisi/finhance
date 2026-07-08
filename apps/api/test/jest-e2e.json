@@ -18,6 +18,7 @@
     "^@transactions/(.*)$": "<rootDir>/src/transactions/$1",
     "^@prices/(.*)$": "<rootDir>/src/prices/$1",
     "^@users/(.*)$": "<rootDir>/src/users/$1",
-    "^@prisma/(prisma\\..*)$": "<rootDir>/src/prisma/$1"
+    "^@prisma/(prisma\\..*)$": "<rootDir>/src/prisma/$1",
+    "^\\.\\./\\.\\./\\.\\./test-support/(.*)\\.js$": "<rootDir>/../../test-support/$1.ts"
   }
 }

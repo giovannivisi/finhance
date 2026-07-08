@@ -76,13 +76,7 @@ describe('Brokerage routes with Prisma schema (e2e)', () => {
     );
     await app.init();
 
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: schema.databaseUrl,
-        },
-      },
-    });
+    prisma = new PrismaClient();
     await prisma.$connect();
   });
 

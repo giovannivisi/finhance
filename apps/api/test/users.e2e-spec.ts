@@ -105,13 +105,7 @@ describe('User settings routes (e2e)', () => {
       );
       await app.init();
 
-      prisma = new PrismaClient({
-        datasources: {
-          db: {
-            url: schema.databaseUrl,
-          },
-        },
-      });
+      prisma = new PrismaClient();
       await prisma.$connect();
     });
 
@@ -200,13 +194,7 @@ describe('User settings routes (e2e)', () => {
       );
       await app.init();
 
-      prisma = new PrismaClient({
-        datasources: {
-          db: {
-            url: schema.databaseUrl,
-          },
-        },
-      });
+      prisma = new PrismaClient();
       await prisma.$connect();
     });
 

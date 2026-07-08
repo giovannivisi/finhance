@@ -1,5 +1,8 @@
-const generated = require("./generated/client");
-const { PrismaPg } = require("@prisma/adapter-pg");
+import { createRequire } from "node:module";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+const require = createRequire(import.meta.url);
+const generated = require("./generated/client/index.js");
 
 function resolveConnectionString(options) {
   const connectionString =
@@ -41,7 +44,48 @@ class PrismaClient extends generated.PrismaClient {
   }
 }
 
-module.exports = {
+const {
+  $Enums,
+  Prisma,
+  AccountType,
+  AssetKind,
+  AssetType,
+  BrokerageOperationKind,
+  CategoryType,
+  FxRateSource,
+  IdempotencyRequestStatus,
+  ImportBatchStatus,
+  ImportSource,
+  LiabilityKind,
+  OperationType,
+  RecurringOccurrenceStatus,
+  TransactionDirection,
+  TransactionKind,
+} = generated;
+
+export {
+  $Enums,
+  AccountType,
+  AssetKind,
+  AssetType,
+  BrokerageOperationKind,
+  CategoryType,
+  FxRateSource,
+  IdempotencyRequestStatus,
+  ImportBatchStatus,
+  ImportSource,
+  LiabilityKind,
+  OperationType,
+  Prisma,
+  PrismaClient,
+  RecurringOccurrenceStatus,
+  TransactionDirection,
+  TransactionKind,
+  createPrismaAdapter,
+  createPrismaClientOptions,
+};
+
+export default {
   ...generated,
   PrismaClient,
   createPrismaAdapter,
