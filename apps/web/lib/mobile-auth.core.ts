@@ -19,7 +19,10 @@ export const MOBILE_TOKEN_DEFAULT_TTL = "30d";
 export const MOBILE_CODE_TTL = "5m";
 export const MOBILE_PASSKEY_CHALLENGE_AUDIENCE =
   "finhance-mobile-passkey-challenge";
+export const MOBILE_PASSKEY_REG_CHALLENGE_AUDIENCE =
+  "finhance-mobile-passkey-registration-challenge";
 export const MOBILE_PASSKEY_CHALLENGE_TTL = "5m";
+export const MOBILE_RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1000;
 
 /** Fragment key used when handing the sign-in code back to the app. */
 export const MOBILE_AUTH_CODE_FRAGMENT_KEY = "code";
@@ -36,6 +39,11 @@ export interface MobileTokenClaims {
 export interface MobileCodeClaims {
   userId: string;
   email: string | null;
+  challenge: string;
+}
+
+export interface MobilePasskeyRegistrationChallengeClaims {
+  userId: string;
   challenge: string;
 }
 
@@ -275,6 +283,58 @@ export async function verifyMobilePasskeyChallengeToken(
   } catch {
     return null;
   }
+}
+
+export async function mintMobilePasskeyRegChallengeToken(input: {
+  challenge: string;
+  userId: string;
+  authSecret: string;
+}): Promise<string> {
+  return new SignJWT({ challenge: input.challenge })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuer(MOBILE_TOKEN_ISSUER)
+    .setAudience(MOBILE_PASSKEY_REG_CHALLENGE_AUDIENCE)
+    .setSubject(input.userId)
+    .setJti(crypto.randomUUID())
+    .setIssuedAt()
+    .setExpirationTime(MOBILE_PASSKEY_CHALLENGE_TTL)
+    .sign(toSecretKey(input.authSecret));
+}
+
+export async function verifyMobilePasskeyRegChallengeToken(
+  token: string,
+  authSecret: string,
+): Promise<MobilePasskeyRegistrationChallengeClaims | null> {
+  try {
+    const result = await jwtVerify(token, toSecretKey(authSecret), {
+      issuer: MOBILE_TOKEN_ISSUER,
+      audience: MOBILE_PASSKEY_REG_CHALLENGE_AUDIENCE,
+      algorithms: ["HS256"],
+    });
+
+    const userId = result.payload.sub?.trim();
+    const challenge = result.payload.challenge;
+
+    if (!userId || typeof challenge !== "string" || !challenge.trim()) {
+      return null;
+    }
+
+    return { userId, challenge };
+  } catch {
+    return null;
+  }
+}
+
+export function hasRecentMobileIssuedAt(
+  issuedAt: Date | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!issuedAt) {
+    return false;
+  }
+
+  const issuedTime = issuedAt.getTime();
+  return issuedTime <= now && now - issuedTime <= MOBILE_RECENT_AUTH_MAX_AGE_MS;
 }
 
 export function readBearerToken(

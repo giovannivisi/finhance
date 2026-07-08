@@ -6,12 +6,15 @@ import {
   isValidPkceChallenge,
   mintMobileAuthCode,
   mintMobilePasskeyChallengeToken,
+  mintMobilePasskeyRegChallengeToken,
   mintMobileSessionToken,
+  hasRecentMobileIssuedAt,
   readBearerToken,
   resolveActiveMobileTokenClaims,
   resolveMobileRedirectTarget,
   verifyMobileAuthCode,
   verifyMobilePasskeyChallengeToken,
+  verifyMobilePasskeyRegChallengeToken,
   verifyMobileSessionToken,
   verifyPkceVerifier,
 } from "./mobile-auth.core.ts";
@@ -120,6 +123,34 @@ test("passkey challenge tokens reject the wrong secret and a session token", asy
   });
   assert.equal(
     await verifyMobilePasskeyChallengeToken(sessionToken, AUTH_SECRET),
+    null,
+  );
+});
+
+test("passkey registration challenge tokens bind the challenge to the user", async () => {
+  const token = await mintMobilePasskeyRegChallengeToken({
+    challenge: "registration-challenge",
+    userId: "user-123",
+    authSecret: AUTH_SECRET,
+  });
+
+  assert.deepEqual(
+    await verifyMobilePasskeyRegChallengeToken(token, AUTH_SECRET),
+    {
+      challenge: "registration-challenge",
+      userId: "user-123",
+    },
+  );
+});
+
+test("passkey registration challenge tokens reject other audiences", async () => {
+  const authToken = await mintMobilePasskeyChallengeToken({
+    challenge: "auth-challenge",
+    authSecret: AUTH_SECRET,
+  });
+
+  assert.equal(
+    await verifyMobilePasskeyRegChallengeToken(authToken, AUTH_SECRET),
     null,
   );
 });
@@ -256,6 +287,24 @@ test("active user resolution fails closed for tokens without an issue time", () 
     null,
   );
   assert.ok(resolveActiveMobileTokenClaims(claims, activeUser()));
+});
+
+test("recent mobile auth accepts only fresh issue times", () => {
+  const now = new Date("2026-07-08T10:15:00Z").getTime();
+
+  assert.equal(
+    hasRecentMobileIssuedAt(new Date("2026-07-08T10:00:00Z"), now),
+    true,
+  );
+  assert.equal(
+    hasRecentMobileIssuedAt(new Date("2026-07-08T09:59:59Z"), now),
+    false,
+  );
+  assert.equal(
+    hasRecentMobileIssuedAt(new Date("2026-07-08T10:16:00Z"), now),
+    false,
+  );
+  assert.equal(hasRecentMobileIssuedAt(null, now), false);
 });
 
 test("readBearerToken parses Authorization headers", () => {

@@ -1,37 +1,27 @@
 import type { DeleteUserPasskeyRequest } from "@finhance/shared/users";
 import { resolveCrossOriginRejection } from "@lib/api-proxy";
-import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { resolveMobileApiUser } from "@lib/mobile-api-auth";
 import { deletePasskeyForUser, listPasskeysForUser } from "@lib/passkeys";
-import {
-  RECENT_AUTH_REQUIRED_MESSAGE,
-  hasRecentSessionAuthentication,
-} from "@lib/recent-auth";
 
 export const runtime = "nodejs";
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
 
-async function resolveSessionUserId(): Promise<string | null> {
-  const session = await auth();
-  return session?.user?.id?.trim() || null;
-}
-
-export async function GET() {
+export async function GET(request: Request) {
   if (!isHostedAuthMode()) {
-    return Response.json([], { headers: NO_STORE_HEADERS });
-  }
-
-  const userId = await resolveSessionUserId();
-
-  if (!userId) {
     return Response.json(
-      { message: "Authentication is required." },
-      { status: 401, headers: NO_STORE_HEADERS },
+      { message: "Passkeys are only available on hosted deployments." },
+      { status: 404, headers: NO_STORE_HEADERS },
     );
   }
 
-  return Response.json(await listPasskeysForUser(userId), {
+  const authResult = await resolveMobileApiUser(request);
+  if (!authResult.ok) {
+    return authResult.response;
+  }
+
+  return Response.json(await listPasskeysForUser(authResult.user.userId), {
     headers: NO_STORE_HEADERS,
   });
 }
@@ -45,25 +35,15 @@ export async function DELETE(request: Request) {
   }
 
   const crossOriginRejection = resolveCrossOriginRejection(request);
-
   if (crossOriginRejection) {
     return crossOriginRejection;
   }
 
-  const userId = await resolveSessionUserId();
-
-  if (!userId) {
-    return Response.json(
-      { message: "Authentication is required." },
-      { status: 401, headers: NO_STORE_HEADERS },
-    );
-  }
-
-  if (!(await hasRecentSessionAuthentication(userId))) {
-    return Response.json(
-      { message: RECENT_AUTH_REQUIRED_MESSAGE },
-      { status: 403, headers: NO_STORE_HEADERS },
-    );
+  const authResult = await resolveMobileApiUser(request, {
+    requireRecentAuth: true,
+  });
+  if (!authResult.ok) {
+    return authResult.response;
   }
 
   let body: DeleteUserPasskeyRequest | null = null;
@@ -83,7 +63,7 @@ export async function DELETE(request: Request) {
     );
   }
 
-  await deletePasskeyForUser(userId, credentialId);
+  await deletePasskeyForUser(authResult.user.userId, credentialId);
 
   return new Response(null, { status: 204, headers: NO_STORE_HEADERS });
 }

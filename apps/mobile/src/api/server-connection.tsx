@@ -57,9 +57,9 @@ interface ServerConnectionContextValue {
   signInHosted: (
     normalizedUrl: string,
     provider?: HostedSignInProvider,
-  ) => Promise<void>;
+  ) => Promise<string>;
   /** Native passkey sign-in against a hosted deployment (no browser). */
-  signInWithPasskey: (normalizedUrl: string) => Promise<void>;
+  signInWithPasskey: (normalizedUrl: string) => Promise<string>;
   /** Whether this device's platform supports passkeys. */
   passkeysSupported: boolean;
   clearServer: () => Promise<void>;
@@ -292,6 +292,7 @@ export function ServerConnectionProvider({
       setServerMode("hosted");
       setToken(nextToken);
       setServerUrl(normalizedUrl);
+      return nextToken;
     },
     [],
   );
@@ -347,6 +348,7 @@ export function ServerConnectionProvider({
     setServerMode("hosted");
     setToken(nextToken);
     setServerUrl(normalizedUrl);
+    return nextToken;
   }, []);
 
   const clearServer = useCallback(async () => {

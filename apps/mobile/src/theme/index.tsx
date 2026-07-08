@@ -36,6 +36,7 @@ interface ThemeContextValue {
   setPreference: (preference: ThemePreference) => void;
   hideMoney: boolean;
   setHideMoney: (hide: boolean) => void;
+  isHydrated: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -44,6 +45,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const systemScheme = useColorScheme();
   const [preference, setPreferenceState] = useState<ThemePreference>("system");
   const [hideMoney, setHideMoneyState] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +75,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         }
       } catch {
         // Fall back to defaults when storage is unavailable.
+      } finally {
+        if (!cancelled) {
+          setIsHydrated(true);
+        }
       }
     })();
 
@@ -109,8 +115,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setPreference,
       hideMoney,
       setHideMoney,
+      isHydrated,
     }),
-    [scheme, preference, setPreference, hideMoney, setHideMoney],
+    [scheme, preference, setPreference, hideMoney, setHideMoney, isHydrated],
   );
 
   return (

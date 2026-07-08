@@ -34,6 +34,16 @@ export const MOBILE_AUTH_RATE_LIMITS = {
     windowMs: 60_000,
     scope: "mobile-passkey-verify",
   },
+  passkeyRegisterOptions: {
+    limit: 10,
+    windowMs: 60_000,
+    scope: "mobile-passkey-register-options",
+  },
+  passkeyRegisterVerify: {
+    limit: 10,
+    windowMs: 60_000,
+    scope: "mobile-passkey-register-verify",
+  },
   tokenExchange: {
     limit: 10,
     windowMs: 60_000,

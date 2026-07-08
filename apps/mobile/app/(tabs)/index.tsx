@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Redirect, usePathname, useRouter, type Href } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import type {
@@ -45,8 +45,12 @@ import {
   getAutomaticPriceRefreshDelay,
   type AutomaticPriceRefreshAttempt,
 } from "@/lib/price-refresh";
+import { LAUNCH_TAB_HREFS } from "@/lib/preferences";
 import { useIsScreenActive } from "@/lib/screen-active";
+import { useAppPreferences } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
+
+let launchRedirectConsumed = false;
 
 function PricingStatusChip({
   state,
@@ -169,7 +173,19 @@ function HoldingRow({
   );
 }
 
-export default function DashboardScreen() {
+export default function HomeRoute() {
+  const pathname = usePathname();
+  const { launchTab } = useAppPreferences();
+
+  if (!launchRedirectConsumed && pathname === "/" && launchTab !== "home") {
+    launchRedirectConsumed = true;
+    return <Redirect href={LAUNCH_TAB_HREFS[launchTab] as Href} />;
+  }
+
+  return <DashboardScreen />;
+}
+
+function DashboardScreen() {
   const router = useRouter();
   const { colors, hideMoney, setHideMoney } = useTheme();
   const dashboardQuery = useDashboard();

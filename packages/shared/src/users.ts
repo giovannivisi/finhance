@@ -43,6 +43,8 @@ export interface DeleteUserAccountRequest {
   email: string;
 }
 
+export const RECENT_AUTH_REQUIRED_CODE = "RECENT_AUTH_REQUIRED";
+
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   showTransactionTimes: true,
   startPage: "DASHBOARD",
