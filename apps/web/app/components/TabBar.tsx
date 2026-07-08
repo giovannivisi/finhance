@@ -463,7 +463,7 @@ export default function TabBar() {
                     onMouseEnter={() => handlePrefetch(item.href)}
                     onFocus={() => handlePrefetch(item.href)}
                     onTouchStart={() => handlePrefetch(item.href)}
-                    onClick={(event) => {
+                    onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
                       event.preventDefault();
                       handleNavigate(item.href);
                     }}
@@ -526,11 +526,11 @@ export default function TabBar() {
                 aria-label={item.label}
                 aria-current={isActive ? "page" : undefined}
                 aria-disabled={isBlocked}
-                onClick={(event) => {
+                onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
                   event.preventDefault();
                   handleNavigate(item.href);
                 }}
-                onMouseEnter={(event) => {
+                onMouseEnter={(event: ReactMouseEvent<HTMLAnchorElement>) => {
                   handlePrefetch(item.href);
                   setHoveredIndex(index);
                   setHoverLeftPct(getHoverLeftPctAt(event.clientX));

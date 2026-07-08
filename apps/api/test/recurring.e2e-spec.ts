@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { SetupService } from '@/setup/setup.service';
 import { MonthlyReviewController } from '@recurring/monthly-review.controller';
 import { RecurringController } from '@recurring/recurring.controller';
 import { RecurringService } from '@recurring/recurring.service';
@@ -90,7 +91,11 @@ describe('Recurring routes (e2e)', () => {
     clearOccurrence: jest.Mock;
     remove: jest.Mock;
     materialize: jest.Mock;
+    hasPendingMaterializations: jest.Mock;
     getMonthlyReview: jest.Mock;
+  };
+  let setup: {
+    getStatus: jest.Mock;
   };
 
   function httpServer(): HttpServer {
@@ -108,13 +113,18 @@ describe('Recurring routes (e2e)', () => {
       clearOccurrence: jest.fn(),
       remove: jest.fn(),
       materialize: jest.fn(),
+      hasPendingMaterializations: jest.fn(),
       getMonthlyReview: jest.fn(),
+    };
+    setup = {
+      getStatus: jest.fn().mockResolvedValue(null),
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [RecurringController, MonthlyReviewController],
       providers: [
         { provide: RecurringService, useValue: recurring },
+        { provide: SetupService, useValue: setup },
         {
           provide: RequestOwnerResolver,
           useValue: {

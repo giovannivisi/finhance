@@ -77,7 +77,7 @@ export async function createPrismaTestSchema(
   await admin.$connect();
   await admin.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
 
-  execFileSync("pnpm", ["run", "prisma:db:push", "--", "--skip-generate"], {
+  execFileSync("pnpm", ["run", "prisma:db:push"], {
     cwd: DB_PACKAGE_DIR,
     env: {
       ...process.env,

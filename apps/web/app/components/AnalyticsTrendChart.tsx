@@ -6,6 +6,7 @@ import {
   Legend,
   Line,
   LineChart,
+  type MouseHandlerDataParam,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -39,7 +40,7 @@ export default function AnalyticsTrendChart({
         <LineChart
           data={data}
           margin={{ top: 16, right: 16, left: 8, bottom: 0 }}
-          onClick={(state) => {
+          onClick={(state: MouseHandlerDataParam) => {
             const raw = (
               state as
                 | { activeTooltipIndex?: number | string | null }

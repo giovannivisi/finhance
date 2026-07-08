@@ -14,12 +14,26 @@ function resolveConnectionString(options) {
   return connectionString;
 }
 
+function resolveSchemaName(connectionString) {
+  try {
+    const schema = new URL(connectionString).searchParams.get("schema")?.trim();
+    return schema || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function createPrismaAdapter(connectionString) {
-  return new PrismaPg({
-    connectionString,
-    connectionTimeoutMillis: 5_000,
-    idleTimeoutMillis: 300_000,
-  });
+  const schema = resolveSchemaName(connectionString);
+
+  return new PrismaPg(
+    {
+      connectionString,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 300_000,
+    },
+    schema ? { schema } : undefined,
+  );
 }
 
 function createPrismaClientOptions(options = {}) {

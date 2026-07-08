@@ -9,6 +9,8 @@ import { createPrismaTestSchema } from './prisma-test-schema';
 
 const OWNER_ID = 'local-dev';
 const HOSTED_USER_ID = 'hosted-user-1';
+jest.setTimeout(90_000);
+
 const TEST_KEY_PAIR = generateKeyPairSync('ec', {
   namedCurve: 'P-256',
   publicKeyEncoding: {
@@ -128,6 +130,7 @@ describe('User settings routes (e2e)', () => {
         .expect(200);
 
       expect(bodyAs<UserSettingsResponse>(getResponse)).toEqual({
+        reportingCurrency: 'EUR',
         showTransactionTimes: true,
         startPage: 'DASHBOARD',
       });
@@ -142,6 +145,7 @@ describe('User settings routes (e2e)', () => {
         .expect(200);
 
       expect(bodyAs<UserSettingsResponse>(patchResponse)).toEqual({
+        reportingCurrency: 'EUR',
         showTransactionTimes: false,
         startPage: 'BROKERAGE',
       });
@@ -151,6 +155,7 @@ describe('User settings routes (e2e)', () => {
         select: { userSettings: true },
       });
       expect(persisted.userSettings).toEqual({
+        reportingCurrency: 'EUR',
         showTransactionTimes: false,
         startPage: 'BROKERAGE',
       });
@@ -218,6 +223,7 @@ describe('User settings routes (e2e)', () => {
         .expect(200);
 
       expect(bodyAs<UserSettingsResponse>(response)).toEqual({
+        reportingCurrency: 'EUR',
         showTransactionTimes: true,
         startPage: 'ANALYTICS',
       });
@@ -227,6 +233,7 @@ describe('User settings routes (e2e)', () => {
       });
       expect(hostedUser.email).toBe('giovanni@example.com');
       expect(hostedUser.userSettings).toEqual({
+        reportingCurrency: 'EUR',
         showTransactionTimes: true,
         startPage: 'ANALYTICS',
       });

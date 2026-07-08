@@ -21,8 +21,23 @@ jobs:
     name: Validate
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: finhance
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_USER: prisma
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d finhance"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       CI: true
+      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/finhance?sslmode=disable
       NEXT_TELEMETRY_DISABLED: "1"
       TURBO_TELEMETRY_DISABLED: "1"
     steps:
@@ -51,6 +66,18 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: API coverage
+        run: pnpm --filter api test:cov
+
+      - name: Web component coverage
+        run: pnpm --filter web test:components:cov
+
+      - name: Mobile coverage
+        run: pnpm --filter mobile test:cov
+
+      - name: API e2e
+        run: pnpm --filter api test:e2e
 
       - name: Build
         run: pnpm build

@@ -988,7 +988,9 @@ export default function DashboardClient({
             sensors={sensors}
             collisionDetection={closestCenter}
             modifiers={[restrictToParentElement]}
-            onDragEnd={(e) => handleKindDragEnd(e, "ASSET")}
+            onDragEnd={(event: DragEndEvent) =>
+              handleKindDragEnd(event, "ASSET")
+            }
           >
             <SortableContext
               items={sortedAssetCategories}
@@ -1043,7 +1045,9 @@ export default function DashboardClient({
                           sensors={sensors}
                           collisionDetection={closestCenter}
                           modifiers={[restrictToParentElement]}
-                          onDragEnd={(e) => handleAssetDragEnd(e, category)}
+                          onDragEnd={(event: DragEndEvent) =>
+                            handleAssetDragEnd(event, category)
+                          }
                         >
                           <SortableContext
                             items={assetIds}
@@ -1082,7 +1086,9 @@ export default function DashboardClient({
             sensors={sensors}
             collisionDetection={closestCenter}
             modifiers={[restrictToParentElement]}
-            onDragEnd={(e) => handleKindDragEnd(e, "LIABILITY")}
+            onDragEnd={(event: DragEndEvent) =>
+              handleKindDragEnd(event, "LIABILITY")
+            }
           >
             <SortableContext
               items={sortedLiabilityCategories}
@@ -1137,7 +1143,9 @@ export default function DashboardClient({
                           sensors={sensors}
                           collisionDetection={closestCenter}
                           modifiers={[restrictToParentElement]}
-                          onDragEnd={(e) => handleAssetDragEnd(e, category)}
+                          onDragEnd={(event: DragEndEvent) =>
+                            handleAssetDragEnd(event, category)
+                          }
                         >
                           <SortableContext
                             items={assetIds}

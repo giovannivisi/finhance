@@ -11,8 +11,10 @@ import request from 'supertest';
 import { AccountsService } from '@accounts/accounts.service';
 import { AssetsController } from '@assets/assets.controller';
 import { AssetsService } from '@assets/assets.service';
+import { BudgetsService } from '@budgets/budgets.service';
 import { DashboardController } from '@/dashboard/dashboard.controller';
 import { DashboardService } from '@/dashboard/dashboard.service';
+import { SetupService } from '@/setup/setup.service';
 import type {
   AssetResponse,
   DashboardResponse,
@@ -23,13 +25,7 @@ import { PrismaService } from '@prisma/prisma.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { SnapshotsService } from '@snapshots/snapshots.service';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
-import {
-  Asset,
-  AssetKind,
-  AssetType,
-  NetWorthSnapshot,
-  Prisma,
-} from '@finhance/db';
+import { Asset, AssetKind, AssetType, Prisma } from '@finhance/db';
 
 const OWNER_ID = 'local-dev';
 type ResponseWithBody = { body: unknown };
@@ -66,30 +62,6 @@ function createAsset(overrides: Partial<Asset> = {}): Asset {
     lastPriceAt: null,
     lastFxRate: null,
     lastFxRateAt: null,
-    ...overrides,
-  };
-}
-
-function createSnapshot(
-  overrides: Partial<NetWorthSnapshot> = {},
-): NetWorthSnapshot {
-  const now = new Date('2026-04-17T10:00:00.000Z');
-
-  return {
-    id: 'snapshot-1',
-    userId: OWNER_ID,
-    snapshotDate: new Date('2026-04-17T00:00:00.000Z'),
-    capturedAt: now,
-    baseCurrency: 'EUR',
-    assetsTotal: new Prisma.Decimal('72'),
-    liabilitiesTotal: new Prisma.Decimal('0'),
-    netWorthTotal: new Prisma.Decimal('72'),
-    nativeAssetTotals: null,
-    nativeLiabilityTotals: null,
-    unavailableCount: 0,
-    isPartial: false,
-    createdAt: now,
-    updatedAt: now,
     ...overrides,
   };
 }
@@ -152,10 +124,18 @@ describe('Asset routes (e2e)', () => {
     getMarketPrice: jest.Mock;
     getFxRate: jest.Mock;
     getFxRateForDate: jest.Mock;
+    getStoredFxRateSnapshot: jest.Mock;
   };
   let accounts: {
     assertAccountAssignmentAllowed: jest.Mock;
     getAssignableAccount: jest.Mock;
+    findAll: jest.Mock;
+  };
+  let budgets: {
+    findMonthly: jest.Mock;
+  };
+  let setup: {
+    getStatus: jest.Mock;
   };
   let snapshots: {
     findLatest: jest.Mock;
@@ -207,15 +187,29 @@ describe('Asset routes (e2e)', () => {
       getMarketPrice: jest.fn(),
       getFxRate: jest.fn(),
       getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('0.9')),
+      getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
+        rate: new Prisma.Decimal('0.9'),
+        status: 'EXACT',
+        source: 'LIVE',
+        rateDate: new Date(),
+        updatedAt: new Date(),
+      }),
     };
 
     accounts = {
       assertAccountAssignmentAllowed: jest.fn(),
+      findAll: jest.fn().mockResolvedValue([]),
       getAssignableAccount: jest.fn().mockResolvedValue({
         id: 'account-1',
         type: 'BROKER',
         archivedAt: null,
       }),
+    };
+    budgets = {
+      findMonthly: jest.fn().mockResolvedValue(null),
+    };
+    setup = {
+      getStatus: jest.fn().mockResolvedValue(null),
     };
 
     snapshots = {
@@ -235,8 +229,10 @@ describe('Asset routes (e2e)', () => {
         AssetsService,
         DashboardService,
         { provide: AccountsService, useValue: accounts },
+        { provide: BudgetsService, useValue: budgets },
         { provide: PrismaService, useValue: prisma },
         { provide: PricesService, useValue: prices },
+        { provide: SetupService, useValue: setup },
         { provide: SnapshotsService, useValue: snapshots },
         {
           provide: OperationLockService,
@@ -577,7 +573,7 @@ describe('Asset routes (e2e)', () => {
     await request(httpServer()).post('/assets/refresh').expect(409);
   });
 
-  it('returns fallback valuation metadata from GET /dashboard and auto-captures a missing snapshot', async () => {
+  it('returns fallback valuation metadata from GET /dashboard', async () => {
     prisma.asset.findMany.mockResolvedValue([
       createAsset({
         lastPrice: null,
@@ -586,13 +582,6 @@ describe('Asset routes (e2e)', () => {
         lastFxRateAt: new Date(),
       }),
     ]);
-    const latestSnapshot = createSnapshot({
-      snapshotDate: new Date('2026-04-16T00:00:00.000Z'),
-      capturedAt: new Date('2026-04-16T21:30:00.000Z'),
-      isPartial: true,
-    });
-    snapshots.findLatest.mockResolvedValue(latestSnapshot);
-    snapshots.hasSnapshotForDate.mockResolvedValue(false);
 
     await request(httpServer())
       .get('/dashboard')
@@ -602,17 +591,9 @@ describe('Asset routes (e2e)', () => {
         expect(body.reportingCurrency).toBe('EUR');
         expect(body.assets[0].valuationSource).toBe('AVG_COST');
         expect(body.summary.assets).toBe(72);
-        expect(body.latestSnapshotDate).toBe('2026-04-16');
-        expect(body.latestSnapshotCapturedAt).toBe('2026-04-16T21:30:00.000Z');
-        expect(body.latestSnapshotIsPartial).toBe(true);
+        expect(body.latestSnapshotDate).toBeNull();
+        expect(body.latestSnapshotCapturedAt).toBeNull();
+        expect(body.latestSnapshotIsPartial).toBeNull();
       });
-
-    expect(snapshots.captureFromDashboard).toHaveBeenCalledTimes(1);
-    expect(snapshots.captureFromDashboard).toHaveBeenCalledWith(
-      OWNER_ID,
-      expect.objectContaining({
-        reportingCurrency: 'EUR',
-      }),
-    );
   });
 });

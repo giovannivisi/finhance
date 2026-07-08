@@ -79,6 +79,7 @@ describe('Category routes (e2e)', () => {
     category: {
       findMany: jest.Mock;
       findFirst: jest.Mock;
+      count: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
     };
@@ -103,6 +104,7 @@ describe('Category routes (e2e)', () => {
       category: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
+        count: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
       },
@@ -121,6 +123,7 @@ describe('Category routes (e2e)', () => {
     prisma.transaction.findMany.mockResolvedValue([]);
     prisma.recurringTransactionRule.findMany.mockResolvedValue([]);
     prisma.categoryBudget.findMany.mockResolvedValue([]);
+    prisma.category.count.mockResolvedValue(0);
 
     prisma.$transaction.mockImplementation(
       async (

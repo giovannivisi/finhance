@@ -25,7 +25,6 @@ import NavigationPrefetchCoordinator from "@components/NavigationPrefetchCoordin
 import NavigationTransitionOverlay from "@components/NavigationTransitionOverlay";
 import { ThemeProvider } from "@components/ThemeProvider";
 import { headers } from "next/headers";
-import Script from "next/script";
 
 const themeScript = `
   (function() {
@@ -49,10 +48,9 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <Script
+        <script
           id="theme-script"
           nonce={nonce}
-          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: themeScript }}
         />
       </head>

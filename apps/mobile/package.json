@@ -14,7 +14,8 @@
     "export:check": "expo export --platform ios --output-dir .expo-export-check",
     "check-types": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -48,6 +49,7 @@
     "react-native-web": "^0.21.0"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "4.1.10",
     "@types/react": "~19.1.0",
     "eslint": "^9.39.1",
     "eslint-config-expo": "^10.0.0",

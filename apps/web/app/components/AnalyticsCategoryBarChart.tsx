@@ -144,7 +144,7 @@ export default function AnalyticsCategoryBarChart({
           data={chartData}
           layout="vertical"
           margin={{ top: 8, right: 16, left: 16, bottom: 0 }}
-          onClick={(state) => {
+          onClick={(state: MouseHandlerDataParam) => {
             handleChartSelection(resolveChartDatumFromState(state));
           }}
         >
@@ -184,7 +184,11 @@ export default function AnalyticsCategoryBarChart({
             fill={barColor}
             radius={[0, 8, 8, 0]}
             cursor={hasClickableBars ? "pointer" : "default"}
-            onClick={(entry, _index, event) => {
+            onClick={(
+              entry: InteractiveChartDatum,
+              _index: number,
+              event: unknown,
+            ) => {
               stopChartEventPropagation(event);
               handleChartSelection(entry);
             }}

@@ -160,6 +160,9 @@ describe('Account routes (e2e)', () => {
     recurringTransactionRule: {
       findMany: jest.Mock;
     };
+    brokerageOperation: {
+      findMany: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
   let prices: {
@@ -193,12 +196,16 @@ describe('Account routes (e2e)', () => {
       recurringTransactionRule: {
         findMany: jest.fn(),
       },
+      brokerageOperation: {
+        findMany: jest.fn(),
+      },
       $transaction: jest.fn(),
     };
 
     prisma.asset.findMany.mockResolvedValue([]);
     prisma.transaction.findMany.mockResolvedValue([]);
     prisma.recurringTransactionRule.findMany.mockResolvedValue([]);
+    prisma.brokerageOperation.findMany.mockResolvedValue([]);
 
     prisma.$transaction.mockImplementation(
       async (
@@ -207,6 +214,7 @@ describe('Account routes (e2e)', () => {
           asset: typeof prisma.asset;
           transaction: typeof prisma.transaction;
           recurringTransactionRule: typeof prisma.recurringTransactionRule;
+          brokerageOperation: typeof prisma.brokerageOperation;
         }) => Promise<unknown>,
       ) =>
         callback({
@@ -214,6 +222,7 @@ describe('Account routes (e2e)', () => {
           asset: prisma.asset,
           transaction: prisma.transaction,
           recurringTransactionRule: prisma.recurringTransactionRule,
+          brokerageOperation: prisma.brokerageOperation,
         }),
     );
 
@@ -467,6 +476,18 @@ describe('Account routes (e2e)', () => {
           counterparty: null,
           sourceAccountId: null,
           destinationAccountId: null,
+          nativeAmount: null,
+          fxRateUsed: null,
+          sourceAmount: null,
+          destinationAmount: null,
+          sourceCurrency: null,
+          destinationCurrency: null,
+          splitGroupId: null,
+          fundingLegs: null,
+          primaryCategoryId: null,
+          primaryCategoryName: null,
+          secondaryCategoryId: null,
+          secondaryCategoryName: null,
           recurringRuleId: null,
           recurringOccurrenceMonth: null,
           isRecurringGenerated: false,

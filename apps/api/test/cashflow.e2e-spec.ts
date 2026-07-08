@@ -1,8 +1,11 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
+import { AccountsService } from '@accounts/accounts.service';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
+import { SetupService } from '@/setup/setup.service';
 import { CashflowController } from '@transactions/cashflow.controller';
+import { CategoriesService } from '@transactions/categories.service';
 import { TransactionsService } from '@transactions/transactions.service';
 import type {
   CashflowAnalyticsResponse,
@@ -25,6 +28,17 @@ describe('Cashflow routes (e2e)', () => {
     getCashflowAnalytics: jest.Mock;
     getCashflowSummary: jest.Mock;
   };
+  let accounts: {
+    findAll: jest.Mock;
+    getDeletionStates: jest.Mock;
+  };
+  let categories: {
+    findAll: jest.Mock;
+    getDeletionStates: jest.Mock;
+  };
+  let setup: {
+    getStatus: jest.Mock;
+  };
 
   function httpServer(): HttpServer {
     return app.getHttpServer() as HttpServer;
@@ -36,10 +50,24 @@ describe('Cashflow routes (e2e)', () => {
       getCashflowAnalytics: jest.fn(),
       getCashflowSummary: jest.fn(),
     };
+    accounts = {
+      findAll: jest.fn().mockResolvedValue([]),
+      getDeletionStates: jest.fn().mockResolvedValue(new Map()),
+    };
+    categories = {
+      findAll: jest.fn().mockResolvedValue([]),
+      getDeletionStates: jest.fn().mockResolvedValue(new Map()),
+    };
+    setup = {
+      getStatus: jest.fn().mockResolvedValue(null),
+    };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [CashflowController],
       providers: [
+        { provide: AccountsService, useValue: accounts },
+        { provide: CategoriesService, useValue: categories },
+        { provide: SetupService, useValue: setup },
         { provide: TransactionsService, useValue: transactions },
         {
           provide: RequestOwnerResolver,
