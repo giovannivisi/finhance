@@ -24,6 +24,7 @@ import {
 } from "@/api/server-connection";
 import { AppLockGate } from "@/components/app-lock";
 import { AppPreferencesProvider, useAppPreferences } from "@/prefs";
+import { AppLockProvider, useAppLock } from "@/security";
 import { ThemeProvider, useTheme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -55,6 +56,7 @@ function createQueryClient(): QueryClient {
 function ThemedApp() {
   const { colors, scheme, isHydrated: themeHydrated } = useTheme();
   const { isHydrated: preferencesHydrated } = useAppPreferences();
+  const { isHydrated: appLockHydrated } = useAppLock();
   const {
     serverUrl,
     serverMode,
@@ -74,14 +76,24 @@ function ThemedApp() {
   }, [colors.bgApp]);
 
   useEffect(() => {
-    if (themeHydrated && preferencesHydrated && serverHydrated) {
+    if (
+      themeHydrated &&
+      preferencesHydrated &&
+      appLockHydrated &&
+      serverHydrated
+    ) {
       SplashScreen.hideAsync().catch(() => undefined);
     }
-  }, [themeHydrated, preferencesHydrated, serverHydrated]);
+  }, [themeHydrated, preferencesHydrated, appLockHydrated, serverHydrated]);
 
   // Keep the splash up until we know whether a server is configured; screens
   // assume a connected API client once they mount.
-  if (!themeHydrated || !preferencesHydrated || !serverHydrated) {
+  if (
+    !themeHydrated ||
+    !preferencesHydrated ||
+    !appLockHydrated ||
+    !serverHydrated
+  ) {
     return null;
   }
 
@@ -158,7 +170,9 @@ export default function RootLayout() {
     <ThemeProvider>
       <AppPreferencesProvider>
         <ServerConnectionProvider>
-          <ThemedApp />
+          <AppLockProvider>
+            <ThemedApp />
+          </AppLockProvider>
         </ServerConnectionProvider>
       </AppPreferencesProvider>
     </ThemeProvider>

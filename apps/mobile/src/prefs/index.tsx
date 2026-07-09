@@ -32,7 +32,6 @@ import {
 const CLOCK_FORMAT_KEY = "finhance.clockFormat";
 const DEVICE_FORMATS_KEY = "finhance.deviceFormats";
 const LAUNCH_TAB_KEY = "finhance.launchTab";
-const APP_LOCK_KEY = "finhance.appLock";
 
 interface AppPreferencesContextValue {
   clockFormat: ClockFormat;
@@ -41,8 +40,6 @@ interface AppPreferencesContextValue {
   setUseDeviceFormats: (enabled: boolean) => void;
   launchTab: LaunchTab;
   setLaunchTab: (launchTab: LaunchTab) => void;
-  appLockEnabled: boolean;
-  setAppLockEnabled: (enabled: boolean) => void;
   formatConfig: FormatConfig;
   isHydrated: boolean;
 }
@@ -66,7 +63,6 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
   const [clockFormat, setClockFormatState] = useState<ClockFormat>("system");
   const [useDeviceFormats, setUseDeviceFormatsState] = useState(false);
   const [launchTab, setLaunchTabState] = useState<LaunchTab>("home");
-  const [appLockEnabled, setAppLockEnabledState] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [formatConfig, setFormatConfigState] = useState<FormatConfig>(() =>
     resolveFormatConfig({ clockFormat: "system", useDeviceFormats: false }),
@@ -93,12 +89,10 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
           storedClockFormat,
           storedUseDeviceFormats,
           storedLaunchTab,
-          storedAppLockEnabled,
         ] = await Promise.all([
           AsyncStorage.getItem(CLOCK_FORMAT_KEY),
           AsyncStorage.getItem(DEVICE_FORMATS_KEY),
           AsyncStorage.getItem(LAUNCH_TAB_KEY),
-          AsyncStorage.getItem(APP_LOCK_KEY),
         ]);
 
         if (cancelled) {
@@ -110,7 +104,6 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
         setClockFormatState(nextClockFormat);
         setUseDeviceFormatsState(nextUseDeviceFormats);
         setLaunchTabState(parseLaunchTab(storedLaunchTab));
-        setAppLockEnabledState(parseBooleanPref(storedAppLockEnabled));
         applyFormatConfig(nextClockFormat, nextUseDeviceFormats);
       } catch {
         // Fall back to defaults when storage is unavailable.
@@ -152,13 +145,6 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(LAUNCH_TAB_KEY, next).catch(() => undefined);
   }, []);
 
-  const setAppLockEnabled = useCallback((enabled: boolean) => {
-    setAppLockEnabledState(enabled);
-    AsyncStorage.setItem(APP_LOCK_KEY, enabled ? "true" : "false").catch(
-      () => undefined,
-    );
-  }, []);
-
   const value = useMemo<AppPreferencesContextValue>(
     () => ({
       clockFormat,
@@ -167,8 +153,6 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
       setUseDeviceFormats,
       launchTab,
       setLaunchTab,
-      appLockEnabled,
-      setAppLockEnabled,
       formatConfig,
       isHydrated,
     }),
@@ -179,8 +163,6 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
       setUseDeviceFormats,
       launchTab,
       setLaunchTab,
-      appLockEnabled,
-      setAppLockEnabled,
       formatConfig,
       isHydrated,
     ],

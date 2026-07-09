@@ -9,8 +9,14 @@ import { FinhanceAuthAdapter } from "@lib/auth-adapter";
 import { isHostedAuthMode } from "@lib/auth-mode";
 import {
   captureLinkedProviderAccountMetadata,
+  getConnectedProviderAccountMetadata,
   isConnectedAccountProvider,
 } from "@lib/connected-accounts";
+import {
+  buildMobileProviderLinkCompletePath,
+  mintMobileProviderLinkResult,
+  readMobileProviderLinkStateFromCookies,
+} from "@lib/mobile-provider-link";
 import { resolveHostedSignInDecision } from "@lib/auth-policy";
 import {
   readRequiredHostedEnv,
@@ -124,6 +130,38 @@ function buildAuthConfig(): NextAuthConfig {
       async signIn({ account, profile, user }) {
         if (!isHostedAuthMode()) {
           return true;
+        }
+
+        const mobileProviderLink = await readMobileProviderLinkStateFromCookies();
+
+        if (
+          mobileProviderLink &&
+          account?.provider === mobileProviderLink.provider &&
+          account.providerAccountId?.trim()
+        ) {
+          const metadata = getConnectedProviderAccountMetadata({
+            provider: mobileProviderLink.provider,
+            profile: profile as Record<string, unknown>,
+          });
+
+          // A provider without a verified email cannot safely be used as a
+          // future sign-in method, so do not hand a pending link back to the
+          // app for confirmation.
+          if (!metadata.providerEmail || !metadata.providerEmailVerified) {
+            return false;
+          }
+
+          // Returning a URL here stops Auth.js before handleLoginOrRegister,
+          // which means the OAuth identity is not persisted until the mobile
+          // app proves its matching bearer session and PKCE verifier at the
+          // dedicated confirmation endpoint.
+          const result = await mintMobileProviderLinkResult({
+            start: mobileProviderLink,
+            accountId: account.providerAccountId,
+            metadata,
+          });
+
+          return buildMobileProviderLinkCompletePath(result);
         }
 
         const normalizedEmail =

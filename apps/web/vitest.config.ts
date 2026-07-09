@@ -32,6 +32,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./app"),
       "@components": path.resolve(__dirname, "./app/components"),
       "@lib": path.resolve(__dirname, "./lib"),
+      "server-only": path.resolve(__dirname, "./test/server-only.ts"),
     },
   },
 });

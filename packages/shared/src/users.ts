@@ -63,6 +63,27 @@ export interface DeleteConnectedAccountRequest {
   accountId?: string;
 }
 
+export interface StartMobileProviderLinkRequest {
+  provider?: ConnectedAccountProvider;
+  /** SHA-256 PKCE challenge encoded as lowercase hexadecimal. */
+  challenge?: string;
+  /** Allowlisted native deep-link callback supplied by the app. */
+  redirect?: string;
+}
+
+export interface StartMobileProviderLinkResponse {
+  authorizationUrl: string;
+}
+
+export interface ConfirmMobileProviderLinkRequest {
+  code?: string;
+  verifier?: string;
+}
+
+export interface ConfirmMobileProviderLinkResponse {
+  connectedAccount: ConnectedAccountResponse;
+}
+
 export interface DeleteUserAccountRequest {
   email: string;
 }

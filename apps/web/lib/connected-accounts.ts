@@ -26,6 +26,12 @@ type LinkedProviderAccountRecord = {
 
 type ProviderProfile = Record<string, unknown> | null | undefined;
 
+export interface ConnectedProviderAccountMetadata {
+  providerEmail: string | null;
+  providerEmailVerified: boolean;
+  providerDisplayName: string | null;
+}
+
 export function isConnectedAccountProvider(
   provider: string | null | undefined,
 ): provider is ConnectedAccountProvider {
@@ -92,6 +98,20 @@ function getProviderDisplayName(
   }
 
   return normalizeDisplayName(profile.name);
+}
+
+export function getConnectedProviderAccountMetadata(input: {
+  provider: ConnectedAccountProvider;
+  profile: ProviderProfile;
+}): ConnectedProviderAccountMetadata {
+  return {
+    providerEmail: normalizeEmail(input.profile?.email),
+    providerEmailVerified: hasVerifiedLinkedProviderEmail(
+      input.provider,
+      input.profile,
+    ),
+    providerDisplayName: getProviderDisplayName(input.provider, input.profile),
+  };
 }
 
 function toConnectedAccountResponse(
@@ -193,21 +213,18 @@ export async function captureLinkedProviderAccountMetadata(input: {
     return;
   }
 
+  const metadata = getConnectedProviderAccountMetadata({
+    provider: input.provider,
+    profile: input.profile,
+  });
+
   await prisma.authProviderAccount.updateMany({
     where: {
       provider: input.provider,
       providerAccountId: input.providerAccountId,
     },
     data: {
-      providerEmail: normalizeEmail(input.profile?.email),
-      providerEmailVerified: hasVerifiedLinkedProviderEmail(
-        input.provider,
-        input.profile,
-      ),
-      providerDisplayName: getProviderDisplayName(
-        input.provider,
-        input.profile,
-      ),
+      ...metadata,
     },
   });
 }
@@ -221,6 +238,172 @@ export class ConnectedAccountNotFoundError extends Error {
 export class LastSignInMethodError extends Error {
   constructor() {
     super("Add another sign-in method before removing this one.");
+  }
+}
+
+export class ConnectedAccountAlreadyLinkedError extends Error {
+  constructor() {
+    super("That provider account is already linked to another user.");
+  }
+}
+
+/**
+ * Persists an OAuth identity only after the mobile app has proved both its
+ * current bearer session and the PKCE verifier bound to the browser handoff.
+ * Existing links for the same user are refreshed from the just-verified
+ * provider profile; a link owned by another user is never reassigned.
+ */
+export async function linkConnectedAccountForUser(input: {
+  userId: string;
+  provider: ConnectedAccountProvider;
+  providerAccountId: string;
+  metadata: ConnectedProviderAccountMetadata;
+}): Promise<ConnectedAccountResponse> {
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const user = await tx.user.findUnique({
+          where: { id: input.userId },
+          select: { email: true, isActive: true },
+        });
+
+        if (!user?.isActive) {
+          throw new ConnectedAccountNotFoundError();
+        }
+
+        const existing = await tx.authProviderAccount.findUnique({
+          where: {
+            provider_providerAccountId: {
+              provider: input.provider,
+              providerAccountId: input.providerAccountId,
+            },
+          },
+          select: {
+            id: true,
+            userId: true,
+            provider: true,
+            providerEmail: true,
+            providerEmailVerified: true,
+            providerDisplayName: true,
+            createdAt: true,
+          },
+        });
+
+        if (existing && existing.userId !== input.userId) {
+          throw new ConnectedAccountAlreadyLinkedError();
+        }
+
+        const account = existing
+          ? await tx.authProviderAccount.update({
+              where: { id: existing.id },
+              data: input.metadata,
+              select: {
+                id: true,
+                provider: true,
+                providerEmail: true,
+                providerEmailVerified: true,
+                providerDisplayName: true,
+                createdAt: true,
+              },
+            })
+          : await tx.authProviderAccount.create({
+              data: {
+                userId: input.userId,
+                type: "oauth",
+                provider: input.provider,
+                providerAccountId: input.providerAccountId,
+                ...input.metadata,
+                createdAt: new Date(),
+              },
+              select: {
+                id: true,
+                provider: true,
+                providerEmail: true,
+                providerEmailVerified: true,
+                providerDisplayName: true,
+                createdAt: true,
+              },
+            });
+
+        const response = toConnectedAccountResponse(
+          account,
+          normalizeEmail(user.email),
+        );
+
+        if (!response) {
+          throw new ConnectedAccountNotFoundError();
+        }
+
+        return response;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  } catch (error) {
+    // A concurrent confirmation can pass the initial lookup in two separate
+    // serializable transactions. Resolve the unique-key race explicitly so a
+    // repeated confirmation by the same user remains idempotent, while a
+    // provider identity owned by another user never gets overwritten.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const [user, account] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: input.userId },
+          select: { email: true, isActive: true },
+        }),
+        prisma.authProviderAccount.findUnique({
+          where: {
+            provider_providerAccountId: {
+              provider: input.provider,
+              providerAccountId: input.providerAccountId,
+            },
+          },
+          select: {
+            id: true,
+            userId: true,
+            provider: true,
+            providerEmail: true,
+            providerEmailVerified: true,
+            providerDisplayName: true,
+            createdAt: true,
+          },
+        }),
+      ]);
+
+      if (!user?.isActive) {
+        throw new ConnectedAccountNotFoundError();
+      }
+
+      if (!account || account.userId !== input.userId) {
+        throw new ConnectedAccountAlreadyLinkedError();
+      }
+
+      const refreshed = await prisma.authProviderAccount.update({
+        where: { id: account.id },
+        data: input.metadata,
+        select: {
+          id: true,
+          provider: true,
+          providerEmail: true,
+          providerEmailVerified: true,
+          providerDisplayName: true,
+          createdAt: true,
+        },
+      });
+      const response = toConnectedAccountResponse(
+        refreshed,
+        normalizeEmail(user.email),
+      );
+
+      if (!response) {
+        throw new ConnectedAccountNotFoundError();
+      }
+
+      return response;
+    }
+
+    throw error;
   }
 }
 
