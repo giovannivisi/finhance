@@ -60,7 +60,7 @@ import {
   categoryLabel,
   isAssignableTransactionCategory,
 } from "@/lib/categories";
-import { formatDateLabel, localDateOf, todayLocalDate } from "@/lib/dates";
+import { localDateOf, todayLocalDate } from "@/lib/dates";
 import { ASSET_KIND_LABELS } from "@/lib/labels";
 import {
   applyLiveDeltaToSummary,
@@ -69,13 +69,14 @@ import {
   recomputeChangeFromLiveTotal,
   resolveHeaderTotal,
 } from "@/lib/live-merge";
-import { formatMoney, parseAmountInput } from "@/lib/money";
+import { parseAmountInput } from "@/lib/money";
 import {
   createAutomaticPriceRefreshAttempt,
   getAutomaticPriceRefreshDelay,
   type AutomaticPriceRefreshAttempt,
 } from "@/lib/price-refresh";
 import { useIsScreenActive } from "@/lib/screen-active";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 const RANGE_OPTIONS: { value: BrokeragePerformanceRange; label: string }[] = [
@@ -274,10 +275,11 @@ function PositionRow({
   position: BrokeragePositionResponse;
   showDivider: boolean;
 }) {
+  const format = useFormatters();
   // The "(avg)" suffix makes clear this is the average buy-in, not the current
   // price: the row's value is current (quantity × current price), so an
   // unqualified "@ price" multiplies to the cost basis, not the value shown.
-  const quantityLabel = `${position.quantity} @ ${formatMoney(
+  const quantityLabel = `${position.quantity} @ ${format.money(
     position.averageCostPerUnit,
     position.currency,
   )} (avg)`;
@@ -476,6 +478,7 @@ function emptyOperationForm(accountCurrency: string): OperationFormState {
 export default function BrokerageWorkspaceScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const format = useFormatters();
   const params = useLocalSearchParams<{ accountId: string }>();
   const accountId = params.accountId;
 
@@ -1296,7 +1299,7 @@ export default function BrokerageWorkspaceScreen() {
               <ListRow
                 key={`${item.source}-${item.id}`}
                 title={item.title}
-                subtitle={`${formatDateLabel(localDateOf(item.postedAt))}${
+                subtitle={`${format.date(localDateOf(item.postedAt))}${
                   item.detail ? ` • ${item.detail}` : ""
                 }`}
                 showDivider={

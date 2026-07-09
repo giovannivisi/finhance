@@ -34,17 +34,17 @@ import {
 import {
   addMonths,
   currentMonth,
-  formatDateLabel,
-  formatMonthLabel,
   todayLocalDate,
 } from "@/lib/dates";
 import { TRANSACTION_KIND_LABELS } from "@/lib/labels";
 import { parseAmountInput } from "@/lib/money";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 export default function RecurringRuleDetailScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const format = useFormatters();
   const params = useLocalSearchParams<{ id: string }>();
   const ruleId = params.id;
 
@@ -80,8 +80,8 @@ export default function RecurringRuleDetailScreen() {
     const base = currentMonth();
     return Array.from({ length: 7 }, (_, index) => addMonths(base, index - 3))
       .reverse()
-      .map((value) => ({ value, label: formatMonthLabel(value) }));
-  }, []);
+      .map((value) => ({ value, label: format.month(value) }));
+  }, [format]);
 
   if (ruleQuery.isPending) {
     return (
@@ -243,13 +243,13 @@ export default function RecurringRuleDetailScreen() {
             />
             <Stat
               label="Since"
-              value={formatDateLabel(rule.startDate.slice(0, 10))}
+              value={format.date(rule.startDate.slice(0, 10))}
               style={{ flex: 1.4 }}
             />
           </View>
           {rule.endDate ? (
             <AppText variant="caption" tone="tertiary">
-              Ends {formatDateLabel(rule.endDate.slice(0, 10))}
+              Ends {format.date(rule.endDate.slice(0, 10))}
             </AppText>
           ) : null}
           <View style={{ gap: 4 }}>
@@ -311,7 +311,7 @@ export default function RecurringRuleDetailScreen() {
               <ListRow
                 key={occurrence.id}
                 showDivider={index < occurrences.length - 1}
-                title={formatMonthLabel(occurrence.occurrenceMonth)}
+                title={format.month(occurrence.occurrenceMonth)}
                 subtitle={
                   occurrence.status === "SKIPPED"
                     ? "Skipped"
@@ -319,9 +319,7 @@ export default function RecurringRuleDetailScreen() {
                         "en-GB",
                       )} on ${
                         occurrence.postedAtDate
-                          ? formatDateLabel(
-                              occurrence.postedAtDate.slice(0, 10),
-                            )
+                          ? format.date(occurrence.postedAtDate.slice(0, 10))
                           : "?"
                       }`
                 }

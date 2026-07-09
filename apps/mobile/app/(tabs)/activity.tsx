@@ -38,10 +38,9 @@ import {
 } from "@/lib/categories";
 import {
   currentMonth,
-  formatDayHeading,
-  formatTimeLabel,
   monthBounds,
 } from "@/lib/dates";
+import { useFormatters } from "@/prefs";
 import { fonts, radius, spacing, useTheme } from "@/theme";
 
 const KIND_FILTERS = [
@@ -86,6 +85,7 @@ function TransactionRow({
   onPress: () => void;
 }) {
   const { colors } = useTheme();
+  const format = useFormatters();
   const icon = KIND_ICONS[transaction.kind];
   const signed = signedTransactionAmount(transaction);
 
@@ -144,7 +144,7 @@ function TransactionRow({
             ) : null}
             {showTime ? (
               <AppText variant="caption" tone="tertiary">
-                {formatTimeLabel(transaction.postedAt)}
+                {format.time(transaction.postedAt)}
               </AppText>
             ) : null}
           </View>
@@ -157,6 +157,7 @@ function TransactionRow({
 export default function ActivityScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const format = useFormatters();
   const [month, setMonth] = useState(currentMonth());
   const [kindFilter, setKindFilter] = useState<KindFilter>("ALL");
   const [accountFilter, setAccountFilter] = useState<string | null>(null);
@@ -428,7 +429,7 @@ export default function ActivityScreen() {
             dayGroups.map((group) => (
               <View key={group.date} style={{ gap: spacing.sm }}>
                 <AppText variant="kicker" tone="tertiary">
-                  {formatDayHeading(group.date)}
+                  {format.dayHeading(group.date)}
                 </AppText>
                 <Card style={{ paddingVertical: 4 }}>
                   {group.items.map((transaction, index) => (

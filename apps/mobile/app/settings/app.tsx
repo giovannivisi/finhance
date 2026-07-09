@@ -1,5 +1,4 @@
 import * as LocalAuthentication from "expo-local-authentication";
-import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { View } from "react-native";
 import {
@@ -54,7 +53,6 @@ const LAUNCH_TAB_LABELS: Record<LaunchTab, string> = {
 };
 
 export default function AppSettingsScreen() {
-  const queryClient = useQueryClient();
   const { preference, setPreference, hideMoney, setHideMoney } = useTheme();
   const {
     clockFormat,
@@ -82,20 +80,6 @@ export default function AppSettingsScreen() {
     } catch (updateError) {
       setError(describeError(updateError));
     }
-  };
-
-  const refreshFormattedScreens = () => {
-    void queryClient.invalidateQueries();
-  };
-
-  const updateClockFormat = (next: ClockFormat) => {
-    setClockFormat(next);
-    refreshFormattedScreens();
-  };
-
-  const updateUseDeviceFormats = (next: boolean) => {
-    setUseDeviceFormats(next);
-    refreshFormattedScreens();
   };
 
   const updateAppLock = async (enabled: boolean) => {
@@ -200,14 +184,14 @@ export default function AppSettingsScreen() {
                   label: CLOCK_FORMAT_LABELS[value],
                 }))}
                 value={clockFormat}
-                onChange={(value) => updateClockFormat(value as ClockFormat)}
+                onChange={(value) => setClockFormat(value as ClockFormat)}
               />
             </View>
             <SwitchField
               label="Use device region formats"
               description="Matches this phone's date, time and number formatting."
               value={useDeviceFormats}
-              onChange={updateUseDeviceFormats}
+              onChange={setUseDeviceFormats}
             />
           </View>
         </Card>

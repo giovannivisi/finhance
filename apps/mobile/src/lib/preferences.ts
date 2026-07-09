@@ -56,12 +56,15 @@ export function resolveHour12(
   }
 
   try {
-    const sample = new Intl.DateTimeFormat(locale, {
+    const resolved = new Intl.DateTimeFormat(locale, {
       hour: "numeric",
-      minute: "numeric",
-    }).format(new Date(2026, 0, 1, 13, 0));
+    }).resolvedOptions();
 
-    return !sample.includes("13");
+    if (typeof resolved.hour12 === "boolean") {
+      return resolved.hour12;
+    }
+
+    return resolved.hourCycle === "h11" || resolved.hourCycle === "h12";
   } catch {
     return false;
   }

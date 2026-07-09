@@ -11,6 +11,15 @@ import {
 
 import { setFormatConfig, type FormatConfig } from "@/lib/format-config";
 import {
+  formatDateLabel,
+  formatDayHeading,
+  formatMonthLabel,
+  formatShortMonthLabel,
+  formatTimeLabel,
+  formatTimestampLabel,
+} from "@/lib/dates";
+import { formatMoney, type FormatMoneyOptions } from "@/lib/money";
+import {
   detectDeviceLocale,
   parseBooleanPref,
   parseClockFormat,
@@ -194,4 +203,32 @@ export function useAppPreferences(): AppPreferencesContextValue {
   }
 
   return context;
+}
+
+export function useFormatters() {
+  const { formatConfig } = useAppPreferences();
+
+  return useMemo(
+    () => ({
+      date: (localDate: string) => formatDateLabel(localDate, formatConfig),
+      dayHeading: (localDate: string, now?: Date) =>
+        formatDayHeading(localDate, now, formatConfig),
+      month: (month: string) => formatMonthLabel(month, formatConfig),
+      shortMonth: (month: string) =>
+        formatShortMonthLabel(month, formatConfig),
+      time: (isoTimestamp: string) => formatTimeLabel(isoTimestamp, formatConfig),
+      timestamp: (isoTimestamp: string) =>
+        formatTimestampLabel(isoTimestamp, formatConfig),
+      money: (
+        amount: number,
+        currency: string,
+        options: FormatMoneyOptions = {},
+      ) =>
+        formatMoney(amount, currency, {
+          ...options,
+          locale: formatConfig.locale,
+        }),
+    }),
+    [formatConfig],
+  );
 }

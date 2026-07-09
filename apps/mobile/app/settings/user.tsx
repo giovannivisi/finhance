@@ -29,7 +29,8 @@ import {
   SkeletonCard,
   TextField,
 } from "@/components/ui";
-import { formatDateLabel, localDateOf } from "@/lib/dates";
+import { localDateOf } from "@/lib/dates";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 type DeletionStep = "warning" | "confirmation";
@@ -41,6 +42,7 @@ type RecentAction =
 export default function UserSettingsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const format = useFormatters();
   const {
     serverUrl,
     serverMode,
@@ -278,11 +280,9 @@ export default function UserSettingsScreen() {
             <ListRow
               key={passkey.credentialId}
               title={formatPasskeyTitle(passkey)}
-              subtitle={`Added ${formatDateLabel(
-                localDateOf(passkey.createdAt),
-              )}${
+              subtitle={`Added ${format.date(localDateOf(passkey.createdAt))}${
                 passkey.lastUsedAt
-                  ? ` · Last used ${formatDateLabel(
+                  ? ` · Last used ${format.date(
                       localDateOf(passkey.lastUsedAt),
                     )}`
                   : ""

@@ -15,7 +15,7 @@ import {
   Section,
   SkeletonCard,
 } from "@/components/ui";
-import { formatDateLabel } from "@/lib/dates";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 interface PrivacyContact {
@@ -92,6 +92,7 @@ function contactSubtitle(contact: PrivacyContact): string {
 
 export default function PrivacyScreen() {
   const { colors } = useTheme();
+  const format = useFormatters();
   const { serverMode, serverUrl } = useServerConnection();
   const canOpenHostedNotice = serverMode === "hosted" && Boolean(serverUrl);
   const privacyQuery = useQuery({
@@ -120,7 +121,7 @@ export default function PrivacyScreen() {
             </AppText>
             <AppText variant="footnote" tone="secondary">
               {notice
-                ? `Last updated ${formatDateLabel(notice.lastUpdated)}.`
+                ? `Last updated ${format.date(notice.lastUpdated)}.`
                 : serverMode === "hosted"
                   ? "Loading the hosted notice for this workspace."
                   : "The local workspace operator controls the full privacy notice."}

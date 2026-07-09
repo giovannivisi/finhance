@@ -35,8 +35,9 @@ import {
   signedTransactionAmount,
   transactionSubtitle,
 } from "@/features/transactions/derive";
-import { formatDateLabel, localDateOf } from "@/lib/dates";
+import { localDateOf } from "@/lib/dates";
 import { ACCOUNT_TYPE_LABELS } from "@/lib/labels";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 function ReconciliationCard({
@@ -199,6 +200,7 @@ function ReconciliationCard({
 export default function AccountDetailScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const format = useFormatters();
   const params = useLocalSearchParams<{ id: string }>();
   const accountId = params.id;
   const client = useApiClient();
@@ -352,7 +354,7 @@ export default function AccountDetailScreen() {
               />
               <Stat
                 label="As of"
-                value={formatDateLabel(localDateOf(account.openingBalanceDate))}
+                value={format.date(localDateOf(account.openingBalanceDate))}
                 style={{ flex: 2 }}
               />
             </View>
@@ -434,9 +436,7 @@ export default function AccountDetailScreen() {
                 <ListRow
                   key={transaction.id}
                   title={transaction.description}
-                  subtitle={`${formatDateLabel(
-                    localDateOf(transaction.postedAt),
-                  )} • ${transactionSubtitle(transaction, accountNames)}`}
+                  subtitle={`${format.date(localDateOf(transaction.postedAt))} • ${transactionSubtitle(transaction, accountNames)}`}
                   showDivider={index < transactionsQuery.data.length - 1}
                   onPress={() =>
                     router.push({

@@ -21,11 +21,8 @@ import {
   SkeletonCard,
   Stat,
 } from "@/components/ui";
-import {
-  addMonths,
-  currentMonth,
-  formatMonthLabel,
-} from "@/lib/dates";
+import { addMonths, currentMonth } from "@/lib/dates";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 const RANGE_OPTIONS = [
@@ -44,6 +41,7 @@ function CurrencyAnalytics({
   focusMonth: string;
 }) {
   const { colors } = useTheme();
+  const format = useFormatters();
 
   const flowPoints = summary.monthlySeries.map((point) => ({
     month: point.month,
@@ -155,7 +153,7 @@ function CurrencyAnalytics({
       </Card>
 
       {expenseBreakdown.length > 0 ? (
-        <Section kicker={formatMonthLabel(focusMonth)} title="Where money went">
+        <Section kicker={format.month(focusMonth)} title="Where money went">
           <Card>
             <BreakdownBars
               data={expenseBreakdown}
@@ -168,7 +166,7 @@ function CurrencyAnalytics({
 
       {incomeBreakdown.length > 0 ? (
         <Section
-          kicker={formatMonthLabel(focusMonth)}
+          kicker={format.month(focusMonth)}
           title="Where money came from"
         >
           <Card>
@@ -281,6 +279,7 @@ function CurrencyAnalytics({
 
 export default function AnalyticsScreen() {
   const [range, setRange] = useState<RangeValue>("6");
+  const format = useFormatters();
 
   const { from, to } = useMemo(() => {
     const thisMonth = currentMonth();
@@ -329,7 +328,7 @@ export default function AnalyticsScreen() {
                 </AppText>
                 <View style={{ flexDirection: "row", gap: spacing.xl }}>
                   <Stat
-                    label={`${formatMonthLabel(data.analytics.focusMonth)} net`}
+                    label={`${format.month(data.analytics.focusMonth)} net`}
                     value={
                       <MoneyText
                         amount={

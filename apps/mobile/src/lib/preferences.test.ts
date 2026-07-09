@@ -32,4 +32,9 @@ describe("app preferences", () => {
     expect(resolveHour12("12h", "en-GB")).toBe(true);
     expect(resolveHour12("24h", "en-US")).toBe(false);
   });
+
+  it("resolves system hour-cycle preferences from Intl metadata", () => {
+    expect(resolveHour12("system", "en-US")).toBe(true);
+    expect(resolveHour12("system", "en-GB")).toBe(false);
+  });
 });
