@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, View } from "react-native";
 
-import { addMonths, compareMonths, formatMonthLabel } from "@/lib/dates";
+import { addMonths, compareMonths } from "@/lib/dates";
+import { useFormatters } from "@/prefs";
 import { radius, spacing, useTheme } from "@/theme";
 
 import { AppText } from "./text";
@@ -21,6 +22,7 @@ export function MonthSwitcher({
   minMonth,
 }: MonthSwitcherProps) {
   const { colors } = useTheme();
+  const format = useFormatters();
 
   const previousDisabled = Boolean(
     minMonth && compareMonths(month, minMonth) <= 0,
@@ -64,7 +66,7 @@ export function MonthSwitcher({
         <Ionicons name="chevron-back" size={18} color={colors.textSecondary} />
       </Pressable>
       <AppText variant="bodySemibold" tabular>
-        {formatMonthLabel(month)}
+        {format.month(month)}
       </AppText>
       <Pressable
         accessibilityRole="button"

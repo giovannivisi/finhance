@@ -7,14 +7,13 @@ import type {
 } from "@finhance/shared";
 
 import { AppText } from "@/components/ui";
-import { formatShortMonthLabel } from "@/lib/dates";
-import { formatMoney } from "@/lib/money";
 import {
   buildAxisTimeLabels,
   computePercentGridlines,
   formatAxisTimeLabel,
   isPerformancePositive,
 } from "@/lib/performance-chart";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 export interface MonthlyFlowPoint {
@@ -49,6 +48,7 @@ export function MonthlyFlowChart({
   height = 170,
 }: MonthlyFlowChartProps) {
   const { colors, hideMoney } = useTheme();
+  const format = useFormatters();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [width, setWidth] = useState(0);
 
@@ -141,7 +141,7 @@ export function MonthlyFlowChart({
             <Pressable
               key={point.month}
               accessibilityRole="button"
-              accessibilityLabel={`${formatShortMonthLabel(point.month)}: in ${point.income}, out ${point.expense}`}
+              accessibilityLabel={`${format.shortMonth(point.month)}: in ${point.income}, out ${point.expense}`}
               onPress={() =>
                 setSelectedIndex(selectedIndex === index ? null : index)
               }
@@ -153,7 +153,7 @@ export function MonthlyFlowChart({
                 style={{ textAlign: "center", fontSize: 9.5 }}
                 numberOfLines={1}
               >
-                {formatShortMonthLabel(point.month).split(" ")[0]}
+                {format.shortMonth(point.month).split(" ")[0]}
               </AppText>
             </Pressable>
           ))}
@@ -176,11 +176,11 @@ export function MonthlyFlowChart({
           }}
         >
           <AppText variant="caption" tone="secondary">
-            {formatShortMonthLabel(selected.month)}
+            {format.shortMonth(selected.month)}
           </AppText>
           <AppText variant="caption" tone="income" tabular>
             +
-            {formatMoney(selected.income, currency, {
+            {format.money(selected.income, currency, {
               hide: hideMoney,
               maximumFractionDigits: 0,
               signDisplay: "never",
@@ -188,7 +188,7 @@ export function MonthlyFlowChart({
           </AppText>
           <AppText variant="caption" tone="expense" tabular>
             −
-            {formatMoney(selected.expense, currency, {
+            {format.money(selected.expense, currency, {
               hide: hideMoney,
               maximumFractionDigits: 0,
               signDisplay: "never",
@@ -200,7 +200,7 @@ export function MonthlyFlowChart({
             tabular
           >
             net{" "}
-            {formatMoney(selected.net, currency, {
+            {format.money(selected.net, currency, {
               hide: hideMoney,
               maximumFractionDigits: 0,
               signDisplay: "exceptZero",
@@ -233,6 +233,7 @@ export function BreakdownBars({
   maxItems = 8,
 }: BreakdownBarsProps) {
   const { colors, hideMoney } = useTheme();
+  const format = useFormatters();
   const items = data.slice(0, maxItems);
   const max = Math.max(1, ...items.map((item) => item.value));
   const fill = tone === "expense" ? colors.chartExpense : colors.chartIncome;
@@ -257,7 +258,7 @@ export function BreakdownBars({
               {item.label}
             </AppText>
             <AppText variant="footnoteMedium" tabular>
-              {formatMoney(item.value, currency, {
+              {format.money(item.value, currency, {
                 hide: hideMoney,
                 maximumFractionDigits: 0,
               })}
@@ -313,6 +314,7 @@ export function AllocationDonutChart({
   maxLegendItems = 6,
 }: AllocationDonutChartProps) {
   const { colors, hideMoney } = useTheme();
+  const format = useFormatters();
   const cleaned = data.filter((item) => item.value > 0);
   const total = cleaned.reduce((sum, item) => sum + item.value, 0);
   const radius = size / 2 - strokeWidth / 2 - 2;
@@ -412,7 +414,7 @@ export function AllocationDonutChart({
             {totalLabel}
           </AppText>
           <AppText variant="footnoteMedium" numberOfLines={1} tabular>
-            {formatMoney(total, currency, {
+            {format.money(total, currency, {
               hide: hideMoney,
               maximumFractionDigits: 0,
             })}
@@ -466,7 +468,7 @@ export function AllocationDonutChart({
               numberOfLines={1}
               style={{ paddingLeft: 8 + spacing.sm }}
             >
-              {formatMoney(item.value, currency, {
+              {format.money(item.value, currency, {
                 hide: hideMoney,
                 maximumFractionDigits: 0,
               })}
@@ -589,6 +591,7 @@ export function PerformanceChart({
   emptyMessage = "No performance data for this range yet.",
 }: PerformanceChartProps) {
   const { colors, hideMoney } = useTheme();
+  const format = useFormatters();
   const [width, setWidth] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
@@ -739,7 +742,7 @@ export function PerformanceChart({
             <Pressable
               key={point.t}
               accessibilityRole="button"
-              accessibilityLabel={`${formatMoney(point.value, currency, { hide: hideMoney })}`}
+              accessibilityLabel={`${format.money(point.value, currency, { hide: hideMoney })}`}
               onPress={() =>
                 setSelectedIndex(selectedIndex === index ? null : index)
               }
@@ -804,7 +807,7 @@ export function PerformanceChart({
             {formatAxisTimeLabel(selected.t, range)}
           </AppText>
           <AppText variant="caption" tabular>
-            {formatMoney(selected.value, currency, { hide: hideMoney })}
+            {format.money(selected.value, currency, { hide: hideMoney })}
           </AppText>
         </View>
       ) : null}

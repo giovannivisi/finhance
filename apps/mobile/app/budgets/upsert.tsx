@@ -25,16 +25,22 @@ import {
   SwitchField,
   TextField,
 } from "@/components/ui";
-import { addMonths, currentMonth, formatMonthLabel } from "@/lib/dates";
-import { formatMoney, parseAmountInput } from "@/lib/money";
+import { addMonths, currentMonth } from "@/lib/dates";
+import { parseAmountInput } from "@/lib/money";
+import { useFormatters } from "@/prefs";
 import { spacing } from "@/theme";
 
-function monthOptions(center: string, back: number, forward: number) {
+function monthOptions(
+  center: string,
+  back: number,
+  forward: number,
+  formatMonth: (month: string) => string,
+) {
   const options: { value: string; label: string }[] = [];
 
   for (let offset = -back; offset <= forward; offset += 1) {
     const value = addMonths(center, offset);
-    options.push({ value, label: formatMonthLabel(value) });
+    options.push({ value, label: formatMonth(value) });
   }
 
   return options.reverse();
@@ -42,6 +48,7 @@ function monthOptions(center: string, back: number, forward: number) {
 
 export default function BudgetUpsertScreen() {
   const router = useRouter();
+  const format = useFormatters();
   const params = useLocalSearchParams<{
     id?: string;
     month?: string;
@@ -125,8 +132,8 @@ export default function BudgetUpsertScreen() {
   );
 
   const months = useMemo(
-    () => monthOptions(contextMonth, 18, 18),
-    [contextMonth],
+    () => monthOptions(contextMonth, 18, 18, format.month),
+    [contextMonth, format],
   );
 
   const saving =
@@ -271,7 +278,7 @@ export default function BudgetUpsertScreen() {
     <Screen
       title={isEdit ? "Edit budget" : "New budget"}
       showBack
-      kicker={formatMonthLabel(contextMonth)}
+      kicker={format.month(contextMonth)}
     >
       <View style={{ gap: spacing.lg, paddingBottom: spacing.xxl }}>
         {isEdit && editedItem ? (
@@ -284,9 +291,10 @@ export default function BudgetUpsertScreen() {
                   : editedItem.categoryName}
               </AppText>
               <AppText variant="footnote" tone="secondary">
-                Spent {formatMoney(editedItem.spentAmount, editedItem.currency)}{" "}
-                of {formatMoney(editedItem.budgetAmount, editedItem.currency)}{" "}
-                in {formatMonthLabel(contextMonth)}.
+                Spent{" "}
+                {format.money(editedItem.spentAmount, editedItem.currency)} of{" "}
+                {format.money(editedItem.budgetAmount, editedItem.currency)} in{" "}
+                {format.month(contextMonth)}.
               </AppText>
             </View>
           </Card>
@@ -319,7 +327,7 @@ export default function BudgetUpsertScreen() {
           error={fieldErrors.amount}
           hint={
             isEdit
-              ? `Changes apply from ${formatMonthLabel(contextMonth)} onward.`
+              ? `Changes apply from ${format.month(contextMonth)} onward.`
               : undefined
           }
         />
@@ -367,7 +375,7 @@ export default function BudgetUpsertScreen() {
             <Divider />
             <View style={{ gap: spacing.md }}>
               <AppText variant="title3">
-                Override for {formatMonthLabel(contextMonth)} only
+                Override for {format.month(contextMonth)} only
               </AppText>
               <AppText variant="footnote" tone="secondary">
                 Use a one-off amount this month without changing the ongoing
@@ -408,7 +416,7 @@ export default function BudgetUpsertScreen() {
                 End this budget
               </AppText>
               <AppText variant="footnote" tone="secondary">
-                Stops the plan from {formatMonthLabel(contextMonth)} onward.
+                Stops the plan from {format.month(contextMonth)} onward.
                 Earlier months keep their history.
               </AppText>
               <Button

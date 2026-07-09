@@ -15,7 +15,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { formatDateLabel } from "@/lib/dates";
+import { useFormatters } from "@/prefs";
 import { fonts, radius, spacing, useTheme } from "@/theme";
 
 import { Button } from "./button";
@@ -267,6 +267,7 @@ export function DateField({
 }: DateFieldProps) {
   const input = useInputStyle();
   const { colors, scheme } = useTheme();
+  const format = useFormatters();
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const openPicker = () => {
@@ -290,7 +291,7 @@ export function DateField({
     <Field label={label} error={error} hint={hint}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${label}: ${formatDateLabel(value)}`}
+        accessibilityLabel={`${label}: ${format.date(value)}`}
         onPress={openPicker}
         style={({ pressed }) => [
           input.container,
@@ -302,7 +303,7 @@ export function DateField({
           pressed ? { opacity: 0.7 } : null,
         ]}
       >
-        <AppText variant="body">{formatDateLabel(value)}</AppText>
+        <AppText variant="body">{format.date(value)}</AppText>
         <Ionicons
           name="calendar-outline"
           size={16}

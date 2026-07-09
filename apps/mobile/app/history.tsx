@@ -15,10 +15,11 @@ import {
   Screen,
   SkeletonCard,
 } from "@/components/ui";
-import { formatDateLabel, formatTimestampLabel } from "@/lib/dates";
+import { useFormatters } from "@/prefs";
 import { spacing } from "@/theme";
 
 export default function HistoryScreen() {
+  const format = useFormatters();
   const snapshotsQuery = useSnapshots();
   const capture = useCaptureSnapshot();
   const [notice, setNotice] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export default function HistoryScreen() {
       const snapshot = await capture.mutateAsync();
       setNoticeTone("success");
       setNotice(
-        `Captured ${formatDateLabel(snapshot.snapshotDate.slice(0, 10))} — net worth ${snapshot.netWorthTotal.toLocaleString("en-GB", { maximumFractionDigits: 0 })} ${snapshot.reportingCurrency}.`,
+        `Captured ${format.date(snapshot.snapshotDate.slice(0, 10))} — net worth ${format.money(snapshot.netWorthTotal, snapshot.reportingCurrency, { maximumFractionDigits: 0 })}.`,
       );
     } catch (error) {
       setNoticeTone("danger");
@@ -91,8 +92,8 @@ export default function HistoryScreen() {
             <ListRow
               key={snapshot.id}
               showDivider={index < snapshots.length - 1}
-              title={formatDateLabel(snapshot.snapshotDate.slice(0, 10))}
-              subtitle={`Captured ${formatTimestampLabel(snapshot.capturedAt)}${
+              title={format.date(snapshot.snapshotDate.slice(0, 10))}
+              subtitle={`Captured ${format.timestamp(snapshot.capturedAt)}${
                 snapshot.storedReportingCurrency !== snapshot.reportingCurrency
                   ? ` · stored in ${snapshot.storedReportingCurrency}`
                   : ""

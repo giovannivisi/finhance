@@ -17,12 +17,13 @@ import {
   SkeletonCard,
   Stat,
 } from "@/components/ui";
-import { currentMonth, formatDateLabel } from "@/lib/dates";
-import { formatMoney } from "@/lib/money";
+import { currentMonth } from "@/lib/dates";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 export default function MonthlyReviewScreen() {
   const { hideMoney } = useTheme();
+  const format = useFormatters();
   const [month, setMonth] = useState(currentMonth());
   const reviewQuery = useMonthlyReview(month);
   const materialize = useMaterializeRecurring();
@@ -110,7 +111,7 @@ export default function MonthlyReviewScreen() {
                   }
                   note={
                     review.openingSnapshotDate
-                      ? formatDateLabel(review.openingSnapshotDate.slice(0, 10))
+                      ? format.date(review.openingSnapshotDate.slice(0, 10))
                       : "No snapshot"
                   }
                   style={{ flex: 1 }}
@@ -131,7 +132,7 @@ export default function MonthlyReviewScreen() {
                   }
                   note={
                     review.closingSnapshotDate
-                      ? formatDateLabel(review.closingSnapshotDate.slice(0, 10))
+                      ? format.date(review.closingSnapshotDate.slice(0, 10))
                       : "No snapshot"
                   }
                   style={{ flex: 1 }}
@@ -330,7 +331,7 @@ export default function MonthlyReviewScreen() {
                                     : category.name}
                                 </AppText>
                                 <AppText variant="footnoteMedium" tabular>
-                                  {formatMoney(
+                                  {format.money(
                                     category.total,
                                     insight.currency,
                                     {
@@ -386,13 +387,13 @@ export default function MonthlyReviewScreen() {
                           label="Income plan"
                           value={
                             <AppText variant="footnoteMedium" tabular>
-                              {formatMoney(
+                              {format.money(
                                 comparison.actualIncomeTotal,
                                 comparison.currency,
                                 { hide: hideMoney, maximumFractionDigits: 0 },
                               )}{" "}
                               /{" "}
-                              {formatMoney(
+                              {format.money(
                                 comparison.expectedIncomeTotal,
                                 comparison.currency,
                                 { hide: hideMoney, maximumFractionDigits: 0 },
@@ -405,13 +406,13 @@ export default function MonthlyReviewScreen() {
                           label="Expense plan"
                           value={
                             <AppText variant="footnoteMedium" tabular>
-                              {formatMoney(
+                              {format.money(
                                 comparison.actualExpenseTotal,
                                 comparison.currency,
                                 { hide: hideMoney, maximumFractionDigits: 0 },
                               )}{" "}
                               /{" "}
-                              {formatMoney(
+                              {format.money(
                                 comparison.expectedExpenseTotal,
                                 comparison.currency,
                                 { hide: hideMoney, maximumFractionDigits: 0 },
@@ -455,7 +456,7 @@ export default function MonthlyReviewScreen() {
                         : item.categoryName}
                     </AppText>
                     <AppText variant="footnoteMedium" tone="danger" tabular>
-                      {formatMoney(
+                      {format.money(
                         Math.abs(item.remainingAmount),
                         item.currency,
                         { hide: hideMoney, maximumFractionDigits: 0 },

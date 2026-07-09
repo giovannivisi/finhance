@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { Redirect, usePathname, useRouter, type Href } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import type {
@@ -38,15 +38,18 @@ import {
   computeLiveValueDelta,
   mergeDashboardAssetsWithLiveQuotes,
 } from "@/lib/live-merge";
-import { formatMoney } from "@/lib/money";
 import {
   createAutomaticPriceRefreshAttempt,
   formatPriceRefreshStatusText,
   getAutomaticPriceRefreshDelay,
   type AutomaticPriceRefreshAttempt,
 } from "@/lib/price-refresh";
+import { LAUNCH_TAB_HREFS } from "@/lib/preferences";
 import { useIsScreenActive } from "@/lib/screen-active";
+import { useAppPreferences, useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
+
+let launchRedirectConsumed = false;
 
 function PricingStatusChip({
   state,
@@ -117,6 +120,7 @@ function HoldingRow({
   showDivider: boolean;
 }) {
   const { hideMoney } = useTheme();
+  const format = useFormatters();
   const value = holdingValue(asset);
   const isLiability = asset.type === "LIABILITY";
   const nativeDiffers =
@@ -134,7 +138,7 @@ function HoldingRow({
 
   if (nativeDiffers) {
     subtitleParts.push(
-      formatMoney(asset.balance, asset.currency, { hide: hideMoney }),
+      format.money(asset.balance, asset.currency, { hide: hideMoney }),
     );
   }
 
@@ -169,9 +173,22 @@ function HoldingRow({
   );
 }
 
-export default function DashboardScreen() {
+export default function HomeRoute() {
+  const pathname = usePathname();
+  const { launchTab } = useAppPreferences();
+
+  if (!launchRedirectConsumed && pathname === "/" && launchTab !== "home") {
+    launchRedirectConsumed = true;
+    return <Redirect href={LAUNCH_TAB_HREFS[launchTab] as Href} />;
+  }
+
+  return <DashboardScreen />;
+}
+
+function DashboardScreen() {
   const router = useRouter();
   const { colors, hideMoney, setHideMoney } = useTheme();
+  const format = useFormatters();
   const dashboardQuery = useDashboard();
   const refreshAssets = useRefreshAssets();
   const refreshAssetsIsPending = refreshAssets.isPending;
@@ -624,14 +641,14 @@ export default function DashboardScreen() {
                     >
                       <AppText variant="caption" tone="tertiary">
                         Spent{" "}
-                        {formatMoney(currency.spentTotal, currency.currency, {
+                        {format.money(currency.spentTotal, currency.currency, {
                           hide: hideMoney,
                           maximumFractionDigits: 0,
                         })}
                       </AppText>
                       <AppText variant="caption" tone="tertiary">
                         of{" "}
-                        {formatMoney(currency.budgetTotal, currency.currency, {
+                        {format.money(currency.budgetTotal, currency.currency, {
                           hide: hideMoney,
                           maximumFractionDigits: 0,
                         })}

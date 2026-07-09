@@ -17,7 +17,6 @@ import {
   Section,
   SkeletonCard,
 } from "@/components/ui";
-import { formatTimestampLabel } from "@/lib/dates";
 import {
   getImportFileLabel,
   groupImportSummaries,
@@ -25,10 +24,12 @@ import {
   sortImportBatches,
   totalImportRows,
 } from "@/lib/imports";
+import { useFormatters } from "@/prefs";
 import { radius, spacing, useTheme } from "@/theme";
 
 export default function ImportScreen() {
   const { colors } = useTheme();
+  const format = useFormatters();
   const { serverMode, serverUrl } = useServerConnection();
   const batchesQuery = useImportBatches();
   const batches = useMemo(
@@ -103,11 +104,11 @@ export default function ImportScreen() {
                     Batch {latestBatch.id}
                   </AppText>
                   <AppText variant="caption" tone="secondary">
-                    Created {formatTimestampLabel(latestBatch.createdAt)}
+                    Created {format.timestamp(latestBatch.createdAt)}
                   </AppText>
                   {latestBatch.appliedAt ? (
                     <AppText variant="caption" tone="secondary">
-                      Applied {formatTimestampLabel(latestBatch.appliedAt)}
+                      Applied {format.timestamp(latestBatch.appliedAt)}
                     </AppText>
                   ) : null}
                 </View>
@@ -190,7 +191,7 @@ export default function ImportScreen() {
                 <Card key={batch.id} style={{ paddingVertical: 4 }}>
                   <ListRow
                     title={`Batch ${batch.id}`}
-                    subtitle={`Created ${formatTimestampLabel(batch.createdAt)} · ${totalImportRows(
+                    subtitle={`Created ${format.timestamp(batch.createdAt)} · ${totalImportRows(
                       batch.summary,
                     )} rows`}
                     titleLines={1}

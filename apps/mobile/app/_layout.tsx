@@ -22,6 +22,8 @@ import {
   ServerConnectionProvider,
   useServerConnection,
 } from "@/api/server-connection";
+import { AppLockGate } from "@/components/app-lock";
+import { AppPreferencesProvider, useAppPreferences } from "@/prefs";
 import { ThemeProvider, useTheme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -51,8 +53,14 @@ function createQueryClient(): QueryClient {
 }
 
 function ThemedApp() {
-  const { colors, scheme } = useTheme();
-  const { serverUrl, serverMode, token, isHydrated } = useServerConnection();
+  const { colors, scheme, isHydrated: themeHydrated } = useTheme();
+  const { isHydrated: preferencesHydrated } = useAppPreferences();
+  const {
+    serverUrl,
+    serverMode,
+    token,
+    isHydrated: serverHydrated,
+  } = useServerConnection();
 
   const queryClient = useMemo(
     () => createQueryClient(),
@@ -66,14 +74,14 @@ function ThemedApp() {
   }, [colors.bgApp]);
 
   useEffect(() => {
-    if (isHydrated) {
+    if (themeHydrated && preferencesHydrated && serverHydrated) {
       SplashScreen.hideAsync().catch(() => undefined);
     }
-  }, [isHydrated]);
+  }, [themeHydrated, preferencesHydrated, serverHydrated]);
 
   // Keep the splash up until we know whether a server is configured; screens
   // assume a connected API client once they mount.
-  if (!isHydrated) {
+  if (!themeHydrated || !preferencesHydrated || !serverHydrated) {
     return null;
   }
 
@@ -85,44 +93,50 @@ function ThemedApp() {
     <QueryClientProvider client={queryClient}>
       <View style={{ flex: 1, backgroundColor: colors.bgApp }}>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.bgApp },
-          }}
-        >
-          <Stack.Protected guard={connected}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen
-              name="transactions/upsert"
-              options={{ presentation: "modal" }}
-            />
-            <Stack.Screen
-              name="accounts/upsert"
-              options={{ presentation: "modal" }}
-            />
-            <Stack.Screen
-              name="holdings/upsert"
-              options={{ presentation: "modal" }}
-            />
-            <Stack.Screen
-              name="budgets/upsert"
-              options={{ presentation: "modal" }}
-            />
-            <Stack.Screen
-              name="recurring/upsert"
-              options={{ presentation: "modal" }}
-            />
-            <Stack.Screen
-              name="categories/upsert"
-              options={{ presentation: "modal" }}
-            />
-          </Stack.Protected>
-          <Stack.Protected guard={!connected}>
-            <Stack.Screen name="login" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="signup" options={{ gestureEnabled: false }} />
-          </Stack.Protected>
-        </Stack>
+        <AppLockGate>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.bgApp },
+            }}
+          >
+            <Stack.Protected guard={connected}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen
+                name="transactions/upsert"
+                options={{ presentation: "modal" }}
+              />
+              <Stack.Screen
+                name="accounts/upsert"
+                options={{ presentation: "modal" }}
+              />
+              <Stack.Screen
+                name="holdings/upsert"
+                options={{ presentation: "modal" }}
+              />
+              <Stack.Screen
+                name="budgets/upsert"
+                options={{ presentation: "modal" }}
+              />
+              <Stack.Screen
+                name="recurring/upsert"
+                options={{ presentation: "modal" }}
+              />
+              <Stack.Screen
+                name="categories/upsert"
+                options={{ presentation: "modal" }}
+              />
+            </Stack.Protected>
+            <Stack.Protected guard={!connected}>
+              <Stack.Screen name="login" options={{ gestureEnabled: false }} />
+              <Stack.Screen name="signup" options={{ gestureEnabled: false }} />
+              <Stack.Screen
+                name="account-deleted"
+                options={{ gestureEnabled: false }}
+              />
+            </Stack.Protected>
+          </Stack>
+        </AppLockGate>
       </View>
     </QueryClientProvider>
   );
@@ -142,9 +156,11 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      <ServerConnectionProvider>
-        <ThemedApp />
-      </ServerConnectionProvider>
+      <AppPreferencesProvider>
+        <ServerConnectionProvider>
+          <ThemedApp />
+        </ServerConnectionProvider>
+      </AppPreferencesProvider>
     </ThemeProvider>
   );
 }

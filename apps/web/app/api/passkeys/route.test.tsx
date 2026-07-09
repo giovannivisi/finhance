@@ -11,9 +11,15 @@ const { authMock, hostedModeMock, prismaMock, recentAuthMock } = vi.hoisted(
         deleteMany: vi.fn(),
         findMany: vi.fn(),
       },
+      authProviderAccount: {
+        deleteMany: vi.fn(),
+      },
+      $transaction: vi.fn(),
     },
   }),
 );
+
+vi.mock("server-only", () => ({}));
 
 vi.mock("@lib/auth", () => ({
   auth: authMock,
@@ -42,6 +48,11 @@ describe("/api/passkeys", () => {
     recentAuthMock.mockResolvedValue(true);
     prismaMock.authAuthenticator.deleteMany.mockReset();
     prismaMock.authAuthenticator.findMany.mockReset();
+    prismaMock.authProviderAccount.deleteMany.mockReset();
+    prismaMock.$transaction.mockReset();
+    prismaMock.$transaction.mockImplementation((callback) =>
+      callback(prismaMock),
+    );
   });
 
   it("returns an empty list outside hosted mode", async () => {
@@ -116,6 +127,13 @@ describe("/api/passkeys", () => {
       where: {
         userId: "user-1",
         credentialID: "credential-1",
+      },
+    });
+    expect(prismaMock.authProviderAccount.deleteMany).toHaveBeenCalledWith({
+      where: {
+        userId: "user-1",
+        provider: "passkey",
+        providerAccountId: "credential-1",
       },
     });
   });

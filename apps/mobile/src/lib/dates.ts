@@ -1,20 +1,58 @@
+import { getFormatConfig, type FormatConfig } from "./format-config";
+
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-const MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
+type DateFormatOptions = Intl.DateTimeFormatOptions & {
+  locale?: string;
+};
+
+const dateFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getDateFormatter(options: DateFormatOptions): Intl.DateTimeFormat {
+  const locale = options.locale ?? getFormatConfig().locale;
+  const { locale: _locale, ...dateOptions } = options;
+  const key = `${locale}|${JSON.stringify(dateOptions)}`;
+  const cached = dateFormatterCache.get(key);
+
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const formatter = new Intl.DateTimeFormat(locale, dateOptions);
+    dateFormatterCache.set(key, formatter);
+    return formatter;
+  } catch {
+    const formatter = new Intl.DateTimeFormat("en-GB", dateOptions);
+    dateFormatterCache.set(key, formatter);
+    return formatter;
+  }
+}
+
+function toDateFromLocalDate(localDate: string): Date {
+  const [yearRaw, monthRaw, dayRaw] = localDate.split("-");
+  return new Date(Number(yearRaw), Number(monthRaw) - 1, Number(dayRaw));
+}
+
+function resolveFormatOptions(
+  options: Partial<FormatConfig> = {},
+): FormatConfig {
+  return {
+    ...getFormatConfig(),
+    ...options,
+  };
+}
+
+function formatMonthName(
+  monthIndex: number,
+  width: "long" | "short",
+  locale: string,
+): string {
+  return getDateFormatter({ locale, month: width }).format(
+    new Date(2026, monthIndex, 1),
+  );
+}
 
 export function isMonthString(value: string): boolean {
   return MONTH_PATTERN.test(value);
@@ -70,24 +108,42 @@ export function monthBounds(month: string): { from: string; to: string } {
   };
 }
 
-export function formatMonthLabel(month: string): string {
+export function formatMonthLabel(
+  month: string,
+  options: Partial<FormatConfig> = {},
+): string {
   if (!isMonthString(month)) {
     return month;
   }
 
-  const [year, monthRaw] = month.split("-");
-  const monthName = MONTH_NAMES[Number(monthRaw) - 1] ?? monthRaw;
-  return `${monthName} ${year}`;
+  const config = resolveFormatOptions(options);
+  const [yearRaw, monthRaw] = month.split("-");
+  const date = new Date(Number(yearRaw), Number(monthRaw) - 1, 1);
+
+  return getDateFormatter({
+    locale: config.locale,
+    month: "long",
+    year: "numeric",
+  }).format(date);
 }
 
-export function formatShortMonthLabel(month: string): string {
+export function formatShortMonthLabel(
+  month: string,
+  options: Partial<FormatConfig> = {},
+): string {
   if (!isMonthString(month)) {
     return month;
   }
 
-  const [year, monthRaw] = month.split("-");
-  const monthName = MONTH_NAMES[Number(monthRaw) - 1]?.slice(0, 3) ?? monthRaw;
-  return `${monthName} ${year?.slice(2)}`;
+  const config = resolveFormatOptions(options);
+  const [yearRaw, monthRaw] = month.split("-");
+  const date = new Date(Number(yearRaw), Number(monthRaw) - 1, 1);
+
+  return getDateFormatter({
+    locale: config.locale,
+    month: "short",
+    year: "2-digit",
+  }).format(date);
 }
 
 export function localDateOf(isoTimestamp: string): string {
@@ -107,6 +163,7 @@ export function monthOf(isoTimestamp: string): string {
 export function formatDayHeading(
   localDate: string,
   now: Date = new Date(),
+  options: Partial<FormatConfig> = {},
 ): string {
   if (!isLocalDateString(localDate)) {
     return localDate;
@@ -122,44 +179,85 @@ export function formatDayHeading(
     return "Yesterday";
   }
 
+  const config = resolveFormatOptions(options);
   const [yearRaw, monthRaw, dayRaw] = localDate.split("-");
-  const date = new Date(Number(yearRaw), Number(monthRaw) - 1, Number(dayRaw));
-  const weekday = date.toLocaleDateString("en-GB", { weekday: "long" });
-  const monthName = MONTH_NAMES[Number(monthRaw) - 1] ?? monthRaw;
+  const date = toDateFromLocalDate(localDate);
   const sameYear = String(now.getFullYear()) === yearRaw;
 
-  return `${weekday} ${Number(dayRaw)} ${monthName}${sameYear ? "" : ` ${yearRaw}`}`;
+  if (config.locale === "en-GB") {
+    const weekday = getDateFormatter({
+      locale: config.locale,
+      weekday: "long",
+    }).format(date);
+    const monthName = formatMonthName(
+      Number(monthRaw) - 1,
+      "long",
+      config.locale,
+    );
+
+    return `${weekday} ${Number(dayRaw)} ${monthName}${
+      sameYear ? "" : ` ${yearRaw}`
+    }`;
+  }
+
+  return getDateFormatter({
+    locale: config.locale,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(date);
 }
 
-export function formatDateLabel(localDate: string): string {
+export function formatDateLabel(
+  localDate: string,
+  options: Partial<FormatConfig> = {},
+): string {
   if (!isLocalDateString(localDate)) {
     return localDate;
   }
 
-  const [yearRaw, monthRaw, dayRaw] = localDate.split("-");
-  const monthName = MONTH_NAMES[Number(monthRaw) - 1]?.slice(0, 3) ?? monthRaw;
-  return `${Number(dayRaw)} ${monthName} ${yearRaw}`;
+  const config = resolveFormatOptions(options);
+  return getDateFormatter({
+    locale: config.locale,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(toDateFromLocalDate(localDate));
 }
 
-export function formatTimeLabel(isoTimestamp: string): string {
+export function formatTimeLabel(
+  isoTimestamp: string,
+  options: Partial<FormatConfig> = {},
+): string {
   const date = new Date(isoTimestamp);
 
   if (Number.isNaN(date.getTime())) {
     return "";
   }
 
-  return date.toLocaleTimeString("en-GB", {
+  const config = resolveFormatOptions(options);
+
+  return getDateFormatter({
+    locale: config.locale,
     hour: "2-digit",
     minute: "2-digit",
-  });
+    hour12: config.hour12,
+  }).format(date);
 }
 
-export function formatTimestampLabel(isoTimestamp: string): string {
+export function formatTimestampLabel(
+  isoTimestamp: string,
+  options: Partial<FormatConfig> = {},
+): string {
   const date = new Date(isoTimestamp);
 
   if (Number.isNaN(date.getTime())) {
     return isoTimestamp;
   }
 
-  return `${formatDateLabel(localDateOf(isoTimestamp))}, ${formatTimeLabel(isoTimestamp)}`;
+  return `${formatDateLabel(localDateOf(isoTimestamp), options)}, ${formatTimeLabel(
+    isoTimestamp,
+    options,
+  )}`;
 }

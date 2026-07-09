@@ -43,7 +43,8 @@ import {
   categoryLabel,
   isAssignableTransactionCategory,
 } from "@/lib/categories";
-import { formatMoney, parseAmountInput } from "@/lib/money";
+import { parseAmountInput } from "@/lib/money";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 const CREATE_KIND_OPTIONS = [
@@ -70,6 +71,7 @@ function accountOption(account: AccountResponse) {
 export default function TransactionUpsertScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const format = useFormatters();
   const params = useLocalSearchParams<{ id?: string }>();
   const transactionId = params.id ?? null;
   const isEdit = Boolean(transactionId);
@@ -454,7 +456,7 @@ export default function TransactionUpsertScreen() {
                   ) : null}
                   <AppText variant="footnote" tone="secondary">
                     Total:{" "}
-                    {formatMoney(
+                    {format.money(
                       splitTotal,
                       (form.legs[0]?.accountId
                         ? accountsById.get(form.legs[0].accountId)?.currency

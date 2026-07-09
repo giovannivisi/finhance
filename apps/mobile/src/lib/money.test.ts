@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import { resetFormatConfig, setFormatConfig } from "./format-config";
 import { formatMoney, HIDDEN_AMOUNT, parseAmountInput } from "./money";
+
+afterEach(() => {
+  resetFormatConfig();
+});
 
 describe("formatMoney", () => {
   it("formats amounts with the currency symbol", () => {
@@ -24,6 +29,11 @@ describe("formatMoney", () => {
     expect(formatMoney(1900.4, "EUR", { maximumFractionDigits: 0 })).toBe(
       "€1,900",
     );
+  });
+
+  it("uses the configured locale", () => {
+    setFormatConfig({ locale: "de-DE", hour12: false });
+    expect(formatMoney(1234.5, "EUR")).toContain("1.234,50");
   });
 
   it("falls back gracefully for unknown currency codes", () => {

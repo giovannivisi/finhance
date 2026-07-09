@@ -1,16 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   addMonths,
   currentMonth,
   daysInMonth,
+  formatDateLabel,
   formatDayHeading,
   formatMonthLabel,
+  formatTimeLabel,
   localDateOf,
   monthBounds,
   monthRange,
   todayLocalDate,
 } from "./dates";
+import { resetFormatConfig, setFormatConfig } from "./format-config";
+
+afterEach(() => {
+  resetFormatConfig();
+});
 
 describe("month math", () => {
   it("adds months across year boundaries", () => {
@@ -49,12 +56,27 @@ describe("labels", () => {
     expect(formatMonthLabel("2026-06")).toBe("June 2026");
   });
 
+  it("formats labels with the configured locale", () => {
+    setFormatConfig({ locale: "en-US", hour12: true });
+    expect(formatDateLabel("2026-06-01")).toBe("Jun 1, 2026");
+    expect(formatMonthLabel("2026-06")).toBe("June 2026");
+  });
+
   it("formats day headings relative to today", () => {
     const now = new Date(2026, 5, 10);
     expect(formatDayHeading("2026-06-10", now)).toBe("Today");
     expect(formatDayHeading("2026-06-09", now)).toBe("Yesterday");
     expect(formatDayHeading("2026-06-01", now)).toContain("1 June");
     expect(formatDayHeading("2025-12-31", now)).toContain("2025");
+  });
+
+  it("formats times with the configured hour cycle", () => {
+    const timestamp = new Date(2026, 5, 10, 13, 5).toISOString();
+    setFormatConfig({ locale: "en-US", hour12: true });
+    expect(formatTimeLabel(timestamp)).toMatch(/1:05|01:05/);
+
+    setFormatConfig({ locale: "en-GB", hour12: false });
+    expect(formatTimeLabel(timestamp)).toContain("13:05");
   });
 
   it("extracts the local date of a timestamp", () => {

@@ -1,3 +1,5 @@
+import { getFormatConfig } from "./format-config";
+
 const HIDDEN_AMOUNT = "•••••";
 
 export interface FormatMoneyOptions {
@@ -5,6 +7,7 @@ export interface FormatMoneyOptions {
   signDisplay?: "auto" | "always" | "never" | "exceptZero";
   maximumFractionDigits?: number;
   compact?: boolean;
+  locale?: string;
 }
 
 const formatterCache = new Map<string, Intl.NumberFormat>();
@@ -14,6 +17,7 @@ function getFormatter(
   options: FormatMoneyOptions,
 ): Intl.NumberFormat | null {
   const key = [
+    options.locale ?? getFormatConfig().locale,
     currency,
     options.signDisplay ?? "auto",
     options.maximumFractionDigits ?? "",
@@ -27,19 +31,23 @@ function getFormatter(
   }
 
   try {
-    const formatter = new Intl.NumberFormat("en-GB", {
-      style: "currency",
-      currency,
-      currencyDisplay: "narrowSymbol",
-      signDisplay: options.signDisplay ?? "auto",
-      notation: options.compact ? "compact" : "standard",
-      ...(options.maximumFractionDigits !== undefined
-        ? {
-            maximumFractionDigits: options.maximumFractionDigits,
-            minimumFractionDigits: 0,
-          }
-        : {}),
-    });
+    const formatter = new Intl.NumberFormat(
+      options.locale ?? getFormatConfig().locale,
+      {
+        localeMatcher: "best fit",
+        style: "currency",
+        currency,
+        currencyDisplay: "narrowSymbol",
+        signDisplay: options.signDisplay ?? "auto",
+        notation: options.compact ? "compact" : "standard",
+        ...(options.maximumFractionDigits !== undefined
+          ? {
+              maximumFractionDigits: options.maximumFractionDigits,
+              minimumFractionDigits: 0,
+            }
+          : {}),
+      },
+    );
     formatterCache.set(key, formatter);
     return formatter;
   } catch {
@@ -61,7 +69,10 @@ export function formatMoney(
   }
 
   const normalizedCurrency = currency?.trim().toUpperCase() || "EUR";
-  const formatter = getFormatter(normalizedCurrency, options);
+  const formatter = getFormatter(normalizedCurrency, {
+    ...options,
+    locale: options.locale ?? getFormatConfig().locale,
+  });
 
   if (!formatter) {
     const sign =

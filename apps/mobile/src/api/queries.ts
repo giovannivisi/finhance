@@ -24,12 +24,19 @@ import type {
   UpsertTransactionRequest,
 } from "@finhance/shared";
 
-import { useApiClient } from "./server-connection";
+import { useApiClient, useServerConnection } from "./server-connection";
 import {
   api,
   type AnalyticsFilters,
   type TransactionFilters,
 } from "./endpoints";
+import {
+  deleteMobileAccount,
+  deletePasskey,
+  getMobileAccount,
+  listPasskeys,
+  registerPasskey,
+} from "./passkeys";
 
 export const queryKeys = {
   dashboard: ["dashboard"] as const,
@@ -64,6 +71,8 @@ export const queryKeys = {
   imports: ["imports"] as const,
   expenseValidation: ["expense-validation"] as const,
   userSettings: ["user", "settings"] as const,
+  mobileAccount: ["mobile", "account"] as const,
+  mobilePasskeys: ["mobile", "passkeys"] as const,
 };
 
 type QueryRoot =
@@ -386,6 +395,24 @@ export function useUserSettings(): UseQueryResult<
   return useQuery({
     queryKey: queryKeys.userSettings,
     queryFn: () => api.user.settings(client),
+  });
+}
+
+export function useMobileAccount() {
+  const { serverUrl, serverMode, token } = useServerConnection();
+  return useQuery({
+    queryKey: queryKeys.mobileAccount,
+    queryFn: () => getMobileAccount(serverUrl as string, token as string),
+    enabled: Boolean(serverUrl && serverMode === "hosted" && token),
+  });
+}
+
+export function useMobilePasskeys() {
+  const { serverUrl, serverMode, token } = useServerConnection();
+  return useQuery({
+    queryKey: queryKeys.mobilePasskeys,
+    queryFn: () => listPasskeys(serverUrl as string, token as string),
+    enabled: Boolean(serverUrl && serverMode === "hosted" && token),
   });
 }
 
@@ -824,5 +851,61 @@ export function useUpdateUserSettings() {
       // Reporting currency changes affect almost every aggregate.
       await queryClient.invalidateQueries();
     },
+  });
+}
+
+export function useRegisterMobilePasskey() {
+  const { serverUrl, token } = useServerConnection();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tokenOverride }: { tokenOverride?: string } = {}) =>
+      registerPasskey(serverUrl as string, tokenOverride ?? (token as string)),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mobilePasskeys,
+      });
+    },
+  });
+}
+
+export function useDeleteMobilePasskey() {
+  const { serverUrl, token } = useServerConnection();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      credentialId,
+      tokenOverride,
+    }: {
+      credentialId: string;
+      tokenOverride?: string;
+    }) =>
+      deletePasskey(
+        serverUrl as string,
+        tokenOverride ?? (token as string),
+        credentialId,
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mobilePasskeys,
+      });
+    },
+  });
+}
+
+export function useDeleteMobileAccount() {
+  const { serverUrl, token } = useServerConnection();
+  return useMutation({
+    mutationFn: ({
+      email,
+      tokenOverride,
+    }: {
+      email: string;
+      tokenOverride?: string;
+    }) =>
+      deleteMobileAccount(
+        serverUrl as string,
+        tokenOverride ?? (token as string),
+        email,
+      ),
   });
 }

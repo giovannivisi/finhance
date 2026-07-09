@@ -1,4 +1,5 @@
 import { formatMoney, type FormatMoneyOptions } from "@/lib/money";
+import { useAppPreferences } from "@/prefs";
 import { useTheme } from "@/theme";
 
 import { AppText, type AppTextProps } from "./text";
@@ -27,6 +28,7 @@ export function MoneyText({
   ...textProps
 }: MoneyTextProps) {
   const { hideMoney } = useTheme();
+  const { formatConfig } = useAppPreferences();
   const shouldHide = hide ?? hideMoney;
 
   const resolvedTone =
@@ -46,6 +48,7 @@ export function MoneyText({
         signDisplay,
         maximumFractionDigits,
         compact,
+        locale: formatConfig.locale,
       })}
     </AppText>
   );

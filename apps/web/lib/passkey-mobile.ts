@@ -1,28 +1,43 @@
 import "server-only";
 
+import { Buffer } from "node:buffer";
 import {
   generateAuthenticationOptions,
+  generateRegistrationOptions,
   verifyAuthenticationResponse,
+  verifyRegistrationResponse,
   type VerifyAuthenticationResponseOpts,
+  type VerifyRegistrationResponseOpts,
 } from "@simplewebauthn/server";
+import { Prisma } from "@finhance/db";
 
 import { mintMobileToken } from "./mobile-auth";
 import {
   mintMobilePasskeyChallengeToken,
+  mintMobilePasskeyRegChallengeToken,
   verifyMobilePasskeyChallengeToken,
+  verifyMobilePasskeyRegChallengeToken,
 } from "./mobile-auth.core";
 import {
   decodeStoredPasskeyBytes,
   toStoredPasskeyCredentialId,
 } from "./passkey-encoding";
+import { PASSKEY_PROVIDER, toPasskeyResponse } from "./passkeys";
 import { prisma } from "./prisma";
+import { consumeOneShotKey } from "./request-rate-limit";
 
 // Derive the WebAuthn shapes from the verify options so we do not depend on the
 // transitive @simplewebauthn/types package directly.
 type AuthenticationResponseJSON = VerifyAuthenticationResponseOpts["response"];
+type RegistrationResponseJSON = VerifyRegistrationResponseOpts["response"];
 type AuthenticatorDevice = VerifyAuthenticationResponseOpts["authenticator"];
 
 const DEFAULT_RP_ID = "finhance-web.vercel.app";
+
+// One-shot store for registration challenge jtis; the TTL matches
+// MOBILE_PASSKEY_CHALLENGE_TTL so rows expire with the tokens they guard.
+const REG_CHALLENGE_JTI_SCOPE = "mobile-passkey-reg-jti";
+const REG_CHALLENGE_JTI_TTL_MS = 5 * 60_000;
 
 function resolveRpId(env: NodeJS.ProcessEnv): string {
   return env.AUTH_WEBAUTHN_RP_ID?.trim() || DEFAULT_RP_ID;
@@ -48,6 +63,28 @@ export interface MobilePasskeyChallenge {
   options: Awaited<ReturnType<typeof generateAuthenticationOptions>>;
   /** Signed, short-lived token carrying the challenge back to the verify call. */
   challenge: string;
+}
+
+export interface MobilePasskeyRegistrationChallenge {
+  /** The WebAuthn registration options the app passes to the native ceremony. */
+  options: Awaited<ReturnType<typeof generateRegistrationOptions>>;
+  /** Signed, short-lived token carrying the challenge back to the verify call. */
+  challenge: string;
+}
+
+function parseTransports(
+  transports: string | null,
+): AuthenticatorDevice["transports"] {
+  return transports
+    ? (transports
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean) as AuthenticatorDevice["transports"])
+    : undefined;
+}
+
+function toStoredBytes(value: Uint8Array): string {
+  return Buffer.from(value).toString("base64");
 }
 
 /**
@@ -113,12 +150,7 @@ export async function verifyMobilePasskeyAuthentication(
     credentialID: decodeStoredPasskeyBytes(stored.credentialID),
     credentialPublicKey: decodeStoredPasskeyBytes(stored.credentialPublicKey),
     counter: stored.counter,
-    transports: stored.transports
-      ? (stored.transports
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean) as AuthenticatorDevice["transports"])
-      : undefined,
+    transports: parseTransports(stored.transports),
   };
 
   let verification: Awaited<ReturnType<typeof verifyAuthenticationResponse>>;
@@ -159,4 +191,145 @@ export async function verifyMobilePasskeyAuthentication(
   });
 
   return { token };
+}
+
+export async function createMobilePasskeyRegistration(
+  userId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<MobilePasskeyRegistrationChallenge | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, isActive: true },
+  });
+
+  if (!user?.isActive) {
+    return null;
+  }
+
+  const existingAuthenticators = await prisma.authAuthenticator.findMany({
+    where: { userId },
+    select: { credentialID: true, transports: true },
+  });
+
+  const options = await generateRegistrationOptions({
+    rpName: "finhance",
+    rpID: resolveRpId(env),
+    userID: user.id,
+    userName: user.email ?? user.id,
+    userDisplayName: user.email ?? "finhance user",
+    attestationType: "none",
+    excludeCredentials: existingAuthenticators.map((authenticator) => ({
+      id: decodeStoredPasskeyBytes(authenticator.credentialID),
+      type: "public-key",
+      transports: parseTransports(authenticator.transports),
+    })),
+    authenticatorSelection: {
+      residentKey: "required",
+      userVerification: "required",
+    },
+  });
+
+  const challenge = await mintMobilePasskeyRegChallengeToken({
+    challenge: options.challenge,
+    userId,
+    authSecret: readAuthSecret(env),
+  });
+
+  return { options, challenge };
+}
+
+export async function verifyMobilePasskeyRegistration(
+  input: {
+    userId: string;
+    response: RegistrationResponseJSON;
+    challenge: string;
+  },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<ReturnType<typeof toPasskeyResponse> | null> {
+  const authSecret = readAuthSecret(env);
+  const challengeClaims = await verifyMobilePasskeyRegChallengeToken(
+    input.challenge,
+    authSecret,
+  );
+
+  if (!challengeClaims || challengeClaims.userId !== input.userId) {
+    return null;
+  }
+
+  // Each challenge token is single-use: consuming the jti here means a leaked
+  // token cannot be replayed within its TTL for a second registration.
+  const consumed = await consumeOneShotKey(
+    REG_CHALLENGE_JTI_SCOPE,
+    challengeClaims.jti,
+    REG_CHALLENGE_JTI_TTL_MS,
+  );
+
+  if (!consumed) {
+    return null;
+  }
+
+  let verification: Awaited<ReturnType<typeof verifyRegistrationResponse>>;
+  try {
+    verification = await verifyRegistrationResponse({
+      response: input.response,
+      expectedChallenge: challengeClaims.challenge,
+      expectedOrigin: resolveExpectedOrigin(env),
+      expectedRPID: resolveRpId(env),
+      requireUserVerification: true,
+    });
+  } catch {
+    return null;
+  }
+
+  const registrationInfo = verification.registrationInfo;
+  if (!verification.verified || !registrationInfo) {
+    return null;
+  }
+
+  const credentialId = toStoredBytes(registrationInfo.credentialID);
+  const transports = Array.isArray(input.response.response.transports)
+    ? input.response.response.transports.join(",")
+    : null;
+
+  try {
+    const created = await prisma.$transaction(
+      async (tx) => {
+        await tx.authProviderAccount.create({
+          data: {
+            userId: input.userId,
+            type: "webauthn",
+            provider: PASSKEY_PROVIDER,
+            providerAccountId: credentialId,
+          },
+        });
+
+        return tx.authAuthenticator.create({
+          data: {
+            userId: input.userId,
+            providerAccountId: credentialId,
+            credentialID: credentialId,
+            credentialPublicKey: toStoredBytes(
+              registrationInfo.credentialPublicKey,
+            ),
+            counter: registrationInfo.counter,
+            credentialDeviceType: registrationInfo.credentialDeviceType,
+            credentialBackedUp: registrationInfo.credentialBackedUp,
+            transports,
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return toPasskeyResponse(created);
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return null;
+    }
+
+    throw error;
+  }
 }

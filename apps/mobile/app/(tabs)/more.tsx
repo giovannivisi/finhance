@@ -90,7 +90,7 @@ export default function MoreScreen() {
       href: "/settings",
       icon: "settings-outline",
       title: "Settings",
-      subtitle: "Currency, appearance, server",
+      subtitle: "App preferences, account & security",
     },
     {
       href: "/privacy",

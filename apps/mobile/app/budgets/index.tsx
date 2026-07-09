@@ -25,7 +25,7 @@ import {
   SkeletonCard,
 } from "@/components/ui";
 import { currentMonth } from "@/lib/dates";
-import { formatMoney } from "@/lib/money";
+import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
 
 function categoryLabel(
@@ -52,6 +52,7 @@ function BudgetItemRow({
 }) {
   const router = useRouter();
   const { colors, hideMoney } = useTheme();
+  const format = useFormatters();
   const ratio = item.usageRatio;
   const over = item.status === "OVER_BUDGET";
   const atLimit = item.status === "AT_LIMIT";
@@ -105,23 +106,23 @@ function BudgetItemRow({
       />
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
         <AppText variant="caption" tone="tertiary">
-          {formatMoney(item.spentAmount, item.currency, {
+          {format.money(item.spentAmount, item.currency, {
             hide: hideMoney,
             maximumFractionDigits: 0,
           })}{" "}
           of{" "}
-          {formatMoney(item.budgetAmount, item.currency, {
+          {format.money(item.budgetAmount, item.currency, {
             hide: hideMoney,
             maximumFractionDigits: 0,
           })}
         </AppText>
         <AppText variant="caption" tone={over ? "danger" : "tertiary"} tabular>
           {over
-            ? `${formatMoney(Math.abs(item.remainingAmount), item.currency, {
+            ? `${format.money(Math.abs(item.remainingAmount), item.currency, {
                 hide: hideMoney,
                 maximumFractionDigits: 0,
               })} over`
-            : `${formatMoney(item.remainingAmount, item.currency, {
+            : `${format.money(item.remainingAmount, item.currency, {
                 hide: hideMoney,
                 maximumFractionDigits: 0,
               })} left`}
@@ -176,6 +177,7 @@ function UnbudgetedRow({
 export default function BudgetsScreen() {
   const router = useRouter();
   const { colors, hideMoney } = useTheme();
+  const format = useFormatters();
   const [month, setMonth] = useState(currentMonth());
   const budgetQuery = useMonthlyBudget(month);
 
@@ -267,7 +269,7 @@ export default function BudgetsScreen() {
                     />
                     <AppText variant="footnote" tone="tertiary">
                       of{" "}
-                      {formatMoney(
+                      {format.money(
                         currencySummary.budgetTotal,
                         currencySummary.currency,
                         { hide: hideMoney, maximumFractionDigits: 0 },
@@ -295,7 +297,7 @@ export default function BudgetsScreen() {
                   >
                     <AppText variant="caption" tone="tertiary">
                       Remaining{" "}
-                      {formatMoney(
+                      {format.money(
                         currencySummary.remainingTotal,
                         currencySummary.currency,
                         { hide: hideMoney, maximumFractionDigits: 0 },
@@ -304,7 +306,7 @@ export default function BudgetsScreen() {
                     {currencySummary.unbudgetedExpenseTotal > 0 ? (
                       <AppText variant="caption" tone="tertiary">
                         Unbudgeted{" "}
-                        {formatMoney(
+                        {format.money(
                           currencySummary.unbudgetedExpenseTotal,
                           currencySummary.currency,
                           { hide: hideMoney, maximumFractionDigits: 0 },
@@ -314,7 +316,7 @@ export default function BudgetsScreen() {
                     {currencySummary.uncategorizedExpenseTotal > 0 ? (
                       <AppText variant="caption" tone="warning">
                         Uncategorised{" "}
-                        {formatMoney(
+                        {format.money(
                           currencySummary.uncategorizedExpenseTotal,
                           currencySummary.currency,
                           { hide: hideMoney, maximumFractionDigits: 0 },
