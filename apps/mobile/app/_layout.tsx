@@ -14,7 +14,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { AppState, Platform, View } from "react-native";
 
 import { ApiError } from "@/api/client";
@@ -28,6 +28,7 @@ import { AppLockProvider, useAppLock } from "@/security";
 import { ThemeProvider, useTheme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+SplashScreen.setOptions({ duration: 160, fade: true });
 
 // React Query cannot see native app focus by itself; bridge AppState so data
 // refetches when the app returns to the foreground.
@@ -70,21 +71,13 @@ function ThemedApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [serverUrl, serverMode, token],
   );
+  const hideNativeSplash = useCallback(() => {
+    SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.bgApp).catch(() => undefined);
   }, [colors.bgApp]);
-
-  useEffect(() => {
-    if (
-      themeHydrated &&
-      preferencesHydrated &&
-      appLockHydrated &&
-      serverHydrated
-    ) {
-      SplashScreen.hideAsync().catch(() => undefined);
-    }
-  }, [themeHydrated, preferencesHydrated, appLockHydrated, serverHydrated]);
 
   // Keep the splash up until we know whether a server is configured; screens
   // assume a connected API client once they mount.
@@ -105,7 +98,7 @@ function ThemedApp() {
     <QueryClientProvider client={queryClient}>
       <View style={{ flex: 1, backgroundColor: colors.bgApp }}>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-        <AppLockGate>
+        <AppLockGate onReady={hideNativeSplash}>
           <Stack
             screenOptions={{
               headerShown: false,

@@ -17,6 +17,7 @@ import {
   createConfiguredAppLockRecord,
   getPasscodeLockout,
   isConfiguredAppLockRecord,
+  SCRYPT_PARAMETERS,
   verifyConfiguredPasscode,
   type AppLockRecord,
 } from "./app-lock";
@@ -93,8 +94,7 @@ const appLockStore = createAppLockStore(
     getItem: (key) => SecureStore.getItemAsync(key, SECURE_STORE_OPTIONS),
     setItem: (key, value) =>
       SecureStore.setItemAsync(key, value, SECURE_STORE_OPTIONS),
-    removeItem: (key) =>
-      SecureStore.deleteItemAsync(key, SECURE_STORE_OPTIONS),
+    removeItem: (key) => SecureStore.deleteItemAsync(key, SECURE_STORE_OPTIONS),
   },
   AsyncStorage,
 );
@@ -129,6 +129,9 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
   const recordRef = useRef<AppLockRecord | null>(null);
   const hydratedRef = useRef(false);
   const operationQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const upgradeTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
+    new Set(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -146,8 +149,14 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        applyRecord(loaded.state === "record" ? loaded.record : null, setRecord, recordRef);
-        setStatus(appLockStatus(loaded.state === "record" ? loaded.record : null));
+        applyRecord(
+          loaded.state === "record" ? loaded.record : null,
+          setRecord,
+          recordRef,
+        );
+        setStatus(
+          appLockStatus(loaded.state === "record" ? loaded.record : null),
+        );
       } catch {
         if (!cancelled) {
           setStatus("storage-error");
@@ -165,16 +174,25 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const runExclusive = useCallback(<Result,>(
-    operation: () => Promise<Result>,
-  ): Promise<Result> => {
-    const next = operationQueueRef.current.then(operation, operation);
-    operationQueueRef.current = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
-  }, []);
+  useEffect(
+    () => () => {
+      upgradeTimeoutsRef.current.forEach(clearTimeout);
+      upgradeTimeoutsRef.current.clear();
+    },
+    [],
+  );
+
+  const runExclusive = useCallback(
+    <Result,>(operation: () => Promise<Result>): Promise<Result> => {
+      const next = operationQueueRef.current.then(operation, operation);
+      operationQueueRef.current = next.then(
+        () => undefined,
+        () => undefined,
+      );
+      return next;
+    },
+    [],
+  );
 
   const persistRecord = useCallback(
     async (nextRecord: AppLockRecord): Promise<void> => {
@@ -188,6 +206,50 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       }
     },
     [],
+  );
+
+  const scheduleVerifierUpgrade = useCallback(
+    (passcode: string, verifiedRecord: AppLockRecord) => {
+      if (
+        !isConfiguredAppLockRecord(verifiedRecord) ||
+        verifiedRecord.verifier.N === SCRYPT_PARAMETERS.N
+      ) {
+        return;
+      }
+
+      // Let the successful unlock render first. Older records used a more
+      // expensive mobile cost; migrate them quietly after the gate has gone.
+      const timeout = setTimeout(() => {
+        upgradeTimeoutsRef.current.delete(timeout);
+        void runExclusive(async () => {
+          const latest = recordRef.current;
+
+          if (
+            !latest ||
+            !isConfiguredAppLockRecord(latest) ||
+            latest.verifier.N === SCRYPT_PARAMETERS.N ||
+            latest.verifier.hash !== verifiedRecord.verifier.hash
+          ) {
+            return;
+          }
+
+          try {
+            const upgraded = await createConfiguredAppLockRecord({
+              passcode,
+              salt: await createPasscodeSalt(),
+              biometricEnabled: latest.biometricEnabled,
+              createdAt: latest.createdAt,
+            });
+            await persistRecord(upgraded);
+          } catch {
+            // The verified legacy record remains valid if opportunistic
+            // migration cannot be completed on this launch.
+          }
+        });
+      }, 750);
+      upgradeTimeoutsRef.current.add(timeout);
+    },
+    [persistRecord, runExclusive],
   );
 
   const verifyPasscodeInternal = useCallback(
@@ -241,6 +303,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
         }
 
         if (verification.success) {
+          scheduleVerifierUpgrade(passcode, verification.updatedRecord);
           return {
             success: true,
             lockedUntil: null,
@@ -263,7 +326,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
         };
       }
     },
-    [persistRecord, status],
+    [persistRecord, scheduleVerifierUpgrade, status],
   );
 
   const verifyPasscode = useCallback(
@@ -427,8 +490,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       isHydrated,
       isEnabled: record !== null || status === "storage-error",
       hasPasscode: record !== null && isConfiguredAppLockRecord(record),
-      legacyPasscodeRequired:
-        record?.state === "legacy-passcode-required",
+      legacyPasscodeRequired: record?.state === "legacy-passcode-required",
       biometricEnabled: record?.biometricEnabled ?? false,
       lockout,
       status,

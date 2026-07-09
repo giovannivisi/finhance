@@ -58,6 +58,12 @@ const LAUNCH_TAB_LABELS: Record<LaunchTab, string> = {
 
 type PasscodeSheetMode = "create" | "change" | "remove" | null;
 
+function yieldToNextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 function describeAppLockFailure(reason: string): string {
   switch (reason) {
     case "invalid-passcode":
@@ -163,6 +169,7 @@ export default function AppSettingsScreen() {
     }
 
     setPasscodeSubmitting(true);
+    await yieldToNextFrame();
 
     try {
       const result =
@@ -265,7 +272,9 @@ export default function AppSettingsScreen() {
         title="App lock"
         description="Your app passcode stays on this device and is never sent to finhance."
       >
-        <Card surface={appLockStatus === "storage-error" ? "danger" : "default"}>
+        <Card
+          surface={appLockStatus === "storage-error" ? "danger" : "default"}
+        >
           <View style={{ gap: spacing.md }}>
             {appLockStatus === "storage-error" ? (
               <AppText variant="footnote" tone="danger">
@@ -348,8 +357,8 @@ export default function AppSettingsScreen() {
                 onChange={(value) => setClockFormat(value as ClockFormat)}
               />
               <AppText variant="footnote" tone="secondary">
-                Default follows the selected display region. Choosing 12-hour
-                or 24-hour always overrides that default.
+                Default follows the selected display region. Choosing 12-hour or
+                24-hour always overrides that default.
               </AppText>
             </View>
             <SwitchField
@@ -458,8 +467,7 @@ export default function AppSettingsScreen() {
                 ? "Confirm your current passcode, then choose a new one."
                 : "Confirm your current passcode to remove app lock from this device."}
           </AppText>
-          {passcodeSheetMode === "change" ||
-          passcodeSheetMode === "remove" ? (
+          {passcodeSheetMode === "change" || passcodeSheetMode === "remove" ? (
             <TextField
               label="Current passcode"
               value={currentPasscode}
@@ -473,8 +481,7 @@ export default function AppSettingsScreen() {
               maxLength={12}
             />
           ) : null}
-          {passcodeSheetMode === "create" ||
-          passcodeSheetMode === "change" ? (
+          {passcodeSheetMode === "create" || passcodeSheetMode === "change" ? (
             <>
               <TextField
                 label="New passcode"

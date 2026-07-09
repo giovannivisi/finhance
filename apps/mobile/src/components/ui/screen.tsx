@@ -25,7 +25,7 @@ export const TAB_BAR_CLEARANCE = Platform.OS === "ios" ? 76 : 108;
  * Soft brand glow behind every screen — gives the dark theme depth and the
  * system glass something to refract. Nearly invisible in light mode.
  */
-function ScreenGlow() {
+export function ScreenGlow() {
   const { colors, scheme } = useTheme();
 
   return (

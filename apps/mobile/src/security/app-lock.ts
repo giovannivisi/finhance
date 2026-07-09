@@ -8,17 +8,33 @@ const SALT_BYTES = 16;
 const SCRYPT_DERIVED_KEY_LENGTH = 32;
 
 /**
- * These values keep each passcode check deliberately expensive without making
- * the native UI unusable. The async implementation yields periodically rather
- * than blocking the JavaScript thread for the entire derivation.
+ * App-lock records live in device-bound secure storage and are also protected
+ * by the persisted attempt lockout below. Keep the derivation expensive enough
+ * to slow offline guessing while staying responsive on older mobile CPUs.
+ *
+ * Records created before the mobile responsiveness pass used N = 2 ** 14.
+ * They remain readable and are upgraded after the next successful unlock.
  */
 export const SCRYPT_PARAMETERS = {
-  N: 2 ** 14,
+  N: 2 ** 13,
   r: 8,
   p: 1,
   dkLen: SCRYPT_DERIVED_KEY_LENGTH,
-  asyncTick: 10,
+  asyncTick: 4,
 } as const;
+
+const LEGACY_SCRYPT_N = 2 ** 14;
+const SUPPORTED_SCRYPT_N = [SCRYPT_PARAMETERS.N, LEGACY_SCRYPT_N] as const;
+
+export type SupportedScryptN = (typeof SUPPORTED_SCRYPT_N)[number];
+
+export interface ScryptDerivationParameters {
+  N: SupportedScryptN;
+  r: typeof SCRYPT_PARAMETERS.r;
+  p: typeof SCRYPT_PARAMETERS.p;
+  dkLen: typeof SCRYPT_PARAMETERS.dkLen;
+  asyncTick: typeof SCRYPT_PARAMETERS.asyncTick;
+}
 
 export const PASSCODE_LOCKOUT_POLICY = {
   attemptsBeforeLockout: 5,
@@ -36,7 +52,7 @@ export interface PasscodeLockout {
 
 export interface ScryptPasscodeVerifier {
   algorithm: "scrypt";
-  N: typeof SCRYPT_PARAMETERS.N;
+  N: SupportedScryptN;
   r: typeof SCRYPT_PARAMETERS.r;
   p: typeof SCRYPT_PARAMETERS.p;
   dkLen: typeof SCRYPT_PARAMETERS.dkLen;
@@ -94,9 +110,9 @@ export type PasscodeVerification =
   | PasscodeVerificationFailure;
 
 export function isValidPasscode(passcode: string): boolean {
-  return new RegExp(`^\\d{${PASSCODE_MIN_LENGTH},${PASSCODE_MAX_LENGTH}}$`).test(
-    passcode,
-  );
+  return new RegExp(
+    `^\\d{${PASSCODE_MIN_LENGTH},${PASSCODE_MAX_LENGTH}}$`,
+  ).test(passcode);
 }
 
 export function isConfiguredAppLockRecord(
@@ -118,9 +134,7 @@ export function createLegacyPasscodeRequiredRecord(
 }
 
 export function bytesToHex(bytes: Uint8Array): string {
-  return [...bytes]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function isValidScryptSalt(value: string): boolean {
@@ -130,8 +144,9 @@ export function isValidScryptSalt(value: string): boolean {
 export async function deriveScryptHash(
   passcode: string,
   salt: string,
+  parameters: ScryptDerivationParameters = SCRYPT_PARAMETERS,
 ): Promise<string> {
-  const derived = await scryptAsync(passcode, salt, SCRYPT_PARAMETERS);
+  const derived = await scryptAsync(passcode, salt, parameters);
   return bytesToHex(derived);
 }
 
@@ -261,6 +276,14 @@ export function resetPasscodeLockout(
   record: ConfiguredAppLockRecord,
   now = Date.now(),
 ): ConfiguredAppLockRecord {
+  if (
+    record.lockout.failedAttempts === 0 &&
+    record.lockout.lockoutLevel === 0 &&
+    record.lockout.lockedUntil === null
+  ) {
+    return record;
+  }
+
   return {
     ...record,
     lockout: {
@@ -277,7 +300,11 @@ export async function verifyConfiguredPasscode(
   passcode: string,
   options: {
     now?: number;
-    deriveHash?: (passcode: string, salt: string) => Promise<string>;
+    deriveHash?: (
+      passcode: string,
+      salt: string,
+      parameters: ScryptDerivationParameters,
+    ) => Promise<string>;
   } = {},
 ): Promise<PasscodeVerification> {
   const now = options.now ?? Date.now();
@@ -304,7 +331,13 @@ export async function verifyConfiguredPasscode(
     };
   }
 
-  const actualHash = await deriveHash(passcode, record.verifier.salt);
+  const actualHash = await deriveHash(passcode, record.verifier.salt, {
+    N: record.verifier.N,
+    r: record.verifier.r,
+    p: record.verifier.p,
+    dkLen: record.verifier.dkLen,
+    asyncTick: SCRYPT_PARAMETERS.asyncTick,
+  });
 
   if (timingSafeEqualHex(actualHash, record.verifier.hash)) {
     const updatedRecord = resetPasscodeLockout(record, now);
@@ -379,11 +412,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function isTimestamp(value: unknown): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value >= 0
-  );
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isPasscodeLockout(value: unknown): value is PasscodeLockout {
@@ -405,7 +434,8 @@ function isScryptVerifier(value: unknown): value is ScryptPasscodeVerifier {
   return (
     isPlainObject(value) &&
     value.algorithm === "scrypt" &&
-    value.N === SCRYPT_PARAMETERS.N &&
+    typeof value.N === "number" &&
+    SUPPORTED_SCRYPT_N.includes(value.N as SupportedScryptN) &&
     value.r === SCRYPT_PARAMETERS.r &&
     value.p === SCRYPT_PARAMETERS.p &&
     value.dkLen === SCRYPT_PARAMETERS.dkLen &&

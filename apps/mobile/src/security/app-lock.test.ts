@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PASSCODE_LOCKOUT_POLICY,
+  SCRYPT_PARAMETERS,
   createConfiguredAppLockRecord,
   deriveScryptHash,
   getPasscodeLockout,
@@ -58,6 +59,50 @@ describe("app-lock passcodes", () => {
       },
     });
     expect(record).not.toHaveProperty("passcode");
+    expect(record.verifier.N).toBe(SCRYPT_PARAMETERS.N);
+  });
+
+  it("keeps legacy scrypt records readable for an unlock-time upgrade", async () => {
+    const record = await createConfiguredAppLockRecord({
+      passcode: "123456",
+      salt,
+      now: 100,
+      deriveHash,
+    });
+    const legacyRecord = {
+      ...record,
+      verifier: { ...record.verifier, N: 16384 as const },
+    };
+    let derivedWithN: number | null = null;
+
+    expect(parseAppLockRecord(legacyRecord)).toEqual(legacyRecord);
+
+    const result = await verifyConfiguredPasscode(legacyRecord, "123456", {
+      deriveHash: async (passcode, _salt, parameters) => {
+        derivedWithN = parameters.N;
+        return deriveHash(passcode);
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(derivedWithN).toBe(2 ** 14);
+  });
+
+  it("does not rewrite a clean lockout record after a successful check", async () => {
+    const record = await createConfiguredAppLockRecord({
+      passcode: "123456",
+      salt,
+      now: 100,
+      deriveHash,
+    });
+
+    const result = await verifyConfiguredPasscode(record, "123456", {
+      now: 200,
+      deriveHash,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.updatedRecord).toBe(record);
   });
 
   it("persists a rate limit after repeated incorrect passcodes", async () => {
@@ -68,7 +113,11 @@ describe("app-lock passcodes", () => {
       deriveHash,
     });
 
-    for (let attempt = 1; attempt < PASSCODE_LOCKOUT_POLICY.attemptsBeforeLockout; attempt += 1) {
+    for (
+      let attempt = 1;
+      attempt < PASSCODE_LOCKOUT_POLICY.attemptsBeforeLockout;
+      attempt += 1
+    ) {
       const result = await verifyConfiguredPasscode(record, "654321", {
         now: 2_000 + attempt,
         deriveHash,
