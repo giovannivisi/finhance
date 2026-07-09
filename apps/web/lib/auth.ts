@@ -7,6 +7,10 @@ import Google from "next-auth/providers/google";
 import Passkey from "next-auth/providers/passkey";
 import { FinhanceAuthAdapter } from "@lib/auth-adapter";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import {
+  captureLinkedProviderAccountMetadata,
+  isConnectedAccountProvider,
+} from "@lib/connected-accounts";
 import { resolveHostedSignInDecision } from "@lib/auth-policy";
 import {
   readRequiredHostedEnv,
@@ -15,6 +19,7 @@ import {
   resolveBootstrapEmail,
 } from "@lib/auth-config";
 import { prisma } from "@lib/prisma";
+import { resolveSessionUserIdFromCookies } from "@lib/recent-auth";
 
 type VerifiedGitHubProfile = GitHubProfile & {
   email_verified?: boolean;
@@ -133,6 +138,22 @@ function buildAuthConfig(): NextAuthConfig {
               where: { email: normalizedEmail },
             })
           : null;
+        const linkingSessionUserId =
+          account?.provider && isConnectedAccountProvider(account.provider)
+            ? await resolveSessionUserIdFromCookies()
+            : null;
+        const linkedAccount =
+          linkingSessionUserId && account?.provider && account.providerAccountId
+            ? await prisma.authProviderAccount.findUnique({
+                where: {
+                  provider_providerAccountId: {
+                    provider: account.provider,
+                    providerAccountId: account.providerAccountId,
+                  },
+                },
+                select: { userId: true },
+              })
+            : null;
 
         const allowed = resolveHostedSignInDecision({
           provider: account?.provider ?? undefined,
@@ -141,6 +162,10 @@ function buildAuthConfig(): NextAuthConfig {
           existingUser,
           bootstrapEmail: resolveBootstrapEmail(),
           signupMode: resolveAuthSignupMode(),
+          linkingSessionUserId,
+          linkedAccountUserId: linkingSessionUserId
+            ? (linkedAccount?.userId ?? null)
+            : undefined,
         });
 
         // Accounts auto-link across providers by verified email, so record
@@ -160,6 +185,22 @@ function buildAuthConfig(): NextAuthConfig {
         }
 
         return session;
+      },
+    },
+    events: {
+      async signIn({ account, profile }) {
+        await captureLinkedProviderAccountMetadata({
+          provider: account?.provider,
+          providerAccountId: account?.providerAccountId,
+          profile: profile as Record<string, unknown>,
+        });
+      },
+      async linkAccount({ account, profile }) {
+        await captureLinkedProviderAccountMetadata({
+          provider: account.provider,
+          providerAccountId: account.providerAccountId,
+          profile: profile as Record<string, unknown>,
+        });
       },
     },
     experimental: {

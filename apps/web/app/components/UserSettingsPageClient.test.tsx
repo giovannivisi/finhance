@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import UserSettingsPageClient from "@components/UserSettingsPageClient";
 import { apiMutation } from "@lib/api";
 
-const { signInWithPasskeyMock } = vi.hoisted(() => ({
+const { signInWithOAuthMock, signInWithPasskeyMock } = vi.hoisted(() => ({
+  signInWithOAuthMock: vi.fn(),
   signInWithPasskeyMock: vi.fn(),
 }));
 
@@ -18,10 +19,15 @@ vi.mock("next-auth/webauthn", () => ({
   signIn: signInWithPasskeyMock,
 }));
 
+vi.mock("next-auth/react", () => ({
+  signIn: signInWithOAuthMock,
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     refresh: refreshMock,
   }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 const mockedApiMutation = vi.mocked(apiMutation);
@@ -31,6 +37,8 @@ describe("UserSettingsPageClient", () => {
     vi.unstubAllGlobals();
     mockedApiMutation.mockReset();
     refreshMock.mockReset();
+    signInWithOAuthMock.mockReset();
+    signInWithOAuthMock.mockResolvedValue(undefined);
     signInWithPasskeyMock.mockReset();
     signInWithPasskeyMock.mockResolvedValue({});
   });
@@ -139,6 +147,107 @@ describe("UserSettingsPageClient", () => {
     }
   });
 
+  it("renders identity and starts provider linking", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          id: "account-1",
+          provider: "google",
+          providerLabel: "Google",
+          providerEmail: "person@example.com",
+          providerEmailVerified: true,
+          providerDisplayName: "Person",
+          createdAt: "2026-07-09T10:00:00.000Z",
+          isPrimaryEmail: true,
+        },
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+        }}
+        identity={{
+          email: "person@example.com",
+          name: "Person",
+          image: null,
+          connectedAccounts: [],
+        }}
+        canManageConnectedAccounts
+      />,
+    );
+
+    expect(screen.getByText("Person")).toBeInTheDocument();
+    expect(await screen.findByText("Google · Person")).toBeInTheDocument();
+    expect(screen.getByText("Primary email")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /connect github/i }));
+
+    expect(signInWithOAuthMock).toHaveBeenCalledWith("github", {
+      redirectTo: "/settings/user",
+    });
+  });
+
+  it("removes connected accounts after confirmation", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            id: "account-1",
+            provider: "github",
+            providerLabel: "GitHub",
+            providerEmail: "person@example.com",
+            providerEmailVerified: true,
+            providerDisplayName: "person",
+            createdAt: "2026-07-09T10:00:00.000Z",
+            isPrimaryEmail: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+        }}
+        identity={{
+          email: "person@example.com",
+          name: "Person",
+          image: null,
+          connectedAccounts: [],
+        }}
+        canManageConnectedAccounts
+      />,
+    );
+
+    expect(await screen.findByText("GitHub · person")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /remove github/i }));
+    await user.click(screen.getByRole("button", { name: /remove method/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith("/api/connected-accounts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: "account-1" }),
+      });
+    });
+    expect(screen.getByText("Sign-in method removed.")).toBeInTheDocument();
+  });
+
   it("loads, adds, and removes passkeys in hosted mode", async () => {
     const user = userEvent.setup();
     const fetchMock = vi
@@ -237,7 +346,7 @@ describe("UserSettingsPageClient", () => {
     await user.click(screen.getByRole("button", { name: /add passkey/i }));
 
     expect(
-      await screen.findByText("Sign in again before changing passkeys."),
+      await screen.findByText("Sign in again before changing sign-in methods."),
     ).toBeInTheDocument();
   });
 });

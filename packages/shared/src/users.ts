@@ -39,6 +39,30 @@ export interface DeleteUserPasskeyRequest {
   credentialId?: string;
 }
 
+export type ConnectedAccountProvider = "google" | "github";
+
+export interface ConnectedAccountResponse {
+  id: string;
+  provider: ConnectedAccountProvider;
+  providerLabel: string;
+  providerEmail: string | null;
+  providerEmailVerified: boolean;
+  providerDisplayName: string | null;
+  createdAt: string | null;
+  isPrimaryEmail: boolean;
+}
+
+export interface UserIdentityResponse {
+  email: string | null;
+  name: string | null;
+  image: string | null;
+  connectedAccounts: ConnectedAccountResponse[];
+}
+
+export interface DeleteConnectedAccountRequest {
+  accountId?: string;
+}
+
 export interface DeleteUserAccountRequest {
   email: string;
 }

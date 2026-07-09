@@ -6,7 +6,7 @@ import { prisma } from "./prisma";
 
 export const RECENT_AUTH_MAX_AGE_MS = 15 * 60 * 1000;
 export const RECENT_AUTH_REQUIRED_MESSAGE =
-  "Sign in again before changing passkeys.";
+  "Sign in again before changing sign-in methods.";
 
 const AUTH_SESSION_COOKIE_NAMES = [
   "authjs.session-token",
@@ -46,6 +46,36 @@ async function readSessionTokenFromCookies(): Promise<string | null> {
   }
 
   return null;
+}
+
+export async function resolveSessionUserIdFromCookies(
+  now: Date = new Date(),
+): Promise<string | null> {
+  const token = await readSessionTokenFromCookies();
+  if (!token) {
+    return null;
+  }
+
+  const session = await prisma.authSession.findUnique({
+    where: { sessionToken: hashStoredAuthToken(token, "session") },
+    select: {
+      userId: true,
+      expires: true,
+      user: {
+        select: { isActive: true },
+      },
+    },
+  });
+
+  if (
+    !session ||
+    session.expires.getTime() <= now.getTime() ||
+    !session.user.isActive
+  ) {
+    return null;
+  }
+
+  return session.userId;
 }
 
 export async function hasRecentSessionAuthentication(

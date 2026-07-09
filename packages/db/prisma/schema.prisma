@@ -45,12 +45,16 @@ model User {
 }
 
 model AuthProviderAccount {
-  id                String @id @default(cuid())
-  userId            String @map("user_id")
-  type              String
-  provider          String
-  providerAccountId String @map("provider_account_id")
-  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String    @id @default(cuid())
+  userId                String    @map("user_id")
+  type                  String
+  provider              String
+  providerAccountId     String    @map("provider_account_id")
+  providerEmail         String?   @map("provider_email")
+  providerEmailVerified Boolean?  @map("provider_email_verified")
+  providerDisplayName   String?   @map("provider_display_name")
+  createdAt             DateTime? @map("created_at")
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])

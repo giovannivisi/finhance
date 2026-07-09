@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, type Href } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Image, View } from "react-native";
 
 import {
   useDeleteMobileAccount,
@@ -20,6 +20,7 @@ import {
   AppText,
   Button,
   Card,
+  Chip,
   describeError,
   ErrorState,
   ListRow,
@@ -38,6 +39,21 @@ type RecentAction =
   | { type: "add-passkey" }
   | { type: "delete-passkey"; credentialId: string }
   | { type: "delete-account"; email: string };
+
+function getIdentityInitials(input: {
+  name?: string | null;
+  email?: string | null;
+}): string {
+  const source = input.name?.trim() || input.email?.trim() || "FW";
+  const parts = source
+    .split(/[\s@._-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return (
+    (parts[0]?.[0] ?? "F") + (parts[1]?.[0] ?? parts[0]?.[1] ?? "W")
+  ).toUpperCase();
+}
 
 export default function UserSettingsScreen() {
   const router = useRouter();
@@ -75,6 +91,9 @@ export default function UserSettingsScreen() {
   const [confirmationEmail, setConfirmationEmail] = useState("");
 
   const accountEmail = accountQuery.data?.email ?? null;
+  const accountName = accountQuery.data?.name?.trim() || null;
+  const accountImage = accountQuery.data?.image ?? null;
+  const connectedAccounts = accountQuery.data?.connectedAccounts ?? [];
 
   const closeAccountDeletion = () => {
     if (!deleteAccount.isPending) {
@@ -326,6 +345,102 @@ export default function UserSettingsScreen() {
 
   return (
     <Screen kicker="Account" title="User settings" showBack withTabBarClearance>
+      <Section kicker="Identity" title="Account">
+        {serverMode === "hosted" && accountQuery.isPending ? (
+          <SkeletonCard lines={3} />
+        ) : (
+          <Card>
+            <View style={{ gap: spacing.md }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.md,
+                }}
+              >
+                <View
+                  style={{
+                    width: 54,
+                    height: 54,
+                    borderRadius: 27,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    backgroundColor: colors.bgControl,
+                    borderWidth: 1,
+                    borderColor: colors.borderStrong,
+                  }}
+                >
+                  {accountImage ? (
+                    <Image
+                      source={{ uri: accountImage }}
+                      style={{ width: "100%", height: "100%" }}
+                    />
+                  ) : (
+                    <AppText variant="bodySemibold">
+                      {serverMode === "hosted"
+                        ? getIdentityInitials({
+                            name: accountName,
+                            email: accountEmail,
+                          })
+                        : "SH"}
+                    </AppText>
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <AppText variant="caption" tone="tertiary">
+                    {serverMode === "hosted"
+                      ? "HOSTED ACCOUNT"
+                      : "SELF-HOSTED SERVER"}
+                  </AppText>
+                  <AppText variant="bodySemibold" numberOfLines={1}>
+                    {serverMode === "hosted"
+                      ? (accountName ?? accountEmail ?? "Hosted account")
+                      : "Local auth mode"}
+                  </AppText>
+                  <AppText
+                    variant="footnote"
+                    tone="secondary"
+                    numberOfLines={1}
+                  >
+                    {serverMode === "hosted"
+                      ? (accountEmail ?? "Account email unavailable")
+                      : "Identity is managed by the connected server."}
+                  </AppText>
+                </View>
+              </View>
+
+              {serverMode === "hosted" ? (
+                <View style={{ gap: spacing.sm }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: spacing.sm,
+                    }}
+                  >
+                    {connectedAccounts.length > 0 ? (
+                      connectedAccounts.map((account) => (
+                        <Chip
+                          key={account.id}
+                          label={account.providerLabel}
+                          tone={account.isPrimaryEmail ? "success" : "neutral"}
+                        />
+                      ))
+                    ) : (
+                      <Chip label="No providers" tone="neutral" />
+                    )}
+                  </View>
+                  <AppText variant="footnote" tone="secondary">
+                    Manage connected providers from the web app.
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
+          </Card>
+        )}
+      </Section>
+
       <Section kicker="Connection" title="Server">
         <Card>
           <View style={{ gap: spacing.md }}>
@@ -481,7 +596,8 @@ export default function UserSettingsScreen() {
       >
         <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
           <AppText variant="footnote" tone="secondary">
-            Sign in again before changing passkeys or deleting your account.
+            Sign in again before changing sign-in methods or deleting your
+            account.
           </AppText>
           {recentAuthError ? (
             <AppText variant="footnote" tone="danger">

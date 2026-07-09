@@ -251,6 +251,7 @@ const CATEGORY_GROUPS: PrivacyCategoryGroup[] = [
     items: [
       "Idempotency records, hashed request fingerprints, and short-lived operation state used to protect writes.",
       "Loopback access checks based on request metadata while authentication is disabled.",
+      "Hosted sign-in provider metadata such as provider name, linked email address, email verification status, display name, and linked timestamp.",
       "Browser-side theme, privacy-display, and session flags stored on the device you use to access the app.",
       "Mobile server connection details and hosted mobile session tokens stored on the device.",
     ],
@@ -268,6 +269,7 @@ const SOURCE_OF_DATA = [
   "Directly from you when you enter, edit, review, or delete finance records inside the app.",
   "From files you upload to the import flow, including files that may contain data about third parties such as counterparties, institutions, and notes.",
   "From the market data provider when you ask finhance to refresh quotes, FX rates, live valuations, or brokerage performance chart data for supported assets and currencies.",
+  "From hosted sign-in providers when you connect Google or GitHub to your account.",
   "From the mobile app when you save a server URL, choose local display preferences, or sign in to a hosted workspace.",
 ];
 

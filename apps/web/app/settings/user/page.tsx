@@ -1,7 +1,9 @@
 import type { UserSettingsResponse } from "@finhance/shared/users";
 import Container from "@components/Container";
 import UserSettingsPageClient from "@components/UserSettingsPageClient";
+import { auth } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { getUserIdentityForUser } from "@lib/connected-accounts";
 import { api } from "@lib/server-api";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +11,10 @@ export const dynamic = "force-dynamic";
 export default async function UserSettingsPage() {
   let settings: UserSettingsResponse | null = null;
   let errorMessage: string | null = null;
+  const hostedAuthMode = isHostedAuthMode();
+  const session = hostedAuthMode ? await auth() : null;
+  const userId = session?.user?.id?.trim() || null;
+  const identity = userId ? await getUserIdentityForUser(userId) : null;
 
   try {
     settings = await api<UserSettingsResponse>("/users/me/settings");
@@ -37,8 +43,10 @@ export default async function UserSettingsPage() {
       ) : (
         <UserSettingsPageClient
           initialSettings={settings}
-          canSignOutMobileDevices={isHostedAuthMode()}
-          canManagePasskeys={isHostedAuthMode()}
+          identity={identity}
+          canSignOutMobileDevices={hostedAuthMode}
+          canManageConnectedAccounts={hostedAuthMode}
+          canManagePasskeys={hostedAuthMode}
         />
       )}
     </Container>

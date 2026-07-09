@@ -47,7 +47,21 @@ export function resolveHostedSignInDecision(input: {
   existingUser: { isActive: boolean } | null;
   bootstrapEmail: string | null;
   signupMode?: AuthSignupMode;
+  linkingSessionUserId?: string | null;
+  linkedAccountUserId?: string | null;
 }): boolean {
+  if (
+    input.linkingSessionUserId &&
+    input.provider &&
+    input.provider !== "passkey" &&
+    input.linkedAccountUserId !== undefined
+  ) {
+    return (
+      input.linkedAccountUserId === null ||
+      input.linkedAccountUserId === input.linkingSessionUserId
+    );
+  }
+
   const normalizedEmail =
     normalizeEmailAddress(input.userEmail) ??
     normalizeEmailAddress(

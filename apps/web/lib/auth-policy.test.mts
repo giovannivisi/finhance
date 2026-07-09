@@ -46,6 +46,44 @@ test("resolveHostedSignInDecision allows active existing users", () => {
   );
 });
 
+test("resolveHostedSignInDecision allows session-bound provider linking", () => {
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "github",
+      profile: {
+        email: "different@example.com",
+        email_verified: true,
+      },
+      userEmail: "different@example.com",
+      existingUser: null,
+      bootstrapEmail: "owner@example.com",
+      signupMode: AUTH_SIGNUP_MODE_BOOTSTRAP,
+      linkingSessionUserId: "user-1",
+      linkedAccountUserId: null,
+    }),
+    true,
+  );
+});
+
+test("resolveHostedSignInDecision rejects provider links owned by another user", () => {
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "github",
+      profile: {
+        email: "different@example.com",
+        email_verified: true,
+      },
+      userEmail: "different@example.com",
+      existingUser: null,
+      bootstrapEmail: "owner@example.com",
+      signupMode: AUTH_SIGNUP_MODE_OPEN,
+      linkingSessionUserId: "user-1",
+      linkedAccountUserId: "user-2",
+    }),
+    false,
+  );
+});
+
 test("resolveHostedSignInDecision rejects inactive existing users", () => {
   assert.equal(
     resolveHostedSignInDecision({

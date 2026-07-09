@@ -2,15 +2,14 @@ import {
   RECENT_AUTH_REQUIRED_CODE,
   type DeleteUserAccountRequest,
   type DeleteUserPasskeyRequest,
+  type UserIdentityResponse,
   type UserPasskeyResponse,
 } from "@finhance/shared/users";
 import { create as passkeyCreate } from "react-native-passkeys";
 
 import { ApiError, createApiClient } from "./client";
 
-export interface MobileAccountResponse {
-  email: string | null;
-}
+export type MobileAccountResponse = UserIdentityResponse;
 
 export interface RegisterPasskeyOptionsResponse {
   options: Parameters<typeof passkeyCreate>[0];
