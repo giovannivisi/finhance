@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as AUTHORIZE } from "@/api/mobile/connected-accounts/link/authorize/route";
 import { GET as COMPLETE } from "@/api/mobile/connected-accounts/link/complete/route";
 import { POST as CONFIRM } from "@/api/mobile/connected-accounts/link/confirm/route";
+import { GET as OAUTH } from "@/api/mobile/connected-accounts/link/oauth/route";
 import { POST as START } from "@/api/mobile/connected-accounts/link/start/route";
 import { DELETE as UNLINK } from "@/api/mobile/connected-accounts/route";
 
@@ -18,7 +19,9 @@ const {
   mintMobileProviderLinkStartMock,
   rateLimitRequestMock,
   redirectTargetMock,
+  readMobileProviderLinkStateFromRequestMock,
   resolveMobileApiUserMock,
+  signInMock,
   verifyMobileProviderLinkResultMock,
   verifyMobileProviderLinkStartMock,
   verifyPkceVerifierMock,
@@ -35,7 +38,9 @@ const {
   mintMobileProviderLinkStartMock: vi.fn(),
   rateLimitRequestMock: vi.fn(),
   redirectTargetMock: vi.fn(),
+  readMobileProviderLinkStateFromRequestMock: vi.fn(),
   resolveMobileApiUserMock: vi.fn(),
+  signInMock: vi.fn(),
   verifyMobileProviderLinkResultMock: vi.fn(),
   verifyMobileProviderLinkStartMock: vi.fn(),
   verifyPkceVerifierMock: vi.fn(),
@@ -43,6 +48,10 @@ const {
 
 vi.mock("@lib/api-proxy", () => ({
   resolveCrossOriginRejection: crossOriginRejectionMock,
+}));
+
+vi.mock("@lib/auth", () => ({
+  signIn: signInMock,
 }));
 
 vi.mock("@lib/auth-mode", () => ({
@@ -74,11 +83,15 @@ vi.mock("@lib/mobile-auth.core", () => ({
 }));
 
 vi.mock("@lib/mobile-provider-link", () => ({
+  MOBILE_PROVIDER_LINK_AUTH_CALLBACK_TARGET:
+    "/api/mobile/connected-accounts/link/complete?flow=mobile-provider-link",
   MOBILE_PROVIDER_LINK_RESULT_SCOPE: "mobile-provider-link-result",
   MOBILE_PROVIDER_LINK_START_SCOPE: "mobile-provider-link-start",
   MOBILE_PROVIDER_LINK_TTL_MS: 300_000,
   createMobileProviderLinkCookie: createMobileProviderLinkCookieMock,
   mintMobileProviderLinkStart: mintMobileProviderLinkStartMock,
+  readMobileProviderLinkStateFromRequest:
+    readMobileProviderLinkStateFromRequestMock,
   verifyMobileProviderLinkResult: verifyMobileProviderLinkResultMock,
   verifyMobileProviderLinkStart: verifyMobileProviderLinkStartMock,
 }));
@@ -136,6 +149,16 @@ describe("mobile connected-provider routes", () => {
     isValidPkceChallengeMock.mockReturnValue(true);
     redirectTargetMock.mockReset();
     redirectTargetMock.mockReturnValue("finhance://auth");
+    readMobileProviderLinkStateFromRequestMock.mockReset();
+    readMobileProviderLinkStateFromRequestMock.mockResolvedValue({
+      userId: "user-1",
+      provider: "google",
+      challenge: "a".repeat(64),
+      redirect: "finhance://auth",
+      jti: "start-jti",
+    });
+    signInMock.mockReset();
+    signInMock.mockResolvedValue(undefined);
     buildMobileCodeRedirectLocationMock.mockReset();
     buildMobileCodeRedirectLocationMock.mockReturnValue(
       "finhance://auth#code=encrypted-result",
@@ -220,6 +243,18 @@ describe("mobile connected-provider routes", () => {
     expect(response.headers.get("location")).toBe(
       "https://finhance.test/api/mobile/connected-accounts/link/oauth",
     );
+  });
+
+  it("marks the Auth.js callback before starting the provider flow", async () => {
+    const response = await OAUTH(
+      new Request("https://finhance.test/api/mobile/connected-accounts/link/oauth"),
+    );
+
+    expect(response.status).toBe(500);
+    expect(signInMock).toHaveBeenCalledWith("google", {
+      redirectTo:
+        "/api/mobile/connected-accounts/link/complete?flow=mobile-provider-link",
+    });
   });
 
   it("hands the pending result back through the native callback fragment", async () => {

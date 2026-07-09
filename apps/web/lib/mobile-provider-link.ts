@@ -15,8 +15,18 @@ export const MOBILE_PROVIDER_LINK_COOKIE = "finhance.mobile-provider-link";
 export const MOBILE_PROVIDER_LINK_COOKIE_PATH = "/api";
 export const MOBILE_PROVIDER_LINK_COMPLETE_PATH =
   "/api/mobile/connected-accounts/link/complete";
+export const MOBILE_PROVIDER_LINK_CALLBACK_MARKER = "mobile-provider-link";
+export const MOBILE_PROVIDER_LINK_AUTH_CALLBACK_TARGET =
+  `${MOBILE_PROVIDER_LINK_COMPLETE_PATH}?flow=${MOBILE_PROVIDER_LINK_CALLBACK_MARKER}`;
 export const MOBILE_PROVIDER_LINK_START_SCOPE = "mobile-provider-link-start";
 export const MOBILE_PROVIDER_LINK_RESULT_SCOPE = "mobile-provider-link-result";
+
+const AUTH_CALLBACK_URL_COOKIE_NAMES = [
+  "authjs.callback-url",
+  "__Secure-authjs.callback-url",
+  "next-auth.callback-url",
+  "__Secure-next-auth.callback-url",
+] as const;
 
 export interface MobileProviderLinkStartClaims {
   userId: string;
@@ -358,4 +368,36 @@ export async function readMobileProviderLinkStateFromRequest(
 export async function readMobileProviderLinkStateFromCookies(): Promise<MobileProviderLinkStartClaims | null> {
   const token = (await cookies()).get(MOBILE_PROVIDER_LINK_COOKIE)?.value;
   return token ? verifyMobileProviderLinkStart(token) : null;
+}
+
+/**
+ * The handoff cookie alone is not enough to identify an OAuth callback: a
+ * browser can still have that short-lived cookie after cancelling a link.
+ * Bind it to the callback target that `/link/oauth` wrote through Auth.js so
+ * a later normal browser sign-in cannot be mistaken for the abandoned link.
+ */
+export async function hasMobileProviderLinkAuthCallbackTarget(): Promise<boolean> {
+  const store = await cookies();
+
+  return AUTH_CALLBACK_URL_COOKIE_NAMES.some((name) =>
+    isMobileProviderLinkAuthCallbackTarget(store.get(name)?.value),
+  );
+}
+
+export function isMobileProviderLinkAuthCallbackTarget(
+  value: string | undefined,
+): boolean {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const target = new URL(value, "https://finhance.invalid");
+    return (
+      target.pathname === MOBILE_PROVIDER_LINK_COMPLETE_PATH &&
+      target.searchParams.get("flow") === MOBILE_PROVIDER_LINK_CALLBACK_MARKER
+    );
+  } catch {
+    return false;
+  }
 }

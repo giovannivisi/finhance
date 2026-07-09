@@ -1,7 +1,7 @@
 import { signIn } from "@lib/auth";
 import { isHostedAuthMode } from "@lib/auth-mode";
 import {
-  MOBILE_PROVIDER_LINK_COMPLETE_PATH,
+  MOBILE_PROVIDER_LINK_AUTH_CALLBACK_TARGET,
   readMobileProviderLinkStateFromRequest,
 } from "@lib/mobile-provider-link";
 
@@ -33,7 +33,10 @@ export async function GET(request: Request) {
   }
 
   await signIn(state.provider, {
-    redirectTo: MOBILE_PROVIDER_LINK_COMPLETE_PATH,
+    // This marker is stored by Auth.js in its callback-url cookie. The
+    // callback verifies it before accepting the separate handoff cookie, so
+    // an abandoned link cannot hijack a later normal browser sign-in.
+    redirectTo: MOBILE_PROVIDER_LINK_AUTH_CALLBACK_TARGET,
   });
 
   // Auth.js normally throws Next.js' redirect response above after it has set

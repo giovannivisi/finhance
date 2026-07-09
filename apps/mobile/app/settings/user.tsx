@@ -114,6 +114,22 @@ export default function UserSettingsScreen() {
   const accountName = accountQuery.data?.name?.trim() || null;
   const accountImage = accountQuery.data?.image ?? null;
   const connectedAccounts = accountQuery.data?.connectedAccounts ?? [];
+  const connectedGoogle = connectedAccounts.some(
+    (account) => account.provider === "google",
+  );
+  const connectedGitHub = connectedAccounts.some(
+    (account) => account.provider === "github",
+  );
+  const hasAlternativeSignInMethod =
+    connectedAccounts.length > 1 ||
+    (!passkeysQuery.isPending &&
+      !passkeysQuery.isError &&
+      (passkeysQuery.data?.length ?? 0) > 0);
+  const mustKeepCurrentConnectedAccount =
+    connectedAccounts.length === 1 &&
+    !passkeysQuery.isPending &&
+    !passkeysQuery.isError &&
+    (passkeysQuery.data?.length ?? 0) === 0;
 
   const closeAccountDeletion = () => {
     if (!deleteAccount.isPending) {
@@ -442,7 +458,7 @@ export default function UserSettingsScreen() {
                 ? `${account.providerEmail}${
                     account.providerEmailVerified ? " · Verified" : ""
                   }`
-                : "No email shared",
+                : "Provider email unavailable",
               account.isPrimaryEmail ? "Primary email" : null,
               account.createdAt
                 ? `Added ${format.date(localDateOf(account.createdAt))}`
@@ -490,6 +506,7 @@ export default function UserSettingsScreen() {
                     size="sm"
                     loading={deletingConnectedAccountId === account.id}
                     disabled={
+                      !hasAlternativeSignInMethod ||
                       linkingProvider !== null ||
                       deletingConnectedAccountId !== null ||
                       recentAuthBusy
@@ -637,6 +654,15 @@ export default function UserSettingsScreen() {
           <Section kicker="Security" title="Sign-in methods">
             <View style={{ gap: spacing.md }}>
               {renderConnectedAccounts()}
+              {mustKeepCurrentConnectedAccount ? (
+                <Card surface="warning">
+                  <AppText variant="footnote" tone="secondary">
+                    Keep at least one sign-in method so you do not lose access.
+                    Add a passkey or connect GitHub before removing your only
+                    connected provider.
+                  </AppText>
+                </Card>
+              ) : null}
               {connectedAccountError ? (
                 <Card surface="danger">
                   <AppText variant="footnote" tone="danger">
@@ -646,7 +672,11 @@ export default function UserSettingsScreen() {
               ) : null}
               <View style={{ gap: spacing.sm }}>
                 <Button
-                  label="Connect Google"
+                  label={
+                    connectedGoogle
+                      ? "Connect another Google account"
+                      : "Connect Google"
+                  }
                   variant="secondary"
                   loading={linkingProvider === "google"}
                   disabled={
@@ -664,7 +694,11 @@ export default function UserSettingsScreen() {
                   onPress={() => void connectProvider("google")}
                 />
                 <Button
-                  label="Connect GitHub"
+                  label={
+                    connectedGitHub
+                      ? "Connect another GitHub account"
+                      : "Connect GitHub"
+                  }
                   variant="secondary"
                   loading={linkingProvider === "github"}
                   disabled={
@@ -857,8 +891,9 @@ export default function UserSettingsScreen() {
       >
         <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
           <AppText variant="footnote" tone="secondary">
-            Sign in again before changing sign-in methods or deleting your
-            account.
+            Confirm your identity before changing sign-in methods or deleting
+            your account. If the browser already has an active session, it may
+            return to finhance immediately.
           </AppText>
           {recentAuthError ? (
             <AppText variant="footnote" tone="danger">
@@ -873,7 +908,7 @@ export default function UserSettingsScreen() {
             />
           ) : null}
           <Button
-            label="Open browser sign-in"
+            label="Confirm in browser"
             variant="secondary"
             loading={recentAuthBusy}
             onPress={() => void confirmRecentAuth("browser")}

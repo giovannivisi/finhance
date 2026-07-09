@@ -44,7 +44,7 @@ const START_PAGE_LABELS: Record<UserStartPage, string> = {
 };
 
 const CLOCK_FORMAT_LABELS: Record<ClockFormat, string> = {
-  system: "System",
+  system: "Default",
   "12h": "12-hour",
   "24h": "24-hour",
 };
@@ -338,7 +338,7 @@ export default function AppSettingsScreen() {
         <Card>
           <View style={{ gap: spacing.lg }}>
             <View style={{ gap: spacing.sm }}>
-              <AppText variant="footnoteMedium">Clock</AppText>
+              <AppText variant="footnoteMedium">Time style</AppText>
               <SegmentedControl
                 options={CLOCK_FORMAT_VALUES.map((value) => ({
                   value,
@@ -347,10 +347,16 @@ export default function AppSettingsScreen() {
                 value={clockFormat}
                 onChange={(value) => setClockFormat(value as ClockFormat)}
               />
+              <AppText variant="footnote" tone="secondary">
+                Default follows the selected display region. Choosing 12-hour
+                or 24-hour always overrides that default.
+              </AppText>
             </View>
             <SwitchField
-              label="Use device region formats"
-              description="Matches this phone's date, time and number formatting."
+              label="Use this device's language and region"
+              description={
+                "Uses this phone's date and number formatting, and its default time style. Turn it off to use finhance's English (UK) defaults."
+              }
               value={useDeviceFormats}
               onChange={setUseDeviceFormats}
             />

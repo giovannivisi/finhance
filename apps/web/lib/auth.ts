@@ -14,6 +14,7 @@ import {
 } from "@lib/connected-accounts";
 import {
   buildMobileProviderLinkCompletePath,
+  hasMobileProviderLinkAuthCallbackTarget,
   mintMobileProviderLinkResult,
   readMobileProviderLinkStateFromCookies,
 } from "@lib/mobile-provider-link";
@@ -136,6 +137,7 @@ function buildAuthConfig(): NextAuthConfig {
 
         if (
           mobileProviderLink &&
+          (await hasMobileProviderLinkAuthCallbackTarget()) &&
           account?.provider === mobileProviderLink.provider &&
           account.providerAccountId?.trim()
         ) {

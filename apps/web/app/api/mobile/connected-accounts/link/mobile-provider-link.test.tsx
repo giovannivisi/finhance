@@ -15,8 +15,11 @@ vi.mock("next/headers", () => ({
 import {
   clearMobileProviderLinkCookie,
   createMobileProviderLinkCookie,
+  hasMobileProviderLinkAuthCallbackTarget,
+  isMobileProviderLinkAuthCallbackTarget,
   mintMobileProviderLinkResult,
   mintMobileProviderLinkStart,
+  MOBILE_PROVIDER_LINK_AUTH_CALLBACK_TARGET,
   verifyMobileProviderLinkResult,
   verifyMobileProviderLinkStart,
 } from "@lib/mobile-provider-link";
@@ -103,5 +106,42 @@ describe("mobile provider-link secure handoff", () => {
       "Secure",
     );
     expect(clearMobileProviderLinkCookie(request)).toContain("Max-Age=0");
+  });
+
+  it("only treats the marked Auth.js callback target as a provider link", () => {
+    expect(
+      isMobileProviderLinkAuthCallbackTarget(
+        `https://finhance.test${MOBILE_PROVIDER_LINK_AUTH_CALLBACK_TARGET}`,
+      ),
+    ).toBe(true);
+    expect(
+      isMobileProviderLinkAuthCallbackTarget(
+        "https://finhance.test/api/mobile/authorize?redirect=finhance%3A%2F%2Fauth",
+      ),
+    ).toBe(false);
+    expect(
+      isMobileProviderLinkAuthCallbackTarget(
+        "https://finhance.test/api/mobile/connected-accounts/link/complete",
+      ),
+    ).toBe(false);
+  });
+
+  it("reads the marker from Auth.js's callback-url cookie", async () => {
+    cookiesMock.mockResolvedValue({
+      get: (name: string) =>
+        name === "authjs.callback-url"
+          ? {
+              value: `https://finhance.test${MOBILE_PROVIDER_LINK_AUTH_CALLBACK_TARGET}`,
+            }
+          : undefined,
+    });
+
+    await expect(hasMobileProviderLinkAuthCallbackTarget()).resolves.toBe(true);
+
+    cookiesMock.mockResolvedValue({
+      get: () => ({ value: "https://finhance.test/api/mobile/authorize" }),
+    });
+
+    await expect(hasMobileProviderLinkAuthCallbackTarget()).resolves.toBe(false);
   });
 });
