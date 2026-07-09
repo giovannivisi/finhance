@@ -11,7 +11,11 @@ import {
   useRegisterMobilePasskey,
 } from "@/api/queries";
 import { useServerConnection } from "@/api/server-connection";
-import { formatPasskeyTitle, isRecentAuthError } from "@/api/passkeys";
+import {
+  formatPasskeyTitle,
+  getMobileAccount,
+  isRecentAuthError,
+} from "@/api/passkeys";
 import {
   AppText,
   Button,
@@ -45,6 +49,7 @@ export default function UserSettingsScreen() {
     clearServer,
     signInHosted,
     signInWithPasskey,
+    adoptHostedSession,
   } = useServerConnection();
   const accountQuery = useMobileAccount();
   const passkeysQuery = useMobilePasskeys();
@@ -203,17 +208,32 @@ export default function UserSettingsScreen() {
     setRecentAuthError(null);
 
     try {
+      // Run the ceremony without rebinding the app session yet: a usernameless
+      // passkey sheet or a browser sign-in can authenticate a different
+      // account, and destructive actions must stay pinned to the current one.
       const freshToken =
         method === "passkey"
-          ? await signInWithPasskey(serverUrl)
-          : await signInHosted(serverUrl);
-      const action = recentAction;
+          ? await signInWithPasskey(serverUrl, { adoptSession: false })
+          : await signInHosted(serverUrl, undefined, { adoptSession: false });
+
+      const currentEmail =
+        accountEmail ??
+        (token ? (await getMobileAccount(serverUrl, token)).email : null);
+      const freshEmail = (await getMobileAccount(serverUrl, freshToken)).email;
+
+      if (!currentEmail || !freshEmail || currentEmail !== freshEmail) {
+        setRecentAuthError(
+          currentEmail
+            ? `You confirmed with a different account. Sign in as ${currentEmail} and try again.`
+            : "Your current account could not be verified. Try again.",
+        );
+        return;
+      }
+
+      await adoptHostedSession(serverUrl, freshToken);
+
       setRecentAction(null);
       await retryRecentAction(freshToken);
-
-      if (action.type !== "delete-account") {
-        setRecentAction(null);
-      }
     } catch (authError) {
       setRecentAuthError(describeError(authError));
     } finally {

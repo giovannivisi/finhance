@@ -49,6 +49,16 @@ export const MOBILE_AUTH_RATE_LIMITS = {
     windowMs: 60_000,
     scope: "mobile-token-exchange",
   },
+  passkeyDelete: {
+    limit: 10,
+    windowMs: 60_000,
+    scope: "mobile-passkey-delete",
+  },
+  accountDelete: {
+    limit: 10,
+    windowMs: 60_000,
+    scope: "mobile-account-delete",
+  },
 } as const satisfies Record<string, RequestRateLimitConfig>;
 
 export function rateLimitRequest(
@@ -120,6 +130,49 @@ export function rateLimitRequest(
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
+}
+
+/**
+ * Marks an id as consumed within its scope, returning false when it was
+ * already used. Reuses the rate-limit table as a TTL-bounded one-shot store:
+ * the unique primary key rejects a second insert until the row expires.
+ */
+export async function consumeOneShotKey(
+  scope: string,
+  id: string,
+  ttlMs: number,
+  now = Date.now(),
+): Promise<boolean> {
+  const currentDate = new Date(now);
+
+  await prisma.requestRateLimit.deleteMany({
+    where: {
+      scope,
+      resetAt: { lte: currentDate },
+    },
+  });
+
+  try {
+    await prisma.requestRateLimit.create({
+      data: {
+        key: `${scope}:${id}`,
+        scope,
+        clientKey: id,
+        count: 1,
+        resetAt: new Date(now + ttlMs),
+      },
+    });
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 export async function resetRequestRateLimitsForTests(): Promise<void> {

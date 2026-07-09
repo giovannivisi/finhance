@@ -24,6 +24,7 @@ import {
 } from "./passkey-encoding";
 import { PASSKEY_PROVIDER, toPasskeyResponse } from "./passkeys";
 import { prisma } from "./prisma";
+import { consumeOneShotKey } from "./request-rate-limit";
 
 // Derive the WebAuthn shapes from the verify options so we do not depend on the
 // transitive @simplewebauthn/types package directly.
@@ -32,6 +33,11 @@ type RegistrationResponseJSON = VerifyRegistrationResponseOpts["response"];
 type AuthenticatorDevice = VerifyAuthenticationResponseOpts["authenticator"];
 
 const DEFAULT_RP_ID = "finhance-web.vercel.app";
+
+// One-shot store for registration challenge jtis; the TTL matches
+// MOBILE_PASSKEY_CHALLENGE_TTL so rows expire with the tokens they guard.
+const REG_CHALLENGE_JTI_SCOPE = "mobile-passkey-reg-jti";
+const REG_CHALLENGE_JTI_TTL_MS = 5 * 60_000;
 
 function resolveRpId(env: NodeJS.ProcessEnv): string {
   return env.AUTH_WEBAUTHN_RP_ID?.trim() || DEFAULT_RP_ID;
@@ -247,6 +253,18 @@ export async function verifyMobilePasskeyRegistration(
   );
 
   if (!challengeClaims || challengeClaims.userId !== input.userId) {
+    return null;
+  }
+
+  // Each challenge token is single-use: consuming the jti here means a leaked
+  // token cannot be replayed within its TTL for a second registration.
+  const consumed = await consumeOneShotKey(
+    REG_CHALLENGE_JTI_SCOPE,
+    challengeClaims.jti,
+    REG_CHALLENGE_JTI_TTL_MS,
+  );
+
+  if (!consumed) {
     return null;
   }
 

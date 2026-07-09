@@ -37,6 +37,15 @@ const MOBILE_TOKEN_KEY = "finhance.mobileToken";
 export type ServerMode = "local" | "hosted";
 export type HostedSignInProvider = "google" | "github";
 
+export interface HostedSignInOptions {
+  /**
+   * When false, the ceremony only returns the fresh token without rebinding
+   * the stored session. Used by re-authentication flows that must first check
+   * the token belongs to the account currently signed in.
+   */
+  adoptSession?: boolean;
+}
+
 export interface ServerInspection {
   kind: ServerKind["kind"];
   normalizedUrl: string;
@@ -57,9 +66,18 @@ interface ServerConnectionContextValue {
   signInHosted: (
     normalizedUrl: string,
     provider?: HostedSignInProvider,
+    options?: HostedSignInOptions,
   ) => Promise<string>;
   /** Native passkey sign-in against a hosted deployment (no browser). */
-  signInWithPasskey: (normalizedUrl: string) => Promise<string>;
+  signInWithPasskey: (
+    normalizedUrl: string,
+    options?: HostedSignInOptions,
+  ) => Promise<string>;
+  /** Persists a hosted session token and rebinds the app to it. */
+  adoptHostedSession: (
+    normalizedUrl: string,
+    nextToken: string,
+  ) => Promise<void>;
   /** Whether this device's platform supports passkeys. */
   passkeysSupported: boolean;
   clearServer: () => Promise<void>;
@@ -230,8 +248,24 @@ export function ServerConnectionProvider({
     setServerUrl(normalizedUrl);
   }, []);
 
+  const adoptHostedSession = useCallback(
+    async (normalizedUrl: string, nextToken: string) => {
+      await AsyncStorage.setItem(SERVER_URL_KEY, normalizedUrl);
+      await AsyncStorage.setItem(SERVER_MODE_KEY, "hosted");
+      await writeStoredToken(nextToken);
+      setServerMode("hosted");
+      setToken(nextToken);
+      setServerUrl(normalizedUrl);
+    },
+    [],
+  );
+
   const signInHosted = useCallback(
-    async (normalizedUrl: string, provider?: HostedSignInProvider) => {
+    async (
+      normalizedUrl: string,
+      provider?: HostedSignInProvider,
+      options?: HostedSignInOptions,
+    ) => {
       // The session token rides on every request; never send it in the clear.
       if (!normalizedUrl.startsWith("https://") && !__DEV__) {
         throw new ApiError(
@@ -286,70 +320,69 @@ export function ServerConnectionProvider({
         );
       }
 
-      await AsyncStorage.setItem(SERVER_URL_KEY, normalizedUrl);
-      await AsyncStorage.setItem(SERVER_MODE_KEY, "hosted");
-      await writeStoredToken(nextToken);
-      setServerMode("hosted");
-      setToken(nextToken);
-      setServerUrl(normalizedUrl);
+      if (options?.adoptSession !== false) {
+        await adoptHostedSession(normalizedUrl, nextToken);
+      }
       return nextToken;
     },
-    [],
+    [adoptHostedSession],
   );
 
-  const signInWithPasskey = useCallback(async (normalizedUrl: string) => {
-    if (!normalizedUrl.startsWith("https://") && !__DEV__) {
-      throw new ApiError(
-        "Passkey sign-in needs an https:// server URL so your session is never sent unencrypted.",
+  const signInWithPasskey = useCallback(
+    async (normalizedUrl: string, signInOptions?: HostedSignInOptions) => {
+      if (!normalizedUrl.startsWith("https://") && !__DEV__) {
+        throw new ApiError(
+          "Passkey sign-in needs an https:// server URL so your session is never sent unencrypted.",
+        );
+      }
+
+      let supported = false;
+      try {
+        supported = passkeysSupported();
+      } catch {
+        supported = false;
+      }
+      if (!supported) {
+        throw new ApiError("This device does not support passkeys.");
+      }
+
+      // The web routes mint the challenge and the session token; the assertion is
+      // produced by the platform authenticator (Face/Touch ID) and never leaves
+      // the device except as a signed WebAuthn response.
+      const client = createApiClient(normalizedUrl);
+      const { options, challenge } = await client.request<{
+        options: Parameters<typeof passkeyGet>[0];
+        challenge: string;
+      }>("/api/mobile/passkey/options", { method: "POST" });
+
+      const assertion = await passkeyGet(options);
+      if (!assertion) {
+        throw new ApiError(
+          "Passkey sign-in was cancelled before it completed.",
+        );
+      }
+
+      const { token: nextToken } = await client.request<{ token?: string }>(
+        "/api/mobile/passkey/verify",
+        {
+          method: "POST",
+          body: { response: assertion, challenge },
+        },
       );
-    }
 
-    let supported = false;
-    try {
-      supported = passkeysSupported();
-    } catch {
-      supported = false;
-    }
-    if (!supported) {
-      throw new ApiError("This device does not support passkeys.");
-    }
+      if (!nextToken) {
+        throw new ApiError(
+          "The server did not return a session token. Make sure the deployment includes mobile passkey support.",
+        );
+      }
 
-    // The web routes mint the challenge and the session token; the assertion is
-    // produced by the platform authenticator (Face/Touch ID) and never leaves
-    // the device except as a signed WebAuthn response.
-    const client = createApiClient(normalizedUrl);
-    const { options, challenge } = await client.request<{
-      options: Parameters<typeof passkeyGet>[0];
-      challenge: string;
-    }>("/api/mobile/passkey/options", { method: "POST" });
-
-    const assertion = await passkeyGet(options);
-    if (!assertion) {
-      throw new ApiError("Passkey sign-in was cancelled before it completed.");
-    }
-
-    const { token: nextToken } = await client.request<{ token?: string }>(
-      "/api/mobile/passkey/verify",
-      {
-        method: "POST",
-        body: { response: assertion, challenge },
-      },
-    );
-
-    if (!nextToken) {
-      throw new ApiError(
-        "The server did not return a session token. Make sure the deployment includes mobile passkey support.",
-      );
-    }
-
-    await AsyncStorage.setItem(SERVER_URL_KEY, normalizedUrl);
-    await AsyncStorage.setItem(SERVER_MODE_KEY, "hosted");
-    await writeStoredToken(nextToken);
-    setServerMode("hosted");
-    setToken(nextToken);
-    setServerUrl(normalizedUrl);
-    return nextToken;
-  }, []);
+      if (signInOptions?.adoptSession !== false) {
+        await adoptHostedSession(normalizedUrl, nextToken);
+      }
+      return nextToken;
+    },
+    [adoptHostedSession],
+  );
 
   const clearServer = useCallback(async () => {
     await AsyncStorage.removeItem(SERVER_URL_KEY);
@@ -388,6 +421,7 @@ export function ServerConnectionProvider({
       saveLocalServer,
       signInHosted,
       signInWithPasskey,
+      adoptHostedSession,
       passkeysSupported: (() => {
         try {
           return passkeysSupported();
@@ -406,6 +440,7 @@ export function ServerConnectionProvider({
     saveLocalServer,
     signInHosted,
     signInWithPasskey,
+    adoptHostedSession,
     clearServer,
   ]);
 

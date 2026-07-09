@@ -134,13 +134,30 @@ test("passkey registration challenge tokens bind the challenge to the user", asy
     authSecret: AUTH_SECRET,
   });
 
-  assert.deepEqual(
-    await verifyMobilePasskeyRegChallengeToken(token, AUTH_SECRET),
-    {
+  const claims = await verifyMobilePasskeyRegChallengeToken(token, AUTH_SECRET);
+
+  assert.equal(claims?.challenge, "registration-challenge");
+  assert.equal(claims?.userId, "user-123");
+  assert.ok(claims?.jti && claims.jti.length > 0);
+});
+
+test("passkey registration challenge tokens carry unique jtis", async () => {
+  const mint = () =>
+    mintMobilePasskeyRegChallengeToken({
       challenge: "registration-challenge",
       userId: "user-123",
-    },
-  );
+      authSecret: AUTH_SECRET,
+    });
+
+  const [first, second] = await Promise.all([mint(), mint()]);
+  const [firstClaims, secondClaims] = await Promise.all([
+    verifyMobilePasskeyRegChallengeToken(first, AUTH_SECRET),
+    verifyMobilePasskeyRegChallengeToken(second, AUTH_SECRET),
+  ]);
+
+  assert.ok(firstClaims?.jti);
+  assert.ok(secondClaims?.jti);
+  assert.notEqual(firstClaims?.jti, secondClaims?.jti);
 });
 
 test("passkey registration challenge tokens reject other audiences", async () => {

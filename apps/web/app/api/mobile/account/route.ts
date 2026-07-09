@@ -6,10 +6,16 @@ import {
 } from "@lib/api-proxy";
 import { isHostedAuthMode } from "@lib/auth-mode";
 import { resolveMobileApiUser } from "@lib/mobile-api-auth";
+import {
+  MOBILE_AUTH_RATE_LIMITS,
+  rateLimitRequest,
+} from "@lib/request-rate-limit";
 
 export const runtime = "nodejs";
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
+const RATE_LIMIT_MESSAGE =
+  "Too many account deletion attempts. Try again soon.";
 
 export async function GET(request: Request) {
   if (!isHostedAuthMode()) {
@@ -41,6 +47,21 @@ export async function DELETE(request: Request) {
   const crossOriginRejection = resolveCrossOriginRejection(request);
   if (crossOriginRejection) {
     return crossOriginRejection;
+  }
+
+  const rateLimit = await rateLimitRequest(
+    request,
+    MOBILE_AUTH_RATE_LIMITS.accountDelete,
+  );
+
+  if (!rateLimit.allowed) {
+    return Response.json(
+      { message: RATE_LIMIT_MESSAGE },
+      {
+        status: 429,
+        headers: { ...NO_STORE_HEADERS, ...rateLimit.headers },
+      },
+    );
   }
 
   const authResult = await resolveMobileApiUser(request, {

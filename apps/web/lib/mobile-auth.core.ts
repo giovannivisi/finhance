@@ -45,6 +45,8 @@ export interface MobileCodeClaims {
 export interface MobilePasskeyRegistrationChallengeClaims {
   userId: string;
   challenge: string;
+  /** Unique token id, consumed server-side so each challenge is single-use. */
+  jti: string;
 }
 
 export interface MobileTokenUserRecord {
@@ -314,12 +316,13 @@ export async function verifyMobilePasskeyRegChallengeToken(
 
     const userId = result.payload.sub?.trim();
     const challenge = result.payload.challenge;
+    const jti = result.payload.jti?.trim();
 
-    if (!userId || typeof challenge !== "string" || !challenge.trim()) {
+    if (!userId || typeof challenge !== "string" || !challenge.trim() || !jti) {
       return null;
     }
 
-    return { userId, challenge };
+    return { userId, challenge, jti };
   } catch {
     return null;
   }

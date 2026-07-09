@@ -20,13 +20,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const authResult = await resolveMobileApiUser(request, {
-    requireRecentAuth: true,
-  });
-  if (!authResult.ok) {
-    return authResult.response;
-  }
-
+  // Rate limit before authentication so unauthenticated probes are throttled
+  // too, matching the unauthenticated sign-in endpoints.
   const rateLimit = await rateLimitRequest(
     request,
     MOBILE_AUTH_RATE_LIMITS.passkeyRegisterOptions,
@@ -40,6 +35,13 @@ export async function POST(request: Request) {
         headers: { ...NO_STORE_HEADERS, ...rateLimit.headers },
       },
     );
+  }
+
+  const authResult = await resolveMobileApiUser(request, {
+    requireRecentAuth: true,
+  });
+  if (!authResult.ok) {
+    return authResult.response;
   }
 
   const result = await createMobilePasskeyRegistration(authResult.user.userId);

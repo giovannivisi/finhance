@@ -13,15 +13,17 @@ import { spacing, useTheme } from "@/theme";
 
 import { AppText, Button } from "./ui";
 
-async function canUseLocalAuthentication(): Promise<boolean> {
+type LocalAuthAvailability = "available" | "unavailable" | "unknown";
+
+async function localAuthAvailability(): Promise<LocalAuthAvailability> {
   try {
     const [hasHardware, isEnrolled] = await Promise.all([
       LocalAuthentication.hasHardwareAsync(),
       LocalAuthentication.isEnrolledAsync(),
     ]);
-    return hasHardware && isEnrolled;
+    return hasHardware && isEnrolled ? "available" : "unavailable";
   } catch {
-    return false;
+    return "unknown";
   }
 }
 
@@ -41,7 +43,11 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     setChecking(true);
 
     try {
-      if (!(await canUseLocalAuthentication())) {
+      // Fail open only when biometrics are confirmed unavailable: removing
+      // enrolment requires the device passcode, which already passes the
+      // authentication fallback below. Unknown errors keep the lock in place;
+      // the overlay's Unlock button remains the retry path.
+      if ((await localAuthAvailability()) === "unavailable") {
         setLocked(false);
         return;
       }
@@ -56,7 +62,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
         setLocked(false);
       }
     } catch {
-      setLocked(false);
+      // Fail closed: an unexpected authentication error keeps the app locked.
     } finally {
       authenticatingRef.current = false;
       setChecking(false);
