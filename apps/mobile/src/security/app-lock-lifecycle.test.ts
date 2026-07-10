@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  APP_LOCK_BACKGROUND_GRACE_MS,
   beginAppLockAuthentication,
   completeAppLockAuthentication,
   createAppLockLifecycleState,
@@ -44,7 +45,11 @@ describe("app-lock lifecycle", () => {
   it("relocks only after a genuine background event and starts one new prompt", () => {
     let state = createAppLockLifecycleState(true);
     const initial = beginAppLockAuthentication(state);
-    state = completeAppLockAuthentication(initial.state, initial.attempt!, true);
+    state = completeAppLockAuthentication(
+      initial.state,
+      initial.attempt!,
+      true,
+    );
 
     state = updateAppLockLifecycleAppState(state, "inactive");
     state = updateAppLockLifecycleAppState(state, "active");
@@ -59,6 +64,48 @@ describe("app-lock lifecycle", () => {
     expect(beginAppLockAuthentication(resumed.state).attempt).toBeNull();
   });
 
+  it("keeps a short app switch unlocked, then relocks after the grace period", () => {
+    let state = createAppLockLifecycleState(true);
+    const initial = beginAppLockAuthentication(state);
+    state = completeAppLockAuthentication(
+      initial.state,
+      initial.attempt!,
+      true,
+    );
+
+    state = updateAppLockLifecycleAppState(
+      state,
+      "background",
+      1_000,
+      APP_LOCK_BACKGROUND_GRACE_MS,
+    );
+    expect(state.locked).toBe(false);
+    state = updateAppLockLifecycleAppState(
+      state,
+      "active",
+      3_000,
+      APP_LOCK_BACKGROUND_GRACE_MS,
+    );
+    expect(state.locked).toBe(false);
+    expect(state.authenticationRequired).toBe(false);
+
+    state = updateAppLockLifecycleAppState(
+      state,
+      "background",
+      10_000,
+      APP_LOCK_BACKGROUND_GRACE_MS,
+    );
+    state = updateAppLockLifecycleAppState(
+      state,
+      "active",
+      40_000,
+      APP_LOCK_BACKGROUND_GRACE_MS,
+    );
+
+    expect(state.locked).toBe(true);
+    expect(state.authenticationRequired).toBe(true);
+  });
+
   it("does not let a stale prompt result unlock after the app backgrounds", () => {
     let state = createAppLockLifecycleState(true);
     const first = beginAppLockAuthentication(state);
@@ -66,14 +113,22 @@ describe("app-lock lifecycle", () => {
 
     state = updateAppLockLifecycleAppState(state, "background");
     state = updateAppLockLifecycleAppState(state, "active");
-    const staleResult = completeAppLockAuthentication(state, first.attempt!, true);
+    const staleResult = completeAppLockAuthentication(
+      state,
+      first.attempt!,
+      true,
+    );
 
     expect(staleResult).toEqual(state);
     expect(staleResult.locked).toBe(true);
 
     const resumed = beginAppLockAuthentication(staleResult);
     expect(resumed.attempt).toEqual({ id: 2, generation: 1 });
-    state = completeAppLockAuthentication(resumed.state, resumed.attempt!, true);
+    state = completeAppLockAuthentication(
+      resumed.state,
+      resumed.attempt!,
+      true,
+    );
     expect(state.locked).toBe(false);
   });
 

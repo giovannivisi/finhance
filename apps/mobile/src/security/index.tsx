@@ -358,12 +358,13 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
             passcode,
             salt: await createPasscodeSalt(),
             // New locks always begin with the app passcode. Biometrics are an
-            // opt-in convenience after the user has confirmed they work on
-            // this particular device; legacy users retain their prior choice.
-            biometricEnabled: currentRecord?.biometricEnabled ?? false,
+            // explicit per-install opt-in from Settings, including for users
+            // migrating from the former biometric-only lock.
+            biometricEnabled: false,
             createdAt: currentRecord?.createdAt,
           });
 
+          await appLockStore.setBiometricOptIn(false);
           await appLockStore.save(nextRecord);
           applyRecord(nextRecord, setRecord, recordRef);
           setStatus("configured");
@@ -431,6 +432,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
           // Retire the old value before deleting the secure record. If the
           // deletion fails, the valid passcode record remains in force.
           await appLockStore.clearLegacyFlag();
+          await appLockStore.setBiometricOptIn(false);
           await appLockStore.remove();
           applyRecord(null, setRecord, recordRef);
           setStatus("unconfigured");
@@ -464,6 +466,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
         }
 
         try {
+          await appLockStore.setBiometricOptIn(enabled);
           await persistRecord({
             ...currentRecord,
             biometricEnabled: enabled,

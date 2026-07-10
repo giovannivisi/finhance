@@ -1,51 +1,46 @@
-# Lock screen design QA
+# App lock and splash follow-up design QA
 
-- Source visual truth (dark): `/Users/giovannivisi/.codex/generated_images/019f48f3-8322-7a51-8735-031425696830/exec-9c780c6c-79b4-425d-8b4b-d52edf0d7b59.png`
-- Source visual truth (light): `/Users/giovannivisi/.codex/generated_images/019f48f3-8322-7a51-8735-031425696830/exec-5112453e-0c29-4614-bf0c-6d3f06196ca6.png`
-- Implementation screenshot: `/Users/giovannivisi/.codex/visualizations/2026/07/09/019f48f3-8322-7a51-8735-031425696830/finhance-lock-dark-web-preview.png`
-- Viewport: 390 × 844
-- State: dark theme, eight entered digits, passcode check in progress
-- Surface: Expo React Native Web surrogate for an iOS-native screen
+- Source visual truth: `/Users/giovannivisi/.codex/visualizations/2026/07/09/019f48f3-8322-7a51-8735-031425696830/finhance-native-splash-recording-reference.png`
+- Original recording: `/Users/giovannivisi/Downloads/ScreenRecording_07-10-2026 11-54-57 AM_1.MP4`
+- Implementation asset render: `/Users/giovannivisi/.codex/visualizations/2026/07/09/019f48f3-8322-7a51-8735-031425696830/finhance-splash-native-assets-light-dark.png`
+- Previous lock-screen surrogate: `/Users/giovannivisi/.codex/visualizations/2026/07/09/019f48f3-8322-7a51-8735-031425696830/finhance-lock-dark-web-preview.png`
+- Viewport: 390 × 844 for the implementation asset render; the recording is an iPhone screen recording at 1206 × 2622 pixels.
+- State: cold launch, light and dark appearance; Face ID prompt and 30-second background grace behaviour require a native device.
 
 ## Findings
 
-- [P1] The web surrogate did not render native image and icon-font layers
-  - Location: app logo, Face ID key, submit arrow, backspace key and shield footer icon.
-  - Evidence: the source shows every supplied/icon-library asset; the browser capture omitted the React Native `Image` background layer and Ionicons glyphs even though their layout boxes were present. The iOS export resolved both PNG assets and the Ionicons font successfully.
-  - Impact: the available browser screenshot cannot prove asset fidelity for the actual native target.
-  - Fix: capture the release/dev build on an iPhone after reinstalling the native splash configuration.
+- [P1] The native-to-JavaScript transition still needs an on-device capture
+  - Location: cold launch in light and dark appearance.
+  - Evidence: the recording proves the installed native project was still using the old dark-only splash, followed by a smaller app-rendered light icon. The regenerated iOS asset catalogue now contains matched 160-point light and dark logo variants and matched background colours, while the JavaScript launch cover uses the same source assets, size, colours and an immediate no-fade hand-off. A compiled on-device capture is not available in this environment.
+  - Impact: asset fidelity is verified, but only a rebuilt native binary can prove there is no visible frame or scale change during launch.
+  - Fix: rebuild/reinstall the iOS app and capture one cold launch in each appearance.
 
-- [P1] The light implementation state could not be captured
-  - Location: complete lock screen.
-  - Evidence: the dark browser surrogate was captured, but the preview server needed a cleared restart before the light pass. The environment rejected that restart after its execution allowance was exhausted.
-  - Impact: light-theme contrast, icon selection and glow fidelity remain unverified visually.
-  - Fix: capture the same checking state on-device with the app theme set to Light.
-
-- [P2] The final lower logo position was not recaptured
-  - Location: upper lock-screen composition.
-  - Evidence: the initial comparison showed the intro approximately 80 points higher than the chosen reference. The implementation was adjusted to a 168-point minimum top inset for regular-height phones, but the environment could not restart the preview to capture the post-fix result.
-  - Impact: the code matches the measured target more closely, but the final spacing still requires visual confirmation.
-  - Fix: confirm the logo begins around 168 points from the top of a 390 × 844 content frame and that the keypad/footer remain fully visible.
+- [P1] Face ID timing and the grace-period transition require a real device
+  - Location: login, initial app-lock launch, and return from background.
+  - Evidence: the lifecycle state machine now bypasses app lock while signed out, keeps an unlocked session valid for 30 seconds in the background, and invalidates stale biometric attempts. Unit tests cover the state transitions, but Expo cannot exercise Face ID in a browser surrogate.
+  - Impact: the product behaviour is implemented and regression-tested, but the native permission sheet and biometric prompt order are not visually verified.
+  - Fix: verify no Face ID prompt appears on login, a two-second app switch resumes directly, and a return after more than 30 seconds prompts once.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: Inter families, weights, sizes and wrapping are mapped to the existing app tokens. The web screenshot used a fallback rendering, so native optical fidelity is unverified.
-- Spacing and layout rhythm: keypad and footer positions matched the reference closely in the first comparison. The intro offset was corrected after comparison; recapture is pending.
-- Colours and visual tokens: the implementation uses the existing dark/light theme tokens and shared `ScreenGlow`, avoiding the rejected wallpaper treatment.
-- Image quality and asset fidelity: supplied 1024 px light/dark app icons are used directly. Native export includes both. Browser visual proof is blocked by the React Native Web image layer.
-- Copy and content: matches the approved direction, with the platform-neutral Android biometric label intentionally replacing “Face ID” off iOS.
+- Fonts and typography: unchanged from the previously implemented Inter-based lock screen; no new typography was introduced in this follow-up.
+- Spacing and layout rhythm: native and JavaScript launch artwork are both centred in a 160-point box. The prior lock-screen layout remains unchanged.
+- Colours and visual tokens: light uses `#f4f4f5` with the black logo; dark uses `#050505` with the white logo. These values exactly match the app theme tokens and generated iOS colour assets.
+- Image quality and asset fidelity: the supplied dark splash logo remains the source of truth. The light variant is an exact recolour with transparency and green brand mark preserved. Expo export includes both assets, and the regenerated iOS catalogue includes 1×, 2× and 3× light/dark variants.
+- Copy and content: no launch copy was added. Existing lock-screen copy is unchanged.
 
 ## Comparison history
 
-1. The first preview rendered the real storage-error gate because SecureStore is unavailable on web. A temporary development-only fixture exposed the implemented passcode screen for comparison.
-2. Full-view comparison found the keypad scale and lower-half rhythm close to the source, but the intro was too high and native asset layers were absent in the web surrogate.
-3. The intro minimum top inset was increased from 96 to 168 points. Temporary preview-only code was removed. A post-fix native-equivalent capture could not be produced because the preview restart was rejected by the environment.
+1. The supplied recording showed the old dark-only native splash changing to a smaller rounded-square light icon.
+2. The splash sources were changed to matching transparent brand marks, both layers were set to 160 points, the decorative launch glow was removed, and the fade was disabled.
+3. Expo prebuild regenerated the local iOS light/dark colour and image catalogues. The combined asset render confirms matched centring, scale, background treatment and brand-mark fidelity.
+4. A release/dev build cannot be launched on the user's physical iPhone from this environment, so native transition and Face ID visual verification remain blocked.
 
 ## Implementation checklist
 
-- Capture dark and light checking states on a real iPhone/dev build.
-- Confirm the native splash follows the device appearance and transitions to the hydrated app-theme launch cover.
-- Confirm Face ID appears over the launch cover, successful authentication opens the app directly, and failure/cancellation reveals the keypad.
-- Confirm create/change passcode buttons show loading feedback immediately.
+- Rebuild and reinstall the iOS binary so the native splash catalogue is refreshed.
+- Capture cold launches in light and dark appearance.
+- Verify signed-out launch, a return within 30 seconds, and a return after 30 seconds with Face ID enabled.
+- Confirm Face ID permission is first requested only when enabling it from Settings.
 
 final result: blocked

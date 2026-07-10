@@ -10,6 +10,12 @@ export type AppLockLifecycleAppState =
   | "unknown"
   | "extension";
 
+/**
+ * Keep short interruptions frictionless while still protecting the workspace
+ * after the app has genuinely been left unattended.
+ */
+export const APP_LOCK_BACKGROUND_GRACE_MS = 30_000;
+
 export interface AuthenticationAttempt {
   id: number;
   generation: number;
@@ -23,6 +29,7 @@ export interface AppLockLifecycleState {
   activeAttempt: AuthenticationAttempt | null;
   nextAttemptId: number;
   generation: number;
+  backgroundedAt: number | null;
 }
 
 export function createAppLockLifecycleState(
@@ -37,6 +44,7 @@ export function createAppLockLifecycleState(
     activeAttempt: null,
     nextAttemptId: 1,
     generation: 0,
+    backgroundedAt: null,
   };
 }
 
@@ -52,6 +60,7 @@ export function setAppLockLifecycleEnabled(
       authenticationRequired: false,
       activeAttempt: null,
       generation: state.generation + 1,
+      backgroundedAt: null,
     };
   }
 
@@ -66,6 +75,7 @@ export function setAppLockLifecycleEnabled(
     authenticationRequired: true,
     activeAttempt: null,
     generation: state.generation + 1,
+    backgroundedAt: null,
   };
 }
 
@@ -87,37 +97,60 @@ export function markAppLockLifecycleAuthenticated(
     locked: false,
     authenticationRequired: false,
     activeAttempt: null,
+    backgroundedAt: null,
   };
 }
 
 export function updateAppLockLifecycleAppState(
   state: AppLockLifecycleState,
   appState: AppLockLifecycleAppState,
+  now: number = Date.now(),
+  backgroundGraceMs: number = 0,
 ): AppLockLifecycleState {
   if (appState === state.appState) {
     return state;
   }
 
   if (!state.enabled) {
-    return { ...state, appState };
+    return { ...state, appState, backgroundedAt: null };
   }
 
-  if (appState !== "background") {
-    // An authentication sheet often produces inactive -> active. Preserve the
-    // active attempt and do not schedule another prompt in that case.
-    return { ...state, appState };
+  if (appState === "background") {
+    const shouldLockImmediately = backgroundGraceMs <= 0;
+    const interruptedAuthentication = state.activeAttempt !== null;
+
+    return {
+      ...state,
+      appState,
+      backgroundedAt: now,
+      locked: shouldLockImmediately ? true : state.locked,
+      authenticationRequired: shouldLockImmediately
+        ? true
+        : state.authenticationRequired || interruptedAuthentication,
+      // A result from an authentication started before backgrounding must
+      // never unlock the app after it returns to the foreground.
+      activeAttempt: null,
+      generation: state.generation + 1,
+    };
   }
 
-  return {
-    ...state,
-    appState,
-    locked: true,
-    authenticationRequired: true,
-    // A result from an authentication started before backgrounding must never
-    // unlock the app after it returns to the foreground.
-    activeAttempt: null,
-    generation: state.generation + 1,
-  };
+  if (appState === "active" && state.backgroundedAt !== null) {
+    const graceExpired = now - state.backgroundedAt >= backgroundGraceMs;
+
+    return {
+      ...state,
+      appState,
+      backgroundedAt: null,
+      locked: graceExpired ? true : state.locked,
+      authenticationRequired: graceExpired
+        ? true
+        : state.authenticationRequired,
+    };
+  }
+
+  // An authentication sheet often produces inactive -> active. Preserve the
+  // active attempt and do not schedule another prompt in that case.
+  return { ...state, appState };
 }
 
 /**
@@ -125,9 +158,10 @@ export function updateAppLockLifecycleAppState(
  * authentication after receiving a non-null attempt, then pass it to
  * completeAppLockAuthentication.
  */
-export function beginAppLockAuthentication(
-  state: AppLockLifecycleState,
-): { state: AppLockLifecycleState; attempt: AuthenticationAttempt | null } {
+export function beginAppLockAuthentication(state: AppLockLifecycleState): {
+  state: AppLockLifecycleState;
+  attempt: AuthenticationAttempt | null;
+} {
   if (
     !state.enabled ||
     !state.locked ||
@@ -181,6 +215,7 @@ export function completeAppLockAuthentication(
       locked: false,
       authenticationRequired: false,
       activeAttempt: null,
+      backgroundedAt: null,
     };
   }
 

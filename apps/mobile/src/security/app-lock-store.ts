@@ -6,6 +6,8 @@ import {
 
 export const APP_LOCK_SECURE_STORE_KEY = "finhance.appLock.v1";
 export const LEGACY_APP_LOCK_ASYNC_STORAGE_KEY = "finhance.appLock";
+export const BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY =
+  "finhance.appLock.biometricOptIn.v1";
 
 export interface AsyncKeyValueStorage {
   getItem(key: string): Promise<string | null>;
@@ -24,6 +26,8 @@ export interface AppLockStore {
   remove(): Promise<void>;
   /** Retire the legacy boolean after a passcode has been configured or removed. */
   clearLegacyFlag(): Promise<void>;
+  /** Biometrics are explicit consent for this installation, not the keychain. */
+  setBiometricOptIn(enabled: boolean): Promise<void>;
 }
 
 export function createAppLockStore(
@@ -37,7 +41,36 @@ export function createAppLockStore(
 
       if (rawRecord !== null) {
         const record = parseStoredRecord(rawRecord);
-        return record ? { state: "record", record } : { state: "invalid-record" };
+
+        if (!record) {
+          return { state: "invalid-record" };
+        }
+
+        if (record.state === "configured" && record.biometricEnabled) {
+          const optedIn =
+            (await legacyStorage.getItem(
+              BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY,
+            )) === "true";
+
+          if (!optedIn) {
+            // iOS Keychain records can survive an uninstall while AsyncStorage
+            // does not. Reset biometric consent on a fresh installation so
+            // the OS permission sheet can only follow an explicit Settings
+            // action in this installation.
+            const passcodeOnlyRecord = {
+              ...record,
+              biometricEnabled: false,
+              updatedAt: now(),
+            };
+            await secureStorage.setItem(
+              APP_LOCK_SECURE_STORE_KEY,
+              JSON.stringify(passcodeOnlyRecord),
+            );
+            return { state: "record", record: passcodeOnlyRecord };
+          }
+        }
+
+        return { state: "record", record };
       }
 
       const legacyAppLock = await legacyStorage.getItem(
@@ -71,6 +104,15 @@ export function createAppLockStore(
 
     async clearLegacyFlag(): Promise<void> {
       await legacyStorage.removeItem(LEGACY_APP_LOCK_ASYNC_STORAGE_KEY);
+    },
+
+    async setBiometricOptIn(enabled: boolean): Promise<void> {
+      if (enabled) {
+        await legacyStorage.setItem(BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY, "true");
+        return;
+      }
+
+      await legacyStorage.removeItem(BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY);
     },
   };
 }

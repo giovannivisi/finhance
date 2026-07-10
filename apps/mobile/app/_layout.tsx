@@ -28,7 +28,7 @@ import { AppLockProvider, useAppLock } from "@/security";
 import { ThemeProvider, useTheme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
-SplashScreen.setOptions({ duration: 160, fade: true });
+SplashScreen.setOptions({ duration: 0, fade: false });
 
 // React Query cannot see native app focus by itself; bridge AppState so data
 // refetches when the app returns to the foreground.
@@ -98,7 +98,7 @@ function ThemedApp() {
     <QueryClientProvider client={queryClient}>
       <View style={{ flex: 1, backgroundColor: colors.bgApp }}>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-        <AppLockGate onReady={hideNativeSplash}>
+        <AppLockGate active={connected} onReady={hideNativeSplash}>
           <Stack
             screenOptions={{
               headerShown: false,

@@ -7,6 +7,7 @@ import {
 } from "./app-lock";
 import {
   APP_LOCK_SECURE_STORE_KEY,
+  BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY,
   LEGACY_APP_LOCK_ASYNC_STORAGE_KEY,
   createAppLockStore,
   type AsyncKeyValueStorage,
@@ -50,7 +51,9 @@ describe("app-lock storage", () => {
     expect(await legacyStorage.getItem(LEGACY_APP_LOCK_ASYNC_STORAGE_KEY)).toBe(
       "true",
     );
-    expect(await secureStorage.getItem(APP_LOCK_SECURE_STORE_KEY)).not.toBeNull();
+    expect(
+      await secureStorage.getItem(APP_LOCK_SECURE_STORE_KEY),
+    ).not.toBeNull();
   });
 
   it("only retires the legacy flag when requested after passcode setup", async () => {
@@ -61,7 +64,9 @@ describe("app-lock storage", () => {
 
     await store.clearLegacyFlag();
 
-    expect(await legacyStorage.getItem(LEGACY_APP_LOCK_ASYNC_STORAGE_KEY)).toBeNull();
+    expect(
+      await legacyStorage.getItem(LEGACY_APP_LOCK_ASYNC_STORAGE_KEY),
+    ).toBeNull();
   });
 
   it("fails closed when an existing secure record is malformed", async () => {
@@ -83,11 +88,78 @@ describe("app-lock storage", () => {
       now: 10,
       deriveHash: async () => "a".repeat(64),
     });
-    await secureStorage.setItem(APP_LOCK_SECURE_STORE_KEY, JSON.stringify(record));
+    await secureStorage.setItem(
+      APP_LOCK_SECURE_STORE_KEY,
+      JSON.stringify(record),
+    );
     await legacyStorage.setItem(LEGACY_APP_LOCK_ASYNC_STORAGE_KEY, "true");
+    await legacyStorage.setItem(BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY, "true");
     const store = createAppLockStore(secureStorage, legacyStorage);
 
     await expect(store.load()).resolves.toEqual({ state: "record", record });
+  });
+
+  it("resets biometric consent when a keychain record survives reinstall", async () => {
+    const secureStorage = new MemoryStorage();
+    const installStorage = new MemoryStorage();
+    const record = await createConfiguredAppLockRecord({
+      passcode: "123456",
+      salt: "0123456789abcdef0123456789abcdef",
+      biometricEnabled: true,
+      now: 10,
+      deriveHash: async () => "a".repeat(64),
+    });
+    await secureStorage.setItem(
+      APP_LOCK_SECURE_STORE_KEY,
+      JSON.stringify(record),
+    );
+    const store = createAppLockStore(secureStorage, installStorage, () => 20);
+
+    const loaded = await store.load();
+
+    expect(loaded).toMatchObject({
+      state: "record",
+      record: { biometricEnabled: false, updatedAt: 20 },
+    });
+    expect(
+      JSON.parse((await secureStorage.getItem(APP_LOCK_SECURE_STORE_KEY))!),
+    ).toMatchObject({ biometricEnabled: false, updatedAt: 20 });
+  });
+
+  it("preserves biometrics after explicit opt-in in this installation", async () => {
+    const secureStorage = new MemoryStorage();
+    const installStorage = new MemoryStorage();
+    const record = await createConfiguredAppLockRecord({
+      passcode: "123456",
+      salt: "0123456789abcdef0123456789abcdef",
+      biometricEnabled: true,
+      now: 10,
+      deriveHash: async () => "a".repeat(64),
+    });
+    await secureStorage.setItem(
+      APP_LOCK_SECURE_STORE_KEY,
+      JSON.stringify(record),
+    );
+    await installStorage.setItem(BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY, "true");
+    const store = createAppLockStore(secureStorage, installStorage);
+
+    await expect(store.load()).resolves.toEqual({ state: "record", record });
+  });
+
+  it("tracks biometric opt-in outside the reinstall-persistent keychain", async () => {
+    const secureStorage = new MemoryStorage();
+    const installStorage = new MemoryStorage();
+    const store = createAppLockStore(secureStorage, installStorage);
+
+    await store.setBiometricOptIn(true);
+    expect(
+      await installStorage.getItem(BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY),
+    ).toBe("true");
+
+    await store.setBiometricOptIn(false);
+    expect(
+      await installStorage.getItem(BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY),
+    ).toBeNull();
   });
 
   it("retains passcode lockout state across an app restart", async () => {
@@ -101,10 +173,15 @@ describe("app-lock storage", () => {
       deriveHash: async () => "a".repeat(64),
     });
 
-    for (let index = 0; index < PASSCODE_LOCKOUT_POLICY.attemptsBeforeLockout; index += 1) {
+    for (
+      let index = 0;
+      index < PASSCODE_LOCKOUT_POLICY.attemptsBeforeLockout;
+      index += 1
+    ) {
       record = recordFailedPasscodeAttempt(record, 2_000 + index);
     }
     await store.save(record);
+    await legacyStorage.setItem(BIOMETRIC_OPT_IN_ASYNC_STORAGE_KEY, "true");
 
     await expect(store.load()).resolves.toEqual({ state: "record", record });
   });

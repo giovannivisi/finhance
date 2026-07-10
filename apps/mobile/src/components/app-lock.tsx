@@ -27,6 +27,7 @@ import {
   PASSCODE_MIN_LENGTH,
 } from "@/security/app-lock";
 import {
+  APP_LOCK_BACKGROUND_GRACE_MS,
   beginAppLockAuthentication,
   completeAppLockAuthentication,
   createAppLockLifecycleState,
@@ -46,6 +47,7 @@ const KEYPAD_ROWS = [
   ["4", "5", "6"],
   ["7", "8", "9"],
 ] as const;
+const LAUNCH_LOGO_SIZE = 160;
 
 function toLifecycleAppState(value: string): AppLockLifecycleAppState {
   if (
@@ -142,7 +144,11 @@ function BrandLogo({ size }: { size: number }) {
 }
 
 function LaunchCover() {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
+  const source =
+    scheme === "light"
+      ? require("../../assets/splash-icon-light.png")
+      : require("../../assets/splash-icon.png");
 
   return (
     <View
@@ -155,9 +161,13 @@ function LaunchCover() {
         { backgroundColor: colors.bgApp },
       ]}
     >
-      <ScreenGlow />
       <View style={styles.launchLogo}>
-        <BrandLogo size={144} />
+        <Image
+          accessibilityLabel="finhance logo"
+          resizeMode="contain"
+          source={source}
+          style={styles.launchLogoImage}
+        />
       </View>
     </View>
   );
@@ -453,11 +463,16 @@ function GateForm({ children }: { children: ReactNode }) {
 }
 
 export interface AppLockGateProps {
+  active?: boolean;
   children: ReactNode;
   onReady?: () => void;
 }
 
-export function AppLockGate({ children, onReady }: AppLockGateProps) {
+export function AppLockGate({
+  active = true,
+  children,
+  onReady,
+}: AppLockGateProps) {
   const {
     isEnabled,
     hasPasscode,
@@ -498,8 +513,9 @@ export function AppLockGate({ children, onReady }: AppLockGateProps) {
     return next;
   }, []);
 
+  const lockActive = active && isEnabled;
   const canUseBiometrics =
-    (hasPasscode && biometricEnabled) || legacyPasscodeRequired;
+    lockActive && ((hasPasscode && biometricEnabled) || legacyPasscodeRequired);
 
   const unlockWithBiometrics = useCallback(async () => {
     if (!canUseBiometrics || nativePromptRef.current) {
@@ -581,26 +597,26 @@ export function AppLockGate({ children, onReady }: AppLockGateProps) {
         onReady?.();
       }
 
-      if (status === "storage-error" || !isEnabled || !canUseBiometrics) {
+      if (status === "storage-error" || !lockActive || !canUseBiometrics) {
         setLaunchCoverVisible(false);
       }
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [canUseBiometrics, isEnabled, onReady, status]);
+  }, [canUseBiometrics, lockActive, onReady, status]);
 
   useEffect(() => {
     const wasEnabled = previousEnabledRef.current;
-    let next = setAppLockLifecycleEnabled(lifecycleRef.current, isEnabled);
+    let next = setAppLockLifecycleEnabled(lifecycleRef.current, lockActive);
 
-    if (wasEnabled === false && isEnabled && status !== "storage-error") {
+    if (wasEnabled === false && lockActive && status !== "storage-error") {
       next = markAppLockLifecycleAuthenticated(next);
     }
 
-    previousEnabledRef.current = isEnabled;
+    previousEnabledRef.current = lockActive;
     next = applyLifecycle(next);
 
-    if (!isEnabled) {
+    if (!lockActive) {
       setLegacyAuthenticated(false);
       setPasscode("");
       setPasscodeError(null);
@@ -617,18 +633,28 @@ export function AppLockGate({ children, onReady }: AppLockGateProps) {
   }, [
     applyLifecycle,
     canUseBiometrics,
-    isEnabled,
     legacyPasscodeRequired,
+    lockActive,
     status,
     unlockWithBiometrics,
   ]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
+      const appState = toLifecycleAppState(nextAppState);
+
+      if (lockActive && appState !== "active") {
+        // Shield the workspace in the app switcher immediately, while the
+        // lifecycle grace period decides whether another unlock is necessary.
+        setLaunchCoverVisible(true);
+      }
+
       const next = applyLifecycle(
         updateAppLockLifecycleAppState(
           lifecycleRef.current,
-          toLifecycleAppState(nextAppState),
+          appState,
+          Date.now(),
+          APP_LOCK_BACKGROUND_GRACE_MS,
         ),
       );
 
@@ -637,13 +663,22 @@ export function AppLockGate({ children, onReady }: AppLockGateProps) {
         return;
       }
 
-      if (next.appState === "active" && next.authenticationRequired) {
+      if (
+        next.appState === "active" &&
+        next.authenticationRequired &&
+        canUseBiometrics
+      ) {
         void unlockWithBiometrics();
+        return;
+      }
+
+      if (next.appState === "active") {
+        setLaunchCoverVisible(false);
       }
     });
 
     return () => subscription.remove();
-  }, [applyLifecycle, unlockWithBiometrics]);
+  }, [applyLifecycle, canUseBiometrics, lockActive, unlockWithBiometrics]);
 
   const unlockWithPasscode = async () => {
     if (!isValidPasscode(passcode) || checkingPasscode) {
@@ -718,8 +753,9 @@ export function AppLockGate({ children, onReady }: AppLockGateProps) {
   };
 
   const gateVisible =
-    status === "storage-error" ||
-    (isEnabled && (lifecycle.locked || legacyPasscodeRequired));
+    active &&
+    (status === "storage-error" ||
+      (isEnabled && (lifecycle.locked || legacyPasscodeRequired)));
 
   return (
     <View style={styles.root}>
@@ -857,10 +893,13 @@ const styles = StyleSheet.create({
     zIndex: 1100,
   },
   launchLogo: {
-    width: 144,
-    height: 144,
-    borderRadius: 38,
+    width: LAUNCH_LOGO_SIZE,
+    height: LAUNCH_LOGO_SIZE,
     zIndex: 1,
+  },
+  launchLogoImage: {
+    width: LAUNCH_LOGO_SIZE,
+    height: LAUNCH_LOGO_SIZE,
   },
   lockScreen: {
     flex: 1,
