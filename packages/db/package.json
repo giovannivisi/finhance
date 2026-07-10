@@ -21,7 +21,8 @@
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
-    "prisma:migrate:reset": "prisma migrate reset --schema prisma/schema.prisma"
+    "prisma:migrate:reset": "prisma migrate reset --schema prisma/schema.prisma",
+    "test": "node --test index.test.mjs ../../test-support/prisma-test-safety.test.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
