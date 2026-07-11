@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ImportsPageClient from "@components/ImportsPageClient";
@@ -109,6 +110,29 @@ afterEach(() => {
 });
 
 describe("ImportsPageClient", () => {
+  it("explains how to migrate a complete package or import files separately", () => {
+    renderPage();
+
+    expect(
+      screen.getByRole("heading", { name: "Import data from another source" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /A full migration can be uploaded together in any order/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Importing files one at a time\? Follow these dependencies/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("expenseValidationRules.csv"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("recurringExceptions.csv")).toBeInTheDocument();
+    expect(screen.getByText("budgetOverrides.csv")).toBeInTheDocument();
+  });
+
   it("uses anchored disclosures without reserving layout space at rest", async () => {
     renderPage();
 
@@ -241,11 +265,14 @@ describe("ImportsPageClient", () => {
     });
 
     expect(screen.getByText(/1 file selected\./i)).toBeInTheDocument();
-    expect(screen.getByText("transactions.csv")).toBeInTheDocument();
+    expect(
+      within(dropZone as HTMLElement).getByText("transactions.csv"),
+    ).toBeInTheDocument();
   });
 
   it("lets the user remove a selected file from the main import list", () => {
-    renderPage();
+    const { container } = renderPage();
+    const dropZone = container.querySelector(".import-dropzone");
 
     const input = screen.getByLabelText("Import CSV files");
     const file = csvFile(
@@ -257,14 +284,19 @@ describe("ImportsPageClient", () => {
       target: { files: [file] },
     });
 
-    expect(screen.getByText("accounts.csv")).toBeInTheDocument();
+    expect(dropZone).not.toBeNull();
+    expect(
+      within(dropZone as HTMLElement).getByText("accounts.csv"),
+    ).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", {
         name: "Remove accounts.csv from import",
       }),
     );
 
-    expect(screen.queryByText("accounts.csv")).not.toBeInTheDocument();
+    expect(
+      within(dropZone as HTMLElement).queryByText("accounts.csv"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
         name: "Remove accounts.csv from import",

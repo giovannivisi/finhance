@@ -933,6 +933,59 @@ export default function ImportsPageClient({
         </p>
       </section>
 
+      <section
+        className="page-section section-stack-tight"
+        aria-labelledby="import-data-guidance-title"
+      >
+        <div>
+          <h2 id="import-data-guidance-title" className="section-title">
+            Import data from another source
+          </h2>
+          <p className="section-subtitle">
+            Download the template ZIP, match each CSV to its template headers,
+            then add all available files to one preview. Supported templates
+            cover accounts, categories, expense category hierarchy, expense
+            validation rules, assets, recurring rules and exceptions, budgets
+            and overrides, and transactions.
+          </p>
+        </div>
+        <p className="page-inline-notice surface-dashed import-surface-superellipse">
+          A full migration can be uploaded together in any order. finhance
+          recognises each CSV by its headers and applies it internally in the
+          required dependency order after you review the preview.
+        </p>
+        <details className="list-card is-muted p-4 text-sm text-gray-600">
+          <summary className="cursor-pointer font-medium text-gray-900">
+            Importing files one at a time? Follow these dependencies.
+          </summary>
+          <ol className="mt-3 list-decimal space-y-1 pl-5">
+            <li>
+              Start with <code>accounts.csv</code> and{" "}
+              <code>categories.csv</code>.
+            </li>
+            <li>
+              Import <code>expenseCategoryHierarchy.csv</code> after the
+              categories it references.
+            </li>
+            <li>
+              Import <code>expenseValidationRules.csv</code> before any
+              recurring-rule or transaction file that relies on automatic
+              expense categorisation instead of an explicit category key.
+            </li>
+            <li>
+              You can then import <code>assets.csv</code>,{" "}
+              <code>recurringRules.csv</code>, <code>budgets.csv</code>, and{" "}
+              <code>transactions.csv</code> in any order when their referenced
+              accounts and categories already exist.
+            </li>
+            <li>
+              Import <code>recurringExceptions.csv</code> after its recurring
+              rules, and <code>budgetOverrides.csv</code> after its budgets.
+            </li>
+          </ol>
+        </details>
+      </section>
+
       <section className="page-section page-section--allow-overflow import-disclosure-section section-stack-tight">
         <div className="import-section-header">
           <div className="import-section-copy">

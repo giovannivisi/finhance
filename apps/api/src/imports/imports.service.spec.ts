@@ -634,18 +634,18 @@ describe('ImportsService', () => {
     ]);
   });
 
-  it('applies a transfer batch by creating two transaction rows', async () => {
+  it('applies a transfer batch in dependency order regardless of upload order', async () => {
     await service.previewCsv(OWNER_ID, {
-      accounts: {
-        originalName: 'accounts.csv',
-        buffer: Buffer.from(
-          'importKey,name,type,currency,institution,notes,order,archived\nchecking,Checking,BANK,EUR,,,0,false\nsavings,Savings,BANK,EUR,,,1,false\n',
-        ),
-      },
       transactions: {
         originalName: 'transactions.csv',
         buffer: Buffer.from(
           'importKey,postedAt,kind,amount,description,notes,accountImportKey,direction,categoryImportKey,counterparty,sourceAccountImportKey,destinationAccountImportKey\nxfer-1,2026-04-19T09:00:00.000Z,TRANSFER,50,Move cash,,,,,,checking,savings\n',
+        ),
+      },
+      accounts: {
+        originalName: 'accounts.csv',
+        buffer: Buffer.from(
+          'importKey,name,type,currency,institution,notes,order,archived\nchecking,Checking,BANK,EUR,,,0,false\nsavings,Savings,BANK,EUR,,,1,false\n',
         ),
       },
     });
@@ -705,6 +705,9 @@ describe('ImportsService', () => {
     >;
     expect(calls[0]?.[0].data.importKey).toBe('xfer-1');
     expect(calls[1]?.[0].data.importKey).toBe('xfer-1');
+    expect(prisma.account.create.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.transaction.create.mock.invocationCallOrder[0] ?? Infinity,
+    );
   });
 
   it('treats hierarchy rows already covered by category imports as satisfied during preview and apply', async () => {
@@ -835,6 +838,15 @@ describe('ImportsService', () => {
     expect(prisma.category.create).toHaveBeenCalledTimes(2);
     expect(prisma.expenseValidationRule.create).toHaveBeenCalledTimes(1);
     expect(prisma.transaction.create).toHaveBeenCalledTimes(1);
+    expect(prisma.category.create.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.expenseValidationRule.create.mock.invocationCallOrder[0] ??
+        Infinity,
+    );
+    expect(
+      prisma.expenseValidationRule.create.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      prisma.transaction.create.mock.invocationCallOrder[0] ?? Infinity,
+    );
   });
 
   it('rejects market assets assigned to non-broker accounts during preview', async () => {
