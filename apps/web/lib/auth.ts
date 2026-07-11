@@ -27,6 +27,10 @@ import {
 } from "@lib/auth-config";
 import { prisma } from "@lib/prisma";
 import { resolveSessionUserIdFromCookies } from "@lib/recent-auth";
+import {
+  consumeWebProviderLinkIntent,
+  readWebProviderLinkIntentFromCookies,
+} from "@lib/web-provider-link";
 
 type VerifiedGitHubProfile = GitHubProfile & {
   email_verified?: boolean;
@@ -133,7 +137,8 @@ function buildAuthConfig(): NextAuthConfig {
           return true;
         }
 
-        const mobileProviderLink = await readMobileProviderLinkStateFromCookies();
+        const mobileProviderLink =
+          await readMobileProviderLinkStateFromCookies();
 
         if (
           mobileProviderLink &&
@@ -178,12 +183,27 @@ function buildAuthConfig(): NextAuthConfig {
               where: { email: normalizedEmail },
             })
           : null;
-        const linkingSessionUserId =
+        const sessionUserId =
           account?.provider && isConnectedAccountProvider(account.provider)
             ? await resolveSessionUserIdFromCookies()
             : null;
+        const providerLinkIntent = sessionUserId
+          ? await readWebProviderLinkIntentFromCookies()
+          : null;
+        const validProviderLinkIntent =
+          sessionUserId &&
+          account?.provider &&
+          account.providerAccountId?.trim() &&
+          providerLinkIntent?.userId === sessionUserId &&
+          providerLinkIntent.provider === account.provider &&
+          (await consumeWebProviderLinkIntent(providerLinkIntent))
+            ? providerLinkIntent
+            : null;
+        const linkingSessionUserId = validProviderLinkIntent?.userId ?? null;
         const linkedAccount =
-          linkingSessionUserId && account?.provider && account.providerAccountId
+          validProviderLinkIntent &&
+          account?.provider &&
+          account.providerAccountId
             ? await prisma.authProviderAccount.findUnique({
                 where: {
                   provider_providerAccountId: {
@@ -202,10 +222,13 @@ function buildAuthConfig(): NextAuthConfig {
           existingUser,
           bootstrapEmail: resolveBootstrapEmail(),
           signupMode: resolveAuthSignupMode(),
+          activeSessionUserId: sessionUserId,
           linkingSessionUserId,
           linkedAccountUserId: linkingSessionUserId
             ? (linkedAccount?.userId ?? null)
             : undefined,
+          providerLinkIntentUserId: validProviderLinkIntent?.userId,
+          providerLinkIntentProvider: validProviderLinkIntent?.provider,
         });
 
         // Accounts auto-link across providers by verified email, so record

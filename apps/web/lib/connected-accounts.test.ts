@@ -1,7 +1,10 @@
+// @vitest-environment node
+
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   LastSignInMethodError,
   deleteConnectedAccountForUser,
+  getUserIdentityForUser,
   listConnectedAccountsForUser,
 } from "./connected-accounts";
 import { prisma } from "./prisma";
@@ -82,6 +85,43 @@ describe("connected account helpers", () => {
         isPrimaryEmail: true,
       },
     ]);
+  });
+
+  it("loads identity and connected accounts with one user query", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      email: "person@example.com",
+      name: "Person",
+      image: "https://example.com/person.png",
+      providerAccounts: [
+        {
+          id: "account-1",
+          provider: "github",
+          providerEmail: "PERSON@example.com",
+          providerEmailVerified: true,
+          providerDisplayName: "person",
+          createdAt: new Date("2026-07-09T10:00:00.000Z"),
+        },
+      ],
+    });
+
+    await expect(getUserIdentityForUser("user-1")).resolves.toEqual({
+      email: "person@example.com",
+      name: "Person",
+      image: "https://example.com/person.png",
+      connectedAccounts: [
+        {
+          id: "account-1",
+          provider: "github",
+          providerLabel: "GitHub",
+          providerEmail: "person@example.com",
+          providerEmailVerified: true,
+          providerDisplayName: "person",
+          createdAt: "2026-07-09T10:00:00.000Z",
+          isPrimaryEmail: true,
+        },
+      ],
+    });
+    expect(prismaMock.user.findUnique).toHaveBeenCalledTimes(1);
   });
 
   it("prevents removing the last sign-in method", async () => {

@@ -4,6 +4,10 @@ import {
   MOBILE_PROVIDER_LINK_COOKIE,
 } from "@lib/mobile-provider-link";
 import {
+  clearWebProviderLinkIntentCookie,
+  WEB_PROVIDER_LINK_COOKIE,
+} from "@lib/web-provider-link";
+import {
   RECENT_AUTH_REQUIRED_MESSAGE,
   hasRecentSessionAuthentication,
 } from "@lib/recent-auth";
@@ -14,16 +18,29 @@ export const preferredRegion = "fra1";
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
 type AuthGetRequest = Parameters<typeof handlers.GET>[0];
 
-function isMobileProviderLinkCallback(request: Request): boolean {
+function isOAuthProviderCallback(request: Request): boolean {
   const path = new URL(request.url).pathname;
   return /^\/api\/auth\/callback\/(google|github)$/.test(path);
 }
 
 function hasMobileProviderLinkCookie(request: Request): boolean {
-  return request.headers
-    .get("cookie")
-    ?.split(";")
-    .some((entry) => entry.trim().startsWith(`${MOBILE_PROVIDER_LINK_COOKIE}=`)) ?? false;
+  return (
+    request.headers
+      .get("cookie")
+      ?.split(";")
+      .some((entry) =>
+        entry.trim().startsWith(`${MOBILE_PROVIDER_LINK_COOKIE}=`),
+      ) ?? false
+  );
+}
+
+function hasCookie(request: Request, name: string): boolean {
+  return (
+    request.headers
+      .get("cookie")
+      ?.split(";")
+      .some((entry) => entry.trim().startsWith(`${name}=`)) ?? false
+  );
 }
 
 function isPasskeyRegistrationOptionsRequest(request: Request): boolean {
@@ -75,10 +92,23 @@ export async function GET(request: Request) {
   // success or provider-side failure so it cannot affect a later browser
   // sign-in attempt.
   if (
-    isMobileProviderLinkCallback(request) &&
+    isOAuthProviderCallback(request) &&
     hasMobileProviderLinkCookie(request)
   ) {
-    response.headers.append("set-cookie", clearMobileProviderLinkCookie(request));
+    response.headers.append(
+      "set-cookie",
+      clearMobileProviderLinkCookie(request),
+    );
+  }
+
+  if (
+    isOAuthProviderCallback(request) &&
+    hasCookie(request, WEB_PROVIDER_LINK_COOKIE)
+  ) {
+    response.headers.append(
+      "set-cookie",
+      clearWebProviderLinkIntentCookie(request),
+    );
   }
 
   return response;

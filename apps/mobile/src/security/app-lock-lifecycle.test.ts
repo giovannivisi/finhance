@@ -7,11 +7,23 @@ import {
   createAppLockLifecycleState,
   markAppLockLifecycleAuthenticated,
   requestAppLockAuthentication,
+  resolveAppLockAccessibility,
   setAppLockLifecycleEnabled,
   updateAppLockLifecycleAppState,
 } from "./app-lock-lifecycle";
 
 describe("app-lock lifecycle", () => {
+  it("removes the protected workspace from the accessibility tree while locked", () => {
+    expect(resolveAppLockAccessibility(true)).toEqual({
+      accessibilityElementsHidden: true,
+      importantForAccessibility: "no-hide-descendants",
+    });
+    expect(resolveAppLockAccessibility(false)).toEqual({
+      accessibilityElementsHidden: false,
+      importantForAccessibility: "auto",
+    });
+  });
+
   it("does not re-prompt after biometric authentication emits inactive then active", () => {
     let state = createAppLockLifecycleState(true);
     const first = beginAppLockAuthentication(state);

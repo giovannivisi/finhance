@@ -186,6 +186,22 @@ export async function getUserIdentityForUser(
       email: true,
       name: true,
       image: true,
+      providerAccounts: {
+        where: {
+          provider: {
+            in: [...CONNECTED_ACCOUNT_PROVIDERS],
+          },
+        },
+        orderBy: [{ createdAt: "asc" }, { provider: "asc" }],
+        select: {
+          id: true,
+          provider: true,
+          providerEmail: true,
+          providerEmailVerified: true,
+          providerDisplayName: true,
+          createdAt: true,
+        },
+      },
     },
   });
 
@@ -197,7 +213,13 @@ export async function getUserIdentityForUser(
     email: user.email,
     name: user.name,
     image: user.image,
-    connectedAccounts: await listConnectedAccountsForUser(userId),
+    connectedAccounts: user.providerAccounts.flatMap((account) => {
+      const response = toConnectedAccountResponse(
+        account,
+        normalizeEmail(user.email),
+      );
+      return response ? [response] : [];
+    }),
   };
 }
 

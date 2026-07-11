@@ -32,6 +32,18 @@ export interface AppLockLifecycleState {
   backgroundedAt: number | null;
 }
 
+export function resolveAppLockAccessibility(protectedWorkspace: boolean): {
+  accessibilityElementsHidden: boolean;
+  importantForAccessibility: "auto" | "no-hide-descendants";
+} {
+  return {
+    accessibilityElementsHidden: protectedWorkspace,
+    importantForAccessibility: protectedWorkspace
+      ? "no-hide-descendants"
+      : "auto",
+  };
+}
+
 export function createAppLockLifecycleState(
   enabled: boolean,
   appState: AppLockLifecycleAppState = "active",

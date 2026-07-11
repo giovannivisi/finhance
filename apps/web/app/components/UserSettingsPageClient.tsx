@@ -250,6 +250,27 @@ export default function UserSettingsPageClient({
     setBusyProvider(provider);
 
     try {
+      const intentResponse = await fetch("/api/connected-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+
+      if (!intentResponse.ok) {
+        let message = "The provider account could not be linked.";
+        try {
+          const payload = (await intentResponse.json()) as {
+            message?: unknown;
+          };
+          if (typeof payload.message === "string" && payload.message.trim()) {
+            message = payload.message;
+          }
+        } catch {
+          // Keep the generic message when the server does not return JSON.
+        }
+        throw new Error(message);
+      }
+
       await signInWithOAuth(provider, { redirectTo: "/settings/user" });
     } catch (connectError) {
       setConnectedAccountError(

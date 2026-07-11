@@ -6,12 +6,14 @@ import {
   ConnectedAccountNotFoundError,
   LastSignInMethodError,
   deleteConnectedAccountForUser,
+  isConnectedAccountProvider,
   listConnectedAccountsForUser,
 } from "@lib/connected-accounts";
 import {
   RECENT_AUTH_REQUIRED_MESSAGE,
   hasRecentSessionAuthentication,
 } from "@lib/recent-auth";
+import { mintWebProviderLinkIntent } from "@lib/web-provider-link";
 
 export const runtime = "nodejs";
 
@@ -38,6 +40,66 @@ export async function GET() {
 
   return Response.json(await listConnectedAccountsForUser(userId), {
     headers: NO_STORE_HEADERS,
+  });
+}
+
+export async function POST(request: Request) {
+  if (!isHostedAuthMode()) {
+    return Response.json(
+      {
+        message: "Connected accounts are only available on hosted deployments.",
+      },
+      { status: 404, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  const crossOriginRejection = resolveCrossOriginRejection(request);
+  if (crossOriginRejection) {
+    return crossOriginRejection;
+  }
+
+  const userId = await resolveSessionUserId();
+  if (!userId) {
+    return Response.json(
+      { message: "Authentication is required." },
+      { status: 401, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  if (!(await hasRecentSessionAuthentication(userId))) {
+    return Response.json(
+      { message: RECENT_AUTH_REQUIRED_MESSAGE },
+      { status: 403, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  let body: { provider?: unknown } | null = null;
+  try {
+    body = (await request.json()) as { provider?: unknown };
+  } catch {
+    body = null;
+  }
+
+  const providerCandidate =
+    typeof body?.provider === "string" ? body.provider : undefined;
+
+  if (!isConnectedAccountProvider(providerCandidate)) {
+    return Response.json(
+      { message: "A supported provider is required." },
+      { status: 400, headers: NO_STORE_HEADERS },
+    );
+  }
+
+  const provider = providerCandidate;
+  const intentCookie = await mintWebProviderLinkIntent({
+    request,
+    userId,
+    provider,
+  });
+
+  return new Response(null, {
+    status: 204,
+    headers: { ...NO_STORE_HEADERS, "set-cookie": intentCookie },
   });
 }
 

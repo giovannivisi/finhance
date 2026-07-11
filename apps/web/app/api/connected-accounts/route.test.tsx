@@ -1,19 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DELETE, GET } from "@/api/connected-accounts/route";
+import { DELETE, GET, POST } from "@/api/connected-accounts/route";
 
 const {
   authMock,
   crossOriginRejectionMock,
   deleteConnectedAccountForUserMock,
   hostedModeMock,
+  isConnectedAccountProviderMock,
   listConnectedAccountsForUserMock,
+  mintWebProviderLinkIntentMock,
   recentAuthMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   crossOriginRejectionMock: vi.fn(),
   deleteConnectedAccountForUserMock: vi.fn(),
   hostedModeMock: vi.fn(),
+  isConnectedAccountProviderMock: vi.fn(),
   listConnectedAccountsForUserMock: vi.fn(),
+  mintWebProviderLinkIntentMock: vi.fn(),
   recentAuthMock: vi.fn(),
 }));
 
@@ -35,7 +39,12 @@ vi.mock("@lib/connected-accounts", () => ({
   ConnectedAccountNotFoundError: class ConnectedAccountNotFoundError extends Error {},
   LastSignInMethodError: class LastSignInMethodError extends Error {},
   deleteConnectedAccountForUser: deleteConnectedAccountForUserMock,
+  isConnectedAccountProvider: isConnectedAccountProviderMock,
   listConnectedAccountsForUser: listConnectedAccountsForUserMock,
+}));
+
+vi.mock("@lib/web-provider-link", () => ({
+  mintWebProviderLinkIntent: mintWebProviderLinkIntentMock,
 }));
 
 vi.mock("@lib/recent-auth", () => ({
@@ -53,8 +62,16 @@ describe("/api/connected-accounts", () => {
     deleteConnectedAccountForUserMock.mockReset();
     hostedModeMock.mockReset();
     hostedModeMock.mockReturnValue(true);
+    isConnectedAccountProviderMock.mockReset();
+    isConnectedAccountProviderMock.mockImplementation(
+      (provider) => provider === "google" || provider === "github",
+    );
     listConnectedAccountsForUserMock.mockReset();
     listConnectedAccountsForUserMock.mockResolvedValue([]);
+    mintWebProviderLinkIntentMock.mockReset();
+    mintWebProviderLinkIntentMock.mockResolvedValue(
+      "finhance.provider-link=secure-intent; Path=/api/auth; HttpOnly",
+    );
     recentAuthMock.mockReset();
     recentAuthMock.mockResolvedValue(true);
   });
@@ -100,6 +117,49 @@ describe("/api/connected-accounts", () => {
         isPrimaryEmail: true,
       },
     ]);
+  });
+
+  it("issues a provider-link intent only after recent authentication", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+
+    const response = await POST(
+      new Request("https://finhance.test/api/connected-accounts", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://finhance.test",
+        },
+        body: JSON.stringify({ provider: "github" }),
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(recentAuthMock).toHaveBeenCalledWith("user-1");
+    expect(mintWebProviderLinkIntentMock).toHaveBeenCalledWith({
+      request: expect.any(Request),
+      userId: "user-1",
+      provider: "github",
+    });
+    expect(response.headers.get("set-cookie")).toContain("secure-intent");
+  });
+
+  it("rejects provider-link intent creation from a stale session", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    recentAuthMock.mockResolvedValue(false);
+
+    const response = await POST(
+      new Request("https://finhance.test/api/connected-accounts", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://finhance.test",
+        },
+        body: JSON.stringify({ provider: "google" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(mintWebProviderLinkIntentMock).not.toHaveBeenCalled();
   });
 
   it("deletes connected accounts only after recent authentication", async () => {

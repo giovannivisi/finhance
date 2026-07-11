@@ -47,14 +47,28 @@ export function resolveHostedSignInDecision(input: {
   existingUser: { isActive: boolean } | null;
   bootstrapEmail: string | null;
   signupMode?: AuthSignupMode;
+  activeSessionUserId?: string | null;
   linkingSessionUserId?: string | null;
   linkedAccountUserId?: string | null;
+  providerLinkIntentUserId?: string | null;
+  providerLinkIntentProvider?: string | null;
 }): boolean {
+  if (
+    input.activeSessionUserId &&
+    input.provider &&
+    input.provider !== "passkey" &&
+    input.linkingSessionUserId !== input.activeSessionUserId
+  ) {
+    return false;
+  }
+
   if (
     input.linkingSessionUserId &&
     input.provider &&
     input.provider !== "passkey" &&
-    input.linkedAccountUserId !== undefined
+    input.linkedAccountUserId !== undefined &&
+    input.providerLinkIntentUserId === input.linkingSessionUserId &&
+    input.providerLinkIntentProvider === input.provider
   ) {
     return (
       input.linkedAccountUserId === null ||

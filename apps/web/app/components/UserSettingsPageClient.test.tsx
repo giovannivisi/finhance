@@ -189,6 +189,11 @@ describe("UserSettingsPageClient", () => {
 
     await user.click(screen.getByRole("button", { name: /connect github/i }));
 
+    expect(fetchMock).toHaveBeenCalledWith("/api/connected-accounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "github" }),
+    });
     expect(signInWithOAuthMock).toHaveBeenCalledWith("github", {
       redirectTo: "/settings/user",
     });
