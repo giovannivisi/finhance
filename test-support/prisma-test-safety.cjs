@@ -1,6 +1,6 @@
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-export function assertLocalPrismaTestDatabaseUrl(databaseUrl) {
+function assertLocalPrismaTestDatabaseUrl(databaseUrl) {
   let url;
 
   try {
@@ -17,3 +17,5 @@ export function assertLocalPrismaTestDatabaseUrl(databaseUrl) {
     );
   }
 }
+
+exports.assertLocalPrismaTestDatabaseUrl = assertLocalPrismaTestDatabaseUrl;

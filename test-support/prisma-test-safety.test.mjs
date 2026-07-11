@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import test from "node:test";
-import { assertLocalPrismaTestDatabaseUrl } from "./prisma-test-safety.mjs";
+import { assertLocalPrismaTestDatabaseUrl } from "./prisma-test-safety.cjs";
+
+const require = createRequire(import.meta.url);
+
+test("loads through both ESM import and CommonJS require", () => {
+  const commonJsSafety = require("./prisma-test-safety.cjs");
+
+  assert.equal(
+    commonJsSafety.assertLocalPrismaTestDatabaseUrl,
+    assertLocalPrismaTestDatabaseUrl,
+  );
+});
 
 test("accepts loopback PostgreSQL database URLs", () => {
   for (const hostname of ["localhost", "127.0.0.1", "[::1]"]) {
