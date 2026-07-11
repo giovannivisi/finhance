@@ -64,6 +64,9 @@ docs/handoffs/
 *.mp4
 *.mov
 .env*
+# but keep the committed example env templates
+!.env.example
+!.env.local.example
 
 # temporary files and directories
 tmp/
