@@ -13,7 +13,7 @@ function hashStoredAuthToken(
     .digest("hex");
 }
 
-test("linkAccount persists only the provider identity fields", async () => {
+test("linkAccount persists provider identity fields without OAuth tokens", async () => {
   let createInput: unknown;
   const adapter = FinhanceAuthAdapter({
     authProviderAccount: {
@@ -38,14 +38,19 @@ test("linkAccount persists only the provider identity fields", async () => {
     session_state: "state",
   } satisfies AdapterAccount);
 
-  assert.deepEqual(createInput, {
-    data: {
+  const createData = (createInput as { data: Record<string, unknown> }).data;
+  assert.ok(createData.createdAt instanceof Date);
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(createData).filter(([key]) => key !== "createdAt"),
+    ),
+    {
       userId: "user-1",
       type: "oauth",
       provider: "github",
       providerAccountId: "provider-user",
     },
-  });
+  );
 });
 
 test("getAccount returns a linked provider account", async () => {

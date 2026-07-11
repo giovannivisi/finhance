@@ -169,3 +169,9 @@ The app is a standard Expo project: use
 `npx expo prebuild` + Xcode/Gradle. `NSAppTransportSecurity` currently allows
 plain-HTTP servers because self-hosted APIs on a LAN rarely have TLS — tighten
 this if you ship a public build.
+
+Local iOS prebuilds omit Associated Domains because Apple Personal Teams cannot
+sign that entitlement. EAS builds include it automatically. For a local build
+signed by a paid Apple Developer team, regenerate the native project with
+`FINHANCE_IOS_ASSOCIATED_DOMAINS=true npx expo prebuild --platform ios` to
+enable native passkeys.

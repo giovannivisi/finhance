@@ -192,6 +192,7 @@ export function FinhanceAuthAdapter(prisma: PrismaClient): Adapter {
           type: account.type,
           provider: account.provider,
           providerAccountId: account.providerAccountId,
+          createdAt: new Date(),
         },
       });
     },

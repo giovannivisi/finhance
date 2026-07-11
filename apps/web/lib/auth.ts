@@ -7,6 +7,17 @@ import Google from "next-auth/providers/google";
 import Passkey from "next-auth/providers/passkey";
 import { FinhanceAuthAdapter } from "@lib/auth-adapter";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import {
+  captureLinkedProviderAccountMetadata,
+  getConnectedProviderAccountMetadata,
+  isConnectedAccountProvider,
+} from "@lib/connected-accounts";
+import {
+  buildMobileProviderLinkCompletePath,
+  hasMobileProviderLinkAuthCallbackTarget,
+  mintMobileProviderLinkResult,
+  readMobileProviderLinkStateFromCookies,
+} from "@lib/mobile-provider-link";
 import { resolveHostedSignInDecision } from "@lib/auth-policy";
 import {
   readRequiredHostedEnv,
@@ -15,6 +26,11 @@ import {
   resolveBootstrapEmail,
 } from "@lib/auth-config";
 import { prisma } from "@lib/prisma";
+import { resolveSessionUserIdFromCookies } from "@lib/recent-auth";
+import {
+  consumeWebProviderLinkIntent,
+  readWebProviderLinkIntentFromCookies,
+} from "@lib/web-provider-link";
 
 type VerifiedGitHubProfile = GitHubProfile & {
   email_verified?: boolean;
@@ -121,6 +137,40 @@ function buildAuthConfig(): NextAuthConfig {
           return true;
         }
 
+        const mobileProviderLink =
+          await readMobileProviderLinkStateFromCookies();
+
+        if (
+          mobileProviderLink &&
+          (await hasMobileProviderLinkAuthCallbackTarget()) &&
+          account?.provider === mobileProviderLink.provider &&
+          account.providerAccountId?.trim()
+        ) {
+          const metadata = getConnectedProviderAccountMetadata({
+            provider: mobileProviderLink.provider,
+            profile: profile as Record<string, unknown>,
+          });
+
+          // A provider without a verified email cannot safely be used as a
+          // future sign-in method, so do not hand a pending link back to the
+          // app for confirmation.
+          if (!metadata.providerEmail || !metadata.providerEmailVerified) {
+            return false;
+          }
+
+          // Returning a URL here stops Auth.js before handleLoginOrRegister,
+          // which means the OAuth identity is not persisted until the mobile
+          // app proves its matching bearer session and PKCE verifier at the
+          // dedicated confirmation endpoint.
+          const result = await mintMobileProviderLinkResult({
+            start: mobileProviderLink,
+            accountId: account.providerAccountId,
+            metadata,
+          });
+
+          return buildMobileProviderLinkCompletePath(result);
+        }
+
         const normalizedEmail =
           typeof user.email === "string" && user.email.trim()
             ? user.email.trim().toLowerCase()
@@ -133,6 +183,37 @@ function buildAuthConfig(): NextAuthConfig {
               where: { email: normalizedEmail },
             })
           : null;
+        const sessionUserId =
+          account?.provider && isConnectedAccountProvider(account.provider)
+            ? await resolveSessionUserIdFromCookies()
+            : null;
+        const providerLinkIntent = sessionUserId
+          ? await readWebProviderLinkIntentFromCookies()
+          : null;
+        const validProviderLinkIntent =
+          sessionUserId &&
+          account?.provider &&
+          account.providerAccountId?.trim() &&
+          providerLinkIntent?.userId === sessionUserId &&
+          providerLinkIntent.provider === account.provider &&
+          (await consumeWebProviderLinkIntent(providerLinkIntent))
+            ? providerLinkIntent
+            : null;
+        const linkingSessionUserId = validProviderLinkIntent?.userId ?? null;
+        const linkedAccount =
+          validProviderLinkIntent &&
+          account?.provider &&
+          account.providerAccountId
+            ? await prisma.authProviderAccount.findUnique({
+                where: {
+                  provider_providerAccountId: {
+                    provider: account.provider,
+                    providerAccountId: account.providerAccountId,
+                  },
+                },
+                select: { userId: true },
+              })
+            : null;
 
         const allowed = resolveHostedSignInDecision({
           provider: account?.provider ?? undefined,
@@ -141,6 +222,13 @@ function buildAuthConfig(): NextAuthConfig {
           existingUser,
           bootstrapEmail: resolveBootstrapEmail(),
           signupMode: resolveAuthSignupMode(),
+          activeSessionUserId: sessionUserId,
+          linkingSessionUserId,
+          linkedAccountUserId: linkingSessionUserId
+            ? (linkedAccount?.userId ?? null)
+            : undefined,
+          providerLinkIntentUserId: validProviderLinkIntent?.userId,
+          providerLinkIntentProvider: validProviderLinkIntent?.provider,
         });
 
         // Accounts auto-link across providers by verified email, so record
@@ -160,6 +248,22 @@ function buildAuthConfig(): NextAuthConfig {
         }
 
         return session;
+      },
+    },
+    events: {
+      async signIn({ account, profile }) {
+        await captureLinkedProviderAccountMetadata({
+          provider: account?.provider,
+          providerAccountId: account?.providerAccountId,
+          profile: profile as Record<string, unknown>,
+        });
+      },
+      async linkAccount({ account, profile }) {
+        await captureLinkedProviderAccountMetadata({
+          provider: account.provider,
+          providerAccountId: account.providerAccountId,
+          profile: profile as Record<string, unknown>,
+        });
       },
     },
     experimental: {

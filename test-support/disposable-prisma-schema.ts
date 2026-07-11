@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { PrismaClient } from "../packages/db";
+import { assertLocalPrismaTestDatabaseUrl } from "./prisma-test-safety.cjs";
 
 const DB_PACKAGE_DIR = resolve(__dirname, "../packages/db");
 const DEFAULT_LOCAL_DEV_OWNER_ID = "local-dev";
@@ -68,6 +69,8 @@ export async function createPrismaTestSchema(
   if (!baseUrl) {
     throw new Error("DATABASE_URL is required for Prisma integration tests.");
   }
+
+  assertLocalPrismaTestDatabaseUrl(baseUrl);
 
   const schema = `${prefix}_${randomUUID().replace(/-/g, "")}`;
   const databaseUrl = buildSchemaDatabaseUrl(baseUrl, schema);

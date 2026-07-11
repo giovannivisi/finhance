@@ -34,7 +34,8 @@ vi.mock("@lib/prisma", () => ({
 }));
 
 vi.mock("@lib/recent-auth", () => ({
-  RECENT_AUTH_REQUIRED_MESSAGE: "Sign in again before changing passkeys.",
+  RECENT_AUTH_REQUIRED_MESSAGE:
+    "Sign in again before changing sign-in methods.",
   hasRecentSessionAuthentication: recentAuthMock,
 }));
 
@@ -155,7 +156,7 @@ describe("/api/passkeys", () => {
 
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({
-      message: "Sign in again before changing passkeys.",
+      message: "Sign in again before changing sign-in methods.",
     });
     expect(prismaMock.authAuthenticator.deleteMany).not.toHaveBeenCalled();
   });

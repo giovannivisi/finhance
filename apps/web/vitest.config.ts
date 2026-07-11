@@ -6,7 +6,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
-    include: ["app/**/*.test.tsx"],
+    include: ["app/**/*.test.tsx", "lib/**/*.test.ts"],
     coverage: {
       provider: "v8",
       include: [
@@ -32,6 +32,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./app"),
       "@components": path.resolve(__dirname, "./app/components"),
       "@lib": path.resolve(__dirname, "./lib"),
+      "server-only": path.resolve(__dirname, "./test/server-only.ts"),
     },
   },
 });

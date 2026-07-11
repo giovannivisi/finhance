@@ -1,11 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
+import type {
+  ConnectedAccountProvider,
+  ConnectedAccountResponse,
+} from "@finhance/shared/users";
 import { useRouter, type Href } from "expo-router";
 import { useState } from "react";
-import { View } from "react-native";
+import { Image, View } from "react-native";
 
 import {
+  useDeleteMobileConnectedAccount,
   useDeleteMobileAccount,
   useDeleteMobilePasskey,
+  useLinkMobileConnectedAccount,
   useMobileAccount,
   useMobilePasskeys,
   useRegisterMobilePasskey,
@@ -20,6 +26,7 @@ import {
   AppText,
   Button,
   Card,
+  Chip,
   describeError,
   ErrorState,
   ListRow,
@@ -37,7 +44,24 @@ type DeletionStep = "warning" | "confirmation";
 type RecentAction =
   | { type: "add-passkey" }
   | { type: "delete-passkey"; credentialId: string }
+  | { type: "connect-provider"; provider: ConnectedAccountProvider }
+  | { type: "delete-connected-account"; accountId: string }
   | { type: "delete-account"; email: string };
+
+function getIdentityInitials(input: {
+  name?: string | null;
+  email?: string | null;
+}): string {
+  const source = input.name?.trim() || input.email?.trim() || "FW";
+  const parts = source
+    .split(/[\s@._-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return (
+    (parts[0]?.[0] ?? "F") + (parts[1]?.[0] ?? parts[0]?.[1] ?? "W")
+  ).toUpperCase();
+}
 
 export default function UserSettingsScreen() {
   const router = useRouter();
@@ -57,14 +81,26 @@ export default function UserSettingsScreen() {
   const passkeysQuery = useMobilePasskeys();
   const registerPasskey = useRegisterMobilePasskey();
   const deletePasskey = useDeleteMobilePasskey();
+  const linkConnectedAccount = useLinkMobileConnectedAccount();
+  const deleteConnectedAccount = useDeleteMobileConnectedAccount();
   const deleteAccount = useDeleteMobileAccount();
   const [error, setError] = useState<string | null>(null);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  const [connectedAccountError, setConnectedAccountError] = useState<
+    string | null
+  >(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [confirmMobileSignOut, setConfirmMobileSignOut] = useState(false);
   const [deletingPasskeyId, setDeletingPasskeyId] = useState<string | null>(
     null,
   );
+  const [linkingProvider, setLinkingProvider] =
+    useState<ConnectedAccountProvider | null>(null);
+  const [deletingConnectedAccountId, setDeletingConnectedAccountId] = useState<
+    string | null
+  >(null);
+  const [connectedAccountToRemove, setConnectedAccountToRemove] =
+    useState<ConnectedAccountResponse | null>(null);
   const [isSigningOutMobileDevices, setIsSigningOutMobileDevices] =
     useState(false);
   const [recentAction, setRecentAction] = useState<RecentAction | null>(null);
@@ -75,6 +111,25 @@ export default function UserSettingsScreen() {
   const [confirmationEmail, setConfirmationEmail] = useState("");
 
   const accountEmail = accountQuery.data?.email ?? null;
+  const accountName = accountQuery.data?.name?.trim() || null;
+  const accountImage = accountQuery.data?.image ?? null;
+  const connectedAccounts = accountQuery.data?.connectedAccounts ?? [];
+  const connectedGoogle = connectedAccounts.some(
+    (account) => account.provider === "google",
+  );
+  const connectedGitHub = connectedAccounts.some(
+    (account) => account.provider === "github",
+  );
+  const hasAlternativeSignInMethod =
+    connectedAccounts.length > 1 ||
+    (!passkeysQuery.isPending &&
+      !passkeysQuery.isError &&
+      (passkeysQuery.data?.length ?? 0) > 0);
+  const mustKeepCurrentConnectedAccount =
+    connectedAccounts.length === 1 &&
+    !passkeysQuery.isPending &&
+    !passkeysQuery.isError &&
+    (passkeysQuery.data?.length ?? 0) === 0;
 
   const closeAccountDeletion = () => {
     if (!deleteAccount.isPending) {
@@ -131,6 +186,9 @@ export default function UserSettingsScreen() {
     if (action.type === "delete-account") {
       setDeleteAccountOpen(false);
     }
+    if (action.type === "delete-connected-account") {
+      setConnectedAccountToRemove(null);
+    }
     setRecentAction(action);
   };
 
@@ -170,6 +228,49 @@ export default function UserSettingsScreen() {
     }
   };
 
+  const connectProvider = async (
+    provider: ConnectedAccountProvider,
+    tokenOverride?: string,
+  ) => {
+    setConnectedAccountError(null);
+    setLinkingProvider(provider);
+
+    try {
+      await linkConnectedAccount.mutateAsync({ provider, tokenOverride });
+    } catch (linkError) {
+      if (isRecentAuthError(linkError)) {
+        promptRecentAuth({ type: "connect-provider", provider });
+        return;
+      }
+
+      setConnectedAccountError(describeError(linkError));
+    } finally {
+      setLinkingProvider(null);
+    }
+  };
+
+  const removeConnectedAccount = async (
+    accountId: string,
+    tokenOverride?: string,
+  ) => {
+    setConnectedAccountError(null);
+    setDeletingConnectedAccountId(accountId);
+
+    try {
+      await deleteConnectedAccount.mutateAsync({ accountId, tokenOverride });
+      setConnectedAccountToRemove(null);
+    } catch (removeError) {
+      if (isRecentAuthError(removeError)) {
+        promptRecentAuth({ type: "delete-connected-account", accountId });
+        return;
+      }
+
+      setConnectedAccountError(describeError(removeError));
+    } finally {
+      setDeletingConnectedAccountId(null);
+    }
+  };
+
   const deleteHostedAccount = async (email: string, tokenOverride?: string) => {
     setError(null);
 
@@ -196,6 +297,10 @@ export default function UserSettingsScreen() {
       await addPasskey(tokenOverride);
     } else if (recentAction.type === "delete-passkey") {
       await removePasskey(recentAction.credentialId, tokenOverride);
+    } else if (recentAction.type === "connect-provider") {
+      await connectProvider(recentAction.provider, tokenOverride);
+    } else if (recentAction.type === "delete-connected-account") {
+      await removeConnectedAccount(recentAction.accountId, tokenOverride);
     } else {
       await deleteHostedAccount(recentAction.email, tokenOverride);
     }
@@ -324,8 +429,200 @@ export default function UserSettingsScreen() {
     );
   };
 
+  const renderConnectedAccounts = () => {
+    if (accountQuery.isPending) {
+      return <SkeletonCard lines={3} />;
+    }
+
+    if (accountQuery.isError) {
+      return (
+        <ErrorState
+          error={accountQuery.error}
+          onRetry={() => accountQuery.refetch()}
+        />
+      );
+    }
+
+    return (
+      <Card style={{ paddingVertical: 4 }}>
+        {connectedAccounts.length === 0 ? (
+          <View style={{ paddingVertical: spacing.md }}>
+            <AppText variant="footnote" tone="secondary">
+              No connected providers yet.
+            </AppText>
+          </View>
+        ) : (
+          connectedAccounts.map((account, index) => {
+            const details = [
+              account.providerEmail
+                ? `${account.providerEmail}${
+                    account.providerEmailVerified ? " · Verified" : ""
+                  }`
+                : "Provider email unavailable",
+              account.isPrimaryEmail ? "Primary email" : null,
+              account.createdAt
+                ? `Added ${format.date(localDateOf(account.createdAt))}`
+                : null,
+            ].filter(Boolean);
+
+            return (
+              <ListRow
+                key={account.id}
+                title={
+                  account.providerDisplayName
+                    ? `${account.providerLabel} · ${account.providerDisplayName}`
+                    : account.providerLabel
+                }
+                subtitle={details.join(" · ")}
+                showDivider={index < connectedAccounts.length - 1}
+                left={
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.bgControl,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Ionicons
+                      name={
+                        account.provider === "google"
+                          ? "logo-google"
+                          : "logo-github"
+                      }
+                      size={16}
+                      color={colors.textSecondary}
+                    />
+                  </View>
+                }
+                right={
+                  <Button
+                    label="Remove"
+                    variant="secondary"
+                    size="sm"
+                    loading={deletingConnectedAccountId === account.id}
+                    disabled={
+                      !hasAlternativeSignInMethod ||
+                      linkingProvider !== null ||
+                      deletingConnectedAccountId !== null ||
+                      recentAuthBusy
+                    }
+                    onPress={() => {
+                      setConnectedAccountError(null);
+                      setConnectedAccountToRemove(account);
+                    }}
+                  />
+                }
+              />
+            );
+          })
+        )}
+      </Card>
+    );
+  };
+
   return (
     <Screen kicker="Account" title="User settings" showBack withTabBarClearance>
+      <Section kicker="Identity" title="Account">
+        {serverMode === "hosted" && accountQuery.isPending ? (
+          <SkeletonCard lines={3} />
+        ) : (
+          <Card>
+            <View style={{ gap: spacing.md }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.md,
+                }}
+              >
+                <View
+                  style={{
+                    width: 54,
+                    height: 54,
+                    borderRadius: 27,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    backgroundColor: colors.bgControl,
+                    borderWidth: 1,
+                    borderColor: colors.borderStrong,
+                  }}
+                >
+                  {accountImage ? (
+                    <Image
+                      source={{ uri: accountImage }}
+                      style={{ width: "100%", height: "100%" }}
+                    />
+                  ) : (
+                    <AppText variant="bodySemibold">
+                      {serverMode === "hosted"
+                        ? getIdentityInitials({
+                            name: accountName,
+                            email: accountEmail,
+                          })
+                        : "SH"}
+                    </AppText>
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <AppText variant="caption" tone="tertiary">
+                    {serverMode === "hosted"
+                      ? "HOSTED ACCOUNT"
+                      : "SELF-HOSTED SERVER"}
+                  </AppText>
+                  <AppText variant="bodySemibold" numberOfLines={1}>
+                    {serverMode === "hosted"
+                      ? (accountName ?? accountEmail ?? "Hosted account")
+                      : "Local auth mode"}
+                  </AppText>
+                  <AppText
+                    variant="footnote"
+                    tone="secondary"
+                    numberOfLines={1}
+                  >
+                    {serverMode === "hosted"
+                      ? (accountEmail ?? "Account email unavailable")
+                      : "Identity is managed by the connected server."}
+                  </AppText>
+                </View>
+              </View>
+
+              {serverMode === "hosted" ? (
+                <View style={{ gap: spacing.sm }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: spacing.sm,
+                    }}
+                  >
+                    {connectedAccounts.length > 0 ? (
+                      connectedAccounts.map((account) => (
+                        <Chip
+                          key={account.id}
+                          label={account.providerLabel}
+                          tone={account.isPrimaryEmail ? "success" : "neutral"}
+                        />
+                      ))
+                    ) : (
+                      <Chip label="No providers" tone="neutral" />
+                    )}
+                  </View>
+                  <AppText variant="footnote" tone="secondary">
+                    Add or remove sign-in methods below.
+                  </AppText>
+                </View>
+              ) : null}
+            </View>
+          </Card>
+        )}
+      </Section>
+
       <Section kicker="Connection" title="Server">
         <Card>
           <View style={{ gap: spacing.md }}>
@@ -354,6 +651,74 @@ export default function UserSettingsScreen() {
 
       {serverMode === "hosted" ? (
         <>
+          <Section kicker="Security" title="Sign-in methods">
+            <View style={{ gap: spacing.md }}>
+              {renderConnectedAccounts()}
+              {mustKeepCurrentConnectedAccount ? (
+                <Card surface="warning">
+                  <AppText variant="footnote" tone="secondary">
+                    Keep at least one sign-in method so you do not lose access.
+                    Add a passkey or connect GitHub before removing your only
+                    connected provider.
+                  </AppText>
+                </Card>
+              ) : null}
+              {connectedAccountError ? (
+                <Card surface="danger">
+                  <AppText variant="footnote" tone="danger">
+                    {connectedAccountError}
+                  </AppText>
+                </Card>
+              ) : null}
+              <View style={{ gap: spacing.sm }}>
+                <Button
+                  label={
+                    connectedGoogle
+                      ? "Connect another Google account"
+                      : "Connect Google"
+                  }
+                  variant="secondary"
+                  loading={linkingProvider === "google"}
+                  disabled={
+                    linkingProvider !== null ||
+                    deletingConnectedAccountId !== null ||
+                    recentAuthBusy
+                  }
+                  icon={
+                    <Ionicons
+                      name="logo-google"
+                      size={17}
+                      color={colors.textPrimary}
+                    />
+                  }
+                  onPress={() => void connectProvider("google")}
+                />
+                <Button
+                  label={
+                    connectedGitHub
+                      ? "Connect another GitHub account"
+                      : "Connect GitHub"
+                  }
+                  variant="secondary"
+                  loading={linkingProvider === "github"}
+                  disabled={
+                    linkingProvider !== null ||
+                    deletingConnectedAccountId !== null ||
+                    recentAuthBusy
+                  }
+                  icon={
+                    <Ionicons
+                      name="logo-github"
+                      size={17}
+                      color={colors.textPrimary}
+                    />
+                  }
+                  onPress={() => void connectProvider("github")}
+                />
+              </View>
+            </View>
+          </Section>
+
           <Section kicker="Security" title="Passkeys">
             <View style={{ gap: spacing.md }}>
               {renderPasskeys()}
@@ -470,6 +835,51 @@ export default function UserSettingsScreen() {
       </Sheet>
 
       <Sheet
+        visible={connectedAccountToRemove !== null}
+        onClose={() => {
+          if (!deletingConnectedAccountId) {
+            setConnectedAccountToRemove(null);
+            setConnectedAccountError(null);
+          }
+        }}
+        title="Remove sign-in method?"
+      >
+        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+          <AppText variant="footnote" tone="secondary">
+            {connectedAccountToRemove
+              ? `${connectedAccountToRemove.providerLabel} will no longer be able to sign in to this account.`
+              : "This sign-in method will no longer be able to access this account."}
+          </AppText>
+          {connectedAccountError ? (
+            <AppText variant="footnote" tone="danger">
+              {connectedAccountError}
+            </AppText>
+          ) : null}
+          <Button
+            label="Remove method"
+            variant="danger"
+            loading={
+              deletingConnectedAccountId === connectedAccountToRemove?.id
+            }
+            onPress={() => {
+              if (connectedAccountToRemove) {
+                void removeConnectedAccount(connectedAccountToRemove.id);
+              }
+            }}
+          />
+          <Button
+            label="Cancel"
+            variant="secondary"
+            disabled={deletingConnectedAccountId !== null}
+            onPress={() => {
+              setConnectedAccountToRemove(null);
+              setConnectedAccountError(null);
+            }}
+          />
+        </View>
+      </Sheet>
+
+      <Sheet
         visible={recentAction !== null}
         onClose={() => {
           if (!recentAuthBusy) {
@@ -481,7 +891,9 @@ export default function UserSettingsScreen() {
       >
         <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
           <AppText variant="footnote" tone="secondary">
-            Sign in again before changing passkeys or deleting your account.
+            Confirm your identity before changing sign-in methods or deleting
+            your account. If the browser already has an active session, it may
+            return to finhance immediately.
           </AppText>
           {recentAuthError ? (
             <AppText variant="footnote" tone="danger">
@@ -496,7 +908,7 @@ export default function UserSettingsScreen() {
             />
           ) : null}
           <Button
-            label="Open browser sign-in"
+            label="Confirm in browser"
             variant="secondary"
             loading={recentAuthBusy}
             onPress={() => void confirmRecentAuth("browser")}

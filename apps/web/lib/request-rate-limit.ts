@@ -59,6 +59,26 @@ export const MOBILE_AUTH_RATE_LIMITS = {
     windowMs: 60_000,
     scope: "mobile-account-delete",
   },
+  providerLinkStart: {
+    limit: 10,
+    windowMs: 60_000,
+    scope: "mobile-provider-link-start-request",
+  },
+  providerLinkAuthorize: {
+    limit: 10,
+    windowMs: 60_000,
+    scope: "mobile-provider-link-authorize-request",
+  },
+  providerLinkConfirm: {
+    limit: 10,
+    windowMs: 60_000,
+    scope: "mobile-provider-link-confirm-request",
+  },
+  providerLinkDelete: {
+    limit: 10,
+    windowMs: 60_000,
+    scope: "mobile-provider-link-delete-request",
+  },
 } as const satisfies Record<string, RequestRateLimitConfig>;
 
 export function rateLimitRequest(

@@ -4,6 +4,7 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import type { ConnectedAccountProvider } from "@finhance/shared/users";
 import type {
   BrokeragePerformanceRange,
   CreateBrokerageBuyRequest,
@@ -31,9 +32,11 @@ import {
   type TransactionFilters,
 } from "./endpoints";
 import {
+  deleteConnectedAccount,
   deleteMobileAccount,
   deletePasskey,
   getMobileAccount,
+  linkConnectedAccount,
   listPasskeys,
   registerPasskey,
 } from "./passkeys";
@@ -887,6 +890,54 @@ export function useDeleteMobilePasskey() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.mobilePasskeys,
+      });
+    },
+  });
+}
+
+export function useLinkMobileConnectedAccount() {
+  const { serverUrl, token } = useServerConnection();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      provider,
+      tokenOverride,
+    }: {
+      provider: ConnectedAccountProvider;
+      tokenOverride?: string;
+    }) =>
+      linkConnectedAccount(
+        serverUrl as string,
+        tokenOverride ?? (token as string),
+        provider,
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mobileAccount,
+      });
+    },
+  });
+}
+
+export function useDeleteMobileConnectedAccount() {
+  const { serverUrl, token } = useServerConnection();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      accountId,
+      tokenOverride,
+    }: {
+      accountId: string;
+      tokenOverride?: string;
+    }) =>
+      deleteConnectedAccount(
+        serverUrl as string,
+        tokenOverride ?? (token as string),
+        accountId,
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mobileAccount,
       });
     },
   });

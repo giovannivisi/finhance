@@ -39,6 +39,51 @@ export interface DeleteUserPasskeyRequest {
   credentialId?: string;
 }
 
+export type ConnectedAccountProvider = "google" | "github";
+
+export interface ConnectedAccountResponse {
+  id: string;
+  provider: ConnectedAccountProvider;
+  providerLabel: string;
+  providerEmail: string | null;
+  providerEmailVerified: boolean;
+  providerDisplayName: string | null;
+  createdAt: string | null;
+  isPrimaryEmail: boolean;
+}
+
+export interface UserIdentityResponse {
+  email: string | null;
+  name: string | null;
+  image: string | null;
+  connectedAccounts: ConnectedAccountResponse[];
+}
+
+export interface DeleteConnectedAccountRequest {
+  accountId?: string;
+}
+
+export interface StartMobileProviderLinkRequest {
+  provider?: ConnectedAccountProvider;
+  /** SHA-256 PKCE challenge encoded as lowercase hexadecimal. */
+  challenge?: string;
+  /** Allowlisted native deep-link callback supplied by the app. */
+  redirect?: string;
+}
+
+export interface StartMobileProviderLinkResponse {
+  authorizationUrl: string;
+}
+
+export interface ConfirmMobileProviderLinkRequest {
+  code?: string;
+  verifier?: string;
+}
+
+export interface ConfirmMobileProviderLinkResponse {
+  connectedAccount: ConnectedAccountResponse;
+}
+
 export interface DeleteUserAccountRequest {
   email: string;
 }

@@ -16,6 +16,7 @@ const {
   deletePasskeyForUserMock,
   fetchMock,
   getDirectApiUrlMock,
+  getUserIdentityForUserMock,
   hostedModeMock,
   listPasskeysForUserMock,
   mintApiAccessTokenMock,
@@ -29,6 +30,7 @@ const {
   deletePasskeyForUserMock: vi.fn(),
   fetchMock: vi.fn(),
   getDirectApiUrlMock: vi.fn(),
+  getUserIdentityForUserMock: vi.fn(),
   hostedModeMock: vi.fn(),
   listPasskeysForUserMock: vi.fn(),
   mintApiAccessTokenMock: vi.fn(),
@@ -52,6 +54,10 @@ vi.mock("@lib/auth-mode", () => ({
   isHostedAuthMode: hostedModeMock,
 }));
 
+vi.mock("@lib/connected-accounts", () => ({
+  getUserIdentityForUser: getUserIdentityForUserMock,
+}));
+
 vi.mock("@lib/mobile-api-auth", () => ({
   resolveMobileApiUser: resolveMobileApiUserMock,
 }));
@@ -68,8 +74,16 @@ vi.mock("@lib/passkeys", () => ({
 
 vi.mock("@lib/request-rate-limit", () => ({
   MOBILE_AUTH_RATE_LIMITS: {
-    accountDelete: { limit: 10, scope: "mobile-account-delete", windowMs: 60_000 },
-    passkeyDelete: { limit: 10, scope: "mobile-passkey-delete", windowMs: 60_000 },
+    accountDelete: {
+      limit: 10,
+      scope: "mobile-account-delete",
+      windowMs: 60_000,
+    },
+    passkeyDelete: {
+      limit: 10,
+      scope: "mobile-passkey-delete",
+      windowMs: 60_000,
+    },
     passkeyRegisterOptions: {
       limit: 10,
       scope: "mobile-passkey-register-options",
@@ -125,6 +139,13 @@ describe("mobile settings routes", () => {
     });
     getDirectApiUrlMock.mockReset();
     getDirectApiUrlMock.mockReturnValue("https://api.test/users/me");
+    getUserIdentityForUserMock.mockReset();
+    getUserIdentityForUserMock.mockResolvedValue({
+      email: "user@example.com",
+      name: "User",
+      image: null,
+      connectedAccounts: [],
+    });
     mintApiAccessTokenMock.mockReset();
     mintApiAccessTokenMock.mockResolvedValue("api-token");
     toUpstreamResponseMock.mockReset();
@@ -143,6 +164,48 @@ describe("mobile settings routes", () => {
 
     expect(response.status).toBe(404);
     expect(resolveMobileApiUserMock).not.toHaveBeenCalled();
+  });
+
+  it("returns the resolved mobile account identity", async () => {
+    getUserIdentityForUserMock.mockResolvedValue({
+      email: "user@example.com",
+      name: "User",
+      image: "https://example.test/avatar.png",
+      connectedAccounts: [
+        {
+          id: "account-1",
+          provider: "google",
+          providerLabel: "Google",
+          providerEmail: "user@example.com",
+          providerEmailVerified: true,
+          providerDisplayName: "User",
+          createdAt: "2026-07-09T10:00:00.000Z",
+          isPrimaryEmail: true,
+        },
+      ],
+    });
+
+    const response = await GET_ACCOUNT(createRequest("/api/mobile/account"));
+
+    expect(response.status).toBe(200);
+    expect(getUserIdentityForUserMock).toHaveBeenCalledWith("user-1");
+    expect(await response.json()).toEqual({
+      email: "user@example.com",
+      name: "User",
+      image: "https://example.test/avatar.png",
+      connectedAccounts: [
+        {
+          id: "account-1",
+          provider: "google",
+          providerLabel: "Google",
+          providerEmail: "user@example.com",
+          providerEmailVerified: true,
+          providerDisplayName: "User",
+          createdAt: "2026-07-09T10:00:00.000Z",
+          isPrimaryEmail: true,
+        },
+      ],
+    });
   });
 
   it("lists passkeys for the resolved mobile user", async () => {
@@ -308,9 +371,10 @@ function createRequest(path: string): Request {
 
 function createJsonRequest(path: string, body: unknown): Request {
   return new Request(`https://finhance.test${path}`, {
-    method: path.endsWith("/account") || path.endsWith("/passkeys")
-      ? "DELETE"
-      : "POST",
+    method:
+      path.endsWith("/account") || path.endsWith("/passkeys")
+        ? "DELETE"
+        : "POST",
     headers: {
       authorization: "Bearer mobile-token",
       "content-type": "application/json",

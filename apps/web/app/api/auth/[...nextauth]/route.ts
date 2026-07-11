@@ -1,5 +1,13 @@
 import { auth, handlers } from "@lib/auth";
 import {
+  clearMobileProviderLinkCookie,
+  MOBILE_PROVIDER_LINK_COOKIE,
+} from "@lib/mobile-provider-link";
+import {
+  clearWebProviderLinkIntentCookie,
+  WEB_PROVIDER_LINK_COOKIE,
+} from "@lib/web-provider-link";
+import {
   RECENT_AUTH_REQUIRED_MESSAGE,
   hasRecentSessionAuthentication,
 } from "@lib/recent-auth";
@@ -9,6 +17,31 @@ export const preferredRegion = "fra1";
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
 type AuthGetRequest = Parameters<typeof handlers.GET>[0];
+
+function isOAuthProviderCallback(request: Request): boolean {
+  const path = new URL(request.url).pathname;
+  return /^\/api\/auth\/callback\/(google|github)$/.test(path);
+}
+
+function hasMobileProviderLinkCookie(request: Request): boolean {
+  return (
+    request.headers
+      .get("cookie")
+      ?.split(";")
+      .some((entry) =>
+        entry.trim().startsWith(`${MOBILE_PROVIDER_LINK_COOKIE}=`),
+      ) ?? false
+  );
+}
+
+function hasCookie(request: Request, name: string): boolean {
+  return (
+    request.headers
+      .get("cookie")
+      ?.split(";")
+      .some((entry) => entry.trim().startsWith(`${name}=`)) ?? false
+  );
+}
 
 function isPasskeyRegistrationOptionsRequest(request: Request): boolean {
   const url = new URL(request.url);
@@ -52,7 +85,33 @@ export async function GET(request: Request) {
     return passkeyRegistrationRejection;
   }
 
-  return handlers.GET(request as AuthGetRequest);
+  const response = await handlers.GET(request as AuthGetRequest);
+
+  // A mobile provider-link callback only uses the HttpOnly state cookie to
+  // route Auth.js into its deferred confirmation flow. Clear it on either a
+  // success or provider-side failure so it cannot affect a later browser
+  // sign-in attempt.
+  if (
+    isOAuthProviderCallback(request) &&
+    hasMobileProviderLinkCookie(request)
+  ) {
+    response.headers.append(
+      "set-cookie",
+      clearMobileProviderLinkCookie(request),
+    );
+  }
+
+  if (
+    isOAuthProviderCallback(request) &&
+    hasCookie(request, WEB_PROVIDER_LINK_COOKIE)
+  ) {
+    response.headers.append(
+      "set-cookie",
+      clearWebProviderLinkIntentCookie(request),
+    );
+  }
+
+  return response;
 }
 
 export const { POST } = handlers;

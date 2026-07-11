@@ -1,16 +1,24 @@
 import {
+  type ConnectedAccountProvider,
+  type ConfirmMobileProviderLinkResponse,
   RECENT_AUTH_REQUIRED_CODE,
+  type DeleteConnectedAccountRequest,
   type DeleteUserAccountRequest,
   type DeleteUserPasskeyRequest,
+  type StartMobileProviderLinkResponse,
+  type UserIdentityResponse,
   type UserPasskeyResponse,
 } from "@finhance/shared/users";
+import * as Crypto from "expo-crypto";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import { create as passkeyCreate } from "react-native-passkeys";
+
+import { parseMobileAuthCallback } from "@/lib/auth-callback";
 
 import { ApiError, createApiClient } from "./client";
 
-export interface MobileAccountResponse {
-  email: string | null;
-}
+export type MobileAccountResponse = UserIdentityResponse;
 
 export interface RegisterPasskeyOptionsResponse {
   options: Parameters<typeof passkeyCreate>[0];
@@ -19,6 +27,23 @@ export interface RegisterPasskeyOptionsResponse {
 
 function createHostedClient(serverUrl: string, token: string) {
   return createApiClient(serverUrl, { authToken: token });
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function createPkcePair(): Promise<{
+  verifier: string;
+  challenge: string;
+}> {
+  const verifier = bytesToHex(Crypto.getRandomBytes(32));
+  const challenge = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    verifier,
+  );
+
+  return { verifier, challenge: challenge.toLowerCase() };
 }
 
 export function isRecentAuthError(error: unknown): boolean {
@@ -71,6 +96,77 @@ export function deleteMobileAccount(
   const body: DeleteUserAccountRequest = { email };
   return createHostedClient(serverUrl, token).request<void>(
     "/api/mobile/account",
+    {
+      method: "DELETE",
+      body,
+    },
+  );
+}
+
+/**
+ * Connects an additional OAuth provider to the current hosted account.
+ *
+ * The provider callback contains only a short-lived code. The PKCE verifier
+ * remains in the app and is supplied directly to the hosted server after the
+ * browser session closes, so the callback cannot grant access on its own.
+ */
+export async function linkConnectedAccount(
+  serverUrl: string,
+  token: string,
+  provider: ConnectedAccountProvider,
+) {
+  const { verifier, challenge } = await createPkcePair();
+  const redirect = Linking.createURL("auth");
+  const client = createHostedClient(serverUrl, token);
+  const { authorizationUrl } =
+    await client.request<StartMobileProviderLinkResponse>(
+      "/api/mobile/connected-accounts/link/start",
+      {
+        method: "POST",
+        body: { provider, challenge, redirect },
+      },
+    );
+
+  if (!authorizationUrl?.trim()) {
+    throw new ApiError(
+      "The server did not return a provider sign-in URL. Make sure the deployment includes mobile provider linking support.",
+    );
+  }
+
+  const result = await WebBrowser.openAuthSessionAsync(
+    authorizationUrl,
+    redirect,
+  );
+
+  if (result.type !== "success") {
+    throw new ApiError("Provider sign-in was cancelled before it completed.");
+  }
+
+  const code = parseMobileAuthCallback(result.url);
+
+  if (!code) {
+    throw new ApiError(
+      "The server did not return a provider link code. Try connecting the provider again.",
+    );
+  }
+
+  return client.request<ConfirmMobileProviderLinkResponse>(
+    "/api/mobile/connected-accounts/link/confirm",
+    {
+      method: "POST",
+      body: { code, verifier },
+    },
+  );
+}
+
+export function deleteConnectedAccount(
+  serverUrl: string,
+  token: string,
+  accountId: string,
+) {
+  const body: DeleteConnectedAccountRequest = { accountId };
+  return createHostedClient(serverUrl, token).request<void>(
+    "/api/mobile/connected-accounts",
     {
       method: "DELETE",
       body,

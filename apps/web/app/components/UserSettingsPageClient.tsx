@@ -1,14 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type {
+  ConnectedAccountProvider,
+  ConnectedAccountResponse,
+  DeleteConnectedAccountRequest,
   DeleteUserPasskeyRequest,
   UpdateUserSettingsRequest,
   UserPasskeyResponse,
+  UserIdentityResponse,
   UserSettingsResponse,
 } from "@finhance/shared/users";
-import { KeyRound, Trash2 } from "lucide-react";
+import { BadgeCheck, GitBranch, KeyRound, Trash2 } from "lucide-react";
+import { signIn as signInWithOAuth } from "next-auth/react";
 import { signIn as signInWithPasskey } from "next-auth/webauthn";
 import { apiMutation } from "@lib/api";
 import ConfirmActionModal from "@components/ConfirmActionModal";
@@ -25,6 +30,21 @@ const PASSKEY_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
   year: "numeric",
 });
 
+const PROVIDER_OPTIONS: readonly {
+  provider: ConnectedAccountProvider;
+  label: string;
+}[] = [
+  { provider: "google", label: "Google" },
+  { provider: "github", label: "GitHub" },
+];
+
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  AccountNotLinked: "That provider account is already linked to another user.",
+  OAuthAccountNotLinked:
+    "That provider account could not be linked. Sign in again and retry from settings.",
+  AccessDenied: "The provider sign-in was not allowed for this account.",
+};
+
 function formatPasskeyTitle(passkey: UserPasskeyResponse): string {
   const deviceType = passkey.credentialDeviceType
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -36,16 +56,52 @@ function formatPasskeyTitle(passkey: UserPasskeyResponse): string {
   return passkey.credentialBackedUp ? `${title} (backed up)` : title;
 }
 
+function getInitials(
+  identity: UserIdentityResponse | null | undefined,
+): string {
+  const source = identity?.name?.trim() || identity?.email?.trim() || "FW";
+  const parts = source
+    .split(/[\s@._-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return (parts[0]?.[0] ?? "F") + (parts[1]?.[0] ?? parts[0]?.[1] ?? "W");
+}
+
+function formatConnectedAccountTitle(
+  account: ConnectedAccountResponse,
+): string {
+  return account.providerDisplayName
+    ? `${account.providerLabel} · ${account.providerDisplayName}`
+    : account.providerLabel;
+}
+
+function formatConnectedAccountMeta(account: ConnectedAccountResponse): string {
+  const details = [
+    account.providerEmail ?? "No email shared",
+    account.createdAt
+      ? `Added ${PASSKEY_DATE_FORMATTER.format(new Date(account.createdAt))}`
+      : null,
+  ].filter(Boolean);
+
+  return details.join(" · ");
+}
+
 export default function UserSettingsPageClient({
   initialSettings,
+  identity,
   canSignOutMobileDevices = false,
+  canManageConnectedAccounts = false,
   canManagePasskeys = false,
 }: {
   initialSettings: UserSettingsResponse;
+  identity?: UserIdentityResponse | null;
   canSignOutMobileDevices?: boolean;
+  canManageConnectedAccounts?: boolean;
   canManagePasskeys?: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const fieldPrefix = useId();
   const [form, setForm] = useState<UserSettingsResponse>(initialSettings);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +112,20 @@ export default function UserSettingsPageClient({
     null,
   );
   const [isMobileSignOutPending, setIsMobileSignOutPending] = useState(false);
+  const [connectedAccounts, setConnectedAccounts] = useState<
+    ConnectedAccountResponse[]
+  >(identity?.connectedAccounts ?? []);
+  const [connectedAccountsLoaded, setConnectedAccountsLoaded] = useState(
+    !canManageConnectedAccounts,
+  );
+  const [connectedAccountError, setConnectedAccountError] = useState<
+    string | null
+  >(null);
+  const [busyProvider, setBusyProvider] =
+    useState<ConnectedAccountProvider | null>(null);
+  const [accountToRemove, setAccountToRemove] =
+    useState<ConnectedAccountResponse | null>(null);
+  const [isRemovingAccount, setIsRemovingAccount] = useState(false);
   const [passkeys, setPasskeys] = useState<UserPasskeyResponse[]>([]);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [passkeysLoaded, setPasskeysLoaded] = useState(false);
@@ -64,6 +134,36 @@ export default function UserSettingsPageClient({
     null,
   );
   const actions = useSingleFlightActions<"submit">();
+
+  const loadConnectedAccounts = useCallback(async () => {
+    if (!canManageConnectedAccounts) {
+      return;
+    }
+
+    setConnectedAccountError(null);
+
+    try {
+      const response = await fetch("/api/connected-accounts", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Sign-in methods are currently unavailable.");
+      }
+
+      setConnectedAccounts(
+        (await response.json()) as ConnectedAccountResponse[],
+      );
+    } catch (loadError) {
+      setConnectedAccountError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load sign-in methods.",
+      );
+    } finally {
+      setConnectedAccountsLoaded(true);
+    }
+  }, [canManageConnectedAccounts]);
 
   const loadPasskeys = useCallback(async () => {
     if (!canManagePasskeys) {
@@ -122,8 +222,114 @@ export default function UserSettingsPageClient({
   }, [initialSettings]);
 
   useEffect(() => {
+    setConnectedAccounts(identity?.connectedAccounts ?? []);
+  }, [identity]);
+
+  useEffect(() => {
+    const authError = searchParams.get("error");
+    if (!authError) {
+      return;
+    }
+
+    setConnectedAccountError(
+      AUTH_ERROR_MESSAGES[authError] ??
+        "The provider account could not be linked.",
+    );
+  }, [searchParams]);
+
+  useEffect(() => {
+    void loadConnectedAccounts();
+  }, [loadConnectedAccounts]);
+
+  useEffect(() => {
     void loadPasskeys();
   }, [loadPasskeys]);
+
+  async function handleConnectProvider(provider: ConnectedAccountProvider) {
+    setConnectedAccountError(null);
+    setBusyProvider(provider);
+
+    try {
+      const intentResponse = await fetch("/api/connected-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+
+      if (!intentResponse.ok) {
+        let message = "The provider account could not be linked.";
+        try {
+          const payload = (await intentResponse.json()) as {
+            message?: unknown;
+          };
+          if (typeof payload.message === "string" && payload.message.trim()) {
+            message = payload.message;
+          }
+        } catch {
+          // Keep the generic message when the server does not return JSON.
+        }
+        throw new Error(message);
+      }
+
+      await signInWithOAuth(provider, { redirectTo: "/settings/user" });
+    } catch (connectError) {
+      setConnectedAccountError(
+        connectError instanceof Error
+          ? connectError.message
+          : "Unable to start provider sign-in.",
+      );
+      setBusyProvider(null);
+    }
+  }
+
+  async function handleRemoveConnectedAccount() {
+    if (!accountToRemove) {
+      return;
+    }
+
+    setConnectedAccountError(null);
+    setIsRemovingAccount(true);
+
+    try {
+      const payload: DeleteConnectedAccountRequest = {
+        accountId: accountToRemove.id,
+      };
+      const response = await fetch("/api/connected-accounts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let message = "The sign-in method could not be removed.";
+
+        try {
+          const payload = (await response.json()) as { message?: unknown };
+          if (typeof payload.message === "string" && payload.message.trim()) {
+            message = payload.message;
+          }
+        } catch {
+          // Keep the generic message when the server does not return JSON.
+        }
+
+        throw new Error(message);
+      }
+
+      setConnectedAccounts((current) =>
+        current.filter((account) => account.id !== accountToRemove.id),
+      );
+      setAccountToRemove(null);
+      setNotice("Sign-in method removed.");
+    } catch (removeError) {
+      setConnectedAccountError(
+        removeError instanceof Error
+          ? removeError.message
+          : "Unable to remove sign-in method.",
+      );
+    } finally {
+      setIsRemovingAccount(false);
+    }
+  }
 
   async function handleAddPasskey() {
     setPasskeyError(null);
@@ -136,7 +342,7 @@ export default function UserSettingsPageClient({
       });
 
       if (!result) {
-        throw new Error("Sign in again before changing passkeys.");
+        throw new Error("Sign in again before changing sign-in methods.");
       }
 
       if (result?.error) {
@@ -229,6 +435,55 @@ export default function UserSettingsPageClient({
           Personalise transaction display and where the workspace opens first.
         </p>
       </div>
+
+      <section className="glass-card page-section account-identity-card">
+        <div className="account-identity-main">
+          {identity?.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={identity.image}
+              alt=""
+              className="account-identity-avatar"
+            />
+          ) : (
+            <span className="account-identity-avatar" aria-hidden="true">
+              {getInitials(identity).toUpperCase()}
+            </span>
+          )}
+          <div className="account-identity-copy">
+            <p className="section-kicker">Identity</p>
+            <h2 className="section-title">
+              {identity?.name?.trim() ||
+                identity?.email ||
+                (canManageConnectedAccounts
+                  ? "Hosted workspace"
+                  : "Local workspace")}
+            </h2>
+            <p className="section-subtitle">
+              {identity?.email ??
+                (canManageConnectedAccounts
+                  ? "Account details unavailable"
+                  : "Private on this device")}
+            </p>
+          </div>
+        </div>
+        <div
+          className="account-provider-badges"
+          aria-label="Connected providers"
+        >
+          {identity?.connectedAccounts.length ? (
+            identity.connectedAccounts.map((account) => (
+              <span key={account.id} className="status-chip is-secondary">
+                {account.providerLabel}
+              </span>
+            ))
+          ) : (
+            <span className="status-chip is-neutral">
+              {canManageConnectedAccounts ? "No providers" : "Local mode"}
+            </span>
+          )}
+        </div>
+      </section>
 
       <section className="glass-card page-section">
         <div className="page-section-heading">
@@ -326,6 +581,106 @@ export default function UserSettingsPageClient({
           />
         </div>
       </section>
+
+      {canManageConnectedAccounts ? (
+        <section className="glass-card page-section">
+          <div className="page-section-heading">
+            <div>
+              <p className="section-kicker">Security</p>
+              <h2 className="section-title">Sign-in methods</h2>
+            </div>
+            <div className="connected-account-actions">
+              {PROVIDER_OPTIONS.map((option) => (
+                <button
+                  key={option.provider}
+                  type="button"
+                  className="btn-secondary connected-account-add-button"
+                  disabled={busyProvider !== null}
+                  onClick={() => handleConnectProvider(option.provider)}
+                >
+                  {option.provider === "google" ? (
+                    <BadgeCheck size={17} aria-hidden="true" />
+                  ) : (
+                    <GitBranch size={17} aria-hidden="true" />
+                  )}
+                  <span>
+                    {busyProvider === option.provider
+                      ? "Opening..."
+                      : `Connect ${option.label}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {connectedAccountError ? (
+            <p role="alert" className="app-form-error">
+              {connectedAccountError}
+            </p>
+          ) : null}
+
+          <div className="passkey-list">
+            {!connectedAccountsLoaded ? (
+              <p className="section-subtitle">Loading sign-in methods...</p>
+            ) : connectedAccounts.length === 0 ? (
+              <p className="section-subtitle">No connected providers yet.</p>
+            ) : (
+              connectedAccounts.map((account) => (
+                <div key={account.id} className="passkey-row">
+                  <div className="passkey-row-main">
+                    <span className="passkey-row-icon" aria-hidden="true">
+                      {account.provider === "google" ? (
+                        <BadgeCheck size={17} />
+                      ) : (
+                        <GitBranch size={17} />
+                      )}
+                    </span>
+                    <div>
+                      <p className="passkey-row-title">
+                        {formatConnectedAccountTitle(account)}
+                      </p>
+                      <p className="passkey-row-meta">
+                        {formatConnectedAccountMeta(account)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="connected-account-row-actions">
+                    {account.isPrimaryEmail ? (
+                      <span className="status-chip is-success">
+                        Primary email
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="asset-row-action-trigger passkey-delete-button"
+                      aria-label={`Remove ${account.providerLabel}`}
+                      onClick={() => setAccountToRemove(account)}
+                    >
+                      <Trash2 size={17} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <ConfirmActionModal
+            open={accountToRemove !== null}
+            onClose={() => setAccountToRemove(null)}
+            onConfirm={handleRemoveConnectedAccount}
+            title="Remove sign-in method?"
+            description={
+              accountToRemove
+                ? `${accountToRemove.providerLabel} will no longer be able to sign in to this account.`
+                : ""
+            }
+            confirmLabel="Remove method"
+            pendingLabel="Removing..."
+            error={connectedAccountError}
+            isPending={isRemovingAccount}
+          />
+        </section>
+      ) : null}
 
       {canSignOutMobileDevices ? (
         <section className="glass-card page-section">

@@ -5,6 +5,7 @@ import {
   toUpstreamResponse,
 } from "@lib/api-proxy";
 import { isHostedAuthMode } from "@lib/auth-mode";
+import { getUserIdentityForUser } from "@lib/connected-accounts";
 import { resolveMobileApiUser } from "@lib/mobile-api-auth";
 import {
   MOBILE_AUTH_RATE_LIMITS,
@@ -30,8 +31,15 @@ export async function GET(request: Request) {
     return authResult.response;
   }
 
+  const identity = await getUserIdentityForUser(authResult.user.userId);
+
   return Response.json(
-    { email: authResult.user.email },
+    identity ?? {
+      email: authResult.user.email,
+      name: null,
+      image: null,
+      connectedAccounts: [],
+    },
     { headers: NO_STORE_HEADERS },
   );
 }

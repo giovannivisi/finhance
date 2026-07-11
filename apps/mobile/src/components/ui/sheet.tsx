@@ -108,8 +108,7 @@ export function Sheet({
               scheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(24,24,27,0.3)",
           }}
         />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        <View
           pointerEvents="box-none"
           style={{ flex: 1, justifyContent: "flex-end" }}
         >
@@ -169,25 +168,31 @@ export function Sheet({
                   {title ?? ""}
                 </AppText>
               </View>
-              <ScrollView
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
                 style={{ flex: 1 }}
-                contentContainerStyle={{
-                  paddingHorizontal: spacing.xl,
-                  paddingBottom: insets.bottom + spacing.xxl,
-                  gap: spacing.lg,
-                }}
-                keyboardShouldPersistTaps="handled"
-                onScroll={(event) => {
-                  scrollOffsetY.current = event.nativeEvent.contentOffset.y;
-                }}
-                scrollEventThrottle={16}
-                showsVerticalScrollIndicator={false}
               >
-                {children}
-              </ScrollView>
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={{
+                    paddingHorizontal: spacing.xl,
+                    paddingBottom: insets.bottom + spacing.xxl,
+                    gap: spacing.lg,
+                  }}
+                  keyboardDismissMode="interactive"
+                  keyboardShouldPersistTaps="handled"
+                  onScroll={(event) => {
+                    scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+                  }}
+                  scrollEventThrottle={16}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {children}
+                </ScrollView>
+              </KeyboardAvoidingView>
             </View>
           </Animated.View>
-        </KeyboardAvoidingView>
+        </View>
       </View>
     </Modal>
   );

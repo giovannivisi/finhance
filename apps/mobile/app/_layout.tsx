@@ -14,7 +14,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import * as SystemUI from "expo-system-ui";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { AppState, Platform, View } from "react-native";
 
 import { ApiError } from "@/api/client";
@@ -24,9 +24,11 @@ import {
 } from "@/api/server-connection";
 import { AppLockGate } from "@/components/app-lock";
 import { AppPreferencesProvider, useAppPreferences } from "@/prefs";
+import { AppLockProvider, useAppLock } from "@/security";
 import { ThemeProvider, useTheme } from "@/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+SplashScreen.setOptions({ duration: 0, fade: false });
 
 // React Query cannot see native app focus by itself; bridge AppState so data
 // refetches when the app returns to the foreground.
@@ -55,6 +57,7 @@ function createQueryClient(): QueryClient {
 function ThemedApp() {
   const { colors, scheme, isHydrated: themeHydrated } = useTheme();
   const { isHydrated: preferencesHydrated } = useAppPreferences();
+  const { isHydrated: appLockHydrated } = useAppLock();
   const {
     serverUrl,
     serverMode,
@@ -68,20 +71,22 @@ function ThemedApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [serverUrl, serverMode, token],
   );
+  const hideNativeSplash = useCallback(() => {
+    SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.bgApp).catch(() => undefined);
   }, [colors.bgApp]);
 
-  useEffect(() => {
-    if (themeHydrated && preferencesHydrated && serverHydrated) {
-      SplashScreen.hideAsync().catch(() => undefined);
-    }
-  }, [themeHydrated, preferencesHydrated, serverHydrated]);
-
   // Keep the splash up until we know whether a server is configured; screens
   // assume a connected API client once they mount.
-  if (!themeHydrated || !preferencesHydrated || !serverHydrated) {
+  if (
+    !themeHydrated ||
+    !preferencesHydrated ||
+    !appLockHydrated ||
+    !serverHydrated
+  ) {
     return null;
   }
 
@@ -93,7 +98,7 @@ function ThemedApp() {
     <QueryClientProvider client={queryClient}>
       <View style={{ flex: 1, backgroundColor: colors.bgApp }}>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-        <AppLockGate>
+        <AppLockGate active={connected} onReady={hideNativeSplash}>
           <Stack
             screenOptions={{
               headerShown: false,
@@ -158,7 +163,9 @@ export default function RootLayout() {
     <ThemeProvider>
       <AppPreferencesProvider>
         <ServerConnectionProvider>
-          <ThemedApp />
+          <AppLockProvider>
+            <ThemedApp />
+          </AppLockProvider>
         </ServerConnectionProvider>
       </AppPreferencesProvider>
     </ThemeProvider>

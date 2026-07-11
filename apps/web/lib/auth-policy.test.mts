@@ -46,6 +46,70 @@ test("resolveHostedSignInDecision allows active existing users", () => {
   );
 });
 
+test("resolveHostedSignInDecision allows session-bound provider linking", () => {
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "github",
+      profile: {
+        email: "different@example.com",
+        email_verified: true,
+      },
+      userEmail: "different@example.com",
+      existingUser: null,
+      bootstrapEmail: "owner@example.com",
+      signupMode: AUTH_SIGNUP_MODE_BOOTSTRAP,
+      activeSessionUserId: "user-1",
+      linkingSessionUserId: "user-1",
+      linkedAccountUserId: null,
+      providerLinkIntentUserId: "user-1",
+      providerLinkIntentProvider: "github",
+    }),
+    true,
+  );
+});
+
+test("resolveHostedSignInDecision rejects session-only provider linking", () => {
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "github",
+      profile: {
+        email: "different@example.com",
+        email_verified: true,
+      },
+      userEmail: "different@example.com",
+      existingUser: null,
+      bootstrapEmail: null,
+      signupMode: AUTH_SIGNUP_MODE_OPEN,
+      activeSessionUserId: "user-1",
+      linkingSessionUserId: null,
+      linkedAccountUserId: null,
+    }),
+    false,
+  );
+});
+
+test("resolveHostedSignInDecision rejects provider links owned by another user", () => {
+  assert.equal(
+    resolveHostedSignInDecision({
+      provider: "github",
+      profile: {
+        email: "different@example.com",
+        email_verified: true,
+      },
+      userEmail: "different@example.com",
+      existingUser: null,
+      bootstrapEmail: "owner@example.com",
+      signupMode: AUTH_SIGNUP_MODE_OPEN,
+      activeSessionUserId: "user-1",
+      linkingSessionUserId: "user-1",
+      linkedAccountUserId: "user-2",
+      providerLinkIntentUserId: "user-1",
+      providerLinkIntentProvider: "github",
+    }),
+    false,
+  );
+});
+
 test("resolveHostedSignInDecision rejects inactive existing users", () => {
   assert.equal(
     resolveHostedSignInDecision({
