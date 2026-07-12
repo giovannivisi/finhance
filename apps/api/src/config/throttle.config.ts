@@ -10,6 +10,7 @@ export const THROTTLE_BUCKETS = {
   imports: 'imports',
   operations: 'operations',
   marketRefresh: 'marketRefresh',
+  ai: 'ai',
 } as const;
 
 export type ThrottleBucketName =
@@ -48,6 +49,10 @@ const LOCAL_DEV_THROTTLE_CONFIG: ThrottleBucketConfigMap = {
     limit: 30,
     ttl: ONE_MINUTE_MS,
   },
+  ai: {
+    limit: 3,
+    ttl: ONE_MINUTE_MS,
+  },
 };
 
 const PRODUCTION_THROTTLE_CONFIG: ThrottleBucketConfigMap = {
@@ -69,6 +74,10 @@ const PRODUCTION_THROTTLE_CONFIG: ThrottleBucketConfigMap = {
   },
   marketRefresh: {
     limit: 6,
+    ttl: ONE_MINUTE_MS,
+  },
+  ai: {
+    limit: 3,
     ttl: ONE_MINUTE_MS,
   },
 };
@@ -96,6 +105,7 @@ export function createThrottlerOptions(
     createThrottlerOption(THROTTLE_BUCKETS.imports, config.imports),
     createThrottlerOption(THROTTLE_BUCKETS.operations, config.operations),
     createThrottlerOption(THROTTLE_BUCKETS.marketRefresh, config.marketRefresh),
+    createThrottlerOption(THROTTLE_BUCKETS.ai, config.ai),
   ];
 }
 

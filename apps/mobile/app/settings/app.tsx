@@ -433,6 +433,21 @@ export default function AppSettingsScreen() {
                   applySettings({ showTransactionTimes: value })
                 }
               />
+              {settings.cloudParserAvailable ? (
+                <SwitchField
+                  label="Enable cloud-enhanced drafts"
+                  description="I explicitly agree that Finhance may send selected, redacted transaction text to Groq in the United States solely to create a draft. This may include health, religious, or trade-union information I choose to enter. I can turn this off at any time; basic parsing remains available."
+                  value={settings.cloudParserEnabled}
+                  onChange={(value) =>
+                    applySettings({
+                      cloudParserEnabled: value,
+                      cloudParserConsentVersion: value
+                        ? (settings.cloudParserConsentVersion ?? undefined)
+                        : undefined,
+                    })
+                  }
+                />
+              ) : null}
             </View>
           </Card>
         )}

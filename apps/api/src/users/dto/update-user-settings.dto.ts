@@ -1,6 +1,12 @@
 import { Transform } from 'class-transformer';
 import type { TransformFnParams } from 'class-transformer';
-import { IsBoolean, IsIn, IsOptional } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import type {
   UpdateUserSettingsRequest,
   UserStartPage,
@@ -50,4 +56,15 @@ export class UpdateUserSettingsDto implements UpdateUserSettingsRequest {
   @Transform(trimOptionalStringValue)
   @IsSupportedReportingCurrencyCode()
   reportingCurrency?: string;
+
+  @IsOptional()
+  @Transform(booleanValue)
+  @IsBoolean()
+  cloudParserEnabled?: boolean;
+
+  @IsOptional()
+  @Transform(trimOptionalStringValue)
+  @IsString()
+  @MaxLength(64)
+  cloudParserConsentVersion?: string;
 }

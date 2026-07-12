@@ -1,5 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
-import { Prisma } from '@finhance/db';
+import { CloudParserConsentAction, Prisma } from '@finhance/db';
+import {
+  AI_CLOUD_PARSER_CONSENT_VERSION,
+  AI_CLOUD_PARSER_PROVIDER,
+} from '@/ai/ai.config';
 import { UsersService } from '@/users/users.service';
 
 const USER_DATA_DELETION_ORDER = [
@@ -19,6 +23,8 @@ const USER_DATA_DELETION_ORDER = [
   'portfolioAssetKindTarget',
   'portfolioSecurityTarget',
   'portfolioState',
+  'aiUsageEvent',
+  'cloudParserConsentEvent',
   'idempotencyRequest',
   'operationState',
 ] as const;
@@ -34,6 +40,9 @@ describe('UsersService', () => {
     const service = new UsersService(prisma);
 
     await expect(service.getSettings('local-dev')).resolves.toEqual({
+      cloudParserAvailable: false,
+      cloudParserConsentVersion: null,
+      cloudParserEnabled: false,
       reportingCurrency: 'EUR',
       showTransactionTimes: true,
       startPage: 'DASHBOARD',
@@ -41,7 +50,7 @@ describe('UsersService', () => {
   });
 
   it('merges partial updates and stores the normalized settings blob', async () => {
-    const prisma = {
+    const transactionClient = {
       user: {
         findUnique: jest.fn().mockResolvedValue({
           userSettings: {
@@ -49,12 +58,26 @@ describe('UsersService', () => {
           },
         }),
         upsert: jest.fn().mockResolvedValue({
+          id: 'local-dev',
           userSettings: {
             showTransactionTimes: false,
             startPage: 'BROKERAGE',
+            reportingCurrency: 'EUR',
+            cloudParserEnabled: false,
           },
         }),
       },
+      cloudParserConsentEvent: {
+        create: jest.fn(),
+      },
+    };
+    const transaction = jest.fn(
+      (
+        callback: (tx: typeof transactionClient) => Promise<unknown>,
+      ): Promise<unknown> => callback(transactionClient),
+    );
+    const prisma = {
+      $transaction: transaction,
     } as unknown as ConstructorParameters<typeof UsersService>[0];
 
     const service = new UsersService(prisma);
@@ -62,16 +85,19 @@ describe('UsersService', () => {
     await expect(
       service.updateSettings('local-dev', { startPage: 'BROKERAGE' }),
     ).resolves.toEqual({
+      cloudParserAvailable: false,
+      cloudParserConsentVersion: null,
+      cloudParserEnabled: false,
       reportingCurrency: 'EUR',
       showTransactionTimes: false,
       startPage: 'BROKERAGE',
     });
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(prisma.user.upsert).toHaveBeenCalledWith({
+    expect(transactionClient.user.upsert).toHaveBeenCalledWith({
       where: { id: 'local-dev' },
       update: {
         userSettings: {
+          cloudParserEnabled: false,
           reportingCurrency: 'EUR',
           showTransactionTimes: false,
           startPage: 'BROKERAGE',
@@ -81,15 +107,93 @@ describe('UsersService', () => {
         id: 'local-dev',
         email: 'finhance-user+local-dev@placeholder.local',
         userSettings: {
+          cloudParserEnabled: false,
           reportingCurrency: 'EUR',
           showTransactionTimes: false,
           startPage: 'BROKERAGE',
         } as unknown as Prisma.InputJsonValue,
       },
       select: {
+        id: true,
         userSettings: true,
       },
     });
+    expect(
+      transactionClient.cloudParserConsentEvent.create,
+    ).not.toHaveBeenCalled();
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
+
+  it('records the current consent when cloud parsing is enabled', async () => {
+    const originalGroqApiKey = process.env.GROQ_API_KEY;
+    const originalAiDisabled = process.env.AI_DISABLED;
+    process.env.GROQ_API_KEY = 'test-key';
+    delete process.env.AI_DISABLED;
+
+    try {
+      const transactionClient = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ userSettings: {} }),
+          upsert: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            userSettings: {
+              cloudParserEnabled: true,
+              reportingCurrency: 'EUR',
+              showTransactionTimes: true,
+              startPage: 'DASHBOARD',
+            },
+          }),
+        },
+        cloudParserConsentEvent: {
+          create: jest.fn().mockResolvedValue({}),
+        },
+      };
+      const prisma = {
+        $transaction: jest.fn(
+          (
+            callback: (tx: typeof transactionClient) => Promise<unknown>,
+          ): Promise<unknown> => callback(transactionClient),
+        ),
+      } as unknown as ConstructorParameters<typeof UsersService>[0];
+
+      const service = new UsersService(prisma);
+
+      await expect(
+        service.updateSettings('user-1', {
+          cloudParserEnabled: true,
+          cloudParserConsentVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
+        }),
+      ).resolves.toMatchObject({
+        cloudParserAvailable: true,
+        cloudParserConsentVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
+        cloudParserEnabled: true,
+      });
+
+      expect(
+        transactionClient.cloudParserConsentEvent.create,
+      ).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          action: CloudParserConsentAction.GRANTED,
+          noticeVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
+          provider: AI_CLOUD_PARSER_PROVIDER,
+        },
+      });
+    } finally {
+      if (originalGroqApiKey === undefined) {
+        delete process.env.GROQ_API_KEY;
+      } else {
+        process.env.GROQ_API_KEY = originalGroqApiKey;
+      }
+
+      if (originalAiDisabled === undefined) {
+        delete process.env.AI_DISABLED;
+      } else {
+        process.env.AI_DISABLED = originalAiDisabled;
+      }
+    }
   });
 
   it('permanently deletes all user-owned data in dependency order', async () => {

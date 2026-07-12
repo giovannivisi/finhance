@@ -45,6 +45,30 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   AccessDenied: "The provider sign-in was not allowed for this account.",
 };
 
+type UserSettingsInitialValues = Omit<
+  UserSettingsResponse,
+  "cloudParserEnabled" | "cloudParserAvailable" | "cloudParserConsentVersion"
+> &
+  Partial<
+    Pick<
+      UserSettingsResponse,
+      | "cloudParserEnabled"
+      | "cloudParserAvailable"
+      | "cloudParserConsentVersion"
+    >
+  >;
+
+function normalizeInitialSettings(
+  settings: UserSettingsInitialValues,
+): UserSettingsResponse {
+  return {
+    ...settings,
+    cloudParserEnabled: settings.cloudParserEnabled ?? false,
+    cloudParserAvailable: settings.cloudParserAvailable ?? false,
+    cloudParserConsentVersion: settings.cloudParserConsentVersion ?? null,
+  };
+}
+
 function formatPasskeyTitle(passkey: UserPasskeyResponse): string {
   const deviceType = passkey.credentialDeviceType
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -94,7 +118,7 @@ export default function UserSettingsPageClient({
   canManageConnectedAccounts = false,
   canManagePasskeys = false,
 }: {
-  initialSettings: UserSettingsResponse;
+  initialSettings: UserSettingsInitialValues;
   identity?: UserIdentityResponse | null;
   canSignOutMobileDevices?: boolean;
   canManageConnectedAccounts?: boolean;
@@ -103,7 +127,9 @@ export default function UserSettingsPageClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const fieldPrefix = useId();
-  const [form, setForm] = useState<UserSettingsResponse>(initialSettings);
+  const [form, setForm] = useState<UserSettingsResponse>(() =>
+    normalizeInitialSettings(initialSettings),
+  );
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -218,7 +244,7 @@ export default function UserSettingsPageClient({
   }
 
   useEffect(() => {
-    setForm(initialSettings);
+    setForm(normalizeInitialSettings(initialSettings));
   }, [initialSettings]);
 
   useEffect(() => {
@@ -403,6 +429,10 @@ export default function UserSettingsPageClient({
           showTransactionTimes: form.showTransactionTimes,
           startPage: form.startPage,
           reportingCurrency: form.reportingCurrency,
+          cloudParserEnabled: form.cloudParserEnabled,
+          cloudParserConsentVersion: form.cloudParserEnabled
+            ? (form.cloudParserConsentVersion ?? undefined)
+            : undefined,
         };
         const saved = await apiMutation<UserSettingsResponse>(
           "/users/me/settings",
@@ -581,6 +611,51 @@ export default function UserSettingsPageClient({
           />
         </div>
       </section>
+
+      {form.cloudParserAvailable ? (
+        <section className="glass-card page-section">
+          <div className="page-section-heading">
+            <div>
+              <p className="section-kicker">Optional cloud feature</p>
+              <h2 className="section-title">
+                Cloud-enhanced transaction drafts
+              </h2>
+            </div>
+          </div>
+
+          <div className="app-form-field">
+            <label
+              htmlFor={`${fieldPrefix}-cloud-parser`}
+              className="app-form-toggle"
+            >
+              <span>
+                <span className="app-form-toggle-label">
+                  Enable cloud-enhanced drafts
+                </span>
+                <span className="app-form-toggle-copy">
+                  I explicitly agree that Finhance may send selected, redacted
+                  transaction text to Groq in the United States solely to create
+                  a draft. This may include information I choose to enter that
+                  reveals health, religious, or trade-union information. I can
+                  withdraw this consent at any time; basic parsing remains
+                  available.
+                </span>
+              </span>
+              <input
+                id={`${fieldPrefix}-cloud-parser`}
+                type="checkbox"
+                checked={form.cloudParserEnabled}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    cloudParserEnabled: event.target.checked,
+                  }))
+                }
+              />
+            </label>
+          </div>
+        </section>
+      ) : null}
 
       {canManageConnectedAccounts ? (
         <section className="glass-card page-section">

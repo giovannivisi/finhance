@@ -82,6 +82,7 @@ describe("UserSettingsPageClient", () => {
           showTransactionTimes: false,
           startPage: "BROKERAGE",
           reportingCurrency: "EUR",
+          cloudParserEnabled: false,
         }),
       });
     });
@@ -107,6 +108,51 @@ describe("UserSettingsPageClient", () => {
     expect(
       screen.queryByRole("button", { name: /add passkey/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("sends the displayed consent version when cloud parsing is enabled", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue({
+      showTransactionTimes: true,
+      startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
+      cloudParserEnabled: true,
+      cloudParserAvailable: true,
+      cloudParserConsentVersion: "2026-07-12",
+    });
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: false,
+          cloudParserAvailable: true,
+          cloudParserConsentVersion: "2026-07-12",
+        }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("checkbox", { name: /enable cloud-enhanced drafts/i }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /save user settings/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/users/me/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: true,
+          cloudParserConsentVersion: "2026-07-12",
+        }),
+      });
+    });
   });
 
   it("signs out mobile devices after confirmation", async () => {

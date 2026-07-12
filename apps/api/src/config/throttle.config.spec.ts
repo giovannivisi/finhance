@@ -27,6 +27,10 @@ describe('throttle.config', () => {
         limit: 30,
         ttl: 60_000,
       },
+      ai: {
+        limit: 3,
+        ttl: 60_000,
+      },
     });
   });
 
@@ -50,6 +54,10 @@ describe('throttle.config', () => {
       },
       marketRefresh: {
         limit: 6,
+        ttl: 60_000,
+      },
+      ai: {
+        limit: 3,
         ttl: 60_000,
       },
     });
@@ -80,6 +88,11 @@ describe('throttle.config', () => {
       {
         name: THROTTLE_BUCKETS.marketRefresh,
         limit: 6,
+        ttl: 60_000,
+      },
+      {
+        name: THROTTLE_BUCKETS.ai,
+        limit: 3,
         ttl: 60_000,
       },
     ]);

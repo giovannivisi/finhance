@@ -40,6 +40,8 @@ model User {
   portfolioAssetKindTargets       PortfolioAssetKindTarget[]
   portfolioSecurityTargets        PortfolioSecurityTarget[]
   fxRates                         FxRate[]
+  aiUsageEvents                   AiUsageEvent[]
+  cloudParserConsentEvents        CloudParserConsentEvent[]
 
   @@map("users")
 }
@@ -112,6 +114,37 @@ model RequestRateLimit {
 
   @@index([scope, resetAt])
   @@map("request_rate_limits")
+}
+
+model AiUsageEvent {
+  id           String             @id @default(cuid())
+  userId       String             @map("user_id")
+  endpoint     String
+  provider     String
+  model        String
+  inputTokens  Int?               @map("input_tokens")
+  outputTokens Int?               @map("output_tokens")
+  status       AiUsageEventStatus
+  createdAt    DateTime           @default(now()) @map("created_at")
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("ai_usage_events")
+}
+
+model CloudParserConsentEvent {
+  id            String                    @id @default(cuid())
+  userId        String                    @map("user_id")
+  action        CloudParserConsentAction
+  noticeVersion String                    @map("notice_version")
+  provider      String
+  requestId     String                    @unique @default(cuid()) @map("request_id")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  user          User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("cloud_parser_consent_events")
 }
 
 model Asset {
@@ -596,6 +629,17 @@ enum ImportSource {
 enum IdempotencyRequestStatus {
   IN_PROGRESS
   COMPLETED
+}
+
+enum AiUsageEventStatus {
+  RESERVED
+  COMPLETED
+  FAILED
+}
+
+enum CloudParserConsentAction {
+  GRANTED
+  WITHDRAWN
 }
 
 enum OperationType {

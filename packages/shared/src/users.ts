@@ -16,14 +16,23 @@ export interface UserSettings {
   showTransactionTimes: boolean;
   startPage: UserStartPage;
   reportingCurrency: string;
+  cloudParserEnabled: boolean;
 }
 
-export interface UserSettingsResponse extends UserSettings {}
+export interface UserSettingsResponse extends UserSettings {
+  /** Whether the deployment has a cloud parsing provider configured. */
+  cloudParserAvailable: boolean;
+  /** Current cloud-parser consent text version, when cloud parsing is available. */
+  cloudParserConsentVersion: string | null;
+}
 
 export interface UpdateUserSettingsRequest {
   showTransactionTimes?: boolean;
   startPage?: UserStartPage;
   reportingCurrency?: string;
+  cloudParserEnabled?: boolean;
+  /** Version of the separately presented cloud-parser consent text. */
+  cloudParserConsentVersion?: string;
 }
 
 export interface UserPasskeyResponse {
@@ -94,6 +103,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   showTransactionTimes: true,
   startPage: "DASHBOARD",
   reportingCurrency: "EUR",
+  cloudParserEnabled: false,
 };
 
 export function isUserStartPage(value: unknown): value is UserStartPage {
@@ -119,5 +129,9 @@ export function normalizeUserSettings(
       isSupportedReportingCurrencyCode(value.reportingCurrency)
         ? value.reportingCurrency.trim().toUpperCase()
         : DEFAULT_USER_SETTINGS.reportingCurrency,
+    cloudParserEnabled:
+      typeof value?.cloudParserEnabled === "boolean"
+        ? value.cloudParserEnabled
+        : DEFAULT_USER_SETTINGS.cloudParserEnabled,
   };
 }
