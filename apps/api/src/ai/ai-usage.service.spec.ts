@@ -9,6 +9,7 @@ import {
   type AiRuntimeConfig,
 } from '@/ai/ai.config';
 import {
+  AiCloudParserNotEligibleError,
   AiCloudParserUnavailableError,
   AiDailyLimitExceededError,
   AiUsageService,
@@ -29,6 +30,17 @@ const runtimeConfig: AiRuntimeConfig = {
 describe('AiUsageService', () => {
   it('reserves quota in a serializable transaction', async () => {
     const transactionClient = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          userSettings: { cloudParserEnabled: true },
+        }),
+      },
+      cloudParserConsentEvent: {
+        findFirst: jest.fn().mockResolvedValue({
+          action: CloudParserConsentAction.GRANTED,
+          noticeVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
+        }),
+      },
       aiUsageEvent: {
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockResolvedValue({
@@ -91,6 +103,17 @@ describe('AiUsageService', () => {
 
   it('refuses a reservation that would exceed the user daily limit', async () => {
     const transactionClient = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          userSettings: { cloudParserEnabled: true },
+        }),
+      },
+      cloudParserConsentEvent: {
+        findFirst: jest.fn().mockResolvedValue({
+          action: CloudParserConsentAction.GRANTED,
+          noticeVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
+        }),
+      },
       aiUsageEvent: {
         count: jest
           .fn()
@@ -141,5 +164,41 @@ describe('AiUsageService', () => {
     await expect(service.hasActiveCloudParserConsent('user-1')).resolves.toBe(
       false,
     );
+  });
+
+  it('requires the persisted setting as well as consent before reserving quota', async () => {
+    const transactionClient = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          userSettings: { cloudParserEnabled: false },
+        }),
+      },
+      cloudParserConsentEvent: {
+        findFirst: jest.fn().mockResolvedValue({
+          action: CloudParserConsentAction.GRANTED,
+          noticeVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
+        }),
+      },
+      aiUsageEvent: {
+        count: jest.fn().mockResolvedValue(0),
+        create: jest.fn(),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn(
+        (
+          callback: (tx: typeof transactionClient) => Promise<unknown>,
+        ): Promise<unknown> => callback(transactionClient),
+      ),
+    };
+    const service = new AiUsageService(
+      prisma as unknown as ConstructorParameters<typeof AiUsageService>[0],
+      { runtimeConfig } as ConstructorParameters<typeof AiUsageService>[1],
+    );
+
+    await expect(
+      service.reserveCloudParse('user-1', '/ai/transaction-draft'),
+    ).rejects.toEqual(new AiCloudParserNotEligibleError());
+    expect(transactionClient.aiUsageEvent.create).not.toHaveBeenCalled();
   });
 });

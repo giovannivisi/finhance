@@ -27,6 +27,12 @@ export class AiCloudParserUnavailableError extends Error {
   }
 }
 
+export class AiCloudParserNotEligibleError extends Error {
+  constructor() {
+    super('Cloud parsing is not enabled for this account.');
+  }
+}
+
 export class AiDailyLimitExceededError extends Error {
   constructor(readonly scope: 'user' | 'global') {
     super(
@@ -66,14 +72,32 @@ export class AiUsageService {
       try {
         return await this.prisma.$transaction(
           async (tx) => {
-            const [userCount, globalCount] = await Promise.all([
-              tx.aiUsageEvent.count({
-                where: { userId, createdAt: { gte: dayStart } },
-              }),
-              tx.aiUsageEvent.count({
-                where: { createdAt: { gte: dayStart } },
-              }),
-            ]);
+            const [user, latestConsent, userCount, globalCount] =
+              await Promise.all([
+                tx.user.findUnique({
+                  where: { id: userId },
+                  select: { userSettings: true },
+                }),
+                tx.cloudParserConsentEvent.findFirst({
+                  where: { userId },
+                  orderBy: { createdAt: 'desc' },
+                  select: { action: true, noticeVersion: true },
+                }),
+                tx.aiUsageEvent.count({
+                  where: { userId, createdAt: { gte: dayStart } },
+                }),
+                tx.aiUsageEvent.count({
+                  where: { createdAt: { gte: dayStart } },
+                }),
+              ]);
+
+            if (
+              !isCloudParserEnabled(user?.userSettings ?? null) ||
+              latestConsent?.action !== CloudParserConsentAction.GRANTED ||
+              latestConsent.noticeVersion !== AI_CLOUD_PARSER_CONSENT_VERSION
+            ) {
+              throw new AiCloudParserNotEligibleError();
+            }
 
             if (userCount >= config.dailyLimitPerUser) {
               throw new AiDailyLimitExceededError('user');
@@ -148,6 +172,15 @@ export class AiUsageService {
       latest.noticeVersion === AI_CLOUD_PARSER_CONSENT_VERSION
     );
   }
+}
+
+function isCloudParserEnabled(value: Prisma.JsonValue | null): boolean {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>).cloudParserEnabled === true
+  );
 }
 
 function toTokenCount(value: number): number {

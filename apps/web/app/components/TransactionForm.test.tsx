@@ -78,6 +78,22 @@ const accounts: AccountResponse[] = [
     createdAt: "2026-05-20T10:00:00.000Z",
     updatedAt: "2026-05-20T10:00:00.000Z",
   },
+  {
+    id: "account-cash",
+    name: "Cash wallet",
+    type: "CASH",
+    currency: "EUR",
+    institution: null,
+    notes: null,
+    order: 3,
+    openingBalance: 0,
+    openingBalanceDate: null,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-05-20T10:00:00.000Z",
+    updatedAt: "2026-05-20T10:00:00.000Z",
+  },
 ];
 
 const categories: CategoryResponse[] = [
@@ -191,6 +207,48 @@ describe("TransactionForm", () => {
     await user.type(screen.getByLabelText("Description"), "Unknown vendor");
 
     expect(screen.getByLabelText("Secondary")).toHaveValue("category-cafes");
+  });
+
+  it("applies a Quick add draft without saving the transaction", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValueOnce({
+      amount: 4.5,
+      currency: "EUR",
+      postedAt: "2026-05-19",
+      description: "Coffee",
+      counterparty: "Cafe Roma",
+      paymentMethod: "cash",
+      cardLast4: null,
+      parsedBy: "heuristic",
+    });
+    renderForm();
+
+    await user.type(
+      screen.getByLabelText("Transaction details"),
+      "4.50 coffee yesterday cash",
+    );
+    await user.click(screen.getByRole("button", { name: /prepare draft/i }));
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/ai/transaction-draft", {
+        method: "POST",
+        body: JSON.stringify({
+          text: "4.50 coffee yesterday cash",
+          source: "freeform",
+        }),
+      });
+    });
+    expect(screen.getByLabelText("Amount")).toHaveValue(4.5);
+    expect(screen.getByLabelText("Description")).toHaveValue("Coffee");
+    expect(screen.getByLabelText(/counterparty/i)).toHaveValue("Cafe Roma");
+    expect(screen.getByLabelText("Account")).toHaveValue("account-cash");
+    expect(screen.getByLabelText("Primary")).toHaveValue("category-food");
+    expect(screen.getByLabelText("Secondary")).toHaveValue("category-cafes");
+    expect(screen.getByLabelText("Posted at")).toHaveValue("2026-05-19T10:30");
+    expect(
+      screen.getByText(/basic private parsing applied this draft/i),
+    ).toBeInTheDocument();
+    expect(mockedApiMutation).toHaveBeenCalledTimes(1);
   });
 
   it("switches into transfer mode and submits the transfer payload", async () => {

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type {
   AccountResponse,
+  AiTransactionDraft,
   ExpenseValidationRuleResponse,
 } from "@finhance/shared";
 
 import {
   buildPostedAt,
   buildTransactionRequest,
+  applyTransactionDraft,
   emptyTransactionForm,
   matchExpenseRule,
   type TransactionFormState,
@@ -183,6 +185,66 @@ describe("buildTransactionRequest — standard", () => {
       nativeCurrency: null,
       nativeAmount: null,
     });
+  });
+});
+
+describe("applyTransactionDraft", () => {
+  it("maps safe draft fields and selects a unique cash account", () => {
+    const draft: AiTransactionDraft = {
+      amount: 4.5,
+      currency: "EUR",
+      postedAt: "2026-07-11",
+      description: "Groceries",
+      counterparty: "Market",
+      paymentMethod: "cash",
+      cardLast4: null,
+      parsedBy: "heuristic",
+    };
+    const result = applyTransactionDraft(
+      baseForm({ kind: "EXPENSE", accountId: null, categoryId: null }),
+      draft,
+      [account("bank", "EUR"), account("cash", "EUR", { type: "CASH" })],
+      rules,
+    );
+
+    expect(result).toMatchObject({
+      amount: "4.5",
+      date: "2026-07-11",
+      description: "Groceries",
+      counterparty: "Market",
+      accountId: "cash",
+      categoryId: "cat-groceries",
+    });
+  });
+
+  it("leaves a manually selected category and ambiguous cash selection alone", () => {
+    const draft: AiTransactionDraft = {
+      amount: null,
+      currency: null,
+      postedAt: null,
+      description: "Groceries",
+      counterparty: null,
+      paymentMethod: "cash",
+      cardLast4: null,
+      parsedBy: "heuristic",
+    };
+    const result = applyTransactionDraft(
+      baseForm({
+        kind: "EXPENSE",
+        accountId: "bank",
+        categoryId: "manual-category",
+      }),
+      draft,
+      [
+        account("bank", "EUR"),
+        account("cash-1", "EUR", { type: "CASH" }),
+        account("cash-2", "EUR", { type: "CASH" }),
+      ],
+      rules,
+    );
+
+    expect(result.accountId).toBe("bank");
+    expect(result.categoryId).toBe("manual-category");
   });
 });
 

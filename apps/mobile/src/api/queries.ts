@@ -7,6 +7,7 @@ import {
 import type { ConnectedAccountProvider } from "@finhance/shared/users";
 import type {
   BrokeragePerformanceRange,
+  CreateAiTransactionDraftRequest,
   CreateBrokerageBuyRequest,
   CreateBrokerageDividendRequest,
   CreateBrokerageFeeRequest,
@@ -436,6 +437,14 @@ export function useCreateTransaction() {
     mutationFn: (body: UpsertTransactionRequest) =>
       api.transactions.create(client, body),
     onSuccess: invalidate,
+  });
+}
+
+export function useTransactionDraft() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (body: CreateAiTransactionDraftRequest) =>
+      api.ai.transactionDraft(client, body),
   });
 }
 

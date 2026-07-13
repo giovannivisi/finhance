@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import type { AccountResponse, TransactionKind } from "@finhance/shared";
@@ -11,6 +11,7 @@ import {
   useDeleteTransaction,
   useExpenseValidationRules,
   useTransaction,
+  useTransactionDraft,
   useUpdateTransaction,
 } from "@/api/queries";
 import {
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui";
 import {
   buildTransactionRequest,
+  applyTransactionDraft,
   emptyTransactionForm,
   formFromTransaction,
   matchExpenseRule,
@@ -84,10 +86,14 @@ export default function TransactionUpsertScreen() {
   const createMutation = useCreateTransaction();
   const updateMutation = useUpdateTransaction();
   const deleteMutation = useDeleteTransaction();
+  const draftMutation = useTransactionDraft();
 
   const [form, setForm] = useState<TransactionFormState>(emptyTransactionForm);
   const [errors, setErrors] = useState<TransactionFormErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
+  const [quickAddText, setQuickAddText] = useState("");
+  const [quickAddError, setQuickAddError] = useState<string | null>(null);
+  const [quickAddNotice, setQuickAddNotice] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [hydratedId, setHydratedId] = useState<string | null>(null);
 
@@ -219,6 +225,36 @@ export default function TransactionUpsertScreen() {
     }
   };
 
+  const handleQuickAdd = async () => {
+    const text = quickAddText.trim();
+    if (!text) {
+      setQuickAddError("Describe the transaction first.");
+      return;
+    }
+
+    setQuickAddError(null);
+    setQuickAddNotice(null);
+
+    try {
+      const draft = await draftMutation.mutateAsync({
+        text,
+        source: "freeform",
+      });
+      setForm((previous) =>
+        applyTransactionDraft(previous, draft, accounts, expenseRules),
+      );
+      setErrors({});
+      setServerError(null);
+      setQuickAddNotice(
+        draft.parsedBy === "groq"
+          ? "AI-assisted draft applied — review every field before saving. This is not financial advice."
+          : "Basic private parsing applied this draft. You can enable cloud-enhanced drafts in App settings.",
+      );
+    } catch (draftError) {
+      setQuickAddError(describeError(draftError));
+    }
+  };
+
   const dataPending =
     accountsQuery.isPending ||
     categoriesQuery.isPending ||
@@ -286,6 +322,55 @@ export default function TransactionUpsertScreen() {
             </AppText>
           </Card>
         ) : null}
+
+        <Card surface="info">
+          <View style={{ gap: spacing.md }}>
+            <View style={{ gap: spacing.xs }}>
+              <AppText variant="kicker" tone="tertiary">
+                DRAFT ONLY
+              </AppText>
+              <AppText variant="title3">Quick add</AppText>
+              <AppText variant="footnote" tone="secondary">
+                Type or dictate “14.50 pizza yesterday amex” and review the
+                resulting transaction before saving.
+              </AppText>
+            </View>
+            <TextField
+              label="Transaction details"
+              value={quickAddText}
+              onChangeText={setQuickAddText}
+              placeholder="e.g. 14.50 pizza yesterday amex"
+              autoCapitalize="sentences"
+              editable={!draftMutation.isPending}
+            />
+            {quickAddError ? (
+              <AppText variant="caption" tone="danger">
+                {quickAddError}
+              </AppText>
+            ) : null}
+            {quickAddNotice ? (
+              <>
+                <AppText variant="footnote" tone="secondary">
+                  {quickAddNotice}
+                </AppText>
+                {quickAddNotice.startsWith("Basic private parsing") ? (
+                  <Button
+                    label="Open App settings"
+                    variant="ghost"
+                    size="sm"
+                    onPress={() => router.push("/settings/app" as Href)}
+                  />
+                ) : null}
+              </>
+            ) : null}
+            <Button
+              label="Prepare draft"
+              variant="secondary"
+              onPress={handleQuickAdd}
+              loading={draftMutation.isPending}
+            />
+          </View>
+        </Card>
 
         {kindOptions ? (
           <SegmentedControl

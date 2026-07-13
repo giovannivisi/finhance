@@ -1,6 +1,7 @@
 import type {
   AccountResponse,
   AccountsPageDataResponse,
+  AiTransactionDraft,
   AccountReconciliationResponse,
   AssetResponse,
   BrokerageAccountSummaryResponse,
@@ -13,6 +14,7 @@ import type {
   CategoryResponse,
   BrokerageOperationResponse,
   CreateBrokerageBuyRequest,
+  CreateAiTransactionDraftRequest,
   CreateBrokerageDividendRequest,
   CreateBrokerageFeeRequest,
   CreateBrokerageSellRequest,
@@ -201,6 +203,17 @@ export const api = {
       ),
     remove: (client: ApiClient, id: string) =>
       client.request<void>(`/transactions/${id}`, mutation("DELETE")),
+  },
+
+  ai: {
+    transactionDraft: (
+      client: ApiClient,
+      body: CreateAiTransactionDraftRequest,
+    ) =>
+      client.request<AiTransactionDraft>(
+        "/ai/transaction-draft",
+        mutation("POST", body),
+      ),
   },
 
   cashflow: {

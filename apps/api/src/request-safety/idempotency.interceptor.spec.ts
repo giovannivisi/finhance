@@ -33,4 +33,35 @@ describe('IdempotencyInterceptor', () => {
     expect(handle).toHaveBeenCalledTimes(1);
     expect(executeJson).not.toHaveBeenCalled();
   });
+
+  it('does not cache freeform transaction-draft responses', async () => {
+    const executeJson = jest.fn();
+    const handle = jest.fn(() => of({ description: 'Coffee' }));
+    const next = { handle } as CallHandler;
+    const request = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      baseUrl: '/ai',
+      route: { path: 'transaction-draft' },
+    };
+    const response = {
+      statusCode: 200,
+      status: jest.fn(),
+    };
+    const context = {
+      getType: () => 'http',
+      switchToHttp: () => ({
+        getRequest: () => request,
+        getResponse: () => response,
+      }),
+    } as unknown as ExecutionContext;
+    const interceptor = new IdempotencyInterceptor({
+      executeJson,
+    } as never);
+
+    await lastValueFrom(interceptor.intercept(context, next));
+
+    expect(handle).toHaveBeenCalledTimes(1);
+    expect(executeJson).not.toHaveBeenCalled();
+  });
 });

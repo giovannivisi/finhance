@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type {
   AccountResponse,
+  AiTransactionDraft,
   CategoryResponse,
   ExpenseValidationRuleResponse,
   TransactionResponse,
@@ -55,6 +56,19 @@ function selectableAccounts(
   );
 }
 
+function applyDraftDate(
+  currentValue: string,
+  draftDate: string,
+  showTransactionTimes: boolean,
+): string {
+  if (!showTransactionTimes) {
+    return draftDate;
+  }
+
+  const time = /T(\d{2}:\d{2})/.exec(currentValue)?.[1] ?? "12:00";
+  return `${draftDate}T${time}`;
+}
+
 export default function TransactionForm({
   transactionId,
   initialValues,
@@ -80,7 +94,11 @@ export default function TransactionForm({
   const [error, setError] = useState<string | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const actions = useSingleFlightActions<"submit">();
+  const [quickAddText, setQuickAddText] = useState("");
+  const [quickAddError, setQuickAddError] = useState<string | null>(null);
+  const [quickAddNotice, setQuickAddNotice] = useState<string | null>(null);
+  const [isDrafting, setIsDrafting] = useState(false);
+  const actions = useSingleFlightActions<"submit" | "draft">();
   const isCreateMode = mode === "create";
   const isTransfer = form.kind === "TRANSFER";
   const isAdjustment = form.kind === "ADJUSTMENT";
@@ -185,6 +203,81 @@ export default function TransactionForm({
       description: value,
       categoryId: matchingRule.secondaryCategoryId,
     }));
+  }
+
+  async function handleQuickAdd() {
+    await actions.run("draft", async () => {
+      const text = quickAddText.trim();
+      if (!text) {
+        setQuickAddError("Describe the transaction first.");
+        return;
+      }
+
+      setQuickAddError(null);
+      setQuickAddNotice(null);
+      setIsDrafting(true);
+
+      try {
+        const draft = await apiMutation<AiTransactionDraft>(
+          "/ai/transaction-draft",
+          {
+            method: "POST",
+            body: JSON.stringify({ text, source: "freeform" }),
+          },
+        );
+        applyDraft(draft);
+        setQuickAddNotice(
+          draft.parsedBy === "groq"
+            ? "AI-assisted draft applied — review every field before saving. This is not financial advice."
+            : "Basic private parsing applied this draft. You can optionally enable cloud-enhanced drafts in Settings.",
+        );
+      } catch (draftError) {
+        setQuickAddError(
+          draftError instanceof Error
+            ? draftError.message
+            : "Unable to prepare a transaction draft.",
+        );
+      } finally {
+        setIsDrafting(false);
+      }
+    });
+  }
+
+  function applyDraft(draft: AiTransactionDraft) {
+    const matchingRule =
+      form.kind === "EXPENSE" && !hasManualExpenseCategoryOverride
+        ? findMatchingExpenseValidationRule(
+            expenseValidationRules,
+            draft.description,
+          )
+        : null;
+    const cashAccounts = accounts.filter(
+      (account) => account.type === "CASH" && account.archivedAt === null,
+    );
+    const cashAccountId =
+      draft.paymentMethod === "cash" && cashAccounts.length === 1
+        ? cashAccounts[0]!.id
+        : null;
+
+    setForm((previous) => ({
+      ...previous,
+      amount: draft.amount === null ? previous.amount : String(draft.amount),
+      postedAt: draft.postedAt
+        ? applyDraftDate(
+            previous.postedAt,
+            draft.postedAt,
+            showTransactionTimes,
+          )
+        : previous.postedAt,
+      description: draft.description || previous.description,
+      counterparty: draft.counterparty ?? previous.counterparty,
+      accountId: cashAccountId ?? previous.accountId,
+      categoryId: matchingRule?.secondaryCategoryId ?? previous.categoryId,
+    }));
+
+    if (matchingRule) {
+      setSelectedExpensePrimaryId(matchingRule.primaryCategoryId);
+    }
   }
 
   function handleExpensePrimaryChange(primaryCategoryId: string) {
@@ -330,6 +423,55 @@ export default function TransactionForm({
 
   return (
     <form onSubmit={handleSubmit} className="app-form">
+      <section
+        className="quick-add-panel"
+        aria-labelledby={`${fieldPrefix}-quick-add-title`}
+      >
+        <div>
+          <p className="section-kicker">Draft only</p>
+          <h3 id={`${fieldPrefix}-quick-add-title`}>Quick add</h3>
+          <p>
+            Type or dictate something like “14.50 pizza yesterday amex”. We will
+            fill a draft for you to review.
+          </p>
+        </div>
+        <div className="quick-add-controls">
+          <label htmlFor={`${fieldPrefix}-quick-add`}>
+            Transaction details
+          </label>
+          <div className="quick-add-input-row">
+            <input
+              id={`${fieldPrefix}-quick-add`}
+              value={quickAddText}
+              onChange={(event) => setQuickAddText(event.target.value)}
+              placeholder="e.g. 14.50 pizza yesterday amex"
+              disabled={isDrafting}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleQuickAdd}
+              disabled={isDrafting}
+            >
+              {isDrafting ? "Preparing…" : "Prepare draft"}
+            </button>
+          </div>
+        </div>
+        {quickAddError ? (
+          <p className="app-form-field-error" role="alert">
+            {quickAddError}
+          </p>
+        ) : null}
+        {quickAddNotice ? (
+          <p className="quick-add-notice">
+            {quickAddNotice}{" "}
+            {quickAddNotice.startsWith("Basic") ? (
+              <a href="/settings/user">Settings</a>
+            ) : null}
+          </p>
+        ) : null}
+      </section>
+
       <div className="app-form-field">
         <label htmlFor={`${fieldPrefix}-description`}>Description</label>
         <input
