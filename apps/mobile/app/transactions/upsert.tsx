@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import type {
   AccountResponse,
   AiTransactionDraft,
+  AiTransactionDraftSource,
   TransactionKind,
 } from "@finhance/shared";
 
@@ -46,6 +48,11 @@ import {
   type TransactionFormState,
 } from "@/features/transactions/form";
 import {
+  isReceiptOcrAvailable,
+  recogniseReceiptText,
+} from "@/features/transactions/receipt-ocr";
+import { prepareReceiptDraftText } from "@/features/transactions/receipt-redaction";
+import {
   categoryLabel,
   isAssignableTransactionCategory,
 } from "@/lib/categories";
@@ -66,6 +73,14 @@ const STANDARD_KIND_OPTIONS = [
   { value: "ADJUSTMENT", label: "Adjust" },
 ] as const;
 
+const RECEIPT_IMAGE_PICKER_OPTIONS = {
+  allowsEditing: false,
+  base64: false,
+  exif: false,
+  mediaTypes: ["images"],
+  quality: 1,
+} satisfies ImagePicker.ImagePickerOptions;
+
 function accountOption(account: AccountResponse) {
   return {
     value: account.id,
@@ -74,7 +89,14 @@ function accountOption(account: AccountResponse) {
   };
 }
 
-function buildQuickAddNotice(draft: AiTransactionDraft): string {
+function buildQuickAddNotice(
+  draft: AiTransactionDraft,
+  source: AiTransactionDraftSource,
+): string {
+  if (source === "receipt") {
+    return "Receipt text was recognised on this iPhone. Basic parsing applied this draft; review every field before saving.";
+  }
+
   if (draft.parsedBy === "groq") {
     return "AI-assisted draft applied — review every field before saving. This is not financial advice.";
   }
@@ -110,6 +132,7 @@ export default function TransactionUpsertScreen() {
   const [quickAddText, setQuickAddText] = useState("");
   const [quickAddError, setQuickAddError] = useState<string | null>(null);
   const [quickAddNotice, setQuickAddNotice] = useState<string | null>(null);
+  const [receiptScanPending, setReceiptScanPending] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [hydratedId, setHydratedId] = useState<string | null>(null);
 
@@ -202,6 +225,8 @@ export default function TransactionUpsertScreen() {
   );
 
   const saving = createMutation.isPending || updateMutation.isPending;
+  const receiptOcrAvailable = isReceiptOcrAvailable();
+  const quickAddPending = draftMutation.isPending || receiptScanPending;
 
   const handleSubmit = async () => {
     const result = buildTransactionRequest(form, accountsById, expenseRules);
@@ -261,9 +286,77 @@ export default function TransactionUpsertScreen() {
       );
       setErrors({});
       setServerError(null);
-      setQuickAddNotice(buildQuickAddNotice(draft));
+      setQuickAddNotice(buildQuickAddNotice(draft, "freeform"));
     } catch (draftError) {
       setQuickAddError(describeError(draftError));
+    }
+  };
+
+  const handleReceiptScan = async (source: "camera" | "library") => {
+    if (!receiptOcrAvailable) {
+      setQuickAddError(
+        "Receipt scanning needs the latest finhance iPhone development build.",
+      );
+      return;
+    }
+
+    setQuickAddError(null);
+    setQuickAddNotice(null);
+    setReceiptScanPending(true);
+
+    try {
+      const permission =
+        source === "camera"
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        setQuickAddError(
+          source === "camera"
+            ? "Camera access is needed to scan a receipt. You can still enter it manually."
+            : "Photo access is needed to select a receipt. You can still enter it manually.",
+        );
+        return;
+      }
+
+      const result =
+        source === "camera"
+          ? await ImagePicker.launchCameraAsync(RECEIPT_IMAGE_PICKER_OPTIONS)
+          : await ImagePicker.launchImageLibraryAsync(
+              RECEIPT_IMAGE_PICKER_OPTIONS,
+            );
+      const imageUri = result.assets?.[0]?.uri;
+
+      if (result.canceled || !imageUri) {
+        return;
+      }
+
+      const recognisedText = await recogniseReceiptText(imageUri);
+      const draftText = prepareReceiptDraftText(recognisedText);
+
+      if (!draftText) {
+        setQuickAddError(
+          "No readable receipt text was found. You can still enter the transaction manually.",
+        );
+        return;
+      }
+
+      const draft = await draftMutation.mutateAsync({
+        text: draftText,
+        source: "receipt",
+      });
+      setForm((previous) =>
+        applyTransactionDraft(previous, draft, accounts, expenseRules),
+      );
+      setErrors({});
+      setServerError(null);
+      setQuickAddNotice(buildQuickAddNotice(draft, "receipt"));
+    } catch {
+      setQuickAddError(
+        "The receipt could not be read. You can still enter the transaction manually.",
+      );
+    } finally {
+      setReceiptScanPending(false);
     }
   };
 
@@ -353,7 +446,7 @@ export default function TransactionUpsertScreen() {
               onChangeText={setQuickAddText}
               placeholder="e.g. 14.50 pizza yesterday amex"
               autoCapitalize="sentences"
-              editable={!draftMutation.isPending}
+              editable={!quickAddPending}
             />
             {quickAddError ? (
               <AppText variant="caption" tone="danger">
@@ -380,7 +473,53 @@ export default function TransactionUpsertScreen() {
               variant="secondary"
               onPress={handleQuickAdd}
               loading={draftMutation.isPending}
+              disabled={receiptScanPending}
             />
+            {form.kind === "EXPENSE" && Platform.OS === "ios" ? (
+              receiptOcrAvailable ? (
+                <View style={{ gap: spacing.sm }}>
+                  <AppText variant="footnote" tone="secondary">
+                    Text recognition happens on this iPhone. The app does not
+                    upload or keep the image; only redacted text is sent to
+                    finhance to draft the transaction.
+                  </AppText>
+                  <Button
+                    label="Scan receipt"
+                    variant="secondary"
+                    size="sm"
+                    icon={
+                      <Ionicons
+                        name="camera-outline"
+                        size={16}
+                        color={colors.textPrimary}
+                      />
+                    }
+                    onPress={() => handleReceiptScan("camera")}
+                    loading={receiptScanPending}
+                    disabled={draftMutation.isPending}
+                  />
+                  <Button
+                    label="Choose receipt photo"
+                    variant="ghost"
+                    size="sm"
+                    icon={
+                      <Ionicons
+                        name="images-outline"
+                        size={16}
+                        color={colors.textSecondary}
+                      />
+                    }
+                    onPress={() => handleReceiptScan("library")}
+                    disabled={quickAddPending}
+                  />
+                </View>
+              ) : (
+                <AppText variant="footnote" tone="secondary">
+                  Receipt scanning needs the latest finhance iPhone development
+                  build.
+                </AppText>
+              )
+            ) : null}
           </View>
         </Card>
 

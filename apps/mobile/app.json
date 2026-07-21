@@ -57,6 +57,14 @@
       "expo-web-browser",
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow finhance to photograph a receipt. The image is recognised on this iPhone and is not uploaded or retained; only redacted text is sent to finhance to draft the transaction.",
+          "photosPermission": "Allow finhance to select a receipt photo. The image is recognised on this iPhone and is not uploaded or retained; only redacted text is sent to finhance to draft the transaction.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "Allow finhance to use Face ID to unlock the app."
