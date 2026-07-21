@@ -82,7 +82,6 @@ describe("UserSettingsPageClient", () => {
           showTransactionTimes: false,
           startPage: "BROKERAGE",
           reportingCurrency: "EUR",
-          cloudParserEnabled: false,
         }),
       });
     });
@@ -118,6 +117,7 @@ describe("UserSettingsPageClient", () => {
       reportingCurrency: "EUR",
       cloudParserEnabled: true,
       cloudParserAvailable: true,
+      cloudParserConsentActive: true,
       cloudParserConsentVersion: "2026-07-12",
     });
 
@@ -129,6 +129,7 @@ describe("UserSettingsPageClient", () => {
           reportingCurrency: "EUR",
           cloudParserEnabled: false,
           cloudParserAvailable: true,
+          cloudParserConsentActive: false,
           cloudParserConsentVersion: "2026-07-12",
         }}
       />,
@@ -150,6 +151,146 @@ describe("UserSettingsPageClient", () => {
           reportingCurrency: "EUR",
           cloudParserEnabled: true,
           cloudParserConsentVersion: "2026-07-12",
+        }),
+      });
+    });
+  });
+
+  it("requires explicit renewal when the stored consent version is stale", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue({
+      showTransactionTimes: true,
+      startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
+      cloudParserEnabled: true,
+      cloudParserAvailable: true,
+      cloudParserConsentActive: true,
+      cloudParserConsentVersion: "2026-07-12",
+    });
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: true,
+          cloudParserAvailable: true,
+          cloudParserConsentActive: false,
+          cloudParserConsentVersion: "2026-07-12",
+        }}
+      />,
+    );
+
+    const consent = screen.getByRole("checkbox", {
+      name: /enable cloud-enhanced drafts/i,
+    });
+    expect(consent).not.toBeChecked();
+    expect(screen.getByText(/consent notice has changed/i)).toBeInTheDocument();
+
+    await user.click(consent);
+    await user.click(
+      screen.getByRole("button", { name: /save user settings/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/users/me/settings", {
+        method: "PATCH",
+        body: expect.stringContaining(
+          '"cloudParserConsentVersion":"2026-07-12"',
+        ),
+      });
+    });
+  });
+
+  it("does not change stale cloud consent while saving unrelated settings", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue({
+      showTransactionTimes: false,
+      startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
+      cloudParserEnabled: true,
+      cloudParserAvailable: true,
+      cloudParserConsentActive: false,
+      cloudParserConsentVersion: "2026-07-12",
+    });
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: true,
+          cloudParserAvailable: true,
+          cloudParserConsentActive: false,
+          cloudParserConsentVersion: "2026-07-12",
+        }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("checkbox", { name: /show transaction times/i }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /save user settings/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/users/me/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          showTransactionTimes: false,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+        }),
+      });
+    });
+  });
+
+  it("allows existing consent to be withdrawn while the provider is unavailable", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue({
+      showTransactionTimes: true,
+      startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
+      cloudParserEnabled: false,
+      cloudParserAvailable: false,
+      cloudParserConsentActive: false,
+      cloudParserConsentVersion: null,
+    });
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: true,
+          cloudParserAvailable: false,
+          cloudParserConsentActive: true,
+          cloudParserConsentVersion: null,
+        }}
+      />,
+    );
+
+    const consent = screen.getByRole("checkbox", {
+      name: /enable cloud-enhanced drafts/i,
+    });
+    expect(consent).toBeChecked();
+    await user.click(consent);
+    await user.click(
+      screen.getByRole("button", { name: /save user settings/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/users/me/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: false,
         }),
       });
     });

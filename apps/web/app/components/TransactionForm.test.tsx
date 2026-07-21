@@ -252,6 +252,83 @@ describe("TransactionForm", () => {
     expect(mockedApiMutation).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves an existing category when Quick add applies a matching rule", async () => {
+    const user = userEvent.setup();
+    const otherCategory: CategoryResponse = {
+      ...categories[1]!,
+      id: "category-other",
+      name: "Other food",
+    };
+    mockedApiMutation.mockResolvedValueOnce({
+      amount: 4.5,
+      currency: "EUR",
+      postedAt: "2026-05-19",
+      description: "Coffee",
+      counterparty: null,
+      paymentMethod: "card",
+      cardLast4: null,
+      parsedBy: "heuristic",
+      cloudAttempted: false,
+    });
+    renderForm({
+      categories: [...categories, otherCategory],
+      initialValues: {
+        ...buildCreateValues(),
+        categoryId: otherCategory.id,
+      },
+    });
+
+    await user.type(screen.getByLabelText("Transaction details"), "coffee");
+    await user.click(screen.getByRole("button", { name: /prepare draft/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Description")).toHaveValue("Coffee");
+    });
+    expect(screen.getByLabelText("Secondary")).toHaveValue(otherCategory.id);
+  });
+
+  it("does not overwrite a category selected while Quick add is pending", async () => {
+    const user = userEvent.setup();
+    const otherCategory: CategoryResponse = {
+      ...categories[1]!,
+      id: "category-other",
+      name: "Other food",
+    };
+    let resolveDraft: ((draft: object) => void) | undefined;
+    mockedApiMutation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveDraft = resolve;
+        }),
+    );
+    renderForm({ categories: [...categories, otherCategory] });
+
+    await user.type(screen.getByLabelText("Transaction details"), "coffee");
+    await user.click(screen.getByRole("button", { name: /prepare draft/i }));
+    await user.selectOptions(screen.getByLabelText("Primary"), "category-food");
+    await user.selectOptions(
+      screen.getByLabelText("Secondary"),
+      otherCategory.id,
+    );
+
+    resolveDraft?.({
+      amount: 4.5,
+      currency: "EUR",
+      postedAt: "2026-05-19",
+      description: "Coffee",
+      counterparty: null,
+      paymentMethod: "card",
+      cardLast4: null,
+      parsedBy: "heuristic",
+      cloudAttempted: false,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Description")).toHaveValue("Coffee");
+    });
+    expect(screen.getByLabelText("Secondary")).toHaveValue(otherCategory.id);
+  });
+
   it("discloses when cloud processing was attempted before a local fallback", async () => {
     const user = userEvent.setup();
     mockedApiMutation.mockResolvedValueOnce({

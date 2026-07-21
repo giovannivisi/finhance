@@ -131,6 +131,7 @@ describe('User settings routes (e2e)', () => {
 
       expect(bodyAs<UserSettingsResponse>(getResponse)).toEqual({
         cloudParserAvailable: false,
+        cloudParserConsentActive: false,
         cloudParserConsentVersion: null,
         cloudParserEnabled: false,
         reportingCurrency: 'EUR',
@@ -149,6 +150,7 @@ describe('User settings routes (e2e)', () => {
 
       expect(bodyAs<UserSettingsResponse>(patchResponse)).toEqual({
         cloudParserAvailable: false,
+        cloudParserConsentActive: false,
         cloudParserConsentVersion: null,
         cloudParserEnabled: false,
         reportingCurrency: 'EUR',
@@ -231,6 +233,7 @@ describe('User settings routes (e2e)', () => {
 
       expect(bodyAs<UserSettingsResponse>(response)).toEqual({
         cloudParserAvailable: false,
+        cloudParserConsentActive: false,
         cloudParserConsentVersion: null,
         cloudParserEnabled: false,
         reportingCurrency: 'EUR',

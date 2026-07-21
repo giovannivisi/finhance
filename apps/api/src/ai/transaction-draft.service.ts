@@ -1,10 +1,15 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import type {
   AiTransactionDraft,
   CreateAiTransactionDraftRequest,
 } from '@finhance/shared';
 import { AiConfigurationService } from '@/ai/ai-configuration.service';
-import { AiUsageService } from '@/ai/ai-usage.service';
+import {
+  AiCloudParserNotEligibleError,
+  AiCloudParserUnavailableError,
+  AiDailyLimitExceededError,
+  AiUsageService,
+} from '@/ai/ai-usage.service';
 import {
   AiProviderResponseError,
   GroqTransactionDraftProvider,
@@ -24,6 +29,8 @@ const DRAFT_ENDPOINT = '/ai/transaction-draft';
 
 @Injectable()
 export class TransactionDraftService {
+  private readonly logger = new Logger(TransactionDraftService.name);
+
   constructor(
     private readonly configuration: AiConfigurationService,
     private readonly usage: AiUsageService,
@@ -89,12 +96,34 @@ export class TransactionDraftService {
       );
 
       return { ...draft, parsedBy: 'groq', cloudAttempted: true };
-    } catch {
+    } catch (error) {
+      if (shouldLogCloudFailure(error)) {
+        this.logger.warn(
+          `Cloud transaction draft failed (${errorName(error)}; attempted=${cloudAttempted}; reservation=${reservationId ? 'present' : 'absent'}).`,
+        );
+      }
+
       if (reservationId) {
-        await this.usage.markFailed(reservationId).catch(() => undefined);
+        await this.usage.markFailed(reservationId).catch((markFailedError) => {
+          this.logger.warn(
+            `Could not mark cloud transaction draft usage as failed (${errorName(markFailedError)}).`,
+          );
+        });
       }
 
       return { ...heuristic, cloudAttempted };
     }
   }
+}
+
+function shouldLogCloudFailure(error: unknown): boolean {
+  return !(
+    error instanceof AiCloudParserNotEligibleError ||
+    error instanceof AiCloudParserUnavailableError ||
+    error instanceof AiDailyLimitExceededError
+  );
+}
+
+function errorName(error: unknown): string {
+  return error instanceof Error && error.name ? error.name : 'UnknownError';
 }

@@ -35,12 +35,16 @@ describe('UsersService', () => {
       user: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      cloudParserConsentEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     } as unknown as ConstructorParameters<typeof UsersService>[0];
 
     const service = new UsersService(prisma);
 
     await expect(service.getSettings('local-dev')).resolves.toEqual({
       cloudParserAvailable: false,
+      cloudParserConsentActive: false,
       cloudParserConsentVersion: null,
       cloudParserEnabled: false,
       reportingCurrency: 'EUR',
@@ -68,6 +72,7 @@ describe('UsersService', () => {
         }),
       },
       cloudParserConsentEvent: {
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
       },
     };
@@ -86,6 +91,7 @@ describe('UsersService', () => {
       service.updateSettings('local-dev', { startPage: 'BROKERAGE' }),
     ).resolves.toEqual({
       cloudParserAvailable: false,
+      cloudParserConsentActive: false,
       cloudParserConsentVersion: null,
       cloudParserEnabled: false,
       reportingCurrency: 'EUR',
@@ -147,6 +153,7 @@ describe('UsersService', () => {
           }),
         },
         cloudParserConsentEvent: {
+          findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({}),
         },
       };
@@ -167,10 +174,85 @@ describe('UsersService', () => {
         }),
       ).resolves.toMatchObject({
         cloudParserAvailable: true,
+        cloudParserConsentActive: true,
         cloudParserConsentVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
         cloudParserEnabled: true,
       });
 
+      expect(
+        transactionClient.cloudParserConsentEvent.create,
+      ).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          action: CloudParserConsentAction.GRANTED,
+          noticeVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
+          provider: AI_CLOUD_PARSER_PROVIDER,
+        },
+      });
+    } finally {
+      if (originalGroqApiKey === undefined) {
+        delete process.env.GROQ_API_KEY;
+      } else {
+        process.env.GROQ_API_KEY = originalGroqApiKey;
+      }
+
+      if (originalAiDisabled === undefined) {
+        delete process.env.AI_DISABLED;
+      } else {
+        process.env.AI_DISABLED = originalAiDisabled;
+      }
+    }
+  });
+
+  it('records renewed consent when an enabled preference has an old notice grant', async () => {
+    const originalGroqApiKey = process.env.GROQ_API_KEY;
+    const originalAiDisabled = process.env.AI_DISABLED;
+    process.env.GROQ_API_KEY = 'test-key';
+    delete process.env.AI_DISABLED;
+
+    try {
+      const transactionClient = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            userSettings: { cloudParserEnabled: true },
+          }),
+          upsert: jest.fn().mockResolvedValue({
+            id: 'user-1',
+            userSettings: {
+              cloudParserEnabled: true,
+              reportingCurrency: 'EUR',
+              showTransactionTimes: true,
+              startPage: 'DASHBOARD',
+            },
+          }),
+        },
+        cloudParserConsentEvent: {
+          findFirst: jest.fn().mockResolvedValue({
+            action: CloudParserConsentAction.GRANTED,
+            noticeVersion: 'cloud-parser-v0',
+          }),
+          create: jest.fn().mockResolvedValue({}),
+        },
+      };
+      const prisma = {
+        $transaction: jest.fn(
+          (
+            callback: (tx: typeof transactionClient) => Promise<unknown>,
+          ): Promise<unknown> => callback(transactionClient),
+        ),
+      } as unknown as ConstructorParameters<typeof UsersService>[0];
+
+      const service = new UsersService(prisma);
+
+      await expect(
+        service.updateSettings('user-1', {
+          cloudParserEnabled: true,
+          cloudParserConsentVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
+        }),
+      ).resolves.toMatchObject({
+        cloudParserConsentActive: true,
+        cloudParserEnabled: true,
+      });
       expect(
         transactionClient.cloudParserConsentEvent.create,
       ).toHaveBeenCalledWith({

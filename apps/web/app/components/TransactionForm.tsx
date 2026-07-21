@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import type {
   AccountResponse,
@@ -110,6 +117,12 @@ export default function TransactionForm({
   const [quickAddError, setQuickAddError] = useState<string | null>(null);
   const [quickAddNotice, setQuickAddNotice] = useState<string | null>(null);
   const [isDrafting, setIsDrafting] = useState(false);
+  const formRef = useRef(form);
+  const manualExpenseCategoryOverrideRef = useRef(
+    hasManualExpenseCategoryOverride,
+  );
+  formRef.current = form;
+  manualExpenseCategoryOverrideRef.current = hasManualExpenseCategoryOverride;
   const actions = useSingleFlightActions<"submit" | "draft">();
   const isCreateMode = mode === "create";
   const isTransfer = form.kind === "TRANSFER";
@@ -252,8 +265,11 @@ export default function TransactionForm({
   }
 
   function applyDraft(draft: AiTransactionDraft) {
+    const currentForm = formRef.current;
     const matchingRule =
-      form.kind === "EXPENSE" && !hasManualExpenseCategoryOverride
+      currentForm.kind === "EXPENSE" &&
+      !currentForm.categoryId &&
+      !manualExpenseCategoryOverrideRef.current
         ? findMatchingExpenseValidationRule(
             expenseValidationRules,
             draft.description,

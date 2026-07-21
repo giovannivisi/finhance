@@ -56,13 +56,17 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
 
 type UserSettingsInitialValues = Omit<
   UserSettingsResponse,
-  "cloudParserEnabled" | "cloudParserAvailable" | "cloudParserConsentVersion"
+  | "cloudParserEnabled"
+  | "cloudParserAvailable"
+  | "cloudParserConsentActive"
+  | "cloudParserConsentVersion"
 > &
   Partial<
     Pick<
       UserSettingsResponse,
       | "cloudParserEnabled"
       | "cloudParserAvailable"
+      | "cloudParserConsentActive"
       | "cloudParserConsentVersion"
     >
   >;
@@ -74,6 +78,7 @@ function normalizeInitialSettings(
     ...settings,
     cloudParserEnabled: settings.cloudParserEnabled ?? false,
     cloudParserAvailable: settings.cloudParserAvailable ?? false,
+    cloudParserConsentActive: settings.cloudParserConsentActive ?? false,
     cloudParserConsentVersion: settings.cloudParserConsentVersion ?? null,
   };
 }
@@ -139,6 +144,8 @@ export default function UserSettingsPageClient({
   const [form, setForm] = useState<UserSettingsResponse>(() =>
     normalizeInitialSettings(initialSettings),
   );
+  const [cloudParserConsentTouched, setCloudParserConsentTouched] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -512,10 +519,16 @@ export default function UserSettingsPageClient({
           showTransactionTimes: form.showTransactionTimes,
           startPage: form.startPage,
           reportingCurrency: form.reportingCurrency,
-          cloudParserEnabled: form.cloudParserEnabled,
-          cloudParserConsentVersion: form.cloudParserEnabled
-            ? (form.cloudParserConsentVersion ?? undefined)
-            : undefined,
+          ...(cloudParserConsentTouched
+            ? {
+                cloudParserEnabled:
+                  form.cloudParserEnabled && form.cloudParserConsentActive,
+                cloudParserConsentVersion:
+                  form.cloudParserEnabled && form.cloudParserConsentActive
+                    ? (form.cloudParserConsentVersion ?? undefined)
+                    : undefined,
+              }
+            : {}),
         };
         const saved = await apiMutation<UserSettingsResponse>(
           "/users/me/settings",
@@ -525,6 +538,7 @@ export default function UserSettingsPageClient({
           },
         );
         setForm(saved);
+        setCloudParserConsentTouched(false);
         setNotice("User settings saved.");
         router.refresh();
       } catch (submitError) {
@@ -695,7 +709,9 @@ export default function UserSettingsPageClient({
         </div>
       </section>
 
-      {form.cloudParserAvailable ? (
+      {form.cloudParserAvailable ||
+      form.cloudParserEnabled ||
+      cloudParserConsentTouched ? (
         <section className="glass-card page-section">
           <div className="page-section-heading">
             <div>
@@ -723,17 +739,36 @@ export default function UserSettingsPageClient({
                   withdraw this consent at any time; basic parsing remains
                   available.
                 </span>
+                {!form.cloudParserAvailable ? (
+                  <span className="app-form-toggle-copy">
+                    Cloud parsing is currently unavailable. You can still
+                    withdraw an existing consent.
+                  </span>
+                ) : null}
+                {form.cloudParserEnabled && !form.cloudParserConsentActive ? (
+                  <span className="app-form-toggle-copy">
+                    The consent notice has changed. Review it and tick this
+                    control again to renew consent.
+                  </span>
+                ) : null}
               </span>
               <input
                 id={`${fieldPrefix}-cloud-parser`}
                 type="checkbox"
-                checked={form.cloudParserEnabled}
-                onChange={(event) =>
+                checked={
+                  form.cloudParserEnabled && form.cloudParserConsentActive
+                }
+                onChange={(event) => {
+                  if (event.target.checked && !form.cloudParserAvailable) {
+                    return;
+                  }
+                  setCloudParserConsentTouched(true);
                   setForm((current) => ({
                     ...current,
                     cloudParserEnabled: event.target.checked,
-                  }))
-                }
+                    cloudParserConsentActive: event.target.checked,
+                  }));
+                }}
               />
             </label>
           </div>

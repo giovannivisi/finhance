@@ -22,6 +22,8 @@ export interface UserSettings {
 export interface UserSettingsResponse extends UserSettings {
   /** Whether the deployment has a cloud parsing provider configured. */
   cloudParserAvailable: boolean;
+  /** Whether the latest consent event grants the current notice version. */
+  cloudParserConsentActive: boolean;
   /** Current cloud-parser consent text version, when cloud parsing is available. */
   cloudParserConsentVersion: string | null;
 }

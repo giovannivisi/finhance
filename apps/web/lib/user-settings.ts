@@ -37,6 +37,7 @@ export function getDefaultUserSettings(): UserSettingsResponse {
   return {
     ...DEFAULT_USER_SETTINGS,
     cloudParserAvailable: false,
+    cloudParserConsentActive: false,
     cloudParserConsentVersion: null,
   };
 }
@@ -47,6 +48,7 @@ export function mergeUserSettings(
   return {
     ...normalizeUserSettings(value),
     cloudParserAvailable: value?.cloudParserAvailable === true,
+    cloudParserConsentActive: value?.cloudParserConsentActive === true,
     cloudParserConsentVersion:
       typeof value?.cloudParserConsentVersion === "string" &&
       value.cloudParserConsentVersion.trim()

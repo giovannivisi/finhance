@@ -268,10 +268,11 @@ export async function refreshMobileSession(input: {
   }
 
   const now = new Date();
+  const env = input.env ?? process.env;
   await removeExpiredMobileSessions(now);
   const previousHash = hashMobileRefreshToken(refreshToken);
   const nextRefreshToken = createMobileRefreshToken();
-  const session = await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     const activeSession = await tx.mobileSession.findUnique({
       where: { refreshTokenHash: previousHash },
       select: {
@@ -346,23 +347,17 @@ export async function refreshMobileSession(input: {
       },
     });
 
-    return activeSession;
+    return {
+      token: await mintMobileToken({
+        userId: activeSession.userId,
+        sessionId: activeSession.id,
+        email: activeSession.user.email,
+        authenticatedAt: activeSession.authenticatedAt,
+        env,
+      }),
+      refreshToken: nextRefreshToken,
+    };
   });
-
-  if (!session) {
-    return null;
-  }
-
-  return {
-    token: await mintMobileToken({
-      userId: session.userId,
-      sessionId: session.id,
-      email: session.user.email,
-      authenticatedAt: session.authenticatedAt,
-      env: input.env,
-    }),
-    refreshToken: nextRefreshToken,
-  };
 }
 
 export async function listMobileSessions(
@@ -483,20 +478,6 @@ export async function resolveMobileBearerUser(
   const activeClaims = resolveActiveMobileTokenClaims(claims, session.user);
 
   if (!activeClaims) {
-    return { present: true, invalid: true };
-  }
-
-  const touched = await prisma.mobileSession.updateMany({
-    where: {
-      id: session.id,
-      userId: claims.userId,
-      revokedAt: null,
-      expiresAt: { gt: new Date() },
-    },
-    data: { lastUsedAt: new Date() },
-  });
-
-  if (touched.count !== 1) {
     return { present: true, invalid: true };
   }
 

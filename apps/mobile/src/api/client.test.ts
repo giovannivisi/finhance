@@ -106,4 +106,42 @@ describe("mobile API client", () => {
       }),
     );
   });
+
+  it("reuses the refreshed access token for later requests from the same client", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "Mobile session is invalid or expired.",
+            code: MOBILE_SESSION_INVALID_CODE,
+          }),
+          { status: 401 },
+        ),
+      )
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ ok: true }), { status: 200 }),
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const refresh = vi.fn().mockResolvedValue("fresh-access-token");
+    const client = createApiClient("https://finhance.test/api/proxy", {
+      authToken: "expired-access-token",
+      onUnauthorized: refresh,
+    });
+
+    await client.request("/passkey/options");
+    await client.request("/passkey/verify");
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer fresh-access-token",
+        }),
+      }),
+    );
+  });
 });

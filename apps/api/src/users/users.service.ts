@@ -24,7 +24,16 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getSettings(ownerId: string): Promise<UserSettingsResponse> {
-    return this.toSettingsResponse(await this.getPersistedSettings(ownerId));
+    const [settings, latestConsent] = await Promise.all([
+      this.getPersistedSettings(ownerId),
+      this.getLatestCloudParserConsent(ownerId),
+    ]);
+
+    return this.toSettingsResponse(
+      settings,
+      settings.cloudParserEnabled &&
+        hasCurrentCloudParserConsent(latestConsent),
+    );
   }
 
   async updateSettings(
@@ -33,12 +42,19 @@ export class UsersService {
   ): Promise<UserSettingsResponse> {
     const runtimeConfig = resolveAiRuntimeConfig();
 
-    const settings = await this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
-        const currentUser = await tx.user.findUnique({
-          where: { id: ownerId },
-          select: { userSettings: true },
-        });
+        const [currentUser, latestConsent] = await Promise.all([
+          tx.user.findUnique({
+            where: { id: ownerId },
+            select: { userSettings: true },
+          }),
+          tx.cloudParserConsentEvent.findFirst({
+            where: { userId: ownerId },
+            orderBy: { createdAt: 'desc' },
+            select: { action: true, noticeVersion: true },
+          }),
+        ]);
         const existing = normalizeUserSettings(
           toUserSettingsRecord(currentUser?.userSettings ?? null),
         );
@@ -46,10 +62,18 @@ export class UsersService {
           ...existing,
           ...input,
         });
-        const cloudPreferenceChanged =
-          existing.cloudParserEnabled !== next.cloudParserEnabled;
+        const consentActive = hasCurrentCloudParserConsent(latestConsent);
+        const shouldGrantConsent =
+          input.cloudParserEnabled === true &&
+          next.cloudParserEnabled &&
+          !consentActive;
+        const shouldWithdrawConsent =
+          input.cloudParserEnabled === false &&
+          !next.cloudParserEnabled &&
+          (existing.cloudParserEnabled ||
+            latestConsent?.action === CloudParserConsentAction.GRANTED);
 
-        if (next.cloudParserEnabled && cloudPreferenceChanged) {
+        if (shouldGrantConsent) {
           if (!runtimeConfig.cloudParserAvailable) {
             throw new BadRequestException(
               'Cloud parsing is not available in this deployment.',
@@ -81,11 +105,11 @@ export class UsersService {
           },
         });
 
-        if (cloudPreferenceChanged) {
+        if (shouldGrantConsent || shouldWithdrawConsent) {
           await tx.cloudParserConsentEvent.create({
             data: {
               userId: user.id,
-              action: next.cloudParserEnabled
+              action: shouldGrantConsent
                 ? CloudParserConsentAction.GRANTED
                 : CloudParserConsentAction.WITHDRAWN,
               noticeVersion: AI_CLOUD_PARSER_CONSENT_VERSION,
@@ -94,12 +118,21 @@ export class UsersService {
           });
         }
 
-        return normalizeUserSettings(toUserSettingsRecord(user.userSettings));
+        return {
+          settings: normalizeUserSettings(
+            toUserSettingsRecord(user.userSettings),
+          ),
+          consentActive: shouldGrantConsent
+            ? true
+            : shouldWithdrawConsent
+              ? false
+              : consentActive,
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
-    return this.toSettingsResponse(settings);
+    return this.toSettingsResponse(result.settings, result.consentActive);
   }
 
   private async getPersistedSettings(ownerId: string): Promise<UserSettings> {
@@ -113,12 +146,24 @@ export class UsersService {
     );
   }
 
-  private toSettingsResponse(settings: UserSettings): UserSettingsResponse {
+  private getLatestCloudParserConsent(ownerId: string) {
+    return this.prisma.cloudParserConsentEvent.findFirst({
+      where: { userId: ownerId },
+      orderBy: { createdAt: 'desc' },
+      select: { action: true, noticeVersion: true },
+    });
+  }
+
+  private toSettingsResponse(
+    settings: UserSettings,
+    consentActive: boolean,
+  ): UserSettingsResponse {
     const runtimeConfig = resolveAiRuntimeConfig();
 
     return {
       ...settings,
       cloudParserAvailable: runtimeConfig.cloudParserAvailable,
+      cloudParserConsentActive: consentActive,
       cloudParserConsentVersion: runtimeConfig.cloudParserAvailable
         ? AI_CLOUD_PARSER_CONSENT_VERSION
         : null,
@@ -186,6 +231,18 @@ export class UsersService {
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
   }
+}
+
+function hasCurrentCloudParserConsent(
+  consent: {
+    action: CloudParserConsentAction;
+    noticeVersion: string;
+  } | null,
+): boolean {
+  return (
+    consent?.action === CloudParserConsentAction.GRANTED &&
+    consent.noticeVersion === AI_CLOUD_PARSER_CONSENT_VERSION
+  );
 }
 
 function toUserSettingsRecord(

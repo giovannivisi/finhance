@@ -212,7 +212,7 @@ export function ServerConnectionProvider({
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [serverMode, setServerMode] = useState<ServerMode>("local");
   const [token, setToken] = useState<string | null>(null);
-  const [refreshToken, setRefreshToken] = useState<string | null>(null);
+  const refreshTokenRef = useRef<string | null>(null);
   const refreshInFlight = useRef<Promise<string | null> | null>(null);
 
   useEffect(() => {
@@ -253,14 +253,14 @@ export function ServerConnectionProvider({
 
           setServerMode(defaultMode);
           setToken(defaultToken);
-          setRefreshToken(null);
+          refreshTokenRef.current = null;
           setServerUrl(defaultUrl);
           return;
         }
 
         setServerMode(storedMode === "hosted" ? "hosted" : "local");
         setToken(storedCredentials?.token ?? null);
-        setRefreshToken(storedCredentials?.refreshToken ?? null);
+        refreshTokenRef.current = storedCredentials?.refreshToken ?? null;
         setServerUrl(storedUrl ?? "");
       } catch {
         if (!cancelled) {
@@ -309,7 +309,7 @@ export function ServerConnectionProvider({
     await AsyncStorage.setItem(SERVER_MODE_KEY, "local");
     setServerMode("local");
     setToken(null);
-    setRefreshToken(null);
+    refreshTokenRef.current = null;
     setServerUrl(normalizedUrl);
   }, []);
 
@@ -320,7 +320,7 @@ export function ServerConnectionProvider({
       await AsyncStorage.setItem(SERVER_MODE_KEY, "hosted");
       setServerMode("hosted");
       setToken(credentials.token);
-      setRefreshToken(credentials.refreshToken);
+      refreshTokenRef.current = credentials.refreshToken;
       setServerUrl(normalizedUrl);
     },
     [],
@@ -335,14 +335,15 @@ export function ServerConnectionProvider({
         // clearing its in-memory credentials even if keychain cleanup fails.
       }
       setToken(null);
-      setRefreshToken(null);
+      refreshTokenRef.current = null;
     })();
   }, []);
 
   const refreshHostedAccessToken = useCallback(async (): Promise<
     string | null
   > => {
-    if (!serverUrl || serverMode !== "hosted" || !refreshToken) {
+    const currentRefreshToken = refreshTokenRef.current;
+    if (!serverUrl || serverMode !== "hosted" || !currentRefreshToken) {
       return null;
     }
 
@@ -358,7 +359,7 @@ export function ServerConnectionProvider({
             "/api/mobile/refresh",
             {
               method: "POST",
-              body: { refreshToken },
+              body: { refreshToken: currentRefreshToken },
             },
           );
 
@@ -368,7 +369,7 @@ export function ServerConnectionProvider({
 
         await writeStoredCredentials(credentials);
         setToken(credentials.token);
-        setRefreshToken(credentials.refreshToken);
+        refreshTokenRef.current = credentials.refreshToken;
         return credentials.token;
       } catch (error) {
         if (
@@ -389,7 +390,7 @@ export function ServerConnectionProvider({
     } finally {
       refreshInFlight.current = null;
     }
-  }, [forgetInvalidHostedSession, refreshToken, serverMode, serverUrl]);
+  }, [forgetInvalidHostedSession, serverMode, serverUrl]);
 
   const signInHosted = useCallback(
     async (
@@ -536,7 +537,7 @@ export function ServerConnectionProvider({
       await AsyncStorage.removeItem(SERVER_MODE_KEY);
       setServerMode("local");
       setToken(null);
-      setRefreshToken(null);
+      refreshTokenRef.current = null;
       setServerUrl("");
 
       if (storageError) {

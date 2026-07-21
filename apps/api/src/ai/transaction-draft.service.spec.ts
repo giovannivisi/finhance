@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import type { AiRuntimeConfig } from '@/ai/ai.config';
 import { HeuristicTransactionDraftService } from '@/ai/heuristic-transaction-draft.service';
 import { TransactionDraftService } from '@/ai/transaction-draft.service';
@@ -16,6 +16,10 @@ const runtimeConfig: AiRuntimeConfig = {
 };
 
 describe('TransactionDraftService', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   function createService(overrides?: {
     config?: Partial<AiRuntimeConfig>;
     providerResult?: unknown;
@@ -150,6 +154,7 @@ describe('TransactionDraftService', () => {
   });
 
   it('falls back and marks usage failed when the provider result is malformed', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const { service, usage } = createService({
       providerResult: { description: 'Pizza' },
     });
@@ -165,6 +170,12 @@ describe('TransactionDraftService', () => {
       description: 'pizza',
     });
     expect(usage.markFailed).toHaveBeenCalledWith('usage-1');
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('Cloud transaction draft failed'),
+    );
+    expect(warn.mock.calls.join(' ')).not.toContain(
+      '14.50 pizza yesterday amex',
+    );
   });
 
   it('enforces the configured input cap before attempting any parser', async () => {

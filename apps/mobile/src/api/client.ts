@@ -164,6 +164,8 @@ export function createApiClient(
   baseUrl: string,
   clientOptions: ApiClientOptions = {},
 ): ApiClient {
+  let currentAuthToken = clientOptions.authToken ?? null;
+
   async function request<T>(
     path: string,
     options: RequestOptions = {},
@@ -180,7 +182,7 @@ export function createApiClient(
       Accept: "application/json",
     };
 
-    const authToken = refreshedAuthToken ?? clientOptions.authToken;
+    const authToken = refreshedAuthToken ?? currentAuthToken;
     if (authToken) {
       headers.Authorization = `Bearer ${authToken}`;
     }
@@ -248,6 +250,7 @@ export function createApiClient(
         const nextToken = await clientOptions.onUnauthorized();
 
         if (nextToken) {
+          currentAuthToken = nextToken;
           return request<T>(path, options, nextToken, true);
         }
       }
