@@ -16,6 +16,8 @@ const PKCE_CHALLENGE =
 
 const {
   consumeOneShotKeyMock,
+  mobileConsumedRefreshTokenCreateMock,
+  mobileConsumedRefreshTokenFindUniqueMock,
   mobileSessionCreateMock,
   mobileSessionFindUniqueMock,
   mobileSessionUpdateManyMock,
@@ -23,29 +25,44 @@ const {
   userFindUniqueMock,
 } = vi.hoisted(() => {
   const userFindUniqueMock = vi.fn();
+  const mobileConsumedRefreshTokenCreateMock = vi.fn();
+  const mobileConsumedRefreshTokenFindUniqueMock = vi.fn();
   const mobileSessionCreateMock = vi.fn();
   const mobileSessionFindUniqueMock = vi.fn();
   const mobileSessionUpdateManyMock = vi.fn();
 
+  const prismaMock = {
+    user: { findUnique: userFindUniqueMock },
+    mobileConsumedRefreshToken: {
+      create: mobileConsumedRefreshTokenCreateMock,
+      findUnique: mobileConsumedRefreshTokenFindUniqueMock,
+    },
+    mobileSession: {
+      create: mobileSessionCreateMock,
+      delete: vi.fn(),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findUnique: mobileSessionFindUniqueMock,
+      updateMany: mobileSessionUpdateManyMock,
+      update: vi.fn(),
+      findMany: vi.fn(),
+    },
+    $transaction: vi.fn(),
+  };
+
+  prismaMock.$transaction.mockImplementation(
+    async (callback: (tx: typeof prismaMock) => unknown) =>
+      callback(prismaMock),
+  );
+
   return {
     consumeOneShotKeyMock: vi.fn(),
     userFindUniqueMock,
+    mobileConsumedRefreshTokenCreateMock,
+    mobileConsumedRefreshTokenFindUniqueMock,
     mobileSessionCreateMock,
     mobileSessionFindUniqueMock,
     mobileSessionUpdateManyMock,
-    prismaMock: {
-      user: { findUnique: userFindUniqueMock },
-      mobileSession: {
-        create: mobileSessionCreateMock,
-        delete: vi.fn(),
-        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
-        findUnique: mobileSessionFindUniqueMock,
-        updateMany: mobileSessionUpdateManyMock,
-        update: vi.fn(),
-        findMany: vi.fn(),
-      },
-      $transaction: vi.fn(),
-    },
+    prismaMock,
   };
 });
 
@@ -58,6 +75,8 @@ describe("mobile session security", () => {
   beforeEach(() => {
     consumeOneShotKeyMock.mockReset();
     userFindUniqueMock.mockReset();
+    mobileConsumedRefreshTokenCreateMock.mockReset();
+    mobileConsumedRefreshTokenFindUniqueMock.mockReset();
     mobileSessionCreateMock.mockReset();
     mobileSessionFindUniqueMock.mockReset();
     mobileSessionUpdateManyMock.mockReset();
@@ -138,18 +157,23 @@ describe("mobile session security", () => {
     expect(consumeOneShotKeyMock).toHaveBeenCalledTimes(1);
   });
 
-  it("rotates a refresh token only once, so a replay cannot mint another access token", async () => {
-    mobileSessionFindUniqueMock.mockResolvedValue({
-      id: "session-123",
-      userId: "user-123",
-      authenticatedAt: new Date(),
-      expiresAt: new Date(Date.now() + 60_000),
-      revokedAt: null,
-      user: { id: "user-123", email: "user@example.com", isActive: true },
+  it("revokes the session when a consumed refresh token is replayed", async () => {
+    mobileSessionFindUniqueMock
+      .mockResolvedValueOnce({
+        id: "session-123",
+        userId: "user-123",
+        authenticatedAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+        revokedAt: null,
+        user: { id: "user-123", email: "user@example.com", isActive: true },
+      })
+      .mockResolvedValueOnce(null);
+    mobileConsumedRefreshTokenFindUniqueMock.mockResolvedValueOnce({
+      sessionId: "session-123",
     });
     mobileSessionUpdateManyMock
       .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValueOnce({ count: 0 });
+      .mockResolvedValueOnce({ count: 1 });
     const env = { AUTH_SECRET, NODE_ENV: "test" } as NodeJS.ProcessEnv;
 
     const first = await refreshMobileSession({
@@ -169,6 +193,30 @@ describe("mobile session security", () => {
     );
     expect(first?.refreshToken).not.toBe("refresh-token");
     expect(replay).toBeNull();
+    expect(mobileConsumedRefreshTokenCreateMock).toHaveBeenCalledWith({
+      data: {
+        sessionId: "session-123",
+        tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
     expect(mobileSessionUpdateManyMock).toHaveBeenCalledTimes(2);
+    expect(mobileSessionUpdateManyMock).toHaveBeenLastCalledWith({
+      where: { id: "session-123", revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+  });
+
+  it("does not revoke a session for an unknown refresh token", async () => {
+    mobileSessionFindUniqueMock.mockResolvedValue(null);
+    mobileConsumedRefreshTokenFindUniqueMock.mockResolvedValue(null);
+
+    await expect(
+      refreshMobileSession({
+        refreshToken: "unknown-refresh-token",
+        env: { AUTH_SECRET, NODE_ENV: "test" } as NodeJS.ProcessEnv,
+      }),
+    ).resolves.toBeNull();
+
+    expect(mobileSessionUpdateManyMock).not.toHaveBeenCalled();
   });
 });

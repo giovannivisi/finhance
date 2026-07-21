@@ -14,6 +14,7 @@ describe('HeuristicTransactionDraftService', () => {
       paymentMethod: 'card',
       cardLast4: null,
       parsedBy: 'heuristic',
+      cloudAttempted: false,
     });
   });
 
@@ -29,6 +30,7 @@ describe('HeuristicTransactionDraftService', () => {
       paymentMethod: 'cash',
       cardLast4: null,
       parsedBy: 'heuristic',
+      cloudAttempted: false,
     });
   });
 

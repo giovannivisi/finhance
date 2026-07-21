@@ -71,6 +71,7 @@ describe('TransactionDraftService', () => {
       ),
     ).resolves.toMatchObject({
       parsedBy: 'groq',
+      cloudAttempted: true,
       description: 'Pizza',
       postedAt: '2026-07-11',
     });
@@ -92,7 +93,11 @@ describe('TransactionDraftService', () => {
         text: '14.50 pizza yesterday amex',
         source: 'freeform',
       }),
-    ).resolves.toMatchObject({ parsedBy: 'heuristic', amount: 14.5 });
+    ).resolves.toMatchObject({
+      parsedBy: 'heuristic',
+      cloudAttempted: false,
+      amount: 14.5,
+    });
     expect(usage.reserveCloudParse).not.toHaveBeenCalled();
     expect(groq.parse).not.toHaveBeenCalled();
   });
@@ -105,7 +110,10 @@ describe('TransactionDraftService', () => {
         text: '35 EUR therapy appointment yesterday',
         source: 'freeform',
       }),
-    ).resolves.toMatchObject({ parsedBy: 'heuristic' });
+    ).resolves.toMatchObject({
+      parsedBy: 'heuristic',
+      cloudAttempted: false,
+    });
     expect(usage.reserveCloudParse).not.toHaveBeenCalled();
     expect(groq.parse).not.toHaveBeenCalled();
   });
@@ -133,7 +141,10 @@ describe('TransactionDraftService', () => {
         text: 'Total EUR 14.50',
         source: 'receipt',
       }),
-    ).resolves.toMatchObject({ parsedBy: 'heuristic' });
+    ).resolves.toMatchObject({
+      parsedBy: 'heuristic',
+      cloudAttempted: false,
+    });
     expect(usage.reserveCloudParse).not.toHaveBeenCalled();
     expect(groq.parse).not.toHaveBeenCalled();
   });
@@ -148,7 +159,11 @@ describe('TransactionDraftService', () => {
         text: '14.50 pizza yesterday amex',
         source: 'freeform',
       }),
-    ).resolves.toMatchObject({ parsedBy: 'heuristic', description: 'pizza' });
+    ).resolves.toMatchObject({
+      parsedBy: 'heuristic',
+      cloudAttempted: true,
+      description: 'pizza',
+    });
     expect(usage.markFailed).toHaveBeenCalledWith('usage-1');
   });
 

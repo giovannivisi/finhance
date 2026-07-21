@@ -2,6 +2,7 @@ export type PrivacyDeploymentMode = "local" | "managed" | "mixed";
 
 export type PrivacyPurposeKey =
   | "workspaceRecords"
+  | "cloudDrafts"
   | "importsAndExports"
   | "snapshotsAndReview"
   | "marketData"
@@ -13,6 +14,7 @@ export type PrivacyRetentionKey =
   | "importPreviewPayloads"
   | "snapshotHistory"
   | "requestSafety"
+  | "cloudDraftProcessing"
   | "browserPreferences";
 
 export interface PrivacyContact {
@@ -146,7 +148,7 @@ type CreatedContactResult = {
 };
 
 const PRIVACY_NOTICE_PATH = "/privacy";
-const DEFAULT_LAST_UPDATED = "2026-04-30";
+const DEFAULT_LAST_UPDATED = "2026-07-21";
 const DEFAULT_SUPERVISORY_AUTHORITY_URL =
   "https://www.edpb.europa.eu/about-edpb/about-edpb/members_en";
 
@@ -166,6 +168,15 @@ const PROCESSING_ACTIVITY_DEFINITIONS: Record<
       "Account, category, asset, liability, transaction, recurring-rule, and budget records.",
       "Free-text fields such as names, institutions, descriptions, notes, and counterparties.",
       "Valuation fields such as balances, prices, FX rates, and opening-balance history.",
+    ],
+  },
+  cloudDrafts: {
+    title: "Prepare optional cloud-enhanced transaction drafts",
+    purpose:
+      "To send selected, redacted free-form transaction text to Groq solely to return editable draft fields after the user explicitly enables the feature.",
+    dataCategories: [
+      "Redacted free-form transaction text that may still contain financial, counterparty, health, religious, or trade-union context supplied by the user.",
+      "Provider, model, token-count, status, timestamp, and consent metadata retained by finhance without the prompt or provider response body.",
     ],
   },
   importsAndExports: {
@@ -223,6 +234,7 @@ const PROCESSING_ACTIVITY_DEFINITIONS: Record<
 
 const PURPOSE_ORDER: PrivacyPurposeKey[] = [
   "workspaceRecords",
+  "cloudDrafts",
   "importsAndExports",
   "snapshotsAndReview",
   "marketData",
@@ -256,6 +268,7 @@ const CATEGORY_GROUPS: PrivacyCategoryGroup[] = [
       "Browser-side theme, privacy-display, and session flags stored on the device you use to access the app.",
       "Mobile server connection details and hosted mobile access and refresh credentials stored on the device.",
       "For hosted sign-in, a server-side device-session record containing a hashed refresh credential, generic device label, and session timestamps.",
+      "Cloud-parser consent events and AI usage metadata, excluding the transaction prompt and provider response body.",
     ],
   },
   {
@@ -272,6 +285,7 @@ const SOURCE_OF_DATA = [
   "From files you upload to the import flow, including files that may contain data about third parties such as counterparties, institutions, and notes.",
   "From the market data provider when you ask finhance to refresh quotes, FX rates, live valuations, or brokerage performance chart data for supported assets and currencies.",
   "From hosted sign-in providers when you connect Google or GitHub to your account.",
+  "From Groq when an explicitly enabled cloud-parser request returns transaction draft fields.",
   "From the mobile app when you save a server URL, choose local display preferences, or sign in to a hosted workspace.",
 ];
 
@@ -284,6 +298,12 @@ const DEFAULT_LOCAL_LEGAL_BASES: Record<
       "Art. 6(1)(b) GDPR — performance of a contract or steps you ask the operator to take before providing the workspace.",
     explanation:
       "Used to keep the finance workspace available, consistent, and usable for the records you choose to store in it.",
+  },
+  cloudDrafts: {
+    basis:
+      "Art. 6(1)(a) GDPR — consent; where submitted text reveals special-category data, Art. 9(2)(a) explicit consent.",
+    explanation:
+      "Used only after the user explicitly enables cloud-enhanced drafts and can be withdrawn without disabling private heuristic parsing.",
   },
   importsAndExports: {
     basis:
@@ -323,6 +343,18 @@ const DEFAULT_LOCAL_LEGAL_BASES: Record<
 
 const BUILTIN_PROCESSORS: PrivacyProcessor[] = [
   {
+    name: "Groq",
+    role: "Optional cloud transaction-draft processor",
+    purpose:
+      "Processes selected, redacted free-form transaction text solely to return editable draft fields after explicit opt-in.",
+    location: "United States",
+    dataCategories: [
+      "Redacted free-form transaction text that may still contain financial, counterparty, or special-category context supplied by the user.",
+      "Technical request metadata and model usage information associated with the outbound API call.",
+    ],
+    website: "https://groq.com/",
+  },
+  {
     name: "Yahoo Finance public quote API",
     role: "Market data provider",
     purpose:
@@ -337,6 +369,16 @@ const BUILTIN_PROCESSORS: PrivacyProcessor[] = [
 ];
 
 const BUILTIN_TRANSFERS: PrivacyTransfer[] = [
+  {
+    destination: "Groq infrastructure in the United States",
+    purpose:
+      "Optional cloud-enhanced transaction draft generation after explicit user consent.",
+    dataCategories: [
+      "Redacted free-form transaction text and technical request metadata.",
+    ],
+    safeguard:
+      "Requests use HTTPS and request provider-side storage to be disabled. Operators must confirm that their Groq agreement and transfer safeguards are appropriate before enabling the feature.",
+  },
   {
     destination: "Provider-managed Yahoo Finance infrastructure",
     purpose:
@@ -385,6 +427,13 @@ const DEFAULT_RETENTION: Record<
       "Completed idempotency records are deleted after about 24 hours. Stale in-progress records are deleted after about 10 minutes. In-memory market quote cache entries live for about 5 minutes per process, live valuation reads use a shorter cache window, and historical performance-series cache entries range from about 1 minute to 24 hours depending on the selected chart range.",
     detail:
       "These records exist to prevent duplicate writes, coordinate retries, and avoid repeating the same market quote lookup unnecessarily.",
+  },
+  cloudDraftProcessing: {
+    title: "Optional cloud transaction drafts",
+    retention:
+      "Finhance does not store the transaction prompt or provider response in its AI usage tables. Consent events and provider, model, token-count, status, and timestamp metadata remain until the hosted account is deleted or the operator removes them under its retention policy.",
+    detail:
+      "Groq-side handling and retention are governed by the operator's Groq agreement. Requests ask the provider not to store the completion, but operators should verify the applicable provider terms before enabling cloud parsing.",
   },
   browserPreferences: {
     title: "Device preferences and mobile connection state",
@@ -546,7 +595,9 @@ function parseLegalBases(
   }
 
   return PURPOSE_ORDER.map((key) => {
-    const entry = source[key];
+    const entry =
+      source[key] ??
+      (key === "cloudDrafts" ? DEFAULT_LOCAL_LEGAL_BASES.cloudDrafts : null);
 
     if (!isObjectRecord(entry)) {
       throw new Error(

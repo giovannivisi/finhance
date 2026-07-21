@@ -255,8 +255,8 @@ export async function exchangeMobileSignInCode(input: {
 
 /**
  * Exchanges a one-time opaque refresh token for a newly rotated refresh token
- * and a short-lived bearer. The conditional update is the replay boundary:
- * only one concurrent request can rotate a particular refresh token.
+ * and a short-lived bearer. Consumed hashes remain linked to the session so a
+ * later replay revokes every credential issued from that session.
  */
 export async function refreshMobileSession(input: {
   refreshToken: string;
@@ -270,44 +270,86 @@ export async function refreshMobileSession(input: {
   const now = new Date();
   await removeExpiredMobileSessions(now);
   const previousHash = hashMobileRefreshToken(refreshToken);
-  const session = await prisma.mobileSession.findUnique({
-    where: { refreshTokenHash: previousHash },
-    select: {
-      id: true,
-      userId: true,
-      authenticatedAt: true,
-      expiresAt: true,
-      revokedAt: true,
-      user: {
-        select: { id: true, email: true, isActive: true },
-      },
-    },
-  });
-
-  if (
-    !session ||
-    session.revokedAt ||
-    session.expiresAt.getTime() <= now.getTime() ||
-    !session.user.isActive
-  ) {
-    return null;
-  }
-
   const nextRefreshToken = createMobileRefreshToken();
-  const rotated = await prisma.mobileSession.updateMany({
-    where: {
-      id: session.id,
-      refreshTokenHash: previousHash,
-      revokedAt: null,
-      expiresAt: { gt: now },
-    },
-    data: {
-      refreshTokenHash: hashMobileRefreshToken(nextRefreshToken),
-      lastUsedAt: now,
-    },
+  const session = await prisma.$transaction(async (tx) => {
+    const activeSession = await tx.mobileSession.findUnique({
+      where: { refreshTokenHash: previousHash },
+      select: {
+        id: true,
+        userId: true,
+        authenticatedAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        user: {
+          select: { id: true, email: true, isActive: true },
+        },
+      },
+    });
+
+    if (!activeSession) {
+      const consumed = await tx.mobileConsumedRefreshToken.findUnique({
+        where: { tokenHash: previousHash },
+        select: { sessionId: true },
+      });
+
+      if (consumed) {
+        await tx.mobileSession.updateMany({
+          where: { id: consumed.sessionId, revokedAt: null },
+          data: { revokedAt: now },
+        });
+      }
+
+      return null;
+    }
+
+    if (
+      activeSession.revokedAt ||
+      activeSession.expiresAt.getTime() <= now.getTime() ||
+      !activeSession.user.isActive
+    ) {
+      return null;
+    }
+
+    const rotated = await tx.mobileSession.updateMany({
+      where: {
+        id: activeSession.id,
+        refreshTokenHash: previousHash,
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
+      data: {
+        refreshTokenHash: hashMobileRefreshToken(nextRefreshToken),
+        lastUsedAt: now,
+      },
+    });
+
+    if (rotated.count !== 1) {
+      const consumed = await tx.mobileConsumedRefreshToken.findUnique({
+        where: { tokenHash: previousHash },
+        select: { sessionId: true },
+      });
+
+      if (consumed) {
+        await tx.mobileSession.updateMany({
+          where: { id: consumed.sessionId, revokedAt: null },
+          data: { revokedAt: now },
+        });
+      }
+
+      return null;
+    }
+
+    await tx.mobileConsumedRefreshToken.create({
+      data: {
+        sessionId: activeSession.id,
+        tokenHash: previousHash,
+      },
+    });
+
+    return activeSession;
   });
 
-  if (rotated.count !== 1) {
+  if (!session) {
     return null;
   }
 

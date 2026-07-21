@@ -199,6 +199,7 @@ describe("applyTransactionDraft", () => {
       paymentMethod: "cash",
       cardLast4: null,
       parsedBy: "heuristic",
+      cloudAttempted: false,
     };
     const result = applyTransactionDraft(
       baseForm({ kind: "EXPENSE", accountId: null, categoryId: null }),
@@ -227,6 +228,7 @@ describe("applyTransactionDraft", () => {
       paymentMethod: "cash",
       cardLast4: null,
       parsedBy: "heuristic",
+      cloudAttempted: false,
     };
     const result = applyTransactionDraft(
       baseForm({

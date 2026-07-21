@@ -61,6 +61,7 @@ export class TransactionDraftService {
     }
 
     let reservationId: string | null = null;
+    let cloudAttempted = false;
 
     try {
       const reservation = await this.usage.reserveCloudParse(
@@ -70,6 +71,7 @@ export class TransactionDraftService {
       );
       reservationId = reservation.id;
 
+      cloudAttempted = true;
       const response = await this.groq.parse({
         text: redactedText,
         source: input.source,
@@ -86,13 +88,13 @@ export class TransactionDraftService {
         response.outputTokens,
       );
 
-      return { ...draft, parsedBy: 'groq' };
+      return { ...draft, parsedBy: 'groq', cloudAttempted: true };
     } catch {
       if (reservationId) {
         await this.usage.markFailed(reservationId).catch(() => undefined);
       }
 
-      return heuristic;
+      return { ...heuristic, cloudAttempted };
     }
   }
 }

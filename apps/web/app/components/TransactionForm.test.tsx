@@ -220,6 +220,7 @@ describe("TransactionForm", () => {
       paymentMethod: "cash",
       cardLast4: null,
       parsedBy: "heuristic",
+      cloudAttempted: false,
     });
     renderForm();
 
@@ -249,6 +250,35 @@ describe("TransactionForm", () => {
       screen.getByText(/basic private parsing applied this draft/i),
     ).toBeInTheDocument();
     expect(mockedApiMutation).toHaveBeenCalledTimes(1);
+  });
+
+  it("discloses when cloud processing was attempted before a local fallback", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValueOnce({
+      amount: 4.5,
+      currency: "EUR",
+      postedAt: "2026-05-19",
+      description: "Coffee",
+      counterparty: null,
+      paymentMethod: "card",
+      cardLast4: null,
+      parsedBy: "heuristic",
+      cloudAttempted: true,
+    });
+    renderForm();
+
+    await user.type(
+      screen.getByLabelText("Transaction details"),
+      "4.50 coffee",
+    );
+    await user.click(screen.getByRole("button", { name: /prepare draft/i }));
+
+    expect(
+      await screen.findByText(/cloud processing was attempted/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/basic private parsing applied this draft/i),
+    ).not.toBeInTheDocument();
   });
 
   it("switches into transfer mode and submits the transfer payload", async () => {

@@ -3,6 +3,7 @@ import type {
   ThrottlerModuleOptions,
   ThrottlerOptions,
 } from '@nestjs/throttler';
+import { resolveAiRuntimeConfig } from '@/ai/ai.config';
 
 export const THROTTLE_BUCKETS = {
   default: 'default',
@@ -89,9 +90,17 @@ function isProductionEnvironment(env: NodeJS.ProcessEnv): boolean {
 export function resolveThrottleConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): ThrottleBucketConfigMap {
-  return isProductionEnvironment(env)
+  const baseConfig = isProductionEnvironment(env)
     ? PRODUCTION_THROTTLE_CONFIG
     : LOCAL_DEV_THROTTLE_CONFIG;
+
+  return {
+    ...baseConfig,
+    ai: {
+      ...baseConfig.ai,
+      limit: resolveAiRuntimeConfig(env).rateLimitPerMinute,
+    },
+  };
 }
 
 export function createThrottlerOptions(

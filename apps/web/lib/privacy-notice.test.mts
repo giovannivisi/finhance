@@ -69,6 +69,7 @@ test("resolvePrivacyNoticeConfig provides local defaults for self-hosted mode", 
   assert.match(config.importSummary.retention, /15 minutes/i);
   assert.match(config.importSummary.recipients, /loopback browser origins/i);
   assert.match(config.importSummary.recipients, /Yahoo Finance/i);
+  assert.equal(config.lastUpdated, "2026-07-21");
   assert.ok(
     config.categoryGroups.some((group) =>
       group.items.some((item) =>
@@ -95,6 +96,19 @@ test("resolvePrivacyNoticeConfig provides local defaults for self-hosted mode", 
       processor.name.includes("Yahoo Finance"),
     ),
   );
+  assert.ok(config.processors.some((processor) => processor.name === "Groq"));
+  assert.ok(
+    config.transfers.some((transfer) =>
+      /Groq infrastructure/i.test(transfer.destination),
+    ),
+  );
+  assert.ok(
+    config.retention.some(
+      (entry) =>
+        entry.key === "cloudDraftProcessing" &&
+        /does not store the transaction prompt/i.test(entry.retention),
+    ),
+  );
 });
 
 test("resolvePrivacyNoticeConfig keeps the local warning visible when required privacy contacts still use fallbacks", () => {
@@ -116,7 +130,14 @@ test("resolvePrivacyNoticeConfig accepts mixed-deployment overrides", () => {
   assert.equal(config.controller.name, "Finhance Ops Ltd.");
   assert.equal(config.rightsContact.email, "rights@finhance.test");
   assert.equal(config.supervisoryAuthority.name, "Italian Garante");
-  assert.equal(config.processingActivities.length, 6);
+  assert.equal(config.processingActivities.length, 7);
+  assert.ok(
+    config.processingActivities.some(
+      (activity) =>
+        activity.key === "cloudDrafts" &&
+        /explicitly enables/i.test(activity.purpose),
+    ),
+  );
   assert.ok(config.processors.some((processor) => processor.name === "Neon"));
   assert.ok(
     config.transfers.some(

@@ -5,7 +5,7 @@ import type {
 import { isSupportedCurrencyCode } from '@/common/catalogues';
 import { redactCloudParserText } from '@/ai/redaction';
 
-type CloudDraftField = Omit<AiTransactionDraft, 'parsedBy'>;
+type CloudDraftField = Omit<AiTransactionDraft, 'parsedBy' | 'cloudAttempted'>;
 
 const PAYMENT_METHODS = new Set<AiTransactionDraftPaymentMethod>([
   'cash',

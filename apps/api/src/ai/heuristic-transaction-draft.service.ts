@@ -44,6 +44,7 @@ export class HeuristicTransactionDraftService {
       paymentMethod: findPaymentMethod(redactedText),
       cardLast4: findCardLastFour(redactedText),
       parsedBy: 'heuristic',
+      cloudAttempted: false,
     };
   }
 }

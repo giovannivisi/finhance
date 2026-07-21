@@ -63,6 +63,15 @@ describe('throttle.config', () => {
     });
   });
 
+  it('uses the configured AI request limit', () => {
+    expect(
+      resolveThrottleConfig({
+        NODE_ENV: 'production',
+        AI_RATE_LIMIT_PER_MINUTE: '1',
+      }).ai,
+    ).toEqual({ limit: 1, ttl: 60_000 });
+  });
+
   it('creates throttler options for every configured bucket', () => {
     expect(createThrottlerOptions({ NODE_ENV: 'production' })).toEqual([
       {

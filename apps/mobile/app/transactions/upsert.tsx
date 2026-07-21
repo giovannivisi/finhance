@@ -2,7 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
-import type { AccountResponse, TransactionKind } from "@finhance/shared";
+import type {
+  AccountResponse,
+  AiTransactionDraft,
+  TransactionKind,
+} from "@finhance/shared";
 
 import {
   useAccountsList,
@@ -68,6 +72,18 @@ function accountOption(account: AccountResponse) {
     label: account.name,
     detail: `${account.currency}${account.archivedAt ? " · Archived" : ""}`,
   };
+}
+
+function buildQuickAddNotice(draft: AiTransactionDraft): string {
+  if (draft.parsedBy === "groq") {
+    return "AI-assisted draft applied — review every field before saving. This is not financial advice.";
+  }
+
+  if (draft.cloudAttempted) {
+    return "Cloud processing was attempted, but basic parsing supplied this draft. Review every field before saving.";
+  }
+
+  return "Basic private parsing applied this draft. You can enable cloud-enhanced drafts in App settings.";
 }
 
 export default function TransactionUpsertScreen() {
@@ -245,11 +261,7 @@ export default function TransactionUpsertScreen() {
       );
       setErrors({});
       setServerError(null);
-      setQuickAddNotice(
-        draft.parsedBy === "groq"
-          ? "AI-assisted draft applied — review every field before saving. This is not financial advice."
-          : "Basic private parsing applied this draft. You can enable cloud-enhanced drafts in App settings.",
-      );
+      setQuickAddNotice(buildQuickAddNotice(draft));
     } catch (draftError) {
       setQuickAddError(describeError(draftError));
     }

@@ -69,6 +69,18 @@ function applyDraftDate(
   return `${draftDate}T${time}`;
 }
 
+function buildQuickAddNotice(draft: AiTransactionDraft): string {
+  if (draft.parsedBy === "groq") {
+    return "AI-assisted draft applied — review every field before saving. This is not financial advice.";
+  }
+
+  if (draft.cloudAttempted) {
+    return "Cloud processing was attempted, but basic parsing supplied this draft. Review every field before saving.";
+  }
+
+  return "Basic private parsing applied this draft. You can optionally enable cloud-enhanced drafts in Settings.";
+}
+
 export default function TransactionForm({
   transactionId,
   initialValues,
@@ -226,11 +238,7 @@ export default function TransactionForm({
           },
         );
         applyDraft(draft);
-        setQuickAddNotice(
-          draft.parsedBy === "groq"
-            ? "AI-assisted draft applied — review every field before saving. This is not financial advice."
-            : "Basic private parsing applied this draft. You can optionally enable cloud-enhanced drafts in Settings.",
-        );
+        setQuickAddNotice(buildQuickAddNotice(draft));
       } catch (draftError) {
         setQuickAddError(
           draftError instanceof Error

@@ -19,4 +19,6 @@ export interface AiTransactionDraft {
   paymentMethod: AiTransactionDraftPaymentMethod;
   cardLast4: string | null;
   parsedBy: AiTransactionDraftParser;
+  /** Whether the API attempted to send the input to the configured cloud parser. */
+  cloudAttempted: boolean;
 }
