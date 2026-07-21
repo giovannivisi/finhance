@@ -1,4 +1,5 @@
-import { scryptAsync } from "@noble/hashes/scrypt";
+import { scryptAsync } from "@noble/hashes/scrypt.js";
+import { utf8ToBytes } from "@noble/hashes/utils.js";
 
 export const APP_LOCK_RECORD_VERSION = 1;
 export const PASSCODE_MIN_LENGTH = 6;
@@ -146,7 +147,7 @@ export async function deriveScryptHash(
   salt: string,
   parameters: ScryptDerivationParameters = SCRYPT_PARAMETERS,
 ): Promise<string> {
-  const derived = await scryptAsync(passcode, salt, parameters);
+  const derived = await scryptAsync(utf8ToBytes(passcode), salt, parameters);
   return bytesToHex(derived);
 }
 

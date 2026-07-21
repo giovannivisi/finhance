@@ -22,7 +22,7 @@
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.0.3",
     "@finhance/shared": "workspace:^",
-    "@noble/hashes": "^1.8.0",
+    "@noble/hashes": "^2.2.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.7",
     "@react-navigation/bottom-tabs": "^7.17.2",

@@ -61,7 +61,8 @@
         {
           "faceIDPermission": "Allow finhance to use Face ID to unlock the app."
         }
-      ]
+      ],
+      "./plugins/with-minimum-ios-pod-target"
     ],
     "experiments": {
       "typedRoutes": true
