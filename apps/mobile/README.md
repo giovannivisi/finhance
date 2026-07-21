@@ -11,11 +11,12 @@ client and API can never drift apart silently.
 - **One-tap onboarding** — the production deployment is baked in
   (`https://finhance-web.vercel.app`, overridable at build time with
   `EXPO_PUBLIC_PRODUCTION_SERVER_URL`): open the app, tap **Sign in**, finish
-  the usual Google/GitHub flow in the system browser, done. The app receives
-  a long-lived mobile session token via deep link; it lives in the device
-  keychain and every API call goes through the web's `/api/proxy/*`, which
-  exchanges it per request for the same short-lived API JWTs a browser
-  session gets. Self-hosters can still connect to a local-mode API (or a
+  the usual Google/GitHub flow in the system browser, done. The app exchanges
+  a deep-link code for a short-lived mobile access token and a rotated refresh
+  token; both live in the device keychain and every API call goes through the
+  web's `/api/proxy/*`, which exchanges the access token per request for the
+  same short-lived API JWTs a browser session gets. Self-hosters can still
+  connect to a local-mode API (or a
   different hosted deployment) behind the "Use a different server" link.
 - **Dashboard** — reporting-currency net worth, assets/liabilities grouped by
   kind, pricing freshness, quote refresh, setup progress, budget pulse
@@ -60,16 +61,22 @@ The web app exposes three small endpoints for mobile clients
   deep-link redirect (`finhance://auth`; Expo Go `exp://…/--/auth` redirects
   only outside production or with `AUTH_MOBILE_ALLOW_DEV_REDIRECTS=true`)
 - `POST /api/mobile/token` — exchanges the sign-in code plus the app-held
-  PKCE verifier for the HS256 mobile session token (`AUTH_SECRET`-signed,
-  audience `finhance-mobile`, default TTL 120 days, configurable via
-  `AUTH_MOBILE_TOKEN_TTL`), so the token never travels through the browser
+  PKCE verifier for a short-lived HS256 access token and opaque refresh token.
+  The access token defaults to 15 minutes (`AUTH_MOBILE_ACCESS_TOKEN_TTL`);
+  the database-backed device session defaults to 30 days
+  (`AUTH_MOBILE_SESSION_TTL`, with `AUTH_MOBILE_TOKEN_TTL` retained as a
+  backwards-compatible alias). The refresh token rotates on every use, so no
+  long-lived credential travels through the browser.
+- `POST /api/mobile/refresh` — exchanges a refresh token exactly once for a
+  fresh access token and replacement refresh token.
 
 The API itself never accepts mobile tokens — the proxy verifies them and
 mints the usual short-lived ES256 API JWTs upstream. Signing out in the app
 deletes the token from the keychain; a 401 from the proxy carrying the
 `MOBILE_SESSION_INVALID` code (expired, revoked, or otherwise dead session)
 automatically returns the app to the sign-in screen. All mobile sessions can
-be revoked from the web app's user settings ("Sign out mobile devices").
+be viewed and revoked individually, or all at once, from the web app's user
+settings.
 Hosted sign-in requires an `https://` server URL outside development builds.
 
 ## Development

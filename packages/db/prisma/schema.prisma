@@ -21,6 +21,7 @@ model User {
   mobileTokensRevokedAt           DateTime?                        @map("mobile_tokens_revoked_at")
   providerAccounts                AuthProviderAccount[]
   sessions                        AuthSession[]
+  mobileSessions                  MobileSession[]
   authenticators                  AuthAuthenticator[]
   assets                          Asset[]
   accounts                        Account[]
@@ -73,6 +74,24 @@ model AuthSession {
 
   @@index([userId])
   @@map("auth_sessions")
+}
+
+model MobileSession {
+  id               String    @id @default(cuid())
+  userId           String    @map("user_id")
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  deviceLabel      String    @map("device_label")
+  authenticatedAt  DateTime  @map("authenticated_at")
+  expiresAt        DateTime  @map("expires_at")
+  lastUsedAt       DateTime  @default(now()) @map("last_used_at")
+  revokedAt        DateTime? @map("revoked_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("mobile_sessions")
 }
 
 model AuthVerificationToken {

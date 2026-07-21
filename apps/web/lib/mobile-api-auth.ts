@@ -3,7 +3,7 @@ import "server-only";
 import { RECENT_AUTH_REQUIRED_CODE } from "@finhance/shared/users";
 import { resolveMobileBearerUser } from "./mobile-auth";
 import {
-  hasRecentMobileIssuedAt,
+  hasRecentMobileAuthentication,
   type MobileTokenClaims,
 } from "./mobile-auth.core";
 
@@ -50,7 +50,7 @@ export async function resolveMobileApiUser(
 
   if (
     options.requireRecentAuth &&
-    !hasRecentMobileIssuedAt(bearer.user.issuedAt)
+    !hasRecentMobileAuthentication(bearer.user.authenticatedAt)
   ) {
     return {
       ok: false,

@@ -22,6 +22,7 @@ import {
   getMobileAccount,
   isRecentAuthError,
 } from "@/api/passkeys";
+import { createApiClient } from "@/api/client";
 import {
   AppText,
   Button,
@@ -71,6 +72,7 @@ export default function UserSettingsScreen() {
     serverUrl,
     serverMode,
     token,
+    refreshHostedAccessToken,
     passkeysSupported,
     clearServer,
     signInHosted,
@@ -148,30 +150,13 @@ export default function UserSettingsScreen() {
     setIsSigningOutMobileDevices(true);
 
     try {
-      const response = await fetch(`${serverUrl}/api/mobile/sessions`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        let message = "Unable to sign out mobile devices.";
-
-        try {
-          const payload = (await response.json()) as { message?: unknown };
-          if (typeof payload.message === "string" && payload.message.trim()) {
-            message = payload.message;
-          }
-        } catch {
-          // Keep the generic message when the server does not return JSON.
-        }
-
-        throw new Error(message);
-      }
+      await createApiClient(serverUrl, {
+        authToken: token,
+        onUnauthorized: refreshHostedAccessToken,
+      }).request("/api/mobile/sessions", { method: "DELETE" });
 
       setConfirmMobileSignOut(false);
-      await clearServer();
+      await clearServer({ serverSessionRevoked: true });
       router.replace("/login");
     } catch (signOutError) {
       setConfirmMobileSignOut(false);
@@ -318,15 +303,19 @@ export default function UserSettingsScreen() {
       // Run the ceremony without rebinding the app session yet: a usernameless
       // passkey sheet or a browser sign-in can authenticate a different
       // account, and destructive actions must stay pinned to the current one.
-      const freshToken =
+      const freshSession =
         method === "passkey"
           ? await signInWithPasskey(serverUrl, { adoptSession: false })
           : await signInHosted(serverUrl, undefined, { adoptSession: false });
 
       const currentEmail =
         accountEmail ??
-        (token ? (await getMobileAccount(serverUrl, token)).email : null);
-      const freshEmail = (await getMobileAccount(serverUrl, freshToken)).email;
+        (token
+          ? (await getMobileAccount(serverUrl, token, refreshHostedAccessToken))
+              .email
+          : null);
+      const freshEmail = (await getMobileAccount(serverUrl, freshSession.token))
+        .email;
 
       if (!currentEmail || !freshEmail || currentEmail !== freshEmail) {
         setRecentAuthError(
@@ -337,10 +326,10 @@ export default function UserSettingsScreen() {
         return;
       }
 
-      await adoptHostedSession(serverUrl, freshToken);
+      await adoptHostedSession(serverUrl, freshSession);
 
       setRecentAction(null);
-      await retryRecentAction(freshToken);
+      await retryRecentAction(freshSession.token);
     } catch (authError) {
       setRecentAuthError(describeError(authError));
     } finally {

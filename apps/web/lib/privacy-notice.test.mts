@@ -71,7 +71,9 @@ test("resolvePrivacyNoticeConfig provides local defaults for self-hosted mode", 
   assert.match(config.importSummary.recipients, /Yahoo Finance/i);
   assert.ok(
     config.categoryGroups.some((group) =>
-      group.items.some((item) => /mobile session tokens/i.test(item)),
+      group.items.some((item) =>
+        /mobile access and refresh credentials/i.test(item),
+      ),
     ),
   );
   assert.ok(

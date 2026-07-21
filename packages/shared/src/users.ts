@@ -48,6 +48,17 @@ export interface DeleteUserPasskeyRequest {
   credentialId?: string;
 }
 
+/** An active mobile session, suitable for a user-facing device list. */
+export interface MobileSessionResponse {
+  id: string;
+  deviceLabel: string;
+  authenticatedAt: string;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
 export type ConnectedAccountProvider = "google" | "github";
 
 export interface ConnectedAccountResponse {

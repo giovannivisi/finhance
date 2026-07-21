@@ -7,6 +7,7 @@ import type {
   ConnectedAccountResponse,
   DeleteConnectedAccountRequest,
   DeleteUserPasskeyRequest,
+  MobileSessionResponse,
   UpdateUserSettingsRequest,
   UserPasskeyResponse,
   UserIdentityResponse,
@@ -28,6 +29,14 @@ const PASSKEY_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
   day: "2-digit",
   month: "short",
   year: "numeric",
+});
+
+const MOBILE_SESSION_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
 });
 
 const PROVIDER_OPTIONS: readonly {
@@ -138,6 +147,18 @@ export default function UserSettingsPageClient({
     null,
   );
   const [isMobileSignOutPending, setIsMobileSignOutPending] = useState(false);
+  const [mobileSessions, setMobileSessions] = useState<MobileSessionResponse[]>(
+    [],
+  );
+  const [mobileSessionsLoaded, setMobileSessionsLoaded] = useState(
+    !canSignOutMobileDevices,
+  );
+  const [mobileSessionError, setMobileSessionError] = useState<string | null>(
+    null,
+  );
+  const [revokingMobileSessionId, setRevokingMobileSessionId] = useState<
+    string | null
+  >(null);
   const [connectedAccounts, setConnectedAccounts] = useState<
     ConnectedAccountResponse[]
   >(identity?.connectedAccounts ?? []);
@@ -217,6 +238,34 @@ export default function UserSettingsPageClient({
     }
   }, [canManagePasskeys]);
 
+  const loadMobileSessions = useCallback(async () => {
+    if (!canSignOutMobileDevices) {
+      return;
+    }
+
+    setMobileSessionError(null);
+
+    try {
+      const response = await fetch("/api/mobile/sessions", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Mobile devices are currently unavailable.");
+      }
+
+      setMobileSessions((await response.json()) as MobileSessionResponse[]);
+    } catch (loadError) {
+      setMobileSessionError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load mobile devices.",
+      );
+    } finally {
+      setMobileSessionsLoaded(true);
+    }
+  }, [canSignOutMobileDevices]);
+
   async function handleMobileSignOut() {
     setMobileSignOutError(null);
     setIsMobileSignOutPending(true);
@@ -231,6 +280,7 @@ export default function UserSettingsPageClient({
       }
 
       setIsMobileSignOutOpen(false);
+      setMobileSessions([]);
       setNotice("All mobile devices have been signed out.");
     } catch (signOutError) {
       setMobileSignOutError(
@@ -240,6 +290,35 @@ export default function UserSettingsPageClient({
       );
     } finally {
       setIsMobileSignOutPending(false);
+    }
+  }
+
+  async function handleRevokeMobileSession(sessionId: string) {
+    setMobileSessionError(null);
+    setRevokingMobileSessionId(sessionId);
+
+    try {
+      const response = await fetch(
+        `/api/mobile/sessions/${encodeURIComponent(sessionId)}`,
+        { method: "DELETE" },
+      );
+
+      if (!response.ok) {
+        throw new Error("The server could not sign out that device.");
+      }
+
+      setMobileSessions((current) =>
+        current.filter((session) => session.id !== sessionId),
+      );
+      setNotice("Mobile device signed out.");
+    } catch (revokeError) {
+      setMobileSessionError(
+        revokeError instanceof Error
+          ? revokeError.message
+          : "Unable to sign out that device.",
+      );
+    } finally {
+      setRevokingMobileSessionId(null);
     }
   }
 
@@ -270,6 +349,10 @@ export default function UserSettingsPageClient({
   useEffect(() => {
     void loadPasskeys();
   }, [loadPasskeys]);
+
+  useEffect(() => {
+    void loadMobileSessions();
+  }, [loadMobileSessions]);
 
   async function handleConnectProvider(provider: ConnectedAccountProvider) {
     setConnectedAccountError(null);
@@ -771,6 +854,48 @@ export default function UserSettingsPageClient({
               Sign out every mobile device connected to this account. Each
               device will need to sign in again.
             </p>
+            {mobileSessionError ? (
+              <p role="alert" className="app-form-error">
+                {mobileSessionError}
+              </p>
+            ) : null}
+            {!mobileSessionsLoaded ? (
+              <p className="section-subtitle">Loading mobile devices...</p>
+            ) : mobileSessions.length === 0 ? (
+              <p className="section-subtitle">No active mobile devices.</p>
+            ) : (
+              <div className="passkey-list">
+                {mobileSessions.map((mobileSession) => (
+                  <div key={mobileSession.id} className="passkey-list-item">
+                    <div>
+                      <p className="font-medium">
+                        {mobileSession.deviceLabel}
+                        {mobileSession.isCurrent ? " (this device)" : ""}
+                      </p>
+                      <p className="section-subtitle">
+                        Last active{" "}
+                        {MOBILE_SESSION_DATE_FORMATTER.format(
+                          new Date(mobileSession.lastUsedAt),
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary passkey-delete-button"
+                      aria-label={`Sign out ${mobileSession.deviceLabel}`}
+                      disabled={revokingMobileSessionId === mobileSession.id}
+                      onClick={() =>
+                        void handleRevokeMobileSession(mobileSession.id)
+                      }
+                    >
+                      {revokingMobileSessionId === mobileSession.id
+                        ? "Signing out..."
+                        : "Sign out"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div>
               <button
                 type="button"

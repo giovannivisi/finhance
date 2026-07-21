@@ -13,9 +13,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { Platform } from "react-native";
 
 import {
   classifyServer,
@@ -26,6 +28,7 @@ import {
 import {
   ApiError,
   createApiClient,
+  MOBILE_SESSION_INVALID_CODE,
   normalizeServerUrl,
   type ApiClient,
 } from "./client";
@@ -46,6 +49,13 @@ export interface HostedSignInOptions {
   adoptSession?: boolean;
 }
 
+export interface HostedSessionCredentials {
+  /** Short-lived bearer used for proxy requests. */
+  token: string;
+  /** Opaque rotated credential kept only in SecureStore. */
+  refreshToken: string;
+}
+
 export interface ServerInspection {
   kind: ServerKind["kind"];
   normalizedUrl: string;
@@ -55,7 +65,7 @@ interface ServerConnectionContextValue {
   /** null while loading from storage, "" when not configured. */
   serverUrl: string | null;
   serverMode: ServerMode;
-  /** Hosted-mode mobile session token (kept in the keychain). */
+  /** Short-lived hosted access token; the paired refresh token stays private. */
   token: string | null;
   client: ApiClient | null;
   isHydrated: boolean;
@@ -67,20 +77,22 @@ interface ServerConnectionContextValue {
     normalizedUrl: string,
     provider?: HostedSignInProvider,
     options?: HostedSignInOptions,
-  ) => Promise<string>;
+  ) => Promise<HostedSessionCredentials>;
   /** Native passkey sign-in against a hosted deployment (no browser). */
   signInWithPasskey: (
     normalizedUrl: string,
     options?: HostedSignInOptions,
-  ) => Promise<string>;
+  ) => Promise<HostedSessionCredentials>;
   /** Persists a hosted session token and rebinds the app to it. */
   adoptHostedSession: (
     normalizedUrl: string,
-    nextToken: string,
+    credentials: HostedSessionCredentials,
   ) => Promise<void>;
+  /** Refreshes a rejected hosted access token once; used by direct web routes. */
+  refreshHostedAccessToken: () => Promise<string | null>;
   /** Whether this device's platform supports passkeys. */
   passkeysSupported: boolean;
-  clearServer: () => Promise<void>;
+  clearServer: (options?: { serverSessionRevoked?: boolean }) => Promise<void>;
 }
 
 const ServerConnectionContext =
@@ -120,24 +132,76 @@ function bytesToHex(bytes: Uint8Array): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function readStoredToken(): Promise<string | null> {
+function isHostedSessionCredentials(
+  value: unknown,
+): value is HostedSessionCredentials {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const { token, refreshToken } = value as {
+    token?: unknown;
+    refreshToken?: unknown;
+  };
+
+  return (
+    typeof token === "string" &&
+    Boolean(token.trim()) &&
+    typeof refreshToken === "string" &&
+    Boolean(refreshToken.trim())
+  );
+}
+
+async function readStoredCredentials(): Promise<HostedSessionCredentials | null> {
   try {
-    return await SecureStore.getItemAsync(MOBILE_TOKEN_KEY);
+    const stored = await SecureStore.getItemAsync(MOBILE_TOKEN_KEY);
+    if (!stored) {
+      return null;
+    }
+
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      return isHostedSessionCredentials(parsed) ? parsed : null;
+    } catch {
+      // Legacy long-lived tokens cannot satisfy the new session binding. They
+      // are deliberately treated as signed out rather than silently reused.
+      return null;
+    }
   } catch {
     return null;
   }
 }
 
-async function writeStoredToken(token: string | null): Promise<void> {
+async function writeStoredCredentials(
+  credentials: HostedSessionCredentials | null,
+): Promise<void> {
   try {
-    if (token) {
-      await SecureStore.setItemAsync(MOBILE_TOKEN_KEY, token);
+    if (credentials) {
+      await SecureStore.setItemAsync(
+        MOBILE_TOKEN_KEY,
+        JSON.stringify(credentials),
+      );
     } else {
       await SecureStore.deleteItemAsync(MOBILE_TOKEN_KEY);
     }
   } catch {
-    // Keychain unavailability should never crash the app.
+    throw new ApiError(
+      "Secure storage is unavailable, so this device cannot safely keep you signed in.",
+      { isNetworkError: false },
+    );
   }
+}
+
+function mobileDeviceLabel(): string {
+  if (Platform.OS === "ios") {
+    return "iOS device";
+  }
+
+  if (Platform.OS === "android") {
+    return "Android device";
+  }
+
+  return "Mobile device";
 }
 
 export function ServerConnectionProvider({
@@ -148,16 +212,18 @@ export function ServerConnectionProvider({
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [serverMode, setServerMode] = useState<ServerMode>("local");
   const [token, setToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
+  const refreshInFlight = useRef<Promise<string | null> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
       try {
-        const [storedUrl, storedMode, storedToken] = await Promise.all([
+        const [storedUrl, storedMode, storedCredentials] = await Promise.all([
           AsyncStorage.getItem(SERVER_URL_KEY),
           AsyncStorage.getItem(SERVER_MODE_KEY),
-          readStoredToken(),
+          readStoredCredentials(),
         ]);
 
         if (cancelled) {
@@ -185,18 +251,16 @@ export function ServerConnectionProvider({
             () => undefined,
           );
 
-          if (defaultToken) {
-            void writeStoredToken(defaultToken);
-          }
-
           setServerMode(defaultMode);
           setToken(defaultToken);
+          setRefreshToken(null);
           setServerUrl(defaultUrl);
           return;
         }
 
         setServerMode(storedMode === "hosted" ? "hosted" : "local");
-        setToken(storedToken);
+        setToken(storedCredentials?.token ?? null);
+        setRefreshToken(storedCredentials?.refreshToken ?? null);
         setServerUrl(storedUrl ?? "");
       } catch {
         if (!cancelled) {
@@ -240,25 +304,92 @@ export function ServerConnectionProvider({
   );
 
   const saveLocalServer = useCallback(async (normalizedUrl: string) => {
+    await writeStoredCredentials(null);
     await AsyncStorage.setItem(SERVER_URL_KEY, normalizedUrl);
     await AsyncStorage.setItem(SERVER_MODE_KEY, "local");
-    await writeStoredToken(null);
     setServerMode("local");
     setToken(null);
+    setRefreshToken(null);
     setServerUrl(normalizedUrl);
   }, []);
 
   const adoptHostedSession = useCallback(
-    async (normalizedUrl: string, nextToken: string) => {
+    async (normalizedUrl: string, credentials: HostedSessionCredentials) => {
+      await writeStoredCredentials(credentials);
       await AsyncStorage.setItem(SERVER_URL_KEY, normalizedUrl);
       await AsyncStorage.setItem(SERVER_MODE_KEY, "hosted");
-      await writeStoredToken(nextToken);
       setServerMode("hosted");
-      setToken(nextToken);
+      setToken(credentials.token);
+      setRefreshToken(credentials.refreshToken);
       setServerUrl(normalizedUrl);
     },
     [],
   );
+
+  const forgetInvalidHostedSession = useCallback(() => {
+    void (async () => {
+      try {
+        await writeStoredCredentials(null);
+      } catch {
+        // The server already rejected the session, so keep the app safe by
+        // clearing its in-memory credentials even if keychain cleanup fails.
+      }
+      setToken(null);
+      setRefreshToken(null);
+    })();
+  }, []);
+
+  const refreshHostedAccessToken = useCallback(async (): Promise<
+    string | null
+  > => {
+    if (!serverUrl || serverMode !== "hosted" || !refreshToken) {
+      return null;
+    }
+
+    if (refreshInFlight.current) {
+      return refreshInFlight.current;
+    }
+
+    const requestRefresh = async () => {
+      try {
+        const refreshClient = createApiClient(serverUrl);
+        const credentials =
+          await refreshClient.request<HostedSessionCredentials>(
+            "/api/mobile/refresh",
+            {
+              method: "POST",
+              body: { refreshToken },
+            },
+          );
+
+        if (!isHostedSessionCredentials(credentials)) {
+          throw new ApiError("The server returned an invalid mobile session.");
+        }
+
+        await writeStoredCredentials(credentials);
+        setToken(credentials.token);
+        setRefreshToken(credentials.refreshToken);
+        return credentials.token;
+      } catch (error) {
+        if (
+          error instanceof ApiError &&
+          error.code === MOBILE_SESSION_INVALID_CODE
+        ) {
+          forgetInvalidHostedSession();
+        }
+        return null;
+      }
+    };
+
+    const pending = requestRefresh();
+    refreshInFlight.current = pending;
+
+    try {
+      return await pending;
+    } finally {
+      refreshInFlight.current = null;
+    }
+  }, [forgetInvalidHostedSession, refreshToken, serverMode, serverUrl]);
 
   const signInHosted = useCallback(
     async (
@@ -307,23 +438,26 @@ export function ServerConnectionProvider({
       }
 
       const exchangeClient = createApiClient(normalizedUrl);
-      const { token: nextToken } = await exchangeClient.request<{
-        token?: string;
-      }>("/api/mobile/token", {
-        method: "POST",
-        body: { code, verifier },
-      });
+      const credentials =
+        await exchangeClient.request<HostedSessionCredentials>(
+          "/api/mobile/token",
+          {
+            method: "POST",
+            body: { code, verifier },
+            mobileDeviceLabel: mobileDeviceLabel(),
+          },
+        );
 
-      if (!nextToken) {
+      if (!isHostedSessionCredentials(credentials)) {
         throw new ApiError(
           "The server did not return a session token. Make sure the deployment includes mobile sign-in support.",
         );
       }
 
       if (options?.adoptSession !== false) {
-        await adoptHostedSession(normalizedUrl, nextToken);
+        await adoptHostedSession(normalizedUrl, credentials);
       }
-      return nextToken;
+      return credentials;
     },
     [adoptHostedSession],
   );
@@ -362,41 +496,55 @@ export function ServerConnectionProvider({
         );
       }
 
-      const { token: nextToken } = await client.request<{ token?: string }>(
+      const credentials = await client.request<HostedSessionCredentials>(
         "/api/mobile/passkey/verify",
         {
           method: "POST",
           body: { response: assertion, challenge },
+          mobileDeviceLabel: mobileDeviceLabel(),
         },
       );
 
-      if (!nextToken) {
+      if (!isHostedSessionCredentials(credentials)) {
         throw new ApiError(
           "The server did not return a session token. Make sure the deployment includes mobile passkey support.",
         );
       }
 
       if (signInOptions?.adoptSession !== false) {
-        await adoptHostedSession(normalizedUrl, nextToken);
+        await adoptHostedSession(normalizedUrl, credentials);
       }
-      return nextToken;
+      return credentials;
     },
     [adoptHostedSession],
   );
 
-  const clearServer = useCallback(async () => {
-    await AsyncStorage.removeItem(SERVER_URL_KEY);
-    await AsyncStorage.removeItem(SERVER_MODE_KEY);
-    await writeStoredToken(null);
-    setServerMode("local");
-    setToken(null);
-    setServerUrl("");
-  }, []);
+  const clearServer = useCallback(
+    async (options?: { serverSessionRevoked?: boolean }) => {
+      let storageError: unknown = null;
 
-  const dropToken = useCallback(() => {
-    void writeStoredToken(null);
-    setToken(null);
-  }, []);
+      try {
+        await writeStoredCredentials(null);
+      } catch (error) {
+        if (!options?.serverSessionRevoked) {
+          throw error;
+        }
+        storageError = error;
+      }
+
+      await AsyncStorage.removeItem(SERVER_URL_KEY);
+      await AsyncStorage.removeItem(SERVER_MODE_KEY);
+      setServerMode("local");
+      setToken(null);
+      setRefreshToken(null);
+      setServerUrl("");
+
+      if (storageError) {
+        throw storageError;
+      }
+    },
+    [],
+  );
 
   const value = useMemo<ServerConnectionContextValue>(() => {
     const connected = Boolean(serverUrl && (serverMode === "local" || token));
@@ -411,7 +559,7 @@ export function ServerConnectionProvider({
               ? `${serverUrl}/api/proxy`
               : (serverUrl as string),
             serverMode === "hosted"
-              ? { authToken: token, onUnauthorized: dropToken }
+              ? { authToken: token, onUnauthorized: refreshHostedAccessToken }
               : {},
           )
         : null,
@@ -422,6 +570,7 @@ export function ServerConnectionProvider({
       signInHosted,
       signInWithPasskey,
       adoptHostedSession,
+      refreshHostedAccessToken,
       passkeysSupported: (() => {
         try {
           return passkeysSupported();
@@ -435,7 +584,7 @@ export function ServerConnectionProvider({
     serverUrl,
     serverMode,
     token,
-    dropToken,
+    refreshHostedAccessToken,
     inspectServer,
     saveLocalServer,
     signInHosted,

@@ -193,6 +193,56 @@ describe("UserSettingsPageClient", () => {
     }
   });
 
+  it("lists and revokes an individual mobile device", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            id: "session-123",
+            deviceLabel: "iOS device",
+            authenticatedAt: "2026-07-21T10:00:00.000Z",
+            createdAt: "2026-07-21T10:00:00.000Z",
+            lastUsedAt: "2026-07-21T10:01:00.000Z",
+            expiresAt: "2026-08-20T10:00:00.000Z",
+            isCurrent: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(
+        <UserSettingsPageClient
+          initialSettings={{
+            showTransactionTimes: true,
+            startPage: "DASHBOARD",
+            reportingCurrency: "EUR",
+          }}
+          canSignOutMobileDevices
+        />,
+      );
+
+      expect(await screen.findByText("iOS device")).toBeInTheDocument();
+      await user.click(
+        screen.getByRole("button", { name: /sign out ios device/i }),
+      );
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenLastCalledWith(
+          "/api/mobile/sessions/session-123",
+          { method: "DELETE" },
+        );
+      });
+      expect(screen.getByText("Mobile device signed out.")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders identity and starts provider linking", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({

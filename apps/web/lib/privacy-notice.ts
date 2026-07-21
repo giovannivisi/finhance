@@ -205,6 +205,7 @@ const PROCESSING_ACTIVITY_DEFINITIONS: Record<
       "Idempotency keys, hashed request fingerprints, response status codes, and request bodies cached for replay protection.",
       "Loopback IP, host-header, origin, and referer checks used to enforce local-only access.",
       "Operational timestamps and short-lived process state used to coordinate imports, live valuation polling, performance-series requests, or refresh jobs.",
+      "For hosted mobile sign-in, hashed refresh credentials and generic device labels with session, expiry, and last-used timestamps used to secure and manage signed-in devices.",
     ],
   },
   browserPreferences: {
@@ -215,7 +216,7 @@ const PROCESSING_ACTIVITY_DEFINITIONS: Record<
       "Theme and hide-balances preferences stored in browser local storage or mobile device storage.",
       "Single-session dashboard refresh flag stored in browser session storage.",
       "Mobile server URL and server mode stored on the device.",
-      "Hosted mobile session token stored in the device keychain so the app can authenticate future proxy requests.",
+      "Hosted mobile access and refresh credentials stored in the device keychain so the app can authenticate future proxy requests.",
     ],
   },
 };
@@ -253,7 +254,8 @@ const CATEGORY_GROUPS: PrivacyCategoryGroup[] = [
       "Loopback access checks based on request metadata while authentication is disabled.",
       "Hosted sign-in provider metadata such as provider name, linked email address, email verification status, display name, and linked timestamp.",
       "Browser-side theme, privacy-display, and session flags stored on the device you use to access the app.",
-      "Mobile server connection details and hosted mobile session tokens stored on the device.",
+      "Mobile server connection details and hosted mobile access and refresh credentials stored on the device.",
+      "For hosted sign-in, a server-side device-session record containing a hashed refresh credential, generic device label, and session timestamps.",
     ],
   },
   {
@@ -387,9 +389,9 @@ const DEFAULT_RETENTION: Record<
   browserPreferences: {
     title: "Device preferences and mobile connection state",
     retention:
-      "Stored on your device until you clear browser or app storage, change the setting, disconnect the mobile app, sign out, or end the current browser session where session storage is used.",
+      "Stored on your device until you clear browser or app storage, change the setting, disconnect the mobile app, sign out, or end the current browser session where session storage is used. Hosted mobile-session records expire after 30 days by default and are removed during mobile-session operations once expired.",
     detail:
-      "Theme and hide-balances preferences live in browser local storage or mobile app storage. The dashboard refresh-attempt flag lives in browser session storage. The mobile server URL and mode live in app storage, and hosted mobile session tokens live in the device keychain.",
+      "Theme and hide-balances preferences live in browser local storage or mobile app storage. The dashboard refresh-attempt flag lives in browser session storage. The mobile server URL and mode live in app storage, while hosted mobile access and refresh credentials live in the device keychain.",
   },
 };
 

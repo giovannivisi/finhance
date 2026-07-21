@@ -12,8 +12,9 @@ const RATE_LIMIT_MESSAGE = "Too many mobile sign-in attempts. Try again soon.";
 
 /**
  * Verifies a mobile passkey assertion against the stored authenticator and, on
- * success, returns a mobile session token. The app calls this directly over
- * HTTPS (no browser), so the token never travels through a redirect.
+ * success, returns mobile access and refresh credentials. The app calls this
+ * directly over HTTPS (no browser), so neither credential travels through a
+ * redirect.
  */
 export async function POST(request: Request) {
   if (!isHostedAuthMode()) {
@@ -72,6 +73,7 @@ export async function POST(request: Request) {
       typeof verifyMobilePasskeyAuthentication
     >[0]["response"],
     challenge: challenge.trim(),
+    deviceLabel: request.headers.get("x-finhance-device-label"),
   });
 
   if (!result) {
@@ -81,5 +83,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return Response.json({ token: result.token }, { headers: NO_STORE_HEADERS });
+  return Response.json(result, { headers: NO_STORE_HEADERS });
 }

@@ -28,8 +28,8 @@ function resolveMobileAuthProvider(provider: string | null): string | null {
  * sign-in code bound to that challenge is returned to the app through a
  * strictly allowlisted deep-link redirect, carried in the URL fragment so it
  * never appears in request logs. The app then exchanges code + verifier for
- * the long-lived mobile token at /api/mobile/token, so the token itself never
- * travels through the browser.
+ * short-lived access and refresh credentials at /api/mobile/token, so neither
+ * credential travels through the browser.
  */
 export async function GET(request: Request) {
   if (!isHostedAuthMode()) {

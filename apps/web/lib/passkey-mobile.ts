@@ -11,7 +11,7 @@ import {
 } from "@simplewebauthn/server";
 import { Prisma } from "@finhance/db";
 
-import { mintMobileToken } from "./mobile-auth";
+import { createMobileSession } from "./mobile-auth";
 import {
   mintMobilePasskeyChallengeToken,
   mintMobilePasskeyRegChallengeToken,
@@ -113,16 +113,18 @@ export async function createMobilePasskeyAuthentication(
 
 /**
  * Verifies a mobile passkey assertion against the stored authenticator and, on
- * success, mints a mobile session token. Returns null for every failure so the
- * route can answer 401 uniformly without leaking which check failed.
+ * success, creates a device-bound mobile session. Returns null for every
+ * failure so the route can answer 401 uniformly without leaking which check
+ * failed.
  */
 export async function verifyMobilePasskeyAuthentication(
   input: {
     response: AuthenticationResponseJSON;
     challenge: string;
+    deviceLabel?: string | null;
   },
   env: NodeJS.ProcessEnv = process.env,
-): Promise<{ token: string } | null> {
+): Promise<{ token: string; refreshToken: string } | null> {
   const authSecret = readAuthSecret(env);
 
   const expectedChallenge = await verifyMobilePasskeyChallengeToken(
@@ -184,13 +186,12 @@ export async function verifyMobilePasskeyAuthentication(
     return null;
   }
 
-  const token = await mintMobileToken({
+  return createMobileSession({
     userId: user.id,
     email: user.email,
+    deviceLabel: input.deviceLabel,
     env,
   });
-
-  return { token };
 }
 
 export async function createMobilePasskeyRegistration(
