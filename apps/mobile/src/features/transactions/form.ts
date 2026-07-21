@@ -1,5 +1,6 @@
 import type {
   AccountResponse,
+  AiTransactionDraft,
   ExpenseValidationRuleResponse,
   TransactionDirection,
   TransactionKind,
@@ -146,6 +147,36 @@ export function formFromTransaction(
     nativeEnabled: Boolean(transaction.nativeCurrency),
     nativeCurrency: transaction.nativeCurrency ?? "",
     nativeAmount: amountToInput(transaction.nativeAmount ?? null),
+  };
+}
+
+/** Applies only safe draft fields; saving still uses the normal validation flow. */
+export function applyTransactionDraft(
+  state: TransactionFormState,
+  draft: AiTransactionDraft,
+  accounts: AccountResponse[],
+  expenseRules: ExpenseValidationRuleResponse[],
+): TransactionFormState {
+  const matchingRule =
+    state.kind === "EXPENSE" && !state.categoryId
+      ? matchExpenseRule(draft.description, expenseRules)
+      : null;
+  const cashAccounts = accounts.filter(
+    (account) => account.type === "CASH" && account.archivedAt === null,
+  );
+  const cashAccountId =
+    draft.paymentMethod === "cash" && cashAccounts.length === 1
+      ? cashAccounts[0]!.id
+      : null;
+
+  return {
+    ...state,
+    amount: draft.amount === null ? state.amount : String(draft.amount),
+    date: draft.postedAt ?? state.date,
+    description: draft.description || state.description,
+    counterparty: draft.counterparty ?? state.counterparty,
+    accountId: cashAccountId ?? state.accountId,
+    categoryId: matchingRule?.secondaryCategoryId ?? state.categoryId,
   };
 }
 

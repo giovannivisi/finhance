@@ -45,6 +45,8 @@ export interface RequestOptions {
   body?: unknown;
   idempotencyKey?: string;
   timeoutMs?: number;
+  /** Non-identifying label recorded with a newly created mobile session. */
+  mobileDeviceLabel?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -152,20 +154,23 @@ export interface ApiClientOptions {
   /** Mobile session token for hosted servers; sent as a Bearer header. */
   authToken?: string | null;
   /**
-   * Invoked when the proxy explicitly reports a dead mobile session so the
-   * app can drop the stored token. Other 401s (captive portals, misconfigured
-   * servers) surface as errors without signing the user out.
+   * Invoked once when the proxy rejects an access token. A refreshed token
+   * retries the interrupted request; null leaves the original 401 intact.
    */
-  onUnauthorized?: () => void;
+  onUnauthorized?: () => Promise<string | null> | string | null;
 }
 
 export function createApiClient(
   baseUrl: string,
   clientOptions: ApiClientOptions = {},
 ): ApiClient {
+  let currentAuthToken = clientOptions.authToken ?? null;
+
   async function request<T>(
     path: string,
     options: RequestOptions = {},
+    refreshedAuthToken?: string,
+    hasRetriedAfterRefresh = false,
   ): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(
@@ -177,8 +182,9 @@ export function createApiClient(
       Accept: "application/json",
     };
 
-    if (clientOptions.authToken) {
-      headers.Authorization = `Bearer ${clientOptions.authToken}`;
+    const authToken = refreshedAuthToken ?? currentAuthToken;
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
     }
 
     if (options.body !== undefined) {
@@ -187,6 +193,10 @@ export function createApiClient(
 
     if (options.idempotencyKey) {
       headers["Idempotency-Key"] = options.idempotencyKey;
+    }
+
+    if (options.mobileDeviceLabel) {
+      headers["X-Finhance-Device-Label"] = options.mobileDeviceLabel;
     }
 
     let response: Response;
@@ -231,8 +241,18 @@ export function createApiClient(
     if (!response.ok) {
       const code = extractErrorCode(payload);
 
-      if (response.status === 401 && code === MOBILE_SESSION_INVALID_CODE) {
-        clientOptions.onUnauthorized?.();
+      if (
+        !hasRetriedAfterRefresh &&
+        response.status === 401 &&
+        code === MOBILE_SESSION_INVALID_CODE &&
+        clientOptions.onUnauthorized
+      ) {
+        const nextToken = await clientOptions.onUnauthorized();
+
+        if (nextToken) {
+          currentAuthToken = nextToken;
+          return request<T>(path, options, nextToken, true);
+        }
       }
 
       throw new ApiError(extractErrorMessage(payload, response.status), {

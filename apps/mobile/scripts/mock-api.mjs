@@ -124,7 +124,7 @@ const privacyNotice = {
     {
       title: "Device data",
       items: [
-        "Mobile server connection details and hosted mobile session tokens.",
+        "Mobile server connection details and hosted mobile access and refresh credentials.",
         "Theme and hide-amounts preferences stored on this device.",
       ],
     },

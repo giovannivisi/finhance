@@ -16,14 +16,25 @@ export interface UserSettings {
   showTransactionTimes: boolean;
   startPage: UserStartPage;
   reportingCurrency: string;
+  cloudParserEnabled: boolean;
 }
 
-export interface UserSettingsResponse extends UserSettings {}
+export interface UserSettingsResponse extends UserSettings {
+  /** Whether the deployment has a cloud parsing provider configured. */
+  cloudParserAvailable: boolean;
+  /** Whether the latest consent event grants the current notice version. */
+  cloudParserConsentActive: boolean;
+  /** Current cloud-parser consent text version, when cloud parsing is available. */
+  cloudParserConsentVersion: string | null;
+}
 
 export interface UpdateUserSettingsRequest {
   showTransactionTimes?: boolean;
   startPage?: UserStartPage;
   reportingCurrency?: string;
+  cloudParserEnabled?: boolean;
+  /** Version of the separately presented cloud-parser consent text. */
+  cloudParserConsentVersion?: string;
 }
 
 export interface UserPasskeyResponse {
@@ -37,6 +48,17 @@ export interface UserPasskeyResponse {
 
 export interface DeleteUserPasskeyRequest {
   credentialId?: string;
+}
+
+/** An active mobile session, suitable for a user-facing device list. */
+export interface MobileSessionResponse {
+  id: string;
+  deviceLabel: string;
+  authenticatedAt: string;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
 }
 
 export type ConnectedAccountProvider = "google" | "github";
@@ -94,6 +116,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   showTransactionTimes: true,
   startPage: "DASHBOARD",
   reportingCurrency: "EUR",
+  cloudParserEnabled: false,
 };
 
 export function isUserStartPage(value: unknown): value is UserStartPage {
@@ -119,5 +142,9 @@ export function normalizeUserSettings(
       isSupportedReportingCurrencyCode(value.reportingCurrency)
         ? value.reportingCurrency.trim().toUpperCase()
         : DEFAULT_USER_SETTINGS.reportingCurrency,
+    cloudParserEnabled:
+      typeof value?.cloudParserEnabled === "boolean"
+        ? value.cloudParserEnabled
+        : DEFAULT_USER_SETTINGS.cloudParserEnabled,
   };
 }

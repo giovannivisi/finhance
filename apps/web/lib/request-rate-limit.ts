@@ -49,6 +49,11 @@ export const MOBILE_AUTH_RATE_LIMITS = {
     windowMs: 60_000,
     scope: "mobile-token-exchange",
   },
+  tokenRefresh: {
+    limit: 30,
+    windowMs: 60_000,
+    scope: "mobile-token-refresh",
+  },
   passkeyDelete: {
     limit: 10,
     windowMs: 60_000,

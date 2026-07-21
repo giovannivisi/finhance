@@ -34,11 +34,25 @@ export function getStartPageHref(startPage: UserStartPage): string {
 }
 
 export function getDefaultUserSettings(): UserSettingsResponse {
-  return { ...DEFAULT_USER_SETTINGS };
+  return {
+    ...DEFAULT_USER_SETTINGS,
+    cloudParserAvailable: false,
+    cloudParserConsentActive: false,
+    cloudParserConsentVersion: null,
+  };
 }
 
 export function mergeUserSettings(
   value: Partial<UserSettingsResponse> | null | undefined,
 ): UserSettingsResponse {
-  return normalizeUserSettings(value);
+  return {
+    ...normalizeUserSettings(value),
+    cloudParserAvailable: value?.cloudParserAvailable === true,
+    cloudParserConsentActive: value?.cloudParserConsentActive === true,
+    cloudParserConsentVersion:
+      typeof value?.cloudParserConsentVersion === "string" &&
+      value.cloudParserConsentVersion.trim()
+        ? value.cloudParserConsentVersion
+        : null,
+  };
 }

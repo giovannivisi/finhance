@@ -27,6 +27,8 @@ describe('UpdateUserSettingsDto', () => {
     const dto = plainToInstance(UpdateUserSettingsDto, {
       showTransactionTimes: false,
       startPage: 'ANALYTICS',
+      cloudParserEnabled: true,
+      cloudParserConsentVersion: '2026-07-12',
     });
 
     expect(validateSync(dto)).toEqual([]);

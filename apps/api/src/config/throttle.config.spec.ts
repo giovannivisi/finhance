@@ -27,6 +27,10 @@ describe('throttle.config', () => {
         limit: 30,
         ttl: 60_000,
       },
+      ai: {
+        limit: 3,
+        ttl: 60_000,
+      },
     });
   });
 
@@ -52,7 +56,20 @@ describe('throttle.config', () => {
         limit: 6,
         ttl: 60_000,
       },
+      ai: {
+        limit: 3,
+        ttl: 60_000,
+      },
     });
+  });
+
+  it('uses the configured AI request limit', () => {
+    expect(
+      resolveThrottleConfig({
+        NODE_ENV: 'production',
+        AI_RATE_LIMIT_PER_MINUTE: '1',
+      }).ai,
+    ).toEqual({ limit: 1, ttl: 60_000 });
   });
 
   it('creates throttler options for every configured bucket', () => {
@@ -80,6 +97,11 @@ describe('throttle.config', () => {
       {
         name: THROTTLE_BUCKETS.marketRefresh,
         limit: 6,
+        ttl: 60_000,
+      },
+      {
+        name: THROTTLE_BUCKETS.ai,
+        limit: 3,
         ttl: 60_000,
       },
     ]);

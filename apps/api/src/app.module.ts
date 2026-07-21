@@ -22,12 +22,14 @@ import { ProxyAwareThrottlerGuard } from '@/security/proxy-aware-throttler.guard
 import { RequestSafetyModule } from '@/request-safety/request-safety.module';
 import { IdempotencyInterceptor } from '@/request-safety/idempotency.interceptor';
 import { createThrottlerOptions } from '@/config/throttle.config';
+import { AiModule } from '@/ai/ai.module';
 
 @Module({
   controllers: [AppController],
   imports: [
     ThrottlerModule.forRoot(createThrottlerOptions()),
     PrismaModule,
+    AiModule,
     RequestSafetyModule,
     AccountsModule,
     AssetsModule,

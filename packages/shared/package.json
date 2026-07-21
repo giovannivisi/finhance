@@ -7,6 +7,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "imports": {
+    "#ai": "./src/ai.ts",
     "#accounts": "./src/accounts.ts",
     "#assets": "./src/assets.ts",
     "#brokerage": "./src/brokerage.ts",
@@ -23,6 +24,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./ai": "./src/ai.ts",
     "./accounts": "./src/accounts.ts",
     "./assets": "./src/assets.ts",
     "./brokerage": "./src/brokerage.ts",

@@ -25,8 +25,14 @@ export interface RegisterPasskeyOptionsResponse {
   challenge: string;
 }
 
-function createHostedClient(serverUrl: string, token: string) {
-  return createApiClient(serverUrl, { authToken: token });
+type RefreshAccessToken = () => Promise<string | null>;
+
+function createHostedClient(
+  serverUrl: string,
+  token: string,
+  onUnauthorized?: RefreshAccessToken,
+) {
+  return createApiClient(serverUrl, { authToken: token, onUnauthorized });
 }
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -61,19 +67,24 @@ export function formatPasskeyTitle(passkey: UserPasskeyResponse): string {
   return passkey.credentialBackedUp ? `${title} (backed up)` : title;
 }
 
-export function listPasskeys(serverUrl: string, token: string) {
-  return createHostedClient(serverUrl, token).request<UserPasskeyResponse[]>(
-    "/api/mobile/passkeys",
-  );
+export function listPasskeys(
+  serverUrl: string,
+  token: string,
+  onUnauthorized?: RefreshAccessToken,
+) {
+  return createHostedClient(serverUrl, token, onUnauthorized).request<
+    UserPasskeyResponse[]
+  >("/api/mobile/passkeys");
 }
 
 export function deletePasskey(
   serverUrl: string,
   token: string,
   credentialId: string,
+  onUnauthorized?: RefreshAccessToken,
 ) {
   const body: DeleteUserPasskeyRequest = { credentialId };
-  return createHostedClient(serverUrl, token).request<void>(
+  return createHostedClient(serverUrl, token, onUnauthorized).request<void>(
     "/api/mobile/passkeys",
     {
       method: "DELETE",
@@ -82,19 +93,26 @@ export function deletePasskey(
   );
 }
 
-export function getMobileAccount(serverUrl: string, token: string) {
-  return createHostedClient(serverUrl, token).request<MobileAccountResponse>(
-    "/api/mobile/account",
-  );
+export function getMobileAccount(
+  serverUrl: string,
+  token: string,
+  onUnauthorized?: RefreshAccessToken,
+) {
+  return createHostedClient(
+    serverUrl,
+    token,
+    onUnauthorized,
+  ).request<MobileAccountResponse>("/api/mobile/account");
 }
 
 export function deleteMobileAccount(
   serverUrl: string,
   token: string,
   email: string,
+  onUnauthorized?: RefreshAccessToken,
 ) {
   const body: DeleteUserAccountRequest = { email };
-  return createHostedClient(serverUrl, token).request<void>(
+  return createHostedClient(serverUrl, token, onUnauthorized).request<void>(
     "/api/mobile/account",
     {
       method: "DELETE",
@@ -114,10 +132,11 @@ export async function linkConnectedAccount(
   serverUrl: string,
   token: string,
   provider: ConnectedAccountProvider,
+  onUnauthorized?: RefreshAccessToken,
 ) {
   const { verifier, challenge } = await createPkcePair();
   const redirect = Linking.createURL("auth");
-  const client = createHostedClient(serverUrl, token);
+  const client = createHostedClient(serverUrl, token, onUnauthorized);
   const { authorizationUrl } =
     await client.request<StartMobileProviderLinkResponse>(
       "/api/mobile/connected-accounts/link/start",
@@ -163,9 +182,10 @@ export function deleteConnectedAccount(
   serverUrl: string,
   token: string,
   accountId: string,
+  onUnauthorized?: RefreshAccessToken,
 ) {
   const body: DeleteConnectedAccountRequest = { accountId };
-  return createHostedClient(serverUrl, token).request<void>(
+  return createHostedClient(serverUrl, token, onUnauthorized).request<void>(
     "/api/mobile/connected-accounts",
     {
       method: "DELETE",
@@ -174,8 +194,12 @@ export function deleteConnectedAccount(
   );
 }
 
-export async function registerPasskey(serverUrl: string, token: string) {
-  const client = createHostedClient(serverUrl, token);
+export async function registerPasskey(
+  serverUrl: string,
+  token: string,
+  onUnauthorized?: RefreshAccessToken,
+) {
+  const client = createHostedClient(serverUrl, token, onUnauthorized);
   const { options, challenge } =
     await client.request<RegisterPasskeyOptionsResponse>(
       "/api/mobile/passkey/register/options",

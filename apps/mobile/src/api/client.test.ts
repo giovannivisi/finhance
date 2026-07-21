@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
-
-import { buildUrl, generateIdempotencyKey, normalizeServerUrl } from "./client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  MOBILE_SESSION_INVALID_CODE,
+  buildUrl,
+  createApiClient,
+  generateIdempotencyKey,
+  normalizeServerUrl,
+} from "@/api/client";
 
 describe("normalizeServerUrl", () => {
   it("adds http:// when the scheme is missing", () => {
@@ -59,5 +64,84 @@ describe("generateIdempotencyKey", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
     expect(first).not.toBe(second);
+  });
+});
+
+describe("mobile API client", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("refreshes a rejected access token once and retries the original request", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "Mobile session is invalid or expired.",
+            code: MOBILE_SESSION_INVALID_CODE,
+          }),
+          { status: 401 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const refresh = vi.fn().mockResolvedValue("fresh-access-token");
+    const client = createApiClient("https://finhance.test/api/proxy", {
+      authToken: "expired-access-token",
+      onUnauthorized: refresh,
+    });
+
+    await expect(client.request("/accounts")).resolves.toEqual({ ok: true });
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer fresh-access-token",
+        }),
+      }),
+    );
+  });
+
+  it("reuses the refreshed access token for later requests from the same client", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "Mobile session is invalid or expired.",
+            code: MOBILE_SESSION_INVALID_CODE,
+          }),
+          { status: 401 },
+        ),
+      )
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ ok: true }), { status: 200 }),
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const refresh = vi.fn().mockResolvedValue("fresh-access-token");
+    const client = createApiClient("https://finhance.test/api/proxy", {
+      authToken: "expired-access-token",
+      onUnauthorized: refresh,
+    });
+
+    await client.request("/passkey/options");
+    await client.request("/passkey/verify");
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer fresh-access-token",
+        }),
+      }),
+    );
   });
 });

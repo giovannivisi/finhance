@@ -12,8 +12,8 @@ const RATE_LIMIT_MESSAGE = "Too many mobile sign-in attempts. Try again soon.";
 
 /**
  * Exchanges the sign-in code from the authorize handoff plus the app-held
- * PKCE verifier for a long-lived mobile session token. The app calls this
- * directly (no browser involved), so the token never appears in a redirect.
+ * PKCE verifier for a device-bound mobile session. The app calls this directly
+ * (no browser involved), so neither credential appears in a redirect.
  */
 export async function POST(request: Request) {
   if (!isHostedAuthMode()) {
@@ -70,6 +70,7 @@ export async function POST(request: Request) {
   const token = await exchangeMobileSignInCode({
     code: code.trim(),
     verifier: verifier.trim(),
+    deviceLabel: request.headers.get("x-finhance-device-label"),
   });
 
   if (!token) {
@@ -79,5 +80,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return Response.json({ token }, { headers: NO_STORE_HEADERS });
+  return Response.json(token, { headers: NO_STORE_HEADERS });
 }

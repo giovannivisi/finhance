@@ -109,6 +109,193 @@ describe("UserSettingsPageClient", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("sends the displayed consent version when cloud parsing is enabled", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue({
+      showTransactionTimes: true,
+      startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
+      cloudParserEnabled: true,
+      cloudParserAvailable: true,
+      cloudParserConsentActive: true,
+      cloudParserConsentVersion: "2026-07-12",
+    });
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: false,
+          cloudParserAvailable: true,
+          cloudParserConsentActive: false,
+          cloudParserConsentVersion: "2026-07-12",
+        }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("checkbox", { name: /enable cloud-enhanced drafts/i }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /save user settings/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/users/me/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: true,
+          cloudParserConsentVersion: "2026-07-12",
+        }),
+      });
+    });
+  });
+
+  it("requires explicit renewal when the stored consent version is stale", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue({
+      showTransactionTimes: true,
+      startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
+      cloudParserEnabled: true,
+      cloudParserAvailable: true,
+      cloudParserConsentActive: true,
+      cloudParserConsentVersion: "2026-07-12",
+    });
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: true,
+          cloudParserAvailable: true,
+          cloudParserConsentActive: false,
+          cloudParserConsentVersion: "2026-07-12",
+        }}
+      />,
+    );
+
+    const consent = screen.getByRole("checkbox", {
+      name: /enable cloud-enhanced drafts/i,
+    });
+    expect(consent).not.toBeChecked();
+    expect(screen.getByText(/consent notice has changed/i)).toBeInTheDocument();
+
+    await user.click(consent);
+    await user.click(
+      screen.getByRole("button", { name: /save user settings/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/users/me/settings", {
+        method: "PATCH",
+        body: expect.stringContaining(
+          '"cloudParserConsentVersion":"2026-07-12"',
+        ),
+      });
+    });
+  });
+
+  it("does not change stale cloud consent while saving unrelated settings", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue({
+      showTransactionTimes: false,
+      startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
+      cloudParserEnabled: true,
+      cloudParserAvailable: true,
+      cloudParserConsentActive: false,
+      cloudParserConsentVersion: "2026-07-12",
+    });
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: true,
+          cloudParserAvailable: true,
+          cloudParserConsentActive: false,
+          cloudParserConsentVersion: "2026-07-12",
+        }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("checkbox", { name: /show transaction times/i }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /save user settings/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/users/me/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          showTransactionTimes: false,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+        }),
+      });
+    });
+  });
+
+  it("allows existing consent to be withdrawn while the provider is unavailable", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValue({
+      showTransactionTimes: true,
+      startPage: "DASHBOARD",
+      reportingCurrency: "EUR",
+      cloudParserEnabled: false,
+      cloudParserAvailable: false,
+      cloudParserConsentActive: false,
+      cloudParserConsentVersion: null,
+    });
+
+    render(
+      <UserSettingsPageClient
+        initialSettings={{
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: true,
+          cloudParserAvailable: false,
+          cloudParserConsentActive: true,
+          cloudParserConsentVersion: null,
+        }}
+      />,
+    );
+
+    const consent = screen.getByRole("checkbox", {
+      name: /enable cloud-enhanced drafts/i,
+    });
+    expect(consent).toBeChecked();
+    await user.click(consent);
+    await user.click(
+      screen.getByRole("button", { name: /save user settings/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApiMutation).toHaveBeenCalledWith("/users/me/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          showTransactionTimes: true,
+          startPage: "DASHBOARD",
+          reportingCurrency: "EUR",
+          cloudParserEnabled: false,
+        }),
+      });
+    });
+  });
+
   it("signs out mobile devices after confirmation", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
@@ -142,6 +329,56 @@ describe("UserSettingsPageClient", () => {
       expect(
         await screen.findByText("All mobile devices have been signed out."),
       ).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("lists and revokes an individual mobile device", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            id: "session-123",
+            deviceLabel: "iOS device",
+            authenticatedAt: "2026-07-21T10:00:00.000Z",
+            createdAt: "2026-07-21T10:00:00.000Z",
+            lastUsedAt: "2026-07-21T10:01:00.000Z",
+            expiresAt: "2026-08-20T10:00:00.000Z",
+            isCurrent: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(
+        <UserSettingsPageClient
+          initialSettings={{
+            showTransactionTimes: true,
+            startPage: "DASHBOARD",
+            reportingCurrency: "EUR",
+          }}
+          canSignOutMobileDevices
+        />,
+      );
+
+      expect(await screen.findByText("iOS device")).toBeInTheDocument();
+      await user.click(
+        screen.getByRole("button", { name: /sign out ios device/i }),
+      );
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenLastCalledWith(
+          "/api/mobile/sessions/session-123",
+          { method: "DELETE" },
+        );
+      });
+      expect(screen.getByText("Mobile device signed out.")).toBeInTheDocument();
     } finally {
       vi.unstubAllGlobals();
     }

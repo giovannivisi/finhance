@@ -130,6 +130,10 @@ describe('User settings routes (e2e)', () => {
         .expect(200);
 
       expect(bodyAs<UserSettingsResponse>(getResponse)).toEqual({
+        cloudParserAvailable: false,
+        cloudParserConsentActive: false,
+        cloudParserConsentVersion: null,
+        cloudParserEnabled: false,
         reportingCurrency: 'EUR',
         showTransactionTimes: true,
         startPage: 'DASHBOARD',
@@ -145,6 +149,10 @@ describe('User settings routes (e2e)', () => {
         .expect(200);
 
       expect(bodyAs<UserSettingsResponse>(patchResponse)).toEqual({
+        cloudParserAvailable: false,
+        cloudParserConsentActive: false,
+        cloudParserConsentVersion: null,
+        cloudParserEnabled: false,
         reportingCurrency: 'EUR',
         showTransactionTimes: false,
         startPage: 'BROKERAGE',
@@ -155,6 +163,7 @@ describe('User settings routes (e2e)', () => {
         select: { userSettings: true },
       });
       expect(persisted.userSettings).toEqual({
+        cloudParserEnabled: false,
         reportingCurrency: 'EUR',
         showTransactionTimes: false,
         startPage: 'BROKERAGE',
@@ -223,6 +232,10 @@ describe('User settings routes (e2e)', () => {
         .expect(200);
 
       expect(bodyAs<UserSettingsResponse>(response)).toEqual({
+        cloudParserAvailable: false,
+        cloudParserConsentActive: false,
+        cloudParserConsentVersion: null,
+        cloudParserEnabled: false,
         reportingCurrency: 'EUR',
         showTransactionTimes: true,
         startPage: 'ANALYTICS',
@@ -233,6 +246,7 @@ describe('User settings routes (e2e)', () => {
       });
       expect(hostedUser.email).toBe('giovanni@example.com');
       expect(hostedUser.userSettings).toEqual({
+        cloudParserEnabled: false,
         reportingCurrency: 'EUR',
         showTransactionTimes: true,
         startPage: 'ANALYTICS',

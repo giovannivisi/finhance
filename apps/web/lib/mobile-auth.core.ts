@@ -15,7 +15,10 @@ import { jwtVerify, SignJWT } from "jose";
 export const MOBILE_TOKEN_AUDIENCE = "finhance-mobile";
 export const MOBILE_CODE_AUDIENCE = "finhance-mobile-code";
 export const MOBILE_TOKEN_ISSUER = "finhance-web";
-export const MOBILE_TOKEN_DEFAULT_TTL = "30d";
+/** Short-lived bearer tokens are refreshed using a rotated, device-bound token. */
+export const MOBILE_ACCESS_TOKEN_DEFAULT_TTL = "15m";
+/** Maximum lifetime of a mobile session before the user must sign in again. */
+export const MOBILE_SESSION_DEFAULT_TTL = "30d";
 export const MOBILE_CODE_TTL = "5m";
 export const MOBILE_PASSKEY_CHALLENGE_AUDIENCE =
   "finhance-mobile-passkey-challenge";
@@ -31,15 +34,21 @@ const PKCE_CHALLENGE_PATTERN = /^[0-9a-f]{64}$/;
 
 export interface MobileTokenClaims {
   userId: string;
+  /** Database-backed mobile session that issued this access token. */
+  sessionId: string;
   email: string | null;
   /** Token issue time; null only for tokens minted without an iat claim. */
   issuedAt: Date | null;
+  /** Time of the authentication event that created the session. */
+  authenticatedAt: Date | null;
 }
 
 export interface MobileCodeClaims {
   userId: string;
   email: string | null;
   challenge: string;
+  /** Unique code id, consumed server-side during a successful exchange. */
+  jti: string;
 }
 
 export interface MobilePasskeyRegistrationChallengeClaims {
@@ -90,8 +99,10 @@ export function resolveActiveMobileTokenClaims(
 
   return {
     userId: user.id,
+    sessionId: claims.sessionId,
     email: user.email ?? claims.email,
     issuedAt: claims.issuedAt,
+    authenticatedAt: claims.authenticatedAt,
   };
 }
 
@@ -101,11 +112,18 @@ function toSecretKey(authSecret: string): Uint8Array {
 
 export async function mintMobileSessionToken(input: {
   userId: string;
+  sessionId: string;
   email?: string | null;
   authSecret: string;
   ttl?: string;
+  authenticatedAt?: Date;
 }): Promise<string> {
-  const payload: Record<string, string> = {};
+  const payload: Record<string, string | number> = {
+    sid: input.sessionId,
+    auth_time: Math.floor(
+      (input.authenticatedAt ?? new Date()).getTime() / 1000,
+    ),
+  };
 
   if (input.email) {
     payload.email = input.email;
@@ -118,7 +136,7 @@ export async function mintMobileSessionToken(input: {
     .setSubject(input.userId)
     .setJti(crypto.randomUUID())
     .setIssuedAt()
-    .setExpirationTime(input.ttl?.trim() || MOBILE_TOKEN_DEFAULT_TTL)
+    .setExpirationTime(input.ttl?.trim() || MOBILE_ACCESS_TOKEN_DEFAULT_TTL)
     .sign(toSecretKey(input.authSecret));
 }
 
@@ -134,18 +152,25 @@ export async function verifyMobileSessionToken(
     });
 
     const userId = result.payload.sub?.trim();
+    const sessionId =
+      typeof result.payload.sid === "string" ? result.payload.sid.trim() : "";
 
-    if (!userId) {
+    if (!userId || !sessionId) {
       return null;
     }
 
     return {
       userId,
+      sessionId,
       email:
         typeof result.payload.email === "string" ? result.payload.email : null,
       issuedAt:
         typeof result.payload.iat === "number"
           ? new Date(result.payload.iat * 1000)
+          : null,
+      authenticatedAt:
+        typeof result.payload.auth_time === "number"
+          ? new Date(result.payload.auth_time * 1000)
           : null,
     };
   } catch {
@@ -225,8 +250,9 @@ export async function verifyMobileAuthCode(
 
     const userId = result.payload.sub?.trim();
     const challenge = result.payload.challenge;
+    const jti = result.payload.jti?.trim();
 
-    if (!userId || typeof challenge !== "string") {
+    if (!userId || typeof challenge !== "string" || !jti) {
       return null;
     }
 
@@ -239,6 +265,7 @@ export async function verifyMobileAuthCode(
       email:
         typeof result.payload.email === "string" ? result.payload.email : null,
       challenge,
+      jti,
     };
   } catch {
     return null;
@@ -328,7 +355,7 @@ export async function verifyMobilePasskeyRegChallengeToken(
   }
 }
 
-export function hasRecentMobileIssuedAt(
+export function hasRecentMobileAuthentication(
   issuedAt: Date | null | undefined,
   now = Date.now(),
 ): boolean {

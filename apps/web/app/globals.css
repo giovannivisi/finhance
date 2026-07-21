@@ -4259,6 +4259,68 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   gap: 16px;
 }
 
+.quick-add-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--surface-info-border);
+  border-radius: 22px;
+  background: var(--surface-info-bg);
+}
+
+.quick-add-panel h3,
+.quick-add-panel p {
+  margin: 0;
+}
+
+.quick-add-panel h3 {
+  margin-top: 3px;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.quick-add-panel > div > p:last-child,
+.quick-add-notice {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.quick-add-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quick-add-controls > label {
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.quick-add-input-row {
+  display: flex;
+  gap: 10px;
+}
+
+.quick-add-input-row input {
+  min-width: 0;
+  flex: 1;
+}
+
+.quick-add-input-row .btn-secondary {
+  flex-shrink: 0;
+}
+
+.quick-add-notice a {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
 .app-form-grid {
   display: grid;
   gap: 16px;

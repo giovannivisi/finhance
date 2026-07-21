@@ -8,7 +8,7 @@ import {
   mintMobilePasskeyChallengeToken,
   mintMobilePasskeyRegChallengeToken,
   mintMobileSessionToken,
-  hasRecentMobileIssuedAt,
+  hasRecentMobileAuthentication,
   readBearerToken,
   resolveActiveMobileTokenClaims,
   resolveMobileRedirectTarget,
@@ -46,6 +46,7 @@ test("mobile session tokens round-trip with user id, email, and issue time", asy
   const before = Date.now();
   const token = await mintMobileSessionToken({
     userId: "user-123",
+    sessionId: "session-123",
     email: "user@example.com",
     authSecret: AUTH_SECRET,
   });
@@ -53,6 +54,7 @@ test("mobile session tokens round-trip with user id, email, and issue time", asy
   const claims = await verifyMobileSessionToken(token, AUTH_SECRET);
 
   assert.equal(claims?.userId, "user-123");
+  assert.equal(claims?.sessionId, "session-123");
   assert.equal(claims?.email, "user@example.com");
   assert.ok(claims?.issuedAt instanceof Date);
   assert.ok(claims.issuedAt.getTime() >= Math.floor(before / 1000) * 1000);
@@ -61,6 +63,7 @@ test("mobile session tokens round-trip with user id, email, and issue time", asy
 test("mobile session tokens omit email when absent", async () => {
   const token = await mintMobileSessionToken({
     userId: "user-123",
+    sessionId: "session-123",
     authSecret: AUTH_SECRET,
   });
 
@@ -73,6 +76,7 @@ test("mobile session tokens omit email when absent", async () => {
 test("verification rejects the wrong secret", async () => {
   const token = await mintMobileSessionToken({
     userId: "user-123",
+    sessionId: "session-123",
     authSecret: AUTH_SECRET,
   });
 
@@ -82,6 +86,7 @@ test("verification rejects the wrong secret", async () => {
 test("verification rejects expired tokens", async () => {
   const token = await mintMobileSessionToken({
     userId: "user-123",
+    sessionId: "session-123",
     authSecret: AUTH_SECRET,
     ttl: "0s",
   });
@@ -119,6 +124,7 @@ test("passkey challenge tokens reject the wrong secret and a session token", asy
   // A session token must not satisfy the challenge audience.
   const sessionToken = await mintMobileSessionToken({
     userId: "user-123",
+    sessionId: "session-123",
     authSecret: AUTH_SECRET,
   });
   assert.equal(
@@ -182,11 +188,10 @@ test("sign-in codes round-trip with the bound challenge", async () => {
 
   const claims = await verifyMobileAuthCode(code, AUTH_SECRET);
 
-  assert.deepEqual(claims, {
-    userId: "user-123",
-    email: "user@example.com",
-    challenge: ABC_CHALLENGE,
-  });
+  assert.equal(claims?.userId, "user-123");
+  assert.equal(claims?.email, "user@example.com");
+  assert.equal(claims?.challenge, ABC_CHALLENGE);
+  assert.ok(claims?.jti);
 });
 
 test("sign-in codes are not accepted as session tokens and vice versa", async () => {
@@ -197,6 +202,7 @@ test("sign-in codes are not accepted as session tokens and vice versa", async ()
   });
   const token = await mintMobileSessionToken({
     userId: "user-123",
+    sessionId: "session-123",
     authSecret: AUTH_SECRET,
   });
 
@@ -221,8 +227,10 @@ test("pkce verifier hashing matches the known sha-256 vector", async () => {
 test("active user resolution rejects inactive mobile token users", () => {
   const claims = {
     userId: "user-123",
+    sessionId: "session-123",
     email: "token@example.com",
     issuedAt: new Date(),
+    authenticatedAt: new Date(),
   };
 
   assert.equal(
@@ -234,22 +242,28 @@ test("active user resolution rejects inactive mobile token users", () => {
 test("active user resolution prefers the stored user email", () => {
   const claims = {
     userId: "user-123",
+    sessionId: "session-123",
     email: "token@example.com",
     issuedAt: new Date("2026-06-01T10:00:00Z"),
+    authenticatedAt: new Date("2026-06-01T10:00:00Z"),
   };
 
   assert.deepEqual(resolveActiveMobileTokenClaims(claims, activeUser()), {
     userId: "user-123",
+    sessionId: "session-123",
     email: "user@example.com",
     issuedAt: new Date("2026-06-01T10:00:00Z"),
+    authenticatedAt: new Date("2026-06-01T10:00:00Z"),
   });
 });
 
 test("active user resolution rejects tokens issued before a revocation", () => {
   const claims = {
     userId: "user-123",
+    sessionId: "session-123",
     email: null,
     issuedAt: new Date("2026-06-01T10:00:00Z"),
+    authenticatedAt: new Date("2026-06-01T10:00:00Z"),
   };
 
   assert.equal(
@@ -264,8 +278,10 @@ test("active user resolution rejects tokens issued before a revocation", () => {
 test("active user resolution keeps tokens issued after a revocation", () => {
   const claims = {
     userId: "user-123",
+    sessionId: "session-123",
     email: null,
     issuedAt: new Date("2026-06-01T10:00:10Z"),
+    authenticatedAt: new Date("2026-06-01T10:00:10Z"),
   };
 
   assert.ok(
@@ -279,8 +295,10 @@ test("active user resolution keeps tokens issued after a revocation", () => {
 test("active user resolution survives a same-second revocation re-sign-in", () => {
   const claims = {
     userId: "user-123",
+    sessionId: "session-123",
     email: null,
     issuedAt: new Date("2026-06-01T10:00:05.000Z"),
+    authenticatedAt: new Date("2026-06-01T10:00:05.000Z"),
   };
 
   assert.ok(
@@ -294,7 +312,13 @@ test("active user resolution survives a same-second revocation re-sign-in", () =
 });
 
 test("active user resolution fails closed for tokens without an issue time", () => {
-  const claims = { userId: "user-123", email: null, issuedAt: null };
+  const claims = {
+    userId: "user-123",
+    sessionId: "session-123",
+    email: null,
+    issuedAt: null,
+    authenticatedAt: null,
+  };
 
   assert.equal(
     resolveActiveMobileTokenClaims(
@@ -310,18 +334,18 @@ test("recent mobile auth accepts only fresh issue times", () => {
   const now = new Date("2026-07-08T10:15:00Z").getTime();
 
   assert.equal(
-    hasRecentMobileIssuedAt(new Date("2026-07-08T10:00:00Z"), now),
+    hasRecentMobileAuthentication(new Date("2026-07-08T10:00:00Z"), now),
     true,
   );
   assert.equal(
-    hasRecentMobileIssuedAt(new Date("2026-07-08T09:59:59Z"), now),
+    hasRecentMobileAuthentication(new Date("2026-07-08T09:59:59Z"), now),
     false,
   );
   assert.equal(
-    hasRecentMobileIssuedAt(new Date("2026-07-08T10:16:00Z"), now),
+    hasRecentMobileAuthentication(new Date("2026-07-08T10:16:00Z"), now),
     false,
   );
-  assert.equal(hasRecentMobileIssuedAt(null, now), false);
+  assert.equal(hasRecentMobileAuthentication(null, now), false);
 });
 
 test("readBearerToken parses Authorization headers", () => {

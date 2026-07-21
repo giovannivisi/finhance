@@ -7,6 +7,7 @@ import {
 import type { ConnectedAccountProvider } from "@finhance/shared/users";
 import type {
   BrokeragePerformanceRange,
+  CreateAiTransactionDraftRequest,
   CreateBrokerageBuyRequest,
   CreateBrokerageDividendRequest,
   CreateBrokerageFeeRequest,
@@ -402,19 +403,31 @@ export function useUserSettings(): UseQueryResult<
 }
 
 export function useMobileAccount() {
-  const { serverUrl, serverMode, token } = useServerConnection();
+  const { serverUrl, serverMode, token, refreshHostedAccessToken } =
+    useServerConnection();
   return useQuery({
     queryKey: queryKeys.mobileAccount,
-    queryFn: () => getMobileAccount(serverUrl as string, token as string),
+    queryFn: () =>
+      getMobileAccount(
+        serverUrl as string,
+        token as string,
+        refreshHostedAccessToken,
+      ),
     enabled: Boolean(serverUrl && serverMode === "hosted" && token),
   });
 }
 
 export function useMobilePasskeys() {
-  const { serverUrl, serverMode, token } = useServerConnection();
+  const { serverUrl, serverMode, token, refreshHostedAccessToken } =
+    useServerConnection();
   return useQuery({
     queryKey: queryKeys.mobilePasskeys,
-    queryFn: () => listPasskeys(serverUrl as string, token as string),
+    queryFn: () =>
+      listPasskeys(
+        serverUrl as string,
+        token as string,
+        refreshHostedAccessToken,
+      ),
     enabled: Boolean(serverUrl && serverMode === "hosted" && token),
   });
 }
@@ -436,6 +449,14 @@ export function useCreateTransaction() {
     mutationFn: (body: UpsertTransactionRequest) =>
       api.transactions.create(client, body),
     onSuccess: invalidate,
+  });
+}
+
+export function useTransactionDraft() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: (body: CreateAiTransactionDraftRequest) =>
+      api.ai.transactionDraft(client, body),
   });
 }
 
@@ -858,11 +879,15 @@ export function useUpdateUserSettings() {
 }
 
 export function useRegisterMobilePasskey() {
-  const { serverUrl, token } = useServerConnection();
+  const { serverUrl, token, refreshHostedAccessToken } = useServerConnection();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ tokenOverride }: { tokenOverride?: string } = {}) =>
-      registerPasskey(serverUrl as string, tokenOverride ?? (token as string)),
+      registerPasskey(
+        serverUrl as string,
+        tokenOverride ?? (token as string),
+        tokenOverride ? undefined : refreshHostedAccessToken,
+      ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.mobilePasskeys,
@@ -872,7 +897,7 @@ export function useRegisterMobilePasskey() {
 }
 
 export function useDeleteMobilePasskey() {
-  const { serverUrl, token } = useServerConnection();
+  const { serverUrl, token, refreshHostedAccessToken } = useServerConnection();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
@@ -886,6 +911,7 @@ export function useDeleteMobilePasskey() {
         serverUrl as string,
         tokenOverride ?? (token as string),
         credentialId,
+        tokenOverride ? undefined : refreshHostedAccessToken,
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -896,7 +922,7 @@ export function useDeleteMobilePasskey() {
 }
 
 export function useLinkMobileConnectedAccount() {
-  const { serverUrl, token } = useServerConnection();
+  const { serverUrl, token, refreshHostedAccessToken } = useServerConnection();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
@@ -910,6 +936,7 @@ export function useLinkMobileConnectedAccount() {
         serverUrl as string,
         tokenOverride ?? (token as string),
         provider,
+        tokenOverride ? undefined : refreshHostedAccessToken,
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -920,7 +947,7 @@ export function useLinkMobileConnectedAccount() {
 }
 
 export function useDeleteMobileConnectedAccount() {
-  const { serverUrl, token } = useServerConnection();
+  const { serverUrl, token, refreshHostedAccessToken } = useServerConnection();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
@@ -934,6 +961,7 @@ export function useDeleteMobileConnectedAccount() {
         serverUrl as string,
         tokenOverride ?? (token as string),
         accountId,
+        tokenOverride ? undefined : refreshHostedAccessToken,
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -944,7 +972,7 @@ export function useDeleteMobileConnectedAccount() {
 }
 
 export function useDeleteMobileAccount() {
-  const { serverUrl, token } = useServerConnection();
+  const { serverUrl, token, refreshHostedAccessToken } = useServerConnection();
   return useMutation({
     mutationFn: ({
       email,
@@ -957,6 +985,7 @@ export function useDeleteMobileAccount() {
         serverUrl as string,
         tokenOverride ?? (token as string),
         email,
+        tokenOverride ? undefined : refreshHostedAccessToken,
       ),
   });
 }

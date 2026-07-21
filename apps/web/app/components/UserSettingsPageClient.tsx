@@ -7,6 +7,7 @@ import type {
   ConnectedAccountResponse,
   DeleteConnectedAccountRequest,
   DeleteUserPasskeyRequest,
+  MobileSessionResponse,
   UpdateUserSettingsRequest,
   UserPasskeyResponse,
   UserIdentityResponse,
@@ -30,6 +31,14 @@ const PASSKEY_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
   year: "numeric",
 });
 
+const MOBILE_SESSION_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const PROVIDER_OPTIONS: readonly {
   provider: ConnectedAccountProvider;
   label: string;
@@ -44,6 +53,35 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
     "That provider account could not be linked. Sign in again and retry from settings.",
   AccessDenied: "The provider sign-in was not allowed for this account.",
 };
+
+type UserSettingsInitialValues = Omit<
+  UserSettingsResponse,
+  | "cloudParserEnabled"
+  | "cloudParserAvailable"
+  | "cloudParserConsentActive"
+  | "cloudParserConsentVersion"
+> &
+  Partial<
+    Pick<
+      UserSettingsResponse,
+      | "cloudParserEnabled"
+      | "cloudParserAvailable"
+      | "cloudParserConsentActive"
+      | "cloudParserConsentVersion"
+    >
+  >;
+
+function normalizeInitialSettings(
+  settings: UserSettingsInitialValues,
+): UserSettingsResponse {
+  return {
+    ...settings,
+    cloudParserEnabled: settings.cloudParserEnabled ?? false,
+    cloudParserAvailable: settings.cloudParserAvailable ?? false,
+    cloudParserConsentActive: settings.cloudParserConsentActive ?? false,
+    cloudParserConsentVersion: settings.cloudParserConsentVersion ?? null,
+  };
+}
 
 function formatPasskeyTitle(passkey: UserPasskeyResponse): string {
   const deviceType = passkey.credentialDeviceType
@@ -94,7 +132,7 @@ export default function UserSettingsPageClient({
   canManageConnectedAccounts = false,
   canManagePasskeys = false,
 }: {
-  initialSettings: UserSettingsResponse;
+  initialSettings: UserSettingsInitialValues;
   identity?: UserIdentityResponse | null;
   canSignOutMobileDevices?: boolean;
   canManageConnectedAccounts?: boolean;
@@ -103,7 +141,11 @@ export default function UserSettingsPageClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const fieldPrefix = useId();
-  const [form, setForm] = useState<UserSettingsResponse>(initialSettings);
+  const [form, setForm] = useState<UserSettingsResponse>(() =>
+    normalizeInitialSettings(initialSettings),
+  );
+  const [cloudParserConsentTouched, setCloudParserConsentTouched] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -112,6 +154,18 @@ export default function UserSettingsPageClient({
     null,
   );
   const [isMobileSignOutPending, setIsMobileSignOutPending] = useState(false);
+  const [mobileSessions, setMobileSessions] = useState<MobileSessionResponse[]>(
+    [],
+  );
+  const [mobileSessionsLoaded, setMobileSessionsLoaded] = useState(
+    !canSignOutMobileDevices,
+  );
+  const [mobileSessionError, setMobileSessionError] = useState<string | null>(
+    null,
+  );
+  const [revokingMobileSessionId, setRevokingMobileSessionId] = useState<
+    string | null
+  >(null);
   const [connectedAccounts, setConnectedAccounts] = useState<
     ConnectedAccountResponse[]
   >(identity?.connectedAccounts ?? []);
@@ -191,6 +245,34 @@ export default function UserSettingsPageClient({
     }
   }, [canManagePasskeys]);
 
+  const loadMobileSessions = useCallback(async () => {
+    if (!canSignOutMobileDevices) {
+      return;
+    }
+
+    setMobileSessionError(null);
+
+    try {
+      const response = await fetch("/api/mobile/sessions", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Mobile devices are currently unavailable.");
+      }
+
+      setMobileSessions((await response.json()) as MobileSessionResponse[]);
+    } catch (loadError) {
+      setMobileSessionError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load mobile devices.",
+      );
+    } finally {
+      setMobileSessionsLoaded(true);
+    }
+  }, [canSignOutMobileDevices]);
+
   async function handleMobileSignOut() {
     setMobileSignOutError(null);
     setIsMobileSignOutPending(true);
@@ -205,6 +287,7 @@ export default function UserSettingsPageClient({
       }
 
       setIsMobileSignOutOpen(false);
+      setMobileSessions([]);
       setNotice("All mobile devices have been signed out.");
     } catch (signOutError) {
       setMobileSignOutError(
@@ -217,8 +300,37 @@ export default function UserSettingsPageClient({
     }
   }
 
+  async function handleRevokeMobileSession(sessionId: string) {
+    setMobileSessionError(null);
+    setRevokingMobileSessionId(sessionId);
+
+    try {
+      const response = await fetch(
+        `/api/mobile/sessions/${encodeURIComponent(sessionId)}`,
+        { method: "DELETE" },
+      );
+
+      if (!response.ok) {
+        throw new Error("The server could not sign out that device.");
+      }
+
+      setMobileSessions((current) =>
+        current.filter((session) => session.id !== sessionId),
+      );
+      setNotice("Mobile device signed out.");
+    } catch (revokeError) {
+      setMobileSessionError(
+        revokeError instanceof Error
+          ? revokeError.message
+          : "Unable to sign out that device.",
+      );
+    } finally {
+      setRevokingMobileSessionId(null);
+    }
+  }
+
   useEffect(() => {
-    setForm(initialSettings);
+    setForm(normalizeInitialSettings(initialSettings));
   }, [initialSettings]);
 
   useEffect(() => {
@@ -244,6 +356,10 @@ export default function UserSettingsPageClient({
   useEffect(() => {
     void loadPasskeys();
   }, [loadPasskeys]);
+
+  useEffect(() => {
+    void loadMobileSessions();
+  }, [loadMobileSessions]);
 
   async function handleConnectProvider(provider: ConnectedAccountProvider) {
     setConnectedAccountError(null);
@@ -403,6 +519,16 @@ export default function UserSettingsPageClient({
           showTransactionTimes: form.showTransactionTimes,
           startPage: form.startPage,
           reportingCurrency: form.reportingCurrency,
+          ...(cloudParserConsentTouched
+            ? {
+                cloudParserEnabled:
+                  form.cloudParserEnabled && form.cloudParserConsentActive,
+                cloudParserConsentVersion:
+                  form.cloudParserEnabled && form.cloudParserConsentActive
+                    ? (form.cloudParserConsentVersion ?? undefined)
+                    : undefined,
+              }
+            : {}),
         };
         const saved = await apiMutation<UserSettingsResponse>(
           "/users/me/settings",
@@ -412,6 +538,7 @@ export default function UserSettingsPageClient({
           },
         );
         setForm(saved);
+        setCloudParserConsentTouched(false);
         setNotice("User settings saved.");
         router.refresh();
       } catch (submitError) {
@@ -582,6 +709,72 @@ export default function UserSettingsPageClient({
         </div>
       </section>
 
+      {form.cloudParserAvailable ||
+      form.cloudParserEnabled ||
+      cloudParserConsentTouched ? (
+        <section className="glass-card page-section">
+          <div className="page-section-heading">
+            <div>
+              <p className="section-kicker">Optional cloud feature</p>
+              <h2 className="section-title">
+                Cloud-enhanced transaction drafts
+              </h2>
+            </div>
+          </div>
+
+          <div className="app-form-field">
+            <label
+              htmlFor={`${fieldPrefix}-cloud-parser`}
+              className="app-form-toggle"
+            >
+              <span>
+                <span className="app-form-toggle-label">
+                  Enable cloud-enhanced drafts
+                </span>
+                <span className="app-form-toggle-copy">
+                  I explicitly agree that Finhance may send selected, redacted
+                  transaction text to Groq in the United States solely to create
+                  a draft. This may include information I choose to enter that
+                  reveals health, religious, or trade-union information. I can
+                  withdraw this consent at any time; basic parsing remains
+                  available.
+                </span>
+                {!form.cloudParserAvailable ? (
+                  <span className="app-form-toggle-copy">
+                    Cloud parsing is currently unavailable. You can still
+                    withdraw an existing consent.
+                  </span>
+                ) : null}
+                {form.cloudParserEnabled && !form.cloudParserConsentActive ? (
+                  <span className="app-form-toggle-copy">
+                    The consent notice has changed. Review it and tick this
+                    control again to renew consent.
+                  </span>
+                ) : null}
+              </span>
+              <input
+                id={`${fieldPrefix}-cloud-parser`}
+                type="checkbox"
+                checked={
+                  form.cloudParserEnabled && form.cloudParserConsentActive
+                }
+                onChange={(event) => {
+                  if (event.target.checked && !form.cloudParserAvailable) {
+                    return;
+                  }
+                  setCloudParserConsentTouched(true);
+                  setForm((current) => ({
+                    ...current,
+                    cloudParserEnabled: event.target.checked,
+                    cloudParserConsentActive: event.target.checked,
+                  }));
+                }}
+              />
+            </label>
+          </div>
+        </section>
+      ) : null}
+
       {canManageConnectedAccounts ? (
         <section className="glass-card page-section">
           <div className="page-section-heading">
@@ -696,6 +889,48 @@ export default function UserSettingsPageClient({
               Sign out every mobile device connected to this account. Each
               device will need to sign in again.
             </p>
+            {mobileSessionError ? (
+              <p role="alert" className="app-form-error">
+                {mobileSessionError}
+              </p>
+            ) : null}
+            {!mobileSessionsLoaded ? (
+              <p className="section-subtitle">Loading mobile devices...</p>
+            ) : mobileSessions.length === 0 ? (
+              <p className="section-subtitle">No active mobile devices.</p>
+            ) : (
+              <div className="passkey-list">
+                {mobileSessions.map((mobileSession) => (
+                  <div key={mobileSession.id} className="passkey-list-item">
+                    <div>
+                      <p className="font-medium">
+                        {mobileSession.deviceLabel}
+                        {mobileSession.isCurrent ? " (this device)" : ""}
+                      </p>
+                      <p className="section-subtitle">
+                        Last active{" "}
+                        {MOBILE_SESSION_DATE_FORMATTER.format(
+                          new Date(mobileSession.lastUsedAt),
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary passkey-delete-button"
+                      aria-label={`Sign out ${mobileSession.deviceLabel}`}
+                      disabled={revokingMobileSessionId === mobileSession.id}
+                      onClick={() =>
+                        void handleRevokeMobileSession(mobileSession.id)
+                      }
+                    >
+                      {revokingMobileSessionId === mobileSession.id
+                        ? "Signing out..."
+                        : "Sign out"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div>
               <button
                 type="button"

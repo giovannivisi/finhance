@@ -164,7 +164,7 @@ export default function PrivacyScreen() {
             />
             <ListRow
               title="Hosted session"
-              subtitle="Hosted sign-in stores the mobile token in the device keychain."
+              subtitle="Hosted sign-in stores the mobile access and refresh credentials in the device keychain."
               showDivider
             />
             <ListRow
