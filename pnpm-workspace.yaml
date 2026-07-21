@@ -9,8 +9,9 @@ overrides:
   "@nestjs/platform-express": 11.1.18
   "@nestjs/testing": 11.1.18
   body-parser@2.2.0: 2.2.2
-  brace-expansion@1.1.12: 1.1.14
-  brace-expansion@5.0.5: 5.0.6
+  brace-expansion@1.1.12: 1.1.16
+  brace-expansion@2.1.0: 2.1.2
+  brace-expansion@5.0.5: 5.0.7
   ajv@8.17.1: 8.18.0
   defu@6.1.4: 6.1.7
   diff: 4.0.4
@@ -19,7 +20,7 @@ overrides:
   flatted@3.3.3: 3.4.2
   form-data: 4.0.6
   handlebars: 4.7.9
-  js-yaml: 4.2.0
+  js-yaml: 4.3.0
   lodash: 4.18.0
   minimatch@3.1.2: 3.1.5
   multer: 2.2.0
@@ -34,6 +35,8 @@ overrides:
   undici@7.25.0: 7.28.0
   webpack: 5.104.1
   uuid@7.0.3: 11.1.1
+  "@hono/node-server@1.19.11": 1.19.13
+  tar@7.5.16: 7.5.19
 
 allowBuilds:
   "@nestjs/core": true
