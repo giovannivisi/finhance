@@ -10,5 +10,6 @@ export * from "#imports";
 export * from "#recurring";
 export * from "#setup";
 export * from "#snapshots";
+export * from "#transaction-draft-parser";
 export * from "#transactions";
 export * from "#users";

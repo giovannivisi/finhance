@@ -34,6 +34,15 @@ describe('HeuristicTransactionDraftService', () => {
     });
   });
 
+  it.each([
+    ['Total USD 1,234', 1_234],
+    ['Totale EUR 1.234', 1_234],
+    ['Total USD 1,234.56', 1_234.56],
+    ['Totale EUR 1.234,56', 1_234.56],
+  ])('parses the locale-specific amount in %s', (text, amount) => {
+    expect(service.create(text, now)).toMatchObject({ amount });
+  });
+
   it('does not mistake a masked card suffix for the amount', () => {
     expect(service.create('Coffee € 4.50 card •••• 4444', now)).toMatchObject({
       amount: 4.5,

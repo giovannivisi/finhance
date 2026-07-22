@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createReceiptDraft,
   createReceiptDraftFromImage,
   EmptyReceiptTextError,
   ReceiptImageCleanupError,
@@ -17,6 +18,19 @@ vi.mock("@/features/transactions/receipt-image", () => ({
 vi.mock("@/features/transactions/receipt-ocr", () => ({
   recogniseReceiptText: receiptMocks.recogniseText,
 }));
+
+describe("createReceiptDraft", () => {
+  it.each([
+    ["Total EUR 14.50", 14.5],
+    ["Totale EUR 14,50", 14.5],
+    ["Total USD 1,234.56", 1_234.56],
+    ["Totale EUR 1.234,56", 1_234.56],
+    ["Total USD 1,234", 1_234],
+    ["Totale EUR 1.234", 1_234],
+  ])("parses the locale-specific amount in %s", (text, amount) => {
+    expect(createReceiptDraft(text)).toMatchObject({ amount });
+  });
+});
 
 describe("createReceiptDraftFromImage", () => {
   beforeEach(() => {

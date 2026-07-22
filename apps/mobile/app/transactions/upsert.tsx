@@ -309,18 +309,14 @@ export default function TransactionUpsertScreen() {
     setReceiptScanPending(true);
 
     try {
-      const permission =
-        source === "camera"
-          ? await ImagePicker.requestCameraPermissionsAsync()
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) {
-        setQuickAddError(
-          source === "camera"
-            ? "Camera access is needed to scan a receipt. You can still enter it manually."
-            : "Photo access is needed to select a receipt. You can still enter it manually.",
-        );
-        return;
+      if (source === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          setQuickAddError(
+            "Camera access is needed to scan a receipt. You can still enter it manually.",
+          );
+          return;
+        }
       }
 
       const result =

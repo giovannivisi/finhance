@@ -60,7 +60,7 @@
         "expo-image-picker",
         {
           "cameraPermission": "Allow finhance to photograph a receipt. The image and recognised text stay on this iPhone, and the temporary image is deleted after scanning.",
-          "photosPermission": "Allow finhance to select a receipt photo. The image and recognised text stay on this iPhone, and the temporary image is deleted after scanning.",
+          "photosPermission": false,
           "microphonePermission": false
         }
       ],

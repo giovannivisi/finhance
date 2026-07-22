@@ -19,6 +19,10 @@
     "#recurring": "./src/recurring.ts",
     "#setup": "./src/setup.ts",
     "#snapshots": "./src/snapshots.ts",
+    "#transaction-draft-parser": {
+      "types": "./src/transaction-draft-parser.d.ts",
+      "default": "./src/transaction-draft-parser.cjs"
+    },
     "#transactions": "./src/transactions.ts",
     "#users": "./src/users.ts"
   },
@@ -36,6 +40,10 @@
     "./recurring": "./src/recurring.ts",
     "./setup": "./src/setup.ts",
     "./snapshots": "./src/snapshots.ts",
+    "./transaction-draft-parser": {
+      "types": "./src/transaction-draft-parser.d.ts",
+      "default": "./src/transaction-draft-parser.cjs"
+    },
     "./transactions": "./src/transactions.ts",
     "./users": "./src/users.ts"
   },
