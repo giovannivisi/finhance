@@ -94,18 +94,18 @@ function buildQuickAddNotice(
   source: AiTransactionDraftSource,
 ): string {
   if (source === "receipt") {
-    return "Receipt text was recognised on this iPhone. Basic parsing applied this draft; review every field before saving.";
+    return "Receipt draft applied — review every field before saving.";
   }
 
   if (draft.parsedBy === "groq") {
-    return "AI-assisted draft applied — review every field before saving. This is not financial advice.";
+    return "AI-assisted draft applied — review every field before saving.";
   }
 
   if (draft.cloudAttempted) {
-    return "Cloud processing was attempted, but basic parsing supplied this draft. Review every field before saving.";
+    return "Basic draft applied after cloud processing was unavailable. Review every field before saving.";
   }
 
-  return "Basic private parsing applied this draft. You can enable cloud-enhanced drafts in App settings.";
+  return "Private draft applied — review every field before saving.";
 }
 
 export default function TransactionUpsertScreen() {
@@ -129,6 +129,7 @@ export default function TransactionUpsertScreen() {
   const [form, setForm] = useState<TransactionFormState>(emptyTransactionForm);
   const [errors, setErrors] = useState<TransactionFormErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
+  const [smartEntryOpen, setSmartEntryOpen] = useState(false);
   const [quickAddText, setQuickAddText] = useState("");
   const [quickAddError, setQuickAddError] = useState<string | null>(null);
   const [quickAddNotice, setQuickAddNotice] = useState<string | null>(null);
@@ -287,6 +288,8 @@ export default function TransactionUpsertScreen() {
       setErrors({});
       setServerError(null);
       setQuickAddNotice(buildQuickAddNotice(draft, "freeform"));
+      setQuickAddText("");
+      setSmartEntryOpen(false);
     } catch (draftError) {
       setQuickAddError(describeError(draftError));
     }
@@ -351,6 +354,8 @@ export default function TransactionUpsertScreen() {
       setErrors({});
       setServerError(null);
       setQuickAddNotice(buildQuickAddNotice(draft, "receipt"));
+      setQuickAddText("");
+      setSmartEntryOpen(false);
     } catch {
       setQuickAddError(
         "The receipt could not be read. You can still enter the transaction manually.",
@@ -428,100 +433,66 @@ export default function TransactionUpsertScreen() {
           </Card>
         ) : null}
 
-        <Card surface="info">
-          <View style={{ gap: spacing.md }}>
-            <View style={{ gap: spacing.xs }}>
-              <AppText variant="kicker" tone="tertiary">
-                DRAFT ONLY
-              </AppText>
-              <AppText variant="title3">Quick add</AppText>
-              <AppText variant="footnote" tone="secondary">
-                Type or dictate “14.50 pizza yesterday amex” and review the
-                resulting transaction before saving.
+        <Card
+          onPress={() => {
+            setQuickAddError(null);
+            setSmartEntryOpen(true);
+          }}
+          accessibilityLabel="Open smart entry"
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+            }}
+          >
+            <Ionicons name="flash-outline" size={22} color={colors.primary} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <AppText variant="footnoteMedium">Smart entry</AppText>
+              <AppText variant="caption" tone="secondary">
+                Describe, dictate, or scan a receipt
               </AppText>
             </View>
-            <TextField
-              label="Transaction details"
-              value={quickAddText}
-              onChangeText={setQuickAddText}
-              placeholder="e.g. 14.50 pizza yesterday amex"
-              autoCapitalize="sentences"
-              editable={!quickAddPending}
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.textTertiary}
             />
-            {quickAddError ? (
-              <AppText variant="caption" tone="danger">
-                {quickAddError}
-              </AppText>
-            ) : null}
-            {quickAddNotice ? (
-              <>
+          </View>
+        </Card>
+
+        {quickAddNotice ? (
+          <Card surface="info" style={{ padding: spacing.md }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: spacing.sm,
+              }}
+            >
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={18}
+                color={colors.textSecondary}
+              />
+              <View style={{ flex: 1, gap: spacing.xs }}>
                 <AppText variant="footnote" tone="secondary">
                   {quickAddNotice}
                 </AppText>
-                {quickAddNotice.startsWith("Basic private parsing") ? (
+                {quickAddNotice.startsWith("Private draft") ? (
                   <Button
                     label="Open App settings"
                     variant="ghost"
                     size="sm"
                     onPress={() => router.push("/settings/app" as Href)}
+                    style={{ alignSelf: "flex-start", marginLeft: -spacing.lg }}
                   />
                 ) : null}
-              </>
-            ) : null}
-            <Button
-              label="Prepare draft"
-              variant="secondary"
-              onPress={handleQuickAdd}
-              loading={draftMutation.isPending}
-              disabled={receiptScanPending}
-            />
-            {form.kind === "EXPENSE" && Platform.OS === "ios" ? (
-              receiptOcrAvailable ? (
-                <View style={{ gap: spacing.sm }}>
-                  <AppText variant="footnote" tone="secondary">
-                    Text recognition happens on this iPhone. The app does not
-                    upload or keep the image; only redacted text is sent to
-                    finhance to draft the transaction.
-                  </AppText>
-                  <Button
-                    label="Scan receipt"
-                    variant="secondary"
-                    size="sm"
-                    icon={
-                      <Ionicons
-                        name="camera-outline"
-                        size={16}
-                        color={colors.textPrimary}
-                      />
-                    }
-                    onPress={() => handleReceiptScan("camera")}
-                    loading={receiptScanPending}
-                    disabled={draftMutation.isPending}
-                  />
-                  <Button
-                    label="Choose receipt photo"
-                    variant="ghost"
-                    size="sm"
-                    icon={
-                      <Ionicons
-                        name="images-outline"
-                        size={16}
-                        color={colors.textSecondary}
-                      />
-                    }
-                    onPress={() => handleReceiptScan("library")}
-                    disabled={quickAddPending}
-                  />
-                </View>
-              ) : (
-                <AppText variant="footnote" tone="secondary">
-                  Receipt scanning needs the latest finhance iPhone development
-                  build.
-                </AppText>
-              )
-            ) : null}
-          </View>
-        </Card>
+              </View>
+            </View>
+          </Card>
+        ) : null}
 
         {kindOptions ? (
           <SegmentedControl
@@ -843,6 +814,95 @@ export default function TransactionUpsertScreen() {
           loading={saving}
         />
       </View>
+
+      <Sheet
+        visible={smartEntryOpen}
+        onClose={() => setSmartEntryOpen(false)}
+        title="Smart entry"
+        maxHeightRatio={0.5}
+      >
+        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+          <View style={{ gap: spacing.xs }}>
+            <AppText variant="footnoteMedium">Create a draft</AppText>
+            <AppText variant="footnote" tone="secondary">
+              Type or dictate “14.50 pizza yesterday amex”, then review the
+              details before saving.
+            </AppText>
+          </View>
+          <TextField
+            label="Transaction details"
+            value={quickAddText}
+            onChangeText={setQuickAddText}
+            placeholder="e.g. 14.50 pizza yesterday amex"
+            autoCapitalize="sentences"
+            editable={!quickAddPending}
+            onSubmitEditing={handleQuickAdd}
+            returnKeyType="done"
+          />
+          {quickAddError ? (
+            <AppText variant="caption" tone="danger">
+              {quickAddError}
+            </AppText>
+          ) : null}
+          <Button
+            label="Create draft"
+            onPress={handleQuickAdd}
+            loading={draftMutation.isPending}
+            disabled={receiptScanPending}
+          />
+          {form.kind === "EXPENSE" && Platform.OS === "ios" ? (
+            receiptOcrAvailable ? (
+              <View style={{ gap: spacing.sm }}>
+                <AppText variant="caption" tone="tertiary">
+                  OR USE A RECEIPT
+                </AppText>
+                <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <Button
+                    label="Scan receipt"
+                    variant="secondary"
+                    size="sm"
+                    icon={
+                      <Ionicons
+                        name="camera-outline"
+                        size={16}
+                        color={colors.textPrimary}
+                      />
+                    }
+                    onPress={() => handleReceiptScan("camera")}
+                    loading={receiptScanPending}
+                    disabled={draftMutation.isPending}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    label="Choose photo"
+                    variant="secondary"
+                    size="sm"
+                    icon={
+                      <Ionicons
+                        name="images-outline"
+                        size={16}
+                        color={colors.textPrimary}
+                      />
+                    }
+                    onPress={() => handleReceiptScan("library")}
+                    disabled={quickAddPending}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+                <AppText variant="caption" tone="secondary">
+                  The receipt image stays on this iPhone; only redacted text may
+                  be used to create the draft.
+                </AppText>
+              </View>
+            ) : (
+              <AppText variant="caption" tone="secondary">
+                Receipt scanning needs the latest finhance iPhone development
+                build.
+              </AppText>
+            )
+          ) : null}
+        </View>
+      </Sheet>
 
       <Sheet
         visible={confirmDelete}
