@@ -55,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Audit production dependency floor
+      - name: Audit dependencies
         run: pnpm audit --audit-level high
 
       - name: Lint
