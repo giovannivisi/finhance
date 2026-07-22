@@ -214,6 +214,9 @@ importers:
       expo-font:
         specifier: ~14.0.12
         version: 14.0.12(expo@54.0.35)(react-native@0.81.6(@babel/core@7.29.6)(@types/react@19.2.2)(react@19.1.4))(react@19.1.4)
+      expo-file-system:
+        specifier: ~19.0.23
+        version: 19.0.23(expo@54.0.35)(react-native@0.81.6(@babel/core@7.29.6)(@types/react@19.2.2)(react@19.1.4))
       expo-haptics:
         specifier: ~15.0.8
         version: 15.0.8(expo@54.0.35)

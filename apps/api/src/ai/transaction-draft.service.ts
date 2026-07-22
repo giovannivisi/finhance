@@ -52,9 +52,9 @@ export class TransactionDraftService {
 
     const heuristic = this.heuristic.create(input.text, now);
 
-    // Receipt-origin drafts are deliberately heuristic-only. The mobile flow
-    // sends locally redacted OCR text; neither a receipt image nor OCR text is
-    // sent to the cloud parser.
+    // Receipt-origin drafts remain heuristic-only for compatibility with older
+    // clients and are never sent to the cloud parser. Current mobile clients
+    // derive receipt drafts entirely on-device.
     if (
       input.source !== 'freeform' ||
       !config.cloudParserAvailable ||

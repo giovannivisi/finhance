@@ -59,8 +59,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Allow finhance to photograph a receipt. The image is recognised on this iPhone and is not uploaded or retained; only redacted text is sent to finhance to draft the transaction.",
-          "photosPermission": "Allow finhance to select a receipt photo. The image is recognised on this iPhone and is not uploaded or retained; only redacted text is sent to finhance to draft the transaction.",
+          "cameraPermission": "Allow finhance to photograph a receipt. The image and recognised text stay on this iPhone, and the temporary image is deleted after scanning.",
+          "photosPermission": "Allow finhance to select a receipt photo. The image and recognised text stay on this iPhone, and the temporary image is deleted after scanning.",
           "microphonePermission": false
         }
       ],

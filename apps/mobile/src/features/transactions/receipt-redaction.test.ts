@@ -29,7 +29,7 @@ describe("redactReceiptText", () => {
     );
   });
 
-  it("bounds the redacted text sent for a receipt draft", () => {
+  it("bounds the redacted text used for a local receipt draft", () => {
     expect(prepareReceiptDraftText("x".repeat(6_100))).toHaveLength(
       MAX_RECEIPT_DRAFT_CHARACTERS,
     );

@@ -7,8 +7,8 @@ const PHONE_PATTERN = /(?<![\w.])\d(?:[\s().-]*\d){6,10}(?![\w.])/g;
 export const MAX_RECEIPT_DRAFT_CHARACTERS = 6_000;
 
 /**
- * Removes direct identifiers before recognised receipt text can leave the
- * device. The API applies the same defensive policy again before parsing.
+ * Removes common direct identifiers before recognised receipt text is used to
+ * derive a local transaction draft. The recognised text never leaves the device.
  */
 export function redactReceiptText(value: string): string {
   return value

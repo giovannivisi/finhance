@@ -48,10 +48,11 @@ import {
   type TransactionFormState,
 } from "@/features/transactions/form";
 import {
-  isReceiptOcrAvailable,
-  recogniseReceiptText,
-} from "@/features/transactions/receipt-ocr";
-import { prepareReceiptDraftText } from "@/features/transactions/receipt-redaction";
+  createReceiptDraftFromImage,
+  EmptyReceiptTextError,
+  ReceiptImageCleanupError,
+} from "@/features/transactions/receipt-draft";
+import { isReceiptOcrAvailable } from "@/features/transactions/receipt-ocr";
 import {
   categoryLabel,
   isAssignableTransactionCategory,
@@ -334,20 +335,7 @@ export default function TransactionUpsertScreen() {
         return;
       }
 
-      const recognisedText = await recogniseReceiptText(imageUri);
-      const draftText = prepareReceiptDraftText(recognisedText);
-
-      if (!draftText) {
-        setQuickAddError(
-          "No readable receipt text was found. You can still enter the transaction manually.",
-        );
-        return;
-      }
-
-      const draft = await draftMutation.mutateAsync({
-        text: draftText,
-        source: "receipt",
-      });
+      const draft = await createReceiptDraftFromImage(imageUri);
       setForm((previous) =>
         applyTransactionDraft(previous, draft, accounts, expenseRules),
       );
@@ -356,10 +344,20 @@ export default function TransactionUpsertScreen() {
       setQuickAddNotice(buildQuickAddNotice(draft, "receipt"));
       setQuickAddText("");
       setSmartEntryOpen(false);
-    } catch {
-      setQuickAddError(
-        "The receipt could not be read. You can still enter the transaction manually.",
-      );
+    } catch (error) {
+      if (error instanceof EmptyReceiptTextError) {
+        setQuickAddError(
+          "No readable receipt text was found. You can still enter the transaction manually.",
+        );
+      } else if (error instanceof ReceiptImageCleanupError) {
+        setQuickAddError(
+          "The temporary receipt image could not be removed. Please try again before continuing.",
+        );
+      } else {
+        setQuickAddError(
+          "The receipt could not be read. You can still enter the transaction manually.",
+        );
+      }
     } finally {
       setReceiptScanPending(false);
     }
@@ -890,8 +888,8 @@ export default function TransactionUpsertScreen() {
                   />
                 </View>
                 <AppText variant="caption" tone="secondary">
-                  The receipt image stays on this iPhone; only redacted text may
-                  be used to create the draft.
+                  The receipt image and recognised text stay on this iPhone. The
+                  temporary image is deleted after scanning.
                 </AppText>
               </View>
             ) : (
