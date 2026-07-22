@@ -13,11 +13,12 @@ import {
   useLiveValuations,
   useRefreshAssets,
 } from "@/api/queries";
-import { AllocationDonutChart, LiveDot } from "@/components/charts";
+import { AllocationDonutChart } from "@/components/charts";
 import {
   AppText,
   Card,
   Chip,
+  describeError,
   Divider,
   ErrorState,
   IconButton,
@@ -84,7 +85,9 @@ function getLiveAdjustedPricingStatus(input: {
 
   const liveAssetIds = new Set(
     input.quotes
-      .filter((quote) => quote.valueInReporting != null)
+      .filter(
+        (quote) => quote.valueInReporting != null && quote.isStale === false,
+      )
       .map((quote) => quote.assetId),
   );
   const hasUncoveredStaleQuotes = input.assets.some(
@@ -203,10 +206,6 @@ function DashboardScreen() {
   const autoRefreshAttemptRef = useRef<AutomaticPriceRefreshAttempt | null>(
     null,
   );
-  const autoRefreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const [autoRefreshRetryTick, setAutoRefreshRetryTick] = useState(0);
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
@@ -245,11 +244,6 @@ function DashboardScreen() {
     const lastRefreshAt = data?.dashboard.lastRefreshAt ?? null;
     const refreshSuggested = displayPricingStatus?.refreshSuggested;
 
-    if (autoRefreshRetryTimerRef.current) {
-      clearTimeout(autoRefreshRetryTimerRef.current);
-      autoRefreshRetryTimerRef.current = null;
-    }
-
     if (refreshSuggested !== true) {
       autoRefreshAttemptRef.current = null;
     }
@@ -263,22 +257,8 @@ function DashboardScreen() {
       nowMs: Date.now(),
     });
 
-    if (retryDelay === null) {
+    if (retryDelay !== 0) {
       return;
-    }
-
-    if (retryDelay > 0) {
-      autoRefreshRetryTimerRef.current = setTimeout(() => {
-        autoRefreshRetryTimerRef.current = null;
-        setAutoRefreshRetryTick((value) => value + 1);
-      }, retryDelay);
-
-      return () => {
-        if (autoRefreshRetryTimerRef.current) {
-          clearTimeout(autoRefreshRetryTimerRef.current);
-          autoRefreshRetryTimerRef.current = null;
-        }
-      };
     }
 
     const startedLastRefreshAt = lastRefreshAt;
@@ -296,7 +276,6 @@ function DashboardScreen() {
       },
     });
   }, [
-    autoRefreshRetryTick,
     data?.dashboard.lastRefreshAt,
     displayPricingStatus?.refreshSuggested,
     isActive,
@@ -396,6 +375,11 @@ function DashboardScreen() {
     hasLiveQuotes: Boolean(liveQuotes && liveQuotes.length > 0),
     lastRefreshAt: dashboard.lastRefreshAt,
   });
+  const priceRefreshMessage = refreshAssets.isError
+    ? describeError(refreshAssets.error)
+    : !refreshAssets.isPending
+      ? (refreshAssets.data?.priceRefresh.message ?? null)
+      : null;
   const assetDistribution = holdings.assetGroups
     .filter((group) => group.total !== null && group.total > 0)
     .map((group) => ({
@@ -434,7 +418,6 @@ function DashboardScreen() {
                 <AppText variant="kicker" tone="tertiary">
                   Net worth · {reportingCurrency}
                 </AppText>
-                {isActive && liveQuery.isFetching ? <LiveDot /> : null}
               </View>
               <MoneyText
                 amount={liveNetWorth}
@@ -456,7 +439,10 @@ function DashboardScreen() {
                   }
                 />
               }
-              onPress={() => refreshAssets.mutate()}
+              onPress={() => {
+                refreshAssets.reset();
+                refreshAssets.mutate();
+              }}
             />
           </View>
 
@@ -528,6 +514,15 @@ function DashboardScreen() {
               </AppText>
             ) : null}
           </View>
+
+          {priceRefreshMessage ? (
+            <AppText
+              variant="caption"
+              tone={refreshAssets.isError ? "danger" : "warning"}
+            >
+              {priceRefreshMessage}
+            </AppText>
+          ) : null}
 
           {dashboard.latestSnapshotDate ? (
             <AppText variant="caption" tone="tertiary">

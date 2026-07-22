@@ -91,7 +91,17 @@ URLs for both local and hosted environments.
 ## Market data provider
 
 `MARKET_DATA_PROVIDER` selects the server-side quote, FX, and historical-series
-adapter. It defaults to `yahoo`; `yahoo` is currently the only implemented
-provider. Provider-specific symbol mapping and HTTP parsing live behind the
-`MarketDataProvider` interface so a keyed provider can be added without
-changing valuation or brokerage logic.
+adapter:
+
+- `hybrid` routes every exchange in the API catalogue to an exact upstream
+  listing. Marketstack handles exchanges in its published coverage; EODHD
+  handles the complementary global markets, including Hamburg; Yahoo handles
+  FX, crypto, and Tokyo. It requires the server-only `MARKETSTACK_API_KEY` and
+  `EODHD_API_TOKEN`. Each upstream has an independent rate-limit circuit breaker.
+- `yahoo` is the no-key local fallback.
+
+Hosted deployment selects `hybrid` in `render.yaml`. Do not expose provider
+credentials to web or mobile clients. Quote reads use persisted data; only
+`POST /assets/refresh` contacts providers and advances stored timestamps. A
+total provider failure returns HTTP 503, while partial refreshes identify the
+symbols whose previous stored prices were retained.

@@ -63,7 +63,9 @@ function getLiveAdjustedPricingStatus({
 
   const liveAssetIds = new Set(
     quotes
-      .filter((quote) => quote.valueInReporting != null)
+      .filter(
+        (quote) => quote.valueInReporting != null && quote.isStale === false,
+      )
       .map((quote) => quote.assetId),
   );
   const hasUncoveredStaleQuotes = positions.some(
@@ -457,7 +459,9 @@ export default function BrokeragePageClient({
         : workspace.cashReconciliation.status === "MISMATCH"
           ? "status-chip is-warning"
           : "status-chip is-danger";
-  const { data: liveValuationsData } = useLiveValuations();
+  const { data: liveValuationsData } = useLiveValuations(
+    workspace.lastRefreshAt,
+  );
   const liveQuotes = liveValuationsData?.quotes ?? EMPTY_LIVE_QUOTES;
   const displayPricingStatus = useMemo(
     () =>
@@ -494,7 +498,7 @@ export default function BrokeragePageClient({
     () => applyLiveValueDelta(workspace.selectedBroker, liveValueDelta),
     [workspace.selectedBroker, liveValueDelta],
   );
-  const isLivePolling = isHydrated;
+  const isLivePolling = false;
   const liveTotalValue =
     liveValuationsData != null ? mergedSummary.totalValue : null;
   const unrealisedGainLossTone =
@@ -608,6 +612,7 @@ export default function BrokeragePageClient({
         return { ok: false };
       }
 
+      setRefreshNotice(result.warning);
       router.refresh();
       return { ok: true, refreshedAt: result.refreshedAt };
     } finally {

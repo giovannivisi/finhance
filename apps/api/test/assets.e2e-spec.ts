@@ -122,6 +122,7 @@ describe('Asset routes (e2e)', () => {
     normalizeTicker: jest.Mock;
     buildMarketSymbol: jest.Mock;
     getMarketPrice: jest.Mock;
+    getMarketPriceResult: jest.Mock;
     getFxRate: jest.Mock;
     getFxRateForDate: jest.Mock;
     getStoredFxRateSnapshot: jest.Mock;
@@ -185,6 +186,7 @@ describe('Asset routes (e2e)', () => {
           `${input.ticker}${input.exchange ?? ''}`,
       ),
       getMarketPrice: jest.fn(),
+      getMarketPriceResult: jest.fn(),
       getFxRate: jest.fn(),
       getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('0.9')),
       getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
@@ -508,7 +510,10 @@ describe('Asset routes (e2e)', () => {
       }),
     ]);
     prisma.asset.update.mockResolvedValue(asset);
-    prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
+    prices.getMarketPriceResult.mockResolvedValue({
+      price: new Prisma.Decimal('50'),
+      failure: null,
+    });
     prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
     await request(httpServer())
@@ -518,6 +523,13 @@ describe('Asset routes (e2e)', () => {
         const body = bodyAs<RefreshAssetsResponse>(response);
         expect(body.updatedCount).toBe(1);
         expect(body.staleCount).toBe(0);
+        expect(body.priceRefresh).toEqual({
+          status: 'SUCCESS',
+          requestedCount: 1,
+          refreshedCount: 1,
+          failedCount: 0,
+          message: null,
+        });
       });
 
     expect(operationLock.runExclusive).toHaveBeenCalledTimes(1);
@@ -548,12 +560,32 @@ describe('Asset routes (e2e)', () => {
         }),
       ]);
     prisma.asset.update.mockResolvedValue(asset);
-    prices.getMarketPrice
-      .mockRejectedValueOnce(new Error('quote down'))
-      .mockResolvedValueOnce(new Prisma.Decimal('50'));
+    prices.getMarketPriceResult
+      .mockResolvedValueOnce({
+        price: null,
+        failure: {
+          provider: 'Marketstack',
+          reason: 'RATE_LIMITED',
+          status: 429,
+        },
+      })
+      .mockResolvedValueOnce({
+        price: new Prisma.Decimal('50'),
+        failure: null,
+      });
     prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
-    await request(httpServer()).post('/assets/refresh').expect(500);
+    await request(httpServer())
+      .post('/assets/refresh')
+      .expect(503)
+      .expect((response: ResponseWithBody) => {
+        expect(response.body).toEqual(
+          expect.objectContaining({
+            message:
+              'Marketstack is rate-limiting price requests. Stored prices were kept; try again later.',
+          }),
+        );
+      });
     await request(httpServer())
       .post('/assets/refresh')
       .expect(201)

@@ -69,7 +69,7 @@ test("resolvePrivacyNoticeConfig provides local defaults for self-hosted mode", 
   assert.match(config.importSummary.retention, /15 minutes/i);
   assert.match(config.importSummary.recipients, /loopback browser origins/i);
   assert.match(config.importSummary.recipients, /Yahoo Finance/i);
-  assert.equal(config.lastUpdated, "2026-07-21");
+  assert.equal(config.lastUpdated, "2026-07-22");
   assert.ok(
     config.categoryGroups.some((group) =>
       group.items.some((item) =>
@@ -95,6 +95,10 @@ test("resolvePrivacyNoticeConfig provides local defaults for self-hosted mode", 
     config.processors.some((processor) =>
       processor.name.includes("Yahoo Finance"),
     ),
+  );
+  assert.ok(config.processors.some((processor) => processor.name === "EODHD"));
+  assert.ok(
+    config.processors.some((processor) => processor.name === "Marketstack"),
   );
   assert.ok(config.processors.some((processor) => processor.name === "Groq"));
   assert.ok(

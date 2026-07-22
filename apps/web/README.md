@@ -271,5 +271,6 @@ FINHANCE_PRIVACY_RETENTION_OVERRIDES_JSON='{
 ```
 
 The notice also appends code-owned facts automatically, including the built-in
-Yahoo Finance quote provider entry, the 15-minute import-preview payload TTL,
-the idempotency cleanup periods, and the browser-side preference storage notes.
+EODHD, Marketstack, and Yahoo Finance market-data provider entries, the
+15-minute import-preview payload TTL, the idempotency cleanup periods, and the
+browser-side preference storage notes.

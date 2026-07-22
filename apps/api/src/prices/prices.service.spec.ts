@@ -1,4 +1,5 @@
 import { AssetKind } from '@finhance/db';
+import { HybridMarketDataProvider } from '@prices/hybrid-market-data.provider';
 import { PricesService } from '@prices/prices.service';
 import { YahooFinanceProvider } from '@prices/yahoo-finance.provider';
 
@@ -454,6 +455,93 @@ describe('PricesService', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
       jest.spyOn(Date, 'now').mockRestore();
+    });
+
+    it('returns structured provider failures to refresh callers', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}, false, 429));
+
+      const result = await service.getMarketPriceResult(marketInput, {
+        forceRefresh: true,
+      });
+
+      expect(result).toEqual({
+        price: null,
+        failure: {
+          provider: 'Yahoo Finance',
+          reason: 'RATE_LIMITED',
+          status: 429,
+        },
+      });
+    });
+
+    it('keeps Yahoo rate limits isolated from Marketstack stock requests', async () => {
+      const compositeService = new PricesService(
+        prisma as never,
+        new HybridMarketDataProvider({
+          eodhdApiToken: 'eodhd-token',
+          marketstackApiKey: 'marketstack-key',
+        }),
+      );
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({}, false, 429))
+        .mockResolvedValueOnce(
+          jsonResponse({
+            data: [{ symbol: 'CSSPX', exchange: 'XMIL', close: 123.45 }],
+          }),
+        );
+
+      const fxRate = await compositeService.getFxRate('USD', 'EUR', {
+        forceRefresh: true,
+      });
+      const stockPrice = await compositeService.getMarketPrice(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'CSSPX',
+          exchange: '.MI',
+          quoteCurrency: 'EUR',
+        },
+        { forceRefresh: true },
+      );
+
+      expect(fxRate).toBeNull();
+      expect(stockPrice?.toString()).toBe('123.45');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps Marketstack rate limits isolated from EODHD stock requests', async () => {
+      const compositeService = new PricesService(
+        prisma as never,
+        new HybridMarketDataProvider({
+          eodhdApiToken: 'eodhd-token',
+          marketstackApiKey: 'marketstack-key',
+        }),
+      );
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({}, false, 429))
+        .mockResolvedValueOnce(jsonResponse(164.1));
+
+      const milanPrice = await compositeService.getMarketPrice(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'CSSPX',
+          exchange: '.MI',
+          quoteCurrency: 'EUR',
+        },
+        { forceRefresh: true },
+      );
+      const hamburgPrice = await compositeService.getMarketPrice(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'VWCE',
+          exchange: '.HM',
+          quoteCurrency: 'EUR',
+        },
+        { forceRefresh: true },
+      );
+
+      expect(milanPrice).toBeNull();
+      expect(hamburgPrice?.toString()).toBe('164.1');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it('does not present an expired cached quote as a successful refresh', async () => {

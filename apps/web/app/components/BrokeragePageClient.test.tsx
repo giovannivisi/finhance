@@ -381,6 +381,7 @@ describe("BrokeragePageClient", () => {
     vi.mocked(requestDashboardRefresh).mockResolvedValue({
       ok: true,
       refreshedAt: "2026-05-19T10:01:00.000Z",
+      warning: null,
     });
     vi.mocked(api).mockReset();
     vi.mocked(api).mockImplementation((path: string) => {
@@ -718,6 +719,7 @@ describe("BrokeragePageClient", () => {
               currency: "EUR",
               value: 732,
               valueInReporting: 732,
+              isStale: false,
             },
           ],
         });
@@ -746,6 +748,7 @@ describe("BrokeragePageClient", () => {
     vi.mocked(requestDashboardRefresh).mockResolvedValue({
       ok: true,
       refreshedAt: "2026-05-19T10:01:00.000Z",
+      warning: null,
     });
 
     const { rerender } = render(

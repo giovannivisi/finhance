@@ -148,7 +148,7 @@ type CreatedContactResult = {
 };
 
 const PRIVACY_NOTICE_PATH = "/privacy";
-const DEFAULT_LAST_UPDATED = "2026-07-21";
+const DEFAULT_LAST_UPDATED = "2026-07-22";
 const DEFAULT_SUPERVISORY_AUTHORITY_URL =
   "https://www.edpb.europa.eu/about-edpb/about-edpb/members_en";
 
@@ -201,7 +201,7 @@ const PROCESSING_ACTIVITY_DEFINITIONS: Record<
   marketData: {
     title: "Refresh market prices and FX rates",
     purpose:
-      "To fetch quote, historical chart, and exchange-rate data for supported market assets and currencies when valuations, brokerage performance, or live read-only price displays are refreshed.",
+      "To fetch quote, historical chart, and exchange-rate data for supported market assets and currencies when you refresh valuations or load a brokerage performance range.",
     dataCategories: [
       "Requested market symbols, exchange suffixes, and currency pairs.",
       "Historical quote range and interval choices used for brokerage performance charts.",
@@ -215,7 +215,7 @@ const PROCESSING_ACTIVITY_DEFINITIONS: Record<
     dataCategories: [
       "Idempotency keys, hashed request fingerprints, response status codes, and request bodies cached for replay protection.",
       "Loopback IP, host-header, origin, and referer checks used to enforce local-only access.",
-      "Operational timestamps and short-lived process state used to coordinate imports, live valuation polling, performance-series requests, or refresh jobs.",
+      "Operational timestamps and short-lived process state used to coordinate imports, performance-series requests, or refresh jobs.",
       "For hosted mobile sign-in, hashed refresh credentials and generic device labels with session, expiry, and last-used timestamps used to secure and manage signed-in devices.",
     ],
   },
@@ -283,7 +283,7 @@ const CATEGORY_GROUPS: PrivacyCategoryGroup[] = [
 const SOURCE_OF_DATA = [
   "Directly from you when you enter, edit, review, or delete finance records inside the app.",
   "From files you upload to the import flow, including files that may contain data about third parties such as counterparties, institutions, and notes.",
-  "From the market data provider when you ask finhance to refresh quotes, FX rates, live valuations, or brokerage performance chart data for supported assets and currencies.",
+  "From market data providers when you ask finhance to refresh quotes or FX rates, or load brokerage performance chart data for supported assets and currencies.",
   "From hosted sign-in providers when you connect Google or GitHub to your account.",
   "From Groq when an explicitly enabled cloud-parser request returns transaction draft fields.",
   "From the mobile app when you save a server URL, choose local display preferences, or sign in to a hosted workspace.",
@@ -319,9 +319,9 @@ const DEFAULT_LOCAL_LEGAL_BASES: Record<
   },
   marketData: {
     basis:
-      "Art. 6(1)(b) GDPR — performance of a contract when you request quote, FX refresh, live valuation, or brokerage performance chart features.",
+      "Art. 6(1)(b) GDPR — performance of a contract when you request quote or FX refresh, or brokerage performance chart features.",
     explanation:
-      "Used only when the workspace refreshes market prices, FX rates, live valuations, or historical chart data for supported assets and currencies.",
+      "Used only when the workspace refreshes market prices or FX rates, or loads historical chart data for supported assets and currencies.",
   },
   securityAndReliability: {
     basis:
@@ -355,13 +355,37 @@ const BUILTIN_PROCESSORS: PrivacyProcessor[] = [
     website: "https://groq.com/",
   },
   {
-    name: "Yahoo Finance public quote API",
-    role: "Market data provider",
+    name: "EODHD",
+    role: "Global exchange-listed security market data provider",
     purpose:
-      "Provides quote and FX responses when a user refreshes supported market or currency valuations.",
+      "Provides latest end-of-day quotes and historical responses for supported exchange-listed securities outside Marketstack's routed coverage.",
     location: "Provider-managed infrastructure",
     dataCategories: [
-      "Requested market symbols, historical quote ranges, and currency pairs.",
+      "Requested market symbols, provider exchange codes, and historical quote ranges.",
+      "Technical request metadata associated with the outbound API call.",
+    ],
+    website: "https://eodhd.com/",
+  },
+  {
+    name: "Marketstack",
+    role: "Global exchange-listed security market data provider",
+    purpose:
+      "Provides latest end-of-day quotes and historical responses for exchanges in its published coverage.",
+    location: "Provider-managed infrastructure",
+    dataCategories: [
+      "Requested market symbols, exchange MICs, and historical quote ranges.",
+      "Technical request metadata associated with the outbound API call.",
+    ],
+    website: "https://marketstack.com/",
+  },
+  {
+    name: "Yahoo Finance public quote API",
+    role: "FX, crypto, and Tokyo market data provider",
+    purpose:
+      "Provides FX, crypto, and Tokyo listing responses when a user requests a supported refresh or historical chart.",
+    location: "Provider-managed infrastructure",
+    dataCategories: [
+      "Requested currency pairs, crypto or Tokyo symbols, and historical quote ranges.",
       "Technical request metadata associated with the outbound API call.",
     ],
     website: "https://finance.yahoo.com/",
@@ -380,11 +404,33 @@ const BUILTIN_TRANSFERS: PrivacyTransfer[] = [
       "Requests use HTTPS and request provider-side storage to be disabled. Operators must confirm that their Groq agreement and transfer safeguards are appropriate before enabling the feature.",
   },
   {
+    destination: "Provider-managed EODHD infrastructure",
+    purpose:
+      "Quote and historical-price requests for supported exchange-listed securities.",
+    dataCategories: [
+      "Requested market symbols, provider exchange codes, and historical quote ranges.",
+      "Technical request metadata associated with the outbound API call.",
+    ],
+    safeguard:
+      "Requests use HTTPS and the credential stays on the API server. Operators should assess whether remote quote refresh is appropriate for their deployment and jurisdiction.",
+  },
+  {
+    destination: "Provider-managed Marketstack infrastructure",
+    purpose:
+      "Quote and historical-price requests for supported exchange-listed securities.",
+    dataCategories: [
+      "Requested market symbols, exchange MICs, and historical quote ranges.",
+      "Technical request metadata associated with the outbound API call.",
+    ],
+    safeguard:
+      "Requests use HTTPS and the credential stays on the API server. Operators should assess whether remote quote refresh is appropriate for their deployment and jurisdiction.",
+  },
+  {
     destination: "Provider-managed Yahoo Finance infrastructure",
     purpose:
-      "Quote and FX refresh requests for supported assets and currencies.",
+      "FX, crypto, and Tokyo quote or historical-price requests for supported currencies and assets.",
     dataCategories: [
-      "Requested market symbols, historical quote ranges, and currency pairs.",
+      "Requested currency pairs, crypto or Tokyo symbols, and historical quote ranges.",
       "Technical request metadata associated with the outbound API call.",
     ],
     safeguard:
@@ -424,7 +470,7 @@ const DEFAULT_RETENTION: Record<
   requestSafety: {
     title: "Idempotency and request-safety records",
     retention:
-      "Completed idempotency records are deleted after about 24 hours. Stale in-progress records are deleted after about 10 minutes. In-memory market quote cache entries live for about 5 minutes per process, live valuation reads use a shorter cache window, and historical performance-series cache entries range from about 1 minute to 24 hours depending on the selected chart range.",
+      "Completed idempotency records are deleted after about 24 hours. Stale in-progress records are deleted after about 10 minutes. In-memory market quote cache entries live for about 5 minutes per process, and historical performance-series cache entries range from about 5 minutes to 24 hours depending on the selected chart range.",
     detail:
       "These records exist to prevent duplicate writes, coordinate retries, and avoid repeating the same market quote lookup unnecessarily.",
   },

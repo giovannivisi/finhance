@@ -1,5 +1,3 @@
-export const AUTOMATIC_PRICE_REFRESH_RETRY_MS = 60_000;
-
 const MISSING_PRICE_REFRESH_SNAPSHOT_KEY = "__missing__";
 
 export interface AutomaticPriceRefreshAttempt {
@@ -39,7 +37,6 @@ export function getAutomaticPriceRefreshDelay(input: {
   lastRefreshAt: string | null;
   lastAttempt: AutomaticPriceRefreshAttempt | null;
   nowMs: number;
-  retryMs?: number;
 }): number | null {
   if (
     !input.isActive ||
@@ -55,9 +52,7 @@ export function getAutomaticPriceRefreshDelay(input: {
     return 0;
   }
 
-  const retryMs = input.retryMs ?? AUTOMATIC_PRICE_REFRESH_RETRY_MS;
-  const elapsedMs = input.nowMs - input.lastAttempt.attemptedAtMs;
-  return Math.max(0, retryMs - elapsedMs);
+  return null;
 }
 
 export function shouldStartAutomaticPriceRefresh(input: {

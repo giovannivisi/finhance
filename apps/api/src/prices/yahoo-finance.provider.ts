@@ -63,6 +63,14 @@ export class YahooFinanceProvider implements MarketDataProvider {
   readonly id = 'yahoo';
   readonly displayName = 'Yahoo Finance';
 
+  getRequestGroup(): string {
+    return this.id;
+  }
+
+  getDisplayName(): string {
+    return this.displayName;
+  }
+
   buildMarketSymbol(input: MarketDataInstrument): string {
     const ticker = input.ticker.trim().toUpperCase();
     const exchange = (input.exchange ?? '').trim().toUpperCase();

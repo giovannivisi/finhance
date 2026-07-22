@@ -18,9 +18,6 @@ export const PERFORMANCE_RANGE_OPTIONS: {
 
 export const DEFAULT_PERFORMANCE_RANGE: BrokeragePerformanceRange = "1D";
 
-/** How often the 1D series is refreshed while the document is visible. */
-export const PERFORMANCE_1D_REFRESH_INTERVAL_MS = 60_000;
-
 /**
  * Fetches the performance series for a brokerage account and range. Errors
  * from `api()` (network failures, non-2xx responses) propagate to the

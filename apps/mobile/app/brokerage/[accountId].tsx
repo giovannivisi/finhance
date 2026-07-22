@@ -51,11 +51,7 @@ import {
   SwitchField,
   TextField,
 } from "@/components/ui";
-import {
-  AllocationDonutChart,
-  LiveDot,
-  PerformanceChart,
-} from "@/components/charts";
+import { AllocationDonutChart, PerformanceChart } from "@/components/charts";
 import {
   categoryLabel,
   isAssignableTransactionCategory,
@@ -131,7 +127,9 @@ function getLiveAdjustedPricingStatus(input: {
 
   const liveAssetIds = new Set(
     input.quotes
-      .filter((quote) => quote.valueInReporting != null)
+      .filter(
+        (quote) => quote.valueInReporting != null && quote.isStale === false,
+      )
       .map((quote) => quote.assetId),
   );
   const hasUncoveredStaleQuotes = input.positions.some(
@@ -511,7 +509,7 @@ export default function BrokerageWorkspaceScreen() {
   const [targetError, setTargetError] = useState<string | null>(null);
 
   const isActive = useIsScreenActive();
-  const performanceQuery = useBrokeragePerformance(accountId, range, isActive);
+  const performanceQuery = useBrokeragePerformance(accountId, range);
   const liveQuery = useLiveValuations(isActive);
 
   const previousQuotesRef = useRef<
@@ -520,10 +518,6 @@ export default function BrokerageWorkspaceScreen() {
   const autoRefreshAttemptRef = useRef<AutomaticPriceRefreshAttempt | null>(
     null,
   );
-  const autoRefreshRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const [autoRefreshRetryTick, setAutoRefreshRetryTick] = useState(0);
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
@@ -570,11 +564,6 @@ export default function BrokerageWorkspaceScreen() {
     const lastRefreshAt = workspace?.lastRefreshAt ?? null;
     const refreshSuggested = displayPricingStatus?.refreshSuggested;
 
-    if (autoRefreshRetryTimerRef.current) {
-      clearTimeout(autoRefreshRetryTimerRef.current);
-      autoRefreshRetryTimerRef.current = null;
-    }
-
     if (refreshSuggested !== true) {
       autoRefreshAttemptRef.current = null;
     }
@@ -588,22 +577,8 @@ export default function BrokerageWorkspaceScreen() {
       nowMs: Date.now(),
     });
 
-    if (retryDelay === null) {
+    if (retryDelay !== 0) {
       return;
-    }
-
-    if (retryDelay > 0) {
-      autoRefreshRetryTimerRef.current = setTimeout(() => {
-        autoRefreshRetryTimerRef.current = null;
-        setAutoRefreshRetryTick((value) => value + 1);
-      }, retryDelay);
-
-      return () => {
-        if (autoRefreshRetryTimerRef.current) {
-          clearTimeout(autoRefreshRetryTimerRef.current);
-          autoRefreshRetryTimerRef.current = null;
-        }
-      };
     }
 
     const startedLastRefreshAt = lastRefreshAt;
@@ -621,7 +596,6 @@ export default function BrokerageWorkspaceScreen() {
       },
     });
   }, [
-    autoRefreshRetryTick,
     isActive,
     refreshAssetsIsPending,
     refreshAssetsMutate,
@@ -630,6 +604,11 @@ export default function BrokerageWorkspaceScreen() {
   ]);
 
   const performance = performanceQuery.data;
+  const priceRefreshMessage = refreshAssets.isError
+    ? describeError(refreshAssets.error)
+    : !refreshAssets.isPending
+      ? (refreshAssets.data?.priceRefresh.message ?? null)
+      : null;
 
   const liveTotal =
     broker && liveValueDelta !== 0 ? broker.totalValue + liveValueDelta : null;
@@ -1016,7 +995,6 @@ export default function BrokerageWorkspaceScreen() {
               <AppText variant="kicker" tone="tertiary">
                 Total value · {accountCurrency}
               </AppText>
-              {isActive && liveQuery.isFetching ? <LiveDot /> : null}
             </View>
             <Animated.View style={{ opacity: headerAnim }}>
               <MoneyText
@@ -1147,6 +1125,14 @@ export default function BrokerageWorkspaceScreen() {
           {(displayPricingStatus?.state ?? workspace.pricingStatus.state) !==
           "FRESH" ? (
             <Chip label="Some prices are stale" tone="warning" />
+          ) : null}
+          {priceRefreshMessage ? (
+            <AppText
+              variant="caption"
+              tone={refreshAssets.isError ? "danger" : "warning"}
+            >
+              {priceRefreshMessage}
+            </AppText>
           ) : null}
         </View>
       </Card>

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR 004](004-hybrid-global-market-data.md)
 
 ## Context
 

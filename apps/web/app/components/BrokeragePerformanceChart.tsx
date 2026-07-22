@@ -12,7 +12,6 @@ import {
   fetchBrokeragePerformance,
   formatPerformanceAxisLabel,
   formatPerformanceChangeBadge,
-  PERFORMANCE_1D_REFRESH_INTERVAL_MS,
   PERFORMANCE_RANGE_OPTIONS,
 } from "@lib/brokerage-performance";
 import { computeLiveChangePercent } from "@lib/live-valuations";
@@ -101,22 +100,6 @@ export default function BrokeragePerformanceChart({
   // Load (or reload) the series whenever the selected range changes.
   useEffect(() => {
     loadSeries(range);
-  }, [range]);
-
-  // Refresh the 1D series every 60s while the document is visible.
-  useEffect(() => {
-    if (range !== "1D") {
-      return;
-    }
-
-    function tick() {
-      if (document.visibilityState === "visible") {
-        loadSeries("1D");
-      }
-    }
-
-    const intervalId = setInterval(tick, PERFORMANCE_1D_REFRESH_INTERVAL_MS);
-    return () => clearInterval(intervalId);
   }, [range]);
 
   const hasLiveTotal = liveTotalValue != null;

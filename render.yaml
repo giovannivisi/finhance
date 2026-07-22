@@ -14,7 +14,11 @@ services:
       - key: AUTH_MODE
         value: hosted
       - key: MARKET_DATA_PROVIDER
-        value: yahoo
+        value: hybrid
+      - key: EODHD_API_TOKEN
+        sync: false
+      - key: MARKETSTACK_API_KEY
+        sync: false
       - key: API_HOST
         value: 0.0.0.0
       - key: API_TRUST_PROXY

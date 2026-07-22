@@ -1,5 +1,6 @@
 import { fetchApiMutation, readApiError } from "./api.ts";
 import { getRepeatedActionNotice } from "./request-safety.ts";
+import type { RefreshAssetsResponse } from "@finhance/shared";
 
 export type DashboardRefreshMode = "auto" | "manual";
 
@@ -7,6 +8,7 @@ export type DashboardRefreshResult =
   | {
       ok: true;
       refreshedAt: string | null;
+      warning: string | null;
     }
   | {
       ok: false;
@@ -35,8 +37,10 @@ export async function requestDashboardRefresh(
 
     if (response.ok) {
       let refreshedAt: string | null = null;
+      let warning: string | null = null;
       try {
-        const payload = (await response.json()) as unknown;
+        const payload =
+          (await response.json()) as Partial<RefreshAssetsResponse>;
         if (
           payload &&
           typeof payload === "object" &&
@@ -45,11 +49,14 @@ export async function requestDashboardRefresh(
         ) {
           refreshedAt = payload.refreshedAt;
         }
+        if (typeof payload.priceRefresh?.message === "string") {
+          warning = payload.priceRefresh.message;
+        }
       } catch {
         // Older/local endpoints may return an empty success body.
       }
 
-      return { ok: true, refreshedAt };
+      return { ok: true, refreshedAt, warning };
     }
 
     return {

@@ -51,6 +51,7 @@ function quote(
     currency: "USD",
     value: 13560,
     valueInReporting: 12500,
+    isStale: false,
     ...overrides,
   };
 }
@@ -133,6 +134,22 @@ describe("mergePositionsWithLiveQuotes", () => {
     });
 
     expect(merged[0]!.currentValue).toBe(12500);
+    expect(merged[0]!.valuationSource).toBe("LAST_QUOTE");
+    expect(merged[0]!.isStale).toBe(true);
+  });
+
+  it("never promotes a persisted stale quote to live", () => {
+    const positions = [
+      position({ valuationSource: "LAST_QUOTE", isStale: true }),
+    ];
+    const quotes = [quote({ isStale: true, valueInReporting: 12600 })];
+
+    const merged = mergePositionsWithLiveQuotes(positions, quotes, {
+      asOf: "2026-06-12T09:05:00.000Z",
+      reportingCurrency: "USD",
+    });
+
+    expect(merged[0]!.currentValue).toBe(12600);
     expect(merged[0]!.valuationSource).toBe("LAST_QUOTE");
     expect(merged[0]!.isStale).toBe(true);
   });

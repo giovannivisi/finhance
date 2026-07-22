@@ -63,10 +63,9 @@ export function mergeLivePositions(
     }
 
     const currentValue = quote.valueInReporting;
-    const clearsStale = hasFreshReportingCurrencyQuote(
-      position.currency,
-      options,
-    );
+    const clearsStale =
+      quote.isStale === false &&
+      hasFreshReportingCurrencyQuote(position.currency, options);
 
     return {
       ...position,
@@ -75,7 +74,7 @@ export function mergeLivePositions(
       unrealisedGainLoss: currentValue - position.costBasis,
       valuationSource: clearsStale ? "LIVE" : position.valuationSource,
       valuationAsOf: clearsStale
-        ? (options.asOf ?? position.valuationAsOf)
+        ? (quote.asOf ?? options.asOf ?? position.valuationAsOf)
         : position.valuationAsOf,
       isStale: clearsStale ? false : position.isStale,
     };
@@ -116,7 +115,9 @@ export function mergeDashboardAssetsWithLiveQuotes(
       return asset;
     }
 
-    const clearsStale = hasFreshReportingCurrencyQuote(asset.currency, options);
+    const clearsStale =
+      quote.isStale === false &&
+      hasFreshReportingCurrencyQuote(asset.currency, options);
 
     return {
       ...asset,
@@ -124,7 +125,7 @@ export function mergeDashboardAssetsWithLiveQuotes(
       lastPrice: asset.quantity !== null ? quote.price : asset.lastPrice,
       valuationSource: clearsStale ? "LIVE" : asset.valuationSource,
       valuationAsOf: clearsStale
-        ? (options.asOf ?? asset.valuationAsOf)
+        ? (quote.asOf ?? options.asOf ?? asset.valuationAsOf)
         : asset.valuationAsOf,
       isStale: clearsStale ? false : asset.isStale,
     };

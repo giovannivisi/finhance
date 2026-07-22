@@ -4,35 +4,47 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { LiveValuationsResponse } from "@finhance/shared";
 import { api } from "@lib/api";
 
-const LIVE_VALUATIONS_POLL_INTERVAL_MS = 15_000;
-
 /**
- * Polls `GET /assets/live-valuations` every 15 seconds while the document is
- * visible, pausing the interval (but not clearing it) when the tab is
- * hidden and resuming on return. Overlapping requests are avoided: a tick
- * is skipped entirely if the previous fetch is still in flight.
+ * Reads the latest persisted valuations on mount and when a hidden tab becomes
+ * visible again. Price providers are contacted only by the explicit refresh
+ * endpoint, so no interval is needed here.
  */
-export function useLiveValuations(): {
+export function useLiveValuations(snapshotKey: string | null = null): {
   data: LiveValuationsResponse | null;
   error: string | null;
 } {
-  const [data, setData] = useState<LiveValuationsResponse | null>(null);
+  const [snapshot, setSnapshot] = useState<{
+    key: string | null;
+    data: LiveValuationsResponse | null;
+  }>({ key: snapshotKey, data: null });
   const [error, setError] = useState<string | null>(null);
-  const isFetchingRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const inFlightRef = useRef<{ key: string | null; id: number } | null>(null);
+  const data = snapshot.key === snapshotKey ? snapshot.data : null;
 
   const poll = useEffectEvent(() => {
-    if (document.visibilityState !== "visible" || isFetchingRef.current) {
+    if (
+      document.visibilityState !== "visible" ||
+      inFlightRef.current?.key === snapshotKey
+    ) {
       return;
     }
 
-    isFetchingRef.current = true;
+    const requestId = ++requestIdRef.current;
+    inFlightRef.current = { key: snapshotKey, id: requestId };
 
     api<LiveValuationsResponse>("/assets/live-valuations")
       .then((response) => {
-        setData(response);
+        if (inFlightRef.current?.id !== requestId) {
+          return;
+        }
+        setSnapshot({ key: snapshotKey, data: response });
         setError(null);
       })
       .catch((caught) => {
+        if (inFlightRef.current?.id !== requestId) {
+          return;
+        }
         setError(
           caught instanceof Error
             ? caught.message
@@ -40,13 +52,14 @@ export function useLiveValuations(): {
         );
       })
       .finally(() => {
-        isFetchingRef.current = false;
+        if (inFlightRef.current?.id === requestId) {
+          inFlightRef.current = null;
+        }
       });
   });
 
   useEffect(() => {
     poll();
-    const intervalId = setInterval(poll, LIVE_VALUATIONS_POLL_INTERVAL_MS);
 
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
@@ -57,10 +70,9 @@ export function useLiveValuations(): {
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [snapshotKey]);
 
   return { data, error };
 }

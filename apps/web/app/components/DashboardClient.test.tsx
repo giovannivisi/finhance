@@ -61,7 +61,7 @@ vi.mock("@components/EditAssetModal", () => ({
 }));
 
 vi.mock("@components/CooldownNotice", () => ({
-  default: () => null,
+  default: ({ notice }: { notice: string }) => <p>{notice}</p>,
 }));
 
 vi.mock("@components/HeaderAddButton", () => ({
@@ -176,6 +176,7 @@ describe("DashboardClient", () => {
     vi.mocked(requestDashboardRefresh).mockResolvedValue({
       ok: true,
       refreshedAt: "2026-05-20T10:01:00.000Z",
+      warning: null,
     });
     hasAttemptedDashboardRefreshMock.mockReset();
     hasAttemptedDashboardRefreshMock.mockReturnValue(false);
@@ -302,6 +303,7 @@ describe("DashboardClient", () => {
     let resolveRefresh: (value: {
       ok: true;
       refreshedAt: string | null;
+      warning: string | null;
     }) => void = () => {};
     vi.mocked(requestDashboardRefresh).mockImplementation(
       () =>
@@ -329,7 +331,11 @@ describe("DashboardClient", () => {
     expect(markDashboardRefreshAttemptedMock).not.toHaveBeenCalled();
     expect(screen.getByText(/Refreshing latest prices/)).toBeInTheDocument();
 
-    resolveRefresh({ ok: true, refreshedAt: "2026-05-20T10:01:00.000Z" });
+    resolveRefresh({
+      ok: true,
+      refreshedAt: "2026-05-20T10:01:00.000Z",
+      warning: null,
+    });
 
     await waitFor(() => {
       expect(refreshMock).toHaveBeenCalledTimes(1);
@@ -382,6 +388,7 @@ describe("DashboardClient", () => {
             currency: "EUR",
             value: 122,
             valueInReporting: 122,
+            isStale: false,
           },
         ],
       },
@@ -406,6 +413,24 @@ describe("DashboardClient", () => {
     expect(screen.getByText(/Live prices current/)).toBeInTheDocument();
     expect(screen.queryByText(/Stored prices stale/)).toBeNull();
     expect(requestDashboardRefresh).not.toHaveBeenCalled();
+  });
+
+  it("shows a partial market-price warning after a manual refresh", async () => {
+    const user = userEvent.setup();
+    vi.mocked(requestDashboardRefresh).mockResolvedValue({
+      ok: true,
+      refreshedAt: "2026-05-20T10:01:00.000Z",
+      warning:
+        "Updated 1 of 2 market prices. Could not refresh VWCE.HM; stored prices were kept for those holdings.",
+    });
+    renderDashboard();
+
+    await user.click(screen.getByRole("button", { name: "Refresh data" }));
+
+    expect(
+      await screen.findByText(/Could not refresh VWCE\.HM/),
+    ).toBeInTheDocument();
+    expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not store a session attempt when automatic refresh fails", async () => {
