@@ -1,6 +1,7 @@
 import type {
   AccountResponse,
   AiTransactionDraft,
+  CategoryResponse,
   ExpenseValidationRuleResponse,
   TransactionDirection,
   TransactionKind,
@@ -155,11 +156,28 @@ export function applyTransactionDraft(
   state: TransactionFormState,
   draft: AiTransactionDraft,
   accounts: AccountResponse[],
+  categories: CategoryResponse[],
   expenseRules: ExpenseValidationRuleResponse[],
 ): TransactionFormState {
+  const nextKind = draft.kind ?? state.kind;
+  const selectedCategory = categories.find(
+    (category) => category.id === state.categoryId,
+  );
+  const compatibleCategoryId =
+    selectedCategory?.type === nextKind ? state.categoryId : null;
   const matchingRule =
-    state.kind === "EXPENSE" && !state.categoryId
+    nextKind === "EXPENSE" && !compatibleCategoryId
       ? matchExpenseRule(draft.description, expenseRules)
+      : null;
+  const incomeCategoryId =
+    nextKind === "INCOME" && !compatibleCategoryId
+      ? findUniqueNameMatch(
+          draft.description,
+          categories.filter(
+            (category) =>
+              category.type === "INCOME" && category.archivedAt === null,
+          ),
+        )
       : null;
   const cashAccounts = accounts.filter(
     (account) => account.type === "CASH" && account.archivedAt === null,
@@ -168,16 +186,67 @@ export function applyTransactionDraft(
     draft.paymentMethod === "cash" && cashAccounts.length === 1
       ? cashAccounts[0]!.id
       : null;
+  const namedAccountId = findUniqueNameMatch(
+    draft.description,
+    accounts.filter((account) => account.archivedAt === null),
+  );
 
   return {
     ...state,
+    kind: nextKind,
     amount: draft.amount === null ? state.amount : String(draft.amount),
     date: draft.postedAt ?? state.date,
     description: draft.description || state.description,
     counterparty: draft.counterparty ?? state.counterparty,
-    accountId: cashAccountId ?? state.accountId,
-    categoryId: matchingRule?.secondaryCategoryId ?? state.categoryId,
+    accountId: cashAccountId ?? namedAccountId ?? state.accountId,
+    categoryId:
+      matchingRule?.secondaryCategoryId ??
+      incomeCategoryId ??
+      compatibleCategoryId,
+    direction:
+      nextKind === "INCOME"
+        ? "INFLOW"
+        : nextKind === "EXPENSE"
+          ? "OUTFLOW"
+          : state.direction,
+    split: nextKind === "EXPENSE" ? state.split : false,
+    legs:
+      nextKind === "EXPENSE"
+        ? state.legs
+        : [
+            { accountId: null, amount: "" },
+            { accountId: null, amount: "" },
+          ],
   };
+}
+
+function findUniqueNameMatch<Candidate extends { id: string; name: string }>(
+  description: string,
+  candidates: Candidate[],
+): string | null {
+  const normalizedDescription = normalizeDraftText(description);
+  if (!normalizedDescription) {
+    return null;
+  }
+
+  const matches = candidates.filter((candidate) => {
+    const normalizedName = normalizeDraftText(candidate.name);
+    return (
+      normalizedName.length >= 3 &&
+      normalizedDescription.includes(normalizedName)
+    );
+  });
+
+  return matches.length === 1 ? matches[0]!.id : null;
+}
+
+function normalizeDraftText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("en-US")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function buildPostedAt(date: string, time: string): string {

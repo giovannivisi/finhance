@@ -1,12 +1,23 @@
 import { GroqTransactionDraftProvider } from '@/ai/groq-transaction-draft.provider';
 
+type GroqRequestSpy = {
+  model: string;
+  store: boolean;
+  stream: boolean;
+  response_format: {
+    type: string;
+    json_schema: {
+      strict: boolean;
+      schema: { required: readonly string[] };
+    };
+  };
+};
+
 describe('GroqTransactionDraftProvider', () => {
   it('uses strict JSON schema output and disabled response storage', async () => {
-    let request: unknown;
-    let options: unknown;
-    const create = jest.fn((nextRequest: unknown, nextOptions: unknown) => {
-      request = nextRequest;
-      options = nextOptions;
+    const create = jest.fn((request: GroqRequestSpy, options: unknown) => {
+      void request;
+      void options;
       return Promise.resolve({
         choices: [{ message: { content: '{"description":"Pizza"}' } }],
         usage: { prompt_tokens: 12, completion_tokens: 8 },
@@ -44,6 +55,11 @@ describe('GroqTransactionDraftProvider', () => {
       inputTokens: 12,
       outputTokens: 8,
     });
+    const [request, options] = create.mock.calls[0] ?? [];
+    if (!request) {
+      throw new Error('Expected Groq provider request.');
+    }
+
     expect(request).toMatchObject({
       model: 'openai/gpt-oss-20b',
       store: false,
@@ -53,6 +69,9 @@ describe('GroqTransactionDraftProvider', () => {
         json_schema: { strict: true },
       },
     });
+    expect(request.response_format.json_schema.schema.required).toContain(
+      'kind',
+    );
     expect(options).toEqual({ timeout: 15_000 });
   });
 });

@@ -2,6 +2,7 @@ import { validateCloudTransactionDraft } from '@/ai/transaction-draft.validation
 
 describe('validateCloudTransactionDraft', () => {
   const completeDraft = {
+    kind: 'EXPENSE',
     amount: 14.5,
     currency: 'EUR',
     postedAt: '2026-07-11',
@@ -42,6 +43,7 @@ describe('validateCloudTransactionDraft', () => {
 
   it('rejects omitted fields and invalid last-four values', () => {
     const missingField: Omit<typeof completeDraft, 'paymentMethod'> = {
+      kind: completeDraft.kind,
       amount: completeDraft.amount,
       currency: completeDraft.currency,
       postedAt: completeDraft.postedAt,
@@ -52,6 +54,9 @@ describe('validateCloudTransactionDraft', () => {
     expect(validateCloudTransactionDraft(missingField)).toBeNull();
     expect(
       validateCloudTransactionDraft({ ...completeDraft, cardLast4: '12' }),
+    ).toBeNull();
+    expect(
+      validateCloudTransactionDraft({ ...completeDraft, kind: 'TRANSFER' }),
     ).toBeNull();
   });
 });

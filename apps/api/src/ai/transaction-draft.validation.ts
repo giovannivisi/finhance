@@ -1,5 +1,6 @@
 import type {
   AiTransactionDraft,
+  AiTransactionDraftKind,
   AiTransactionDraftPaymentMethod,
 } from '@finhance/shared';
 import { isSupportedCurrencyCode } from '@/common/catalogues';
@@ -12,6 +13,10 @@ const PAYMENT_METHODS = new Set<AiTransactionDraftPaymentMethod>([
   'card',
   'unknown',
 ]);
+const TRANSACTION_KINDS = new Set<AiTransactionDraftKind>([
+  'EXPENSE',
+  'INCOME',
+]);
 
 export function validateCloudTransactionDraft(
   value: unknown,
@@ -21,6 +26,7 @@ export function validateCloudTransactionDraft(
   }
 
   const draft = value as Record<string, unknown>;
+  const kind = nullableTransactionKind(draft.kind);
   const amount = nullableAmount(draft.amount);
   const currency = nullableCurrency(draft.currency);
   const postedAt = nullableDate(draft.postedAt);
@@ -30,6 +36,7 @@ export function validateCloudTransactionDraft(
   const cardLast4 = nullableCardLastFour(draft.cardLast4);
 
   if (
+    kind === undefined ||
     amount === undefined ||
     currency === undefined ||
     postedAt === undefined ||
@@ -42,6 +49,7 @@ export function validateCloudTransactionDraft(
   }
 
   return {
+    kind,
     amount,
     currency,
     postedAt,
@@ -50,6 +58,18 @@ export function validateCloudTransactionDraft(
     paymentMethod,
     cardLast4,
   };
+}
+
+function nullableTransactionKind(
+  value: unknown,
+): AiTransactionDraftKind | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  return typeof value === 'string' && TRANSACTION_KINDS.has(value as never)
+    ? (value as AiTransactionDraftKind)
+    : undefined;
 }
 
 function nullableAmount(value: unknown): number | null | undefined {

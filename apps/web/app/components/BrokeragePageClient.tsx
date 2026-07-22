@@ -23,6 +23,10 @@ import {
   mergeLivePositions,
 } from "@lib/live-valuations";
 import { formatSensitiveNumber } from "@lib/money";
+import {
+  parseTransactionPostedAt,
+  toRomeDateInputValue,
+} from "@lib/transaction-form";
 import { useLiveValuations } from "@lib/useLiveValuations";
 import type {
   AggregatePricingStatus,
@@ -146,6 +150,10 @@ const BROKERAGE_ACTIVITY_DATETIME_FORMATTER = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "short",
   timeStyle: "medium",
 });
+const BROKERAGE_ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat("it-IT", {
+  timeZone: "Europe/Rome",
+  dateStyle: "short",
+});
 
 const BROKERAGE_ACTIVITY_MONTH_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Europe/Rome",
@@ -167,7 +175,13 @@ function getPriceRefreshSnapshotKey(lastRefreshAt: string | null): string {
   return lastRefreshAt ?? MISSING_PRICE_REFRESH_SNAPSHOT_KEY;
 }
 
-function createCurrentDateTimeValue() {
+function createCurrentPostedAtValue(showTransactionTimes: boolean) {
+  const now = new Date();
+
+  if (!showTransactionTimes) {
+    return toRomeDateInputValue(now.toISOString());
+  }
+
   return new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
     .toISOString()
     .slice(0, 16);
@@ -175,6 +189,7 @@ function createCurrentDateTimeValue() {
 
 function createEmptyBuyForm(
   workspace: BrokerageWorkspaceResponse,
+  showTransactionTimes: boolean,
 ): BuyFormState {
   return {
     assetId: "",
@@ -186,30 +201,31 @@ function createEmptyBuyForm(
     quantity: "",
     unitPrice: "",
     feeAmount: "",
-    postedAt: createCurrentDateTimeValue(),
+    postedAt: createCurrentPostedAtValue(showTransactionTimes),
     notes: "",
   };
 }
 
 function createEmptySellForm(
   positions: BrokeragePositionResponse[],
+  showTransactionTimes: boolean,
 ): SellFormState {
   return {
     assetId: positions[0]?.assetId ?? "",
     quantity: "",
     unitPrice: "",
     feeAmount: "",
-    postedAt: createCurrentDateTimeValue(),
+    postedAt: createCurrentPostedAtValue(showTransactionTimes),
     notes: "",
   };
 }
 
-function createEmptyCashForm(): CashFormState {
+function createEmptyCashForm(showTransactionTimes: boolean): CashFormState {
   return {
     assetId: "",
     amount: "",
     categoryId: "",
-    postedAt: createCurrentDateTimeValue(),
+    postedAt: createCurrentPostedAtValue(showTransactionTimes),
     notes: "",
   };
 }
@@ -296,9 +312,11 @@ function buildBrokerageActivityGroups(items: BrokerageActivityItemResponse[]) {
 export default function BrokeragePageClient({
   workspace,
   categories,
+  showTransactionTimes = true,
 }: {
   workspace: BrokerageWorkspaceResponse;
   categories: CategoryResponse[];
+  showTransactionTimes?: boolean;
 }) {
   const router = useRouter();
   const { hideMoney, isHydrated } = useAppPreferences();
@@ -307,16 +325,16 @@ export default function BrokeragePageClient({
   const [openModal, setOpenModal] = useState<OperationModalKind>(null);
   const [targetTab, setTargetTab] = useState<TargetTab>("assetClasses");
   const [buyForm, setBuyForm] = useState<BuyFormState>(() =>
-    createEmptyBuyForm(workspace),
+    createEmptyBuyForm(workspace, showTransactionTimes),
   );
   const [sellForm, setSellForm] = useState<SellFormState>(() =>
-    createEmptySellForm(workspace.positions),
+    createEmptySellForm(workspace.positions, showTransactionTimes),
   );
   const [dividendForm, setDividendForm] = useState<CashFormState>(() =>
-    createEmptyCashForm(),
+    createEmptyCashForm(showTransactionTimes),
   );
   const [feeForm, setFeeForm] = useState<CashFormState>(() =>
-    createEmptyCashForm(),
+    createEmptyCashForm(showTransactionTimes),
   );
   const [assetKindTargets, setAssetKindTargets] = useState<EditableTargetRow[]>(
     () => createTargetRows(workspace.allocation.assetKindTargets),
@@ -600,16 +618,18 @@ export default function BrokeragePageClient({
   function resetOperationState(nextModal: OperationModalKind) {
     setFormError(null);
     if (nextModal === "BUY") {
-      setBuyForm(createEmptyBuyForm(workspace));
+      setBuyForm(createEmptyBuyForm(workspace, showTransactionTimes));
     }
     if (nextModal === "SELL") {
-      setSellForm(createEmptySellForm(workspace.positions));
+      setSellForm(
+        createEmptySellForm(workspace.positions, showTransactionTimes),
+      );
     }
     if (nextModal === "DIVIDEND") {
-      setDividendForm(createEmptyCashForm());
+      setDividendForm(createEmptyCashForm(showTransactionTimes));
     }
     if (nextModal === "FEE") {
-      setFeeForm(createEmptyCashForm());
+      setFeeForm(createEmptyCashForm(showTransactionTimes));
     }
     if (nextModal === "TARGETS") {
       setAssetKindTargets(
@@ -652,6 +672,15 @@ export default function BrokeragePageClient({
       return;
     }
 
+    const postedAt = parseTransactionPostedAt(buyForm.postedAt, {
+      showTransactionTimes,
+      now: new Date(),
+    });
+    if (!postedAt) {
+      setFormError("Please enter a valid posting date.");
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
 
@@ -668,7 +697,7 @@ export default function BrokeragePageClient({
           quantity,
           unitPrice,
           feeAmount: feeAmount == null ? null : feeAmount,
-          postedAt: new Date(buyForm.postedAt).toISOString(),
+          postedAt,
           notes: buyForm.notes || null,
         }),
       });
@@ -703,6 +732,15 @@ export default function BrokeragePageClient({
       return;
     }
 
+    const postedAt = parseTransactionPostedAt(sellForm.postedAt, {
+      showTransactionTimes,
+      now: new Date(),
+    });
+    if (!postedAt) {
+      setFormError("Please enter a valid posting date.");
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
 
@@ -714,7 +752,7 @@ export default function BrokeragePageClient({
           quantity,
           unitPrice,
           feeAmount: feeAmount == null ? null : feeAmount,
-          postedAt: new Date(sellForm.postedAt).toISOString(),
+          postedAt,
           notes: sellForm.notes || null,
         }),
       });
@@ -743,6 +781,15 @@ export default function BrokeragePageClient({
       return;
     }
 
+    const postedAt = parseTransactionPostedAt(form.postedAt, {
+      showTransactionTimes,
+      now: new Date(),
+    });
+    if (!postedAt) {
+      setFormError("Please enter a valid posting date.");
+      return;
+    }
+
     setIsSubmitting(true);
     setFormError(null);
 
@@ -755,7 +802,7 @@ export default function BrokeragePageClient({
             assetId: form.assetId || null,
             amount,
             categoryId: form.categoryId,
-            postedAt: new Date(form.postedAt).toISOString(),
+            postedAt,
             notes: form.notes || null,
           }),
         },
@@ -1410,9 +1457,10 @@ export default function BrokeragePageClient({
                                     </p>
                                     <p className="text-sm text-[var(--text-secondary)]">
                                       {item.detail ?? item.kind} ·{" "}
-                                      {BROKERAGE_ACTIVITY_DATETIME_FORMATTER.format(
-                                        new Date(item.postedAt),
-                                      )}
+                                      {(showTransactionTimes
+                                        ? BROKERAGE_ACTIVITY_DATETIME_FORMATTER
+                                        : BROKERAGE_ACTIVITY_DATE_FORMATTER
+                                      ).format(new Date(item.postedAt))}
                                     </p>
                                   </div>
                                   <div className="brokerage-activity-value">
@@ -1677,7 +1725,7 @@ export default function BrokeragePageClient({
                 </label>
                 <input
                   id={`${fieldPrefix}-posted-at`}
-                  type="datetime-local"
+                  type={showTransactionTimes ? "datetime-local" : "date"}
                   value={buyForm.postedAt}
                   onChange={(event) =>
                     setBuyForm((current) => ({
@@ -1811,7 +1859,7 @@ export default function BrokeragePageClient({
           <label className="app-form-field">
             <span className="detail-metric-label">Posted at</span>
             <input
-              type="datetime-local"
+              type={showTransactionTimes ? "datetime-local" : "date"}
               value={sellForm.postedAt}
               onChange={(event) =>
                 setSellForm((current) => ({
@@ -1932,7 +1980,7 @@ export default function BrokeragePageClient({
           <label className="app-form-field">
             <span className="detail-metric-label">Posted at</span>
             <input
-              type="datetime-local"
+              type={showTransactionTimes ? "datetime-local" : "date"}
               value={dividendForm.postedAt}
               onChange={(event) =>
                 setDividendForm((current) => ({
@@ -2040,7 +2088,7 @@ export default function BrokeragePageClient({
           <label className="app-form-field">
             <span className="detail-metric-label">Posted at</span>
             <input
-              type="datetime-local"
+              type={showTransactionTimes ? "datetime-local" : "date"}
               value={feeForm.postedAt}
               onChange={(event) =>
                 setFeeForm((current) => ({

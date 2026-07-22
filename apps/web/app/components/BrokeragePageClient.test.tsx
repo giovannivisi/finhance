@@ -650,6 +650,26 @@ describe("BrokeragePageClient", () => {
     expect(screen.getByText("1 active")).toBeInTheDocument();
   });
 
+  it("hides brokerage activity times and uses date-only operation fields when disabled", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <BrokeragePageClient
+        workspace={buildWorkspace()}
+        categories={categories}
+        showTransactionTimes={false}
+      />,
+    );
+
+    await user.click(screen.getByText("Activity"));
+
+    expect(screen.getByText(/VWCE.*19\/05\/26/)).toBeInTheDocument();
+    expect(screen.queryByText(/10:00:00/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Buy" }));
+    expect(screen.getByLabelText("Posted at")).toHaveAttribute("type", "date");
+  });
+
   it("refreshes brokerage prices once after hydration when stored pricing is stale", async () => {
     const workspace = buildWorkspace();
     workspace.pricingStatus = {

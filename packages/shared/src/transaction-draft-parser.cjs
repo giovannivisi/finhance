@@ -21,6 +21,10 @@ const ISO_DATE_PATTERN = /\b(\d{4})-(\d{2})-(\d{2})\b/;
 const SHORT_DATE_PATTERN = /\b(\d{1,2})\/(\d{1,2})\b/;
 const CARD_LAST_FOUR_PATTERN =
   /\b(?:\*{4}|•{4})\s*(\d{4})\b|\b(?:card|carta|visa|mastercard|amex|bancomat)\D{0,12}(\d{4})\b/i;
+const INCOME_PATTERN =
+  /\b(?:income|salary|pay(?:\s*cheque)?|wages?|freelanc(?:e|er)|interest|dividend|refund|benefit|stipendio|salario|paga|compenso|interessi|dividendo|rimborso|pensione|sussidio)\b/i;
+const EXPENSE_PATTERN =
+  /\b(?:expense|spent|paid|purchase|bought|payment|pizza|coffee|restaurant|groceries|shopping|spesa|pagato|pagamento|acquisto|trattoria)\b/i;
 
 /**
  * Derives a conservative, reviewable transaction draft from text that the
@@ -32,6 +36,7 @@ const CARD_LAST_FOUR_PATTERN =
  */
 function createHeuristicTransactionDraft(text, now = new Date()) {
   return {
+    kind: findTransactionKind(text),
     amount: findAmount(text),
     currency: findCurrency(text),
     postedAt: findDate(text, now),
@@ -42,6 +47,18 @@ function createHeuristicTransactionDraft(text, now = new Date()) {
     parsedBy: "heuristic",
     cloudAttempted: false,
   };
+}
+
+/**
+ * @param {string} value
+ * @returns {import("#ai").AiTransactionDraftKind | null}
+ */
+function findTransactionKind(value) {
+  if (INCOME_PATTERN.test(value)) {
+    return "INCOME";
+  }
+
+  return EXPENSE_PATTERN.test(value) ? "EXPENSE" : null;
 }
 
 /**

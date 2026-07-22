@@ -94,19 +94,25 @@ function buildQuickAddNotice(
   draft: AiTransactionDraft,
   source: AiTransactionDraftSource,
 ): string {
+  if (draft.kind === null) {
+    return "Draft details applied, but the transaction type is unclear. Choose Expense or Income before saving.";
+  }
+
+  const typeLabel = draft.kind === "INCOME" ? "Income" : "Expense";
+
   if (source === "receipt") {
-    return "Receipt draft applied — review every field before saving.";
+    return `${typeLabel} receipt draft applied — review every field before saving.`;
   }
 
   if (draft.parsedBy === "groq") {
-    return "AI-assisted draft applied — review every field before saving.";
+    return `${typeLabel} AI-assisted draft applied — review every field before saving.`;
   }
 
   if (draft.cloudAttempted) {
-    return "Basic draft applied after cloud processing was unavailable. Review every field before saving.";
+    return `${typeLabel} draft applied after cloud processing was unavailable. Review every field before saving.`;
   }
 
-  return "Private draft applied — review every field before saving.";
+  return `${typeLabel} private draft applied — review every field before saving.`;
 }
 
 export default function TransactionUpsertScreen() {
@@ -284,7 +290,13 @@ export default function TransactionUpsertScreen() {
         source: "freeform",
       });
       setForm((previous) =>
-        applyTransactionDraft(previous, draft, accounts, expenseRules),
+        applyTransactionDraft(
+          previous,
+          draft,
+          accounts,
+          categories,
+          expenseRules,
+        ),
       );
       setErrors({});
       setServerError(null);
@@ -333,7 +345,13 @@ export default function TransactionUpsertScreen() {
 
       const draft = await createReceiptDraftFromImage(imageUri);
       setForm((previous) =>
-        applyTransactionDraft(previous, draft, accounts, expenseRules),
+        applyTransactionDraft(
+          previous,
+          draft,
+          accounts,
+          categories,
+          expenseRules,
+        ),
       );
       setErrors({});
       setServerError(null);

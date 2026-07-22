@@ -6,6 +6,7 @@ describe('HeuristicTransactionDraftService', () => {
 
   it('extracts a conservative English quick-add draft', () => {
     expect(service.create('14.50 pizza yesterday amex', now)).toEqual({
+      kind: 'EXPENSE',
       amount: 14.5,
       currency: null,
       postedAt: '2026-07-11',
@@ -22,6 +23,7 @@ describe('HeuristicTransactionDraftService', () => {
     expect(
       service.create('Totale € 27,40 trattoria ieri contanti', now),
     ).toEqual({
+      kind: 'EXPENSE',
       amount: 27.4,
       currency: 'EUR',
       postedAt: '2026-07-11',
@@ -53,8 +55,22 @@ describe('HeuristicTransactionDraftService', () => {
 
   it('uses a reviewable fallback description when text has no merchant', () => {
     expect(service.create('12.00', now)).toMatchObject({
+      kind: null,
       amount: 12,
       description: 'Unlabelled transaction',
     });
+  });
+
+  it.each([
+    'Salary EUR 2,400 today',
+    'Freelance payment EUR 350',
+    'Interest EUR 4.50',
+    'Dividend EUR 12',
+    'Refund EUR 25',
+    'Benefit payment EUR 180',
+    'Stipendio EUR 2.400',
+    'Rimborso EUR 25',
+  ])('recognises income language in %s', (text) => {
+    expect(service.create(text, now)).toMatchObject({ kind: 'INCOME' });
   });
 });

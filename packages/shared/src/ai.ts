@@ -4,6 +4,9 @@ export type AiTransactionDraftParser = "heuristic" | "groq";
 
 export type AiTransactionDraftPaymentMethod = "cash" | "card" | "unknown";
 
+/** Standard transaction kinds that a draft can safely infer. */
+export type AiTransactionDraftKind = "EXPENSE" | "INCOME";
+
 export interface CreateAiTransactionDraftRequest {
   text: string;
   source: AiTransactionDraftSource;
@@ -11,6 +14,8 @@ export interface CreateAiTransactionDraftRequest {
 
 /** A suggestion only; clients must map it into an editable transaction form. */
 export interface AiTransactionDraft {
+  /** Null means the parser could not safely distinguish income from expense. */
+  kind: AiTransactionDraftKind | null;
   amount: number | null;
   currency: string | null;
   postedAt: string | null;

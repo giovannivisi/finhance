@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   AccountResponse,
   AiTransactionDraft,
+  CategoryResponse,
   ExpenseValidationRuleResponse,
 } from "@finhance/shared";
 
@@ -53,6 +54,54 @@ const rules: ExpenseValidationRuleResponse[] = [
     secondaryCategoryName: "Groceries",
     primaryCategoryId: "cat-living",
     primaryCategoryName: "Living",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+];
+
+const categories: CategoryResponse[] = [
+  {
+    id: "cat-groceries",
+    name: "Groceries",
+    type: "EXPENSE",
+    parentCategoryId: "cat-living",
+    parentCategoryName: "Living",
+    isPrimary: false,
+    isSecondary: true,
+    order: 0,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "manual-category",
+    name: "Manual category",
+    type: "EXPENSE",
+    parentCategoryId: "cat-living",
+    parentCategoryName: "Living",
+    isPrimary: false,
+    isSecondary: true,
+    order: 1,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "income-salary",
+    name: "Salary",
+    type: "INCOME",
+    parentCategoryId: null,
+    parentCategoryName: null,
+    isPrimary: true,
+    isSecondary: false,
+    order: 2,
+    archivedAt: null,
+    canDeletePermanently: true,
+    deleteBlockReason: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   },
@@ -191,6 +240,7 @@ describe("buildTransactionRequest — standard", () => {
 describe("applyTransactionDraft", () => {
   it("maps safe draft fields and selects a unique cash account", () => {
     const draft: AiTransactionDraft = {
+      kind: "EXPENSE",
       amount: 4.5,
       currency: "EUR",
       postedAt: "2026-07-11",
@@ -205,6 +255,7 @@ describe("applyTransactionDraft", () => {
       baseForm({ kind: "EXPENSE", accountId: null, categoryId: null }),
       draft,
       [account("bank", "EUR"), account("cash", "EUR", { type: "CASH" })],
+      categories,
       rules,
     );
 
@@ -220,6 +271,7 @@ describe("applyTransactionDraft", () => {
 
   it("leaves a manually selected category and ambiguous cash selection alone", () => {
     const draft: AiTransactionDraft = {
+      kind: "EXPENSE",
       amount: null,
       currency: null,
       postedAt: null,
@@ -242,11 +294,44 @@ describe("applyTransactionDraft", () => {
         account("cash-1", "EUR", { type: "CASH" }),
         account("cash-2", "EUR", { type: "CASH" }),
       ],
+      categories,
       rules,
     );
 
     expect(result.accountId).toBe("bank");
     expect(result.categoryId).toBe("manual-category");
+  });
+
+  it("maps an income draft to its inflow direction and unambiguous local matches", () => {
+    const draft: AiTransactionDraft = {
+      kind: "INCOME",
+      amount: 2400,
+      currency: "EUR",
+      postedAt: "2026-07-01",
+      description: "July Salary Account bank",
+      counterparty: "Employer",
+      paymentMethod: "unknown",
+      cardLast4: null,
+      parsedBy: "heuristic",
+      cloudAttempted: false,
+    };
+
+    const result = applyTransactionDraft(
+      baseForm({ kind: "EXPENSE", direction: "OUTFLOW" }),
+      draft,
+      [account("bank", "EUR")],
+      categories,
+      rules,
+    );
+
+    expect(result).toMatchObject({
+      kind: "INCOME",
+      direction: "INFLOW",
+      amount: "2400",
+      accountId: "bank",
+      categoryId: "income-salary",
+      split: false,
+    });
   });
 });
 

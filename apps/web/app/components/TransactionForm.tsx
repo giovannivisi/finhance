@@ -76,16 +76,51 @@ function applyDraftDate(
   return `${draftDate}T${time}`;
 }
 
+function findUniqueNameMatch<Candidate extends { id: string; name: string }>(
+  description: string,
+  candidates: Candidate[],
+): string | null {
+  const normalizedDescription = normalizeDraftText(description);
+  if (!normalizedDescription) {
+    return null;
+  }
+
+  const matches = candidates.filter((candidate) => {
+    const normalizedName = normalizeDraftText(candidate.name);
+    return (
+      normalizedName.length >= 3 &&
+      normalizedDescription.includes(normalizedName)
+    );
+  });
+
+  return matches.length === 1 ? matches[0]!.id : null;
+}
+
+function normalizeDraftText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("en-US")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildQuickAddNotice(draft: AiTransactionDraft): string {
+  if (draft.kind === null) {
+    return "Draft details applied, but the transaction type is unclear. Choose Expense or Income before saving.";
+  }
+
+  const typeLabel = draft.kind === "INCOME" ? "Income" : "Expense";
+
   if (draft.parsedBy === "groq") {
-    return "AI-assisted draft applied — review every field before saving. This is not financial advice.";
+    return `${typeLabel} AI-assisted draft applied — review every field before saving. This is not financial advice.`;
   }
 
   if (draft.cloudAttempted) {
-    return "Cloud processing was attempted, but basic parsing supplied this draft. Review every field before saving.";
+    return `Cloud processing was attempted, but a ${typeLabel.toLocaleLowerCase("en-US")} draft was supplied. Review every field before saving.`;
   }
 
-  return "Basic private parsing applied this draft. You can optionally enable cloud-enhanced drafts in Settings.";
+  return `${typeLabel} private draft applied. You can optionally enable cloud-enhanced drafts in Settings.`;
 }
 
 export default function TransactionForm({
@@ -266,13 +301,29 @@ export default function TransactionForm({
 
   function applyDraft(draft: AiTransactionDraft) {
     const currentForm = formRef.current;
+    const nextKind = draft.kind ?? currentForm.kind;
+    const selectedCategory = categories.find(
+      (category) => category.id === currentForm.categoryId,
+    );
+    const compatibleCategoryId =
+      selectedCategory?.type === nextKind ? currentForm.categoryId : "";
     const matchingRule =
-      currentForm.kind === "EXPENSE" &&
-      !currentForm.categoryId &&
+      nextKind === "EXPENSE" &&
+      !compatibleCategoryId &&
       !manualExpenseCategoryOverrideRef.current
         ? findMatchingExpenseValidationRule(
             expenseValidationRules,
             draft.description,
+          )
+        : null;
+    const incomeCategoryId =
+      nextKind === "INCOME" && !compatibleCategoryId
+        ? findUniqueNameMatch(
+            draft.description,
+            categories.filter(
+              (category) =>
+                category.type === "INCOME" && category.archivedAt === null,
+            ),
           )
         : null;
     const cashAccounts = accounts.filter(
@@ -282,9 +333,14 @@ export default function TransactionForm({
       draft.paymentMethod === "cash" && cashAccounts.length === 1
         ? cashAccounts[0]!.id
         : null;
+    const namedAccountId = findUniqueNameMatch(
+      draft.description,
+      accounts.filter((account) => account.archivedAt === null),
+    );
 
     setForm((previous) => ({
       ...previous,
+      kind: nextKind,
       amount: draft.amount === null ? previous.amount : String(draft.amount),
       postedAt: draft.postedAt
         ? applyDraftDate(
@@ -295,12 +351,29 @@ export default function TransactionForm({
         : previous.postedAt,
       description: draft.description || previous.description,
       counterparty: draft.counterparty ?? previous.counterparty,
-      accountId: cashAccountId ?? previous.accountId,
-      categoryId: matchingRule?.secondaryCategoryId ?? previous.categoryId,
+      accountId: cashAccountId ?? namedAccountId ?? previous.accountId,
+      categoryId:
+        matchingRule?.secondaryCategoryId ??
+        incomeCategoryId ??
+        compatibleCategoryId,
+      direction:
+        nextKind === "INCOME"
+          ? "INFLOW"
+          : nextKind === "EXPENSE"
+            ? "OUTFLOW"
+            : previous.direction,
+      fundingMode: nextKind === "EXPENSE" ? previous.fundingMode : "SINGLE",
+      fundingLegs:
+        nextKind === "EXPENSE"
+          ? previous.fundingLegs
+          : createEmptyFundingLegs(),
     }));
 
     if (matchingRule) {
       setSelectedExpensePrimaryId(matchingRule.primaryCategoryId);
+    } else if (nextKind !== "EXPENSE") {
+      setSelectedExpensePrimaryId("");
+      setHasManualExpenseCategoryOverride(false);
     }
   }
 

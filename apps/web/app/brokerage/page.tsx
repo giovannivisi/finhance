@@ -1,6 +1,7 @@
 import Container from "@components/Container";
 import BrokeragePageClient from "@components/BrokeragePageClient";
 import { api } from "@lib/server-api";
+import { getUserSettingsOrDefaults } from "@lib/server-user-settings";
 import type {
   BrokerageAccountSummaryResponse,
   BrokerageWorkspaceResponse,
@@ -13,6 +14,7 @@ export default async function BrokeragePage() {
   let brokers: BrokerageAccountSummaryResponse[] | null = null;
   let workspace: BrokerageWorkspaceResponse | null = null;
   let categories: CategoryResponse[] | null = null;
+  let showTransactionTimes = true;
   let errorMessage: string | null = null;
 
   try {
@@ -26,10 +28,14 @@ export default async function BrokeragePage() {
 
   if (brokers && brokers.length > 0) {
     try {
-      [workspace, categories] = await Promise.all([
+      const [settings, nextWorkspace, nextCategories] = await Promise.all([
+        getUserSettingsOrDefaults(),
         api<BrokerageWorkspaceResponse>(`/brokerage/${brokers[0].account.id}`),
         api<CategoryResponse[]>("/categories?includeArchived=true"),
       ]);
+      showTransactionTimes = settings.showTransactionTimes;
+      workspace = nextWorkspace;
+      categories = nextCategories;
     } catch (error) {
       errorMessage =
         error instanceof Error
@@ -68,7 +74,11 @@ export default async function BrokeragePage() {
           </div>
         </section>
       ) : workspace && categories ? (
-        <BrokeragePageClient workspace={workspace} categories={categories} />
+        <BrokeragePageClient
+          workspace={workspace}
+          categories={categories}
+          showTransactionTimes={showTransactionTimes}
+        />
       ) : null}
     </Container>
   );
