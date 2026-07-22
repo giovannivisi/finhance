@@ -52,8 +52,9 @@ export class TransactionDraftService {
 
     const heuristic = this.heuristic.create(input.text, now);
 
-    // Receipt OCR is deliberately heuristic-only until Phase 2 sends a
-    // validated candidate package rather than raw recognised text.
+    // Receipt-origin drafts remain heuristic-only for compatibility with older
+    // clients and are never sent to the cloud parser. Current mobile clients
+    // derive receipt drafts entirely on-device.
     if (
       input.source !== 'freeform' ||
       !config.cloudParserAvailable ||

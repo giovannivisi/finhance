@@ -2,28 +2,30 @@
 
 Shared TypeScript types and utilities consumed by both `apps/api` (NestJS,
 `moduleResolution: "nodenext"`) and `apps/web` (Next.js 16, Turbopack). The
-package is ESM-only (`"type": "module"`).
+package is ESM-first (`"type": "module"`), with an explicit CommonJS runtime
+export where Node 20 and Jest compatibility is required.
 
 ## What lives here
 
 Each file is a named export entry in `package.json`:
 
-| Export path                           | File                        | Contents                                           |
-| ------------------------------------- | --------------------------- | -------------------------------------------------- |
-| `@finhance/shared`                    | `src/index.ts`              | Re-exports everything                              |
-| `@finhance/shared/accounts`           | `src/accounts.ts`           | Account types and enums                            |
-| `@finhance/shared/assets`             | `src/assets.ts`             | Asset types, `AssetKind`, `LiabilityKind`          |
-| `@finhance/shared/brokerage`          | `src/brokerage.ts`          | Brokerage types                                    |
-| `@finhance/shared/budgets`            | `src/budgets.ts`            | Budget types                                       |
-| `@finhance/shared/currencies`         | `src/currencies.ts`         | Currency codes, `isSupportedReportingCurrencyCode` |
-| `@finhance/shared/exchanges`          | `src/exchanges.ts`          | Exchange suffixes, `SUPPORTED_EXCHANGES`           |
-| `@finhance/shared/expense-validation` | `src/expense-validation.ts` | Expense validation rule types                      |
-| `@finhance/shared/imports`            | `src/imports.ts`            | Import/export archive types                        |
-| `@finhance/shared/recurring`          | `src/recurring.ts`          | Recurring rule and monthly review types            |
-| `@finhance/shared/setup`              | `src/setup.ts`              | Setup workflow types                               |
-| `@finhance/shared/snapshots`          | `src/snapshots.ts`          | Net worth snapshot types                           |
-| `@finhance/shared/transactions`       | `src/transactions.ts`       | Transaction types                                  |
-| `@finhance/shared/users`              | `src/users.ts`              | User and settings types                            |
+| Export path                                 | File                               | Contents                                           |
+| ------------------------------------------- | ---------------------------------- | -------------------------------------------------- |
+| `@finhance/shared`                          | `src/index.ts`                     | Re-exports everything                              |
+| `@finhance/shared/accounts`                 | `src/accounts.ts`                  | Account types and enums                            |
+| `@finhance/shared/assets`                   | `src/assets.ts`                    | Asset types, `AssetKind`, `LiabilityKind`          |
+| `@finhance/shared/brokerage`                | `src/brokerage.ts`                 | Brokerage types                                    |
+| `@finhance/shared/budgets`                  | `src/budgets.ts`                   | Budget types                                       |
+| `@finhance/shared/currencies`               | `src/currencies.ts`                | Currency codes, `isSupportedReportingCurrencyCode` |
+| `@finhance/shared/exchanges`                | `src/exchanges.ts`                 | Exchange suffixes, `SUPPORTED_EXCHANGES`           |
+| `@finhance/shared/expense-validation`       | `src/expense-validation.ts`        | Expense validation rule types                      |
+| `@finhance/shared/imports`                  | `src/imports.ts`                   | Import/export archive types                        |
+| `@finhance/shared/recurring`                | `src/recurring.ts`                 | Recurring rule and monthly review types            |
+| `@finhance/shared/setup`                    | `src/setup.ts`                     | Setup workflow types                               |
+| `@finhance/shared/snapshots`                | `src/snapshots.ts`                 | Net worth snapshot types                           |
+| `@finhance/shared/transaction-draft-parser` | `src/transaction-draft-parser.cjs` | Runtime-safe heuristic draft parser                |
+| `@finhance/shared/transactions`             | `src/transactions.ts`              | Transaction types                                  |
+| `@finhance/shared/users`                    | `src/users.ts`                     | User and settings types                            |
 
 ## Importing from this package (consumers)
 
@@ -66,6 +68,8 @@ See `docs/decisions/003-shared-package-hash-imports.md` for the full rationale.
 ## Testing note
 
 `apps/api` Jest config excludes `@finhance/*` from `transformIgnorePatterns`,
-so Jest cannot execute runtime code from this package inside API test files.
-Type-only imports are fine (erased at compile time). If you need shared
-constants in API tests, duplicate the value locally in the test file.
+so Jest cannot execute the TypeScript runtime files from this package inside
+API test files. Type-only imports are fine (erased at compile time). The
+`transaction-draft-parser` subpath is an intentional CommonJS exception that
+is safe to execute from Jest and Node 20. For other shared constants in API
+tests, duplicate the value locally in the test file.

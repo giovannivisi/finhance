@@ -19,6 +19,7 @@ export interface CardProps {
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   disabled?: boolean;
+  accessibilityLabel?: string;
 }
 
 export function Card({
@@ -27,6 +28,7 @@ export function Card({
   style,
   onPress,
   disabled,
+  accessibilityLabel,
 }: CardProps) {
   const { colors } = useTheme();
 
@@ -64,6 +66,8 @@ export function Card({
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => [

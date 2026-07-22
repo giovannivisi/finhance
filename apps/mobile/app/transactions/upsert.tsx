@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import type {
   AccountResponse,
   AiTransactionDraft,
+  AiTransactionDraftSource,
   TransactionKind,
 } from "@finhance/shared";
 
@@ -46,6 +48,12 @@ import {
   type TransactionFormState,
 } from "@/features/transactions/form";
 import {
+  createReceiptDraftFromImage,
+  EmptyReceiptTextError,
+  ReceiptImageCleanupError,
+} from "@/features/transactions/receipt-draft";
+import { isReceiptOcrAvailable } from "@/features/transactions/receipt-ocr";
+import {
   categoryLabel,
   isAssignableTransactionCategory,
 } from "@/lib/categories";
@@ -66,6 +74,14 @@ const STANDARD_KIND_OPTIONS = [
   { value: "ADJUSTMENT", label: "Adjust" },
 ] as const;
 
+const RECEIPT_IMAGE_PICKER_OPTIONS = {
+  allowsEditing: false,
+  base64: false,
+  exif: false,
+  mediaTypes: ["images"],
+  quality: 1,
+} satisfies ImagePicker.ImagePickerOptions;
+
 function accountOption(account: AccountResponse) {
   return {
     value: account.id,
@@ -74,16 +90,23 @@ function accountOption(account: AccountResponse) {
   };
 }
 
-function buildQuickAddNotice(draft: AiTransactionDraft): string {
+function buildQuickAddNotice(
+  draft: AiTransactionDraft,
+  source: AiTransactionDraftSource,
+): string {
+  if (source === "receipt") {
+    return "Receipt draft applied — review every field before saving.";
+  }
+
   if (draft.parsedBy === "groq") {
-    return "AI-assisted draft applied — review every field before saving. This is not financial advice.";
+    return "AI-assisted draft applied — review every field before saving.";
   }
 
   if (draft.cloudAttempted) {
-    return "Cloud processing was attempted, but basic parsing supplied this draft. Review every field before saving.";
+    return "Basic draft applied after cloud processing was unavailable. Review every field before saving.";
   }
 
-  return "Basic private parsing applied this draft. You can enable cloud-enhanced drafts in App settings.";
+  return "Private draft applied — review every field before saving.";
 }
 
 export default function TransactionUpsertScreen() {
@@ -107,9 +130,11 @@ export default function TransactionUpsertScreen() {
   const [form, setForm] = useState<TransactionFormState>(emptyTransactionForm);
   const [errors, setErrors] = useState<TransactionFormErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
+  const [smartEntryOpen, setSmartEntryOpen] = useState(false);
   const [quickAddText, setQuickAddText] = useState("");
   const [quickAddError, setQuickAddError] = useState<string | null>(null);
   const [quickAddNotice, setQuickAddNotice] = useState<string | null>(null);
+  const [receiptScanPending, setReceiptScanPending] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [hydratedId, setHydratedId] = useState<string | null>(null);
 
@@ -202,6 +227,8 @@ export default function TransactionUpsertScreen() {
   );
 
   const saving = createMutation.isPending || updateMutation.isPending;
+  const receiptOcrAvailable = isReceiptOcrAvailable();
+  const quickAddPending = draftMutation.isPending || receiptScanPending;
 
   const handleSubmit = async () => {
     const result = buildTransactionRequest(form, accountsById, expenseRules);
@@ -261,9 +288,74 @@ export default function TransactionUpsertScreen() {
       );
       setErrors({});
       setServerError(null);
-      setQuickAddNotice(buildQuickAddNotice(draft));
+      setQuickAddNotice(buildQuickAddNotice(draft, "freeform"));
+      setQuickAddText("");
+      setSmartEntryOpen(false);
     } catch (draftError) {
       setQuickAddError(describeError(draftError));
+    }
+  };
+
+  const handleReceiptScan = async (source: "camera" | "library") => {
+    if (!receiptOcrAvailable) {
+      setQuickAddError(
+        "Receipt scanning needs the latest finhance iPhone development build.",
+      );
+      return;
+    }
+
+    setQuickAddError(null);
+    setQuickAddNotice(null);
+    setReceiptScanPending(true);
+
+    try {
+      if (source === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          setQuickAddError(
+            "Camera access is needed to scan a receipt. You can still enter it manually.",
+          );
+          return;
+        }
+      }
+
+      const result =
+        source === "camera"
+          ? await ImagePicker.launchCameraAsync(RECEIPT_IMAGE_PICKER_OPTIONS)
+          : await ImagePicker.launchImageLibraryAsync(
+              RECEIPT_IMAGE_PICKER_OPTIONS,
+            );
+      const imageUri = result.assets?.[0]?.uri;
+
+      if (result.canceled || !imageUri) {
+        return;
+      }
+
+      const draft = await createReceiptDraftFromImage(imageUri);
+      setForm((previous) =>
+        applyTransactionDraft(previous, draft, accounts, expenseRules),
+      );
+      setErrors({});
+      setServerError(null);
+      setQuickAddNotice(buildQuickAddNotice(draft, "receipt"));
+      setQuickAddText("");
+      setSmartEntryOpen(false);
+    } catch (error) {
+      if (error instanceof EmptyReceiptTextError) {
+        setQuickAddError(
+          "No readable receipt text was found. You can still enter the transaction manually.",
+        );
+      } else if (error instanceof ReceiptImageCleanupError) {
+        setQuickAddError(
+          "The temporary receipt image could not be removed. Please try again before continuing.",
+        );
+      } else {
+        setQuickAddError(
+          "The receipt could not be read. You can still enter the transaction manually.",
+        );
+      }
+    } finally {
+      setReceiptScanPending(false);
     }
   };
 
@@ -335,54 +427,66 @@ export default function TransactionUpsertScreen() {
           </Card>
         ) : null}
 
-        <Card surface="info">
-          <View style={{ gap: spacing.md }}>
-            <View style={{ gap: spacing.xs }}>
-              <AppText variant="kicker" tone="tertiary">
-                DRAFT ONLY
-              </AppText>
-              <AppText variant="title3">Quick add</AppText>
-              <AppText variant="footnote" tone="secondary">
-                Type or dictate “14.50 pizza yesterday amex” and review the
-                resulting transaction before saving.
+        <Card
+          onPress={() => {
+            setQuickAddError(null);
+            setSmartEntryOpen(true);
+          }}
+          accessibilityLabel="Open smart entry"
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+            }}
+          >
+            <Ionicons name="flash-outline" size={22} color={colors.primary} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <AppText variant="footnoteMedium">Smart entry</AppText>
+              <AppText variant="caption" tone="secondary">
+                Describe, dictate, or scan a receipt
               </AppText>
             </View>
-            <TextField
-              label="Transaction details"
-              value={quickAddText}
-              onChangeText={setQuickAddText}
-              placeholder="e.g. 14.50 pizza yesterday amex"
-              autoCapitalize="sentences"
-              editable={!draftMutation.isPending}
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.textTertiary}
             />
-            {quickAddError ? (
-              <AppText variant="caption" tone="danger">
-                {quickAddError}
-              </AppText>
-            ) : null}
-            {quickAddNotice ? (
-              <>
+          </View>
+        </Card>
+
+        {quickAddNotice ? (
+          <Card surface="info" style={{ padding: spacing.md }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: spacing.sm,
+              }}
+            >
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={18}
+                color={colors.textSecondary}
+              />
+              <View style={{ flex: 1, gap: spacing.xs }}>
                 <AppText variant="footnote" tone="secondary">
                   {quickAddNotice}
                 </AppText>
-                {quickAddNotice.startsWith("Basic private parsing") ? (
+                {quickAddNotice.startsWith("Private draft") ? (
                   <Button
                     label="Open App settings"
                     variant="ghost"
                     size="sm"
                     onPress={() => router.push("/settings/app" as Href)}
+                    style={{ alignSelf: "flex-start", marginLeft: -spacing.lg }}
                   />
                 ) : null}
-              </>
-            ) : null}
-            <Button
-              label="Prepare draft"
-              variant="secondary"
-              onPress={handleQuickAdd}
-              loading={draftMutation.isPending}
-            />
-          </View>
-        </Card>
+              </View>
+            </View>
+          </Card>
+        ) : null}
 
         {kindOptions ? (
           <SegmentedControl
@@ -704,6 +808,95 @@ export default function TransactionUpsertScreen() {
           loading={saving}
         />
       </View>
+
+      <Sheet
+        visible={smartEntryOpen}
+        onClose={() => setSmartEntryOpen(false)}
+        title="Smart entry"
+        maxHeightRatio={0.5}
+      >
+        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+          <View style={{ gap: spacing.xs }}>
+            <AppText variant="footnoteMedium">Create a draft</AppText>
+            <AppText variant="footnote" tone="secondary">
+              Type or dictate “14.50 pizza yesterday amex”, then review the
+              details before saving.
+            </AppText>
+          </View>
+          <TextField
+            label="Transaction details"
+            value={quickAddText}
+            onChangeText={setQuickAddText}
+            placeholder="e.g. 14.50 pizza yesterday amex"
+            autoCapitalize="sentences"
+            editable={!quickAddPending}
+            onSubmitEditing={handleQuickAdd}
+            returnKeyType="done"
+          />
+          {quickAddError ? (
+            <AppText variant="caption" tone="danger">
+              {quickAddError}
+            </AppText>
+          ) : null}
+          <Button
+            label="Create draft"
+            onPress={handleQuickAdd}
+            loading={draftMutation.isPending}
+            disabled={receiptScanPending}
+          />
+          {form.kind === "EXPENSE" && Platform.OS === "ios" ? (
+            receiptOcrAvailable ? (
+              <View style={{ gap: spacing.sm }}>
+                <AppText variant="caption" tone="tertiary">
+                  OR USE A RECEIPT
+                </AppText>
+                <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <Button
+                    label="Scan receipt"
+                    variant="secondary"
+                    size="sm"
+                    icon={
+                      <Ionicons
+                        name="camera-outline"
+                        size={16}
+                        color={colors.textPrimary}
+                      />
+                    }
+                    onPress={() => handleReceiptScan("camera")}
+                    loading={receiptScanPending}
+                    disabled={draftMutation.isPending}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    label="Choose photo"
+                    variant="secondary"
+                    size="sm"
+                    icon={
+                      <Ionicons
+                        name="images-outline"
+                        size={16}
+                        color={colors.textPrimary}
+                      />
+                    }
+                    onPress={() => handleReceiptScan("library")}
+                    disabled={quickAddPending}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+                <AppText variant="caption" tone="secondary">
+                  The receipt image and recognised text stay on this iPhone. The
+                  temporary image is deleted after scanning.
+                </AppText>
+              </View>
+            ) : (
+              <AppText variant="caption" tone="secondary">
+                Receipt scanning needs the latest finhance iPhone development
+                build.
+              </AppText>
+            )
+          ) : null}
+        </View>
+      </Sheet>
 
       <Sheet
         visible={confirmDelete}

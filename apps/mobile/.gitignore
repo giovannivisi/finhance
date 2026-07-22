@@ -2,8 +2,8 @@
 .expo-export-check/
 dist/
 web-build/
-ios/
-android/
+/ios/
+/android/
 *.orig.*
 *.jks
 *.p8

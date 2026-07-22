@@ -57,6 +57,14 @@
       "expo-web-browser",
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow finhance to photograph a receipt. The image and recognised text stay on this iPhone, and the temporary image is deleted after scanning.",
+          "photosPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "Allow finhance to use Face ID to unlock the app."

@@ -1,0 +1,7 @@
+{
+  "name": "expo-receipt-ocr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Apple Vision receipt text recognition for finhance",
+  "license": "MIT"
+}
