@@ -154,7 +154,7 @@ export function buildTransactionPayload(
   const fxRateInput = values.fxRateUsed ?? "";
   const sourceAmountInput = values.sourceAmount ?? "";
   const destinationAmountInput = values.destinationAmount ?? "";
-  const postedAt = parsePostedAt(values.postedAt, {
+  const postedAt = parseTransactionPostedAt(values.postedAt, {
     showTransactionTimes: options?.showTransactionTimes ?? true,
     existingPostedAt: options?.existingPostedAt ?? null,
     now: options?.now ?? new Date(),
@@ -346,7 +346,8 @@ function normalizeFundingLegs(
     .filter((leg) => leg.accountId || leg.amount);
 }
 
-function parsePostedAt(
+/** Converts a date or date-time form value into the persisted timestamp. */
+export function parseTransactionPostedAt(
   value: string,
   options: {
     showTransactionTimes: boolean;

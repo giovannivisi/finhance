@@ -1,6 +1,7 @@
 import Container from "@components/Container";
 import BrokeragePageClient from "@components/BrokeragePageClient";
 import { api } from "@lib/server-api";
+import { getUserSettingsOrDefaults } from "@lib/server-user-settings";
 import type {
   BrokerageWorkspaceResponse,
   CategoryResponse,
@@ -16,13 +17,18 @@ export default async function BrokerageAccountPage({
   const { accountId } = await params;
   let workspace: BrokerageWorkspaceResponse | null = null;
   let categories: CategoryResponse[] | null = null;
+  let showTransactionTimes = true;
   let errorMessage: string | null = null;
 
   try {
-    [workspace, categories] = await Promise.all([
+    const [settings, nextWorkspace, nextCategories] = await Promise.all([
+      getUserSettingsOrDefaults(),
       api<BrokerageWorkspaceResponse>(`/brokerage/${accountId}`),
       api<CategoryResponse[]>("/categories?includeArchived=true"),
     ]);
+    showTransactionTimes = settings.showTransactionTimes;
+    workspace = nextWorkspace;
+    categories = nextCategories;
   } catch (error) {
     errorMessage =
       error instanceof Error
@@ -46,7 +52,11 @@ export default async function BrokerageAccountPage({
           </div>
         </section>
       ) : (
-        <BrokeragePageClient workspace={workspace} categories={categories} />
+        <BrokeragePageClient
+          workspace={workspace}
+          categories={categories}
+          showTransactionTimes={showTransactionTimes}
+        />
       )}
     </Container>
   );

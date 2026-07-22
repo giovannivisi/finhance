@@ -35,6 +35,7 @@ describe('TransactionDraftService', () => {
     const groq = {
       parse: jest.fn().mockResolvedValue({
         value: overrides?.providerResult ?? {
+          kind: 'EXPENSE',
           amount: 14.5,
           currency: 'EUR',
           postedAt: '2026-07-11',

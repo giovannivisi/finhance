@@ -212,6 +212,7 @@ describe("TransactionForm", () => {
   it("applies a Quick add draft without saving the transaction", async () => {
     const user = userEvent.setup();
     mockedApiMutation.mockResolvedValueOnce({
+      kind: "EXPENSE",
       amount: 4.5,
       currency: "EUR",
       postedAt: "2026-05-19",
@@ -247,7 +248,7 @@ describe("TransactionForm", () => {
     expect(screen.getByLabelText("Secondary")).toHaveValue("category-cafes");
     expect(screen.getByLabelText("Posted at")).toHaveValue("2026-05-19T10:30");
     expect(
-      screen.getByText(/basic private parsing applied this draft/i),
+      screen.getByText(/expense private draft applied/i),
     ).toBeInTheDocument();
     expect(mockedApiMutation).toHaveBeenCalledTimes(1);
   });
@@ -260,6 +261,7 @@ describe("TransactionForm", () => {
       name: "Other food",
     };
     mockedApiMutation.mockResolvedValueOnce({
+      kind: "EXPENSE",
       amount: 4.5,
       currency: "EUR",
       postedAt: "2026-05-19",
@@ -312,6 +314,7 @@ describe("TransactionForm", () => {
     );
 
     resolveDraft?.({
+      kind: "EXPENSE",
       amount: 4.5,
       currency: "EUR",
       postedAt: "2026-05-19",
@@ -332,6 +335,7 @@ describe("TransactionForm", () => {
   it("discloses when cloud processing was attempted before a local fallback", async () => {
     const user = userEvent.setup();
     mockedApiMutation.mockResolvedValueOnce({
+      kind: "EXPENSE",
       amount: 4.5,
       currency: "EUR",
       postedAt: "2026-05-19",
@@ -354,8 +358,38 @@ describe("TransactionForm", () => {
       await screen.findByText(/cloud processing was attempted/i),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/basic private parsing applied this draft/i),
+      screen.queryByText(/expense private draft applied/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("maps an income draft to an inflow with local account and category suggestions", async () => {
+    const user = userEvent.setup();
+    mockedApiMutation.mockResolvedValueOnce({
+      kind: "INCOME",
+      amount: 2400,
+      currency: "EUR",
+      postedAt: "2026-05-19",
+      description: "May Salary Main account",
+      counterparty: "Employer",
+      paymentMethod: "unknown",
+      cardLast4: null,
+      parsedBy: "heuristic",
+      cloudAttempted: false,
+    });
+    renderForm();
+
+    await user.type(
+      screen.getByLabelText("Transaction details"),
+      "May salary to Main account",
+    );
+    await user.click(screen.getByRole("button", { name: /prepare draft/i }));
+
+    expect(await screen.findByLabelText("Kind")).toHaveValue("INCOME");
+    expect(screen.getByLabelText("Account")).toHaveValue("account-bank");
+    expect(screen.getByLabelText("Category")).toHaveValue("category-salary");
+    expect(
+      screen.getByText(/income private draft applied/i),
+    ).toBeInTheDocument();
   });
 
   it("switches into transfer mode and submits the transfer payload", async () => {

@@ -3,20 +3,32 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import BrokeragePage from "@/brokerage/page";
 
-const { apiMock } = vi.hoisted(() => ({
+const { apiMock, settingsMock } = vi.hoisted(() => ({
   apiMock: vi.fn(),
+  settingsMock: vi.fn(),
 }));
 
 vi.mock("@lib/server-api", () => ({
   api: apiMock,
 }));
 
+vi.mock("@lib/server-user-settings", () => ({
+  getUserSettingsOrDefaults: settingsMock,
+}));
+
 vi.mock("@components/BrokeragePageClient", () => ({
   default: ({
     workspace,
+    showTransactionTimes,
   }: {
     workspace: { selectedBroker: { account: { name: string } } };
-  }) => <div>Brokerage client: {workspace.selectedBroker.account.name}</div>,
+    showTransactionTimes?: boolean;
+  }) => (
+    <div>
+      Brokerage client: {workspace.selectedBroker.account.name} / times{" "}
+      {String(showTransactionTimes)}
+    </div>
+  ),
 }));
 
 function buildBroker(id: string, name: string) {
@@ -48,6 +60,8 @@ function buildBroker(id: string, name: string) {
 describe("BrokeragePage", () => {
   beforeEach(() => {
     apiMock.mockReset();
+    settingsMock.mockReset();
+    settingsMock.mockResolvedValue({ showTransactionTimes: true });
   });
 
   it("renders an empty state when no active broker accounts exist", async () => {
@@ -80,7 +94,7 @@ describe("BrokeragePage", () => {
 
     render(await BrokeragePage());
 
-    expect(screen.getByText("Brokerage client: IBKR")).toBeInTheDocument();
+    expect(screen.getByText(/Brokerage client: IBKR/)).toBeInTheDocument();
   });
 
   it("renders the shared brokerage client when multiple brokers exist", async () => {
@@ -106,7 +120,7 @@ describe("BrokeragePage", () => {
 
     render(await BrokeragePage());
 
-    expect(screen.getByText("Brokerage client: IBKR")).toBeInTheDocument();
+    expect(screen.getByText(/Brokerage client: IBKR/)).toBeInTheDocument();
   });
 
   it("renders an inline error instead of a blank page when the initial workspace load fails", async () => {
@@ -127,5 +141,26 @@ describe("BrokeragePage", () => {
     expect(
       screen.getByText('Unsupported Yahoo symbol "BAD/TICKER".'),
     ).toBeInTheDocument();
+  });
+
+  it("passes the transaction-time preference to the brokerage client", async () => {
+    settingsMock.mockResolvedValue({ showTransactionTimes: false });
+    apiMock
+      .mockResolvedValueOnce([buildBroker("broker-1", "IBKR")])
+      .mockResolvedValueOnce({
+        reportingCurrency: "EUR",
+        baseCurrency: "EUR",
+        brokers: [buildBroker("broker-1", "IBKR")],
+        selectedBroker: buildBroker("broker-1", "IBKR"),
+        cashReconciliation: null,
+        positions: [],
+        activity: [],
+        allocation: { assetKindTargets: [], securityTargets: [] },
+      })
+      .mockResolvedValueOnce([]);
+
+    render(await BrokeragePage());
+
+    expect(screen.getByText(/times false/)).toBeInTheDocument();
   });
 });
