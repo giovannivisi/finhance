@@ -66,8 +66,8 @@ describe("BrokeragePerformanceChart", () => {
       <BrokeragePerformanceChart
         accountId="broker-1"
         reportingCurrency="EUR"
-        fallbackTotalValue={1450}
-        liveTotalValue={null}
+        fallbackInvestedValue={1450}
+        liveInvestedValue={null}
         isLivePolling={false}
       />,
     );
@@ -114,8 +114,8 @@ describe("BrokeragePerformanceChart", () => {
       <BrokeragePerformanceChart
         accountId="broker-1"
         reportingCurrency="EUR"
-        fallbackTotalValue={1450}
-        liveTotalValue={null}
+        fallbackInvestedValue={1450}
+        liveInvestedValue={null}
         isLivePolling={false}
       />,
     );
@@ -145,8 +145,8 @@ describe("BrokeragePerformanceChart", () => {
       <BrokeragePerformanceChart
         accountId="broker-1"
         reportingCurrency="EUR"
-        fallbackTotalValue={1450}
-        liveTotalValue={1510}
+        fallbackInvestedValue={1450}
+        liveInvestedValue={1510}
         isLivePolling
       />,
     );
@@ -174,8 +174,8 @@ describe("BrokeragePerformanceChart", () => {
       <BrokeragePerformanceChart
         accountId="broker-1"
         reportingCurrency="EUR"
-        fallbackTotalValue={1450}
-        liveTotalValue={null}
+        fallbackInvestedValue={1450}
+        liveInvestedValue={null}
         isLivePolling={false}
       />,
     );
@@ -214,8 +214,8 @@ describe("BrokeragePerformanceChart", () => {
       <BrokeragePerformanceChart
         accountId="broker-1"
         reportingCurrency="EUR"
-        fallbackTotalValue={1450}
-        liveTotalValue={null}
+        fallbackInvestedValue={1450}
+        liveInvestedValue={null}
         isLivePolling={false}
       />,
     );
@@ -245,8 +245,8 @@ describe("BrokeragePerformanceChart", () => {
       <BrokeragePerformanceChart
         accountId="broker-1"
         reportingCurrency="EUR"
-        fallbackTotalValue={1450}
-        liveTotalValue={null}
+        fallbackInvestedValue={1450}
+        liveInvestedValue={null}
         isLivePolling={false}
       />,
     );

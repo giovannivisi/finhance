@@ -40,14 +40,14 @@ function pickAxisLabelPoints<T>(points: T[], maxLabels: number): T[] {
 export default function BrokeragePerformanceChart({
   accountId,
   reportingCurrency,
-  fallbackTotalValue,
-  liveTotalValue,
+  fallbackInvestedValue,
+  liveInvestedValue,
   isLivePolling,
 }: {
   accountId: string;
   reportingCurrency: string;
-  fallbackTotalValue: number;
-  liveTotalValue: number | null;
+  fallbackInvestedValue: number;
+  liveInvestedValue: number | null;
   isLivePolling: boolean;
 }) {
   const [range, setRange] = useState<BrokeragePerformanceRange>(
@@ -102,13 +102,13 @@ export default function BrokeragePerformanceChart({
     loadSeries(range);
   }, [range]);
 
-  const hasLiveTotal = liveTotalValue != null;
-  const headerValue = hasLiveTotal
-    ? liveTotalValue
-    : (performance?.latestValue ?? fallbackTotalValue);
-  const changePercent = hasLiveTotal
+  const hasLiveInvestedValue = liveInvestedValue != null;
+  const headerValue = hasLiveInvestedValue
+    ? liveInvestedValue
+    : (performance?.latestValue ?? fallbackInvestedValue);
+  const changePercent = hasLiveInvestedValue
     ? computeLiveChangePercent(
-        liveTotalValue,
+        liveInvestedValue,
         performance?.baselineValue ?? null,
       )
     : (performance?.changePercent ?? null);

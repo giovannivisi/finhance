@@ -499,8 +499,8 @@ export default function BrokeragePageClient({
     [workspace.selectedBroker, liveValueDelta],
   );
   const isLivePolling = false;
-  const liveTotalValue =
-    liveValuationsData != null ? mergedSummary.totalValue : null;
+  const liveInvestedValue =
+    liveValuationsData != null ? mergedSummary.investedValue : null;
   const unrealisedGainLossTone =
     mergedSummary.unrealisedGainLoss > 0
       ? "brokerage-value-positive"
@@ -1030,8 +1030,8 @@ export default function BrokeragePageClient({
             <BrokeragePerformanceChart
               accountId={brokerageAccountId}
               reportingCurrency={workspace.reportingCurrency}
-              fallbackTotalValue={workspace.selectedBroker.totalValue}
-              liveTotalValue={liveTotalValue}
+              fallbackInvestedValue={workspace.selectedBroker.investedValue}
+              liveInvestedValue={liveInvestedValue}
               isLivePolling={isLivePolling}
             />
 
