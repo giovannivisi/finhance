@@ -16,9 +16,9 @@ const YAHOO_PREFIX = 'yahoo:';
 
 /**
  * Routes exact listings to providers with complementary exchange coverage.
- * Marketstack handles every catalogue exchange in its published coverage;
- * EODHD fills the remaining global exchanges, including Hamburg. Yahoo is
- * retained for FX, crypto, and Tokyo, whose exact suffix it supports directly.
+ * When both providers know an exact native listing, the second provider is
+ * tried only after the preferred provider confirms that it has no data. Yahoo
+ * remains the last route for FX, crypto, and unresolved listings.
  */
 export class HybridMarketDataProvider implements MarketDataProvider {
   readonly id = 'hybrid';
@@ -74,9 +74,17 @@ export class HybridMarketDataProvider implements MarketDataProvider {
       input.kind !== AssetKind.CRYPTO &&
       this.marketstack.supportsExchange(exchange)
     ) {
-      return this.marketstack.getMarketSymbolCandidates(input);
+      return this.combineNativeCandidates(
+        this.marketstack.getMarketSymbolCandidates(input),
+        this.eodhd,
+        input,
+      );
     }
-    return this.eodhd.getMarketSymbolCandidates(input);
+    return this.combineNativeCandidates(
+      this.eodhd.getMarketSymbolCandidates(input),
+      this.marketstack,
+      input,
+    );
   }
 
   buildFxSymbol(fromCurrency: string, toCurrency: string): string {
@@ -112,5 +120,28 @@ export class HybridMarketDataProvider implements MarketDataProvider {
 
   private unsupportedRoute(): BadRequestException {
     return new BadRequestException('Unsupported routed market symbol.');
+  }
+
+  private combineNativeCandidates(
+    primaryCandidates: string[],
+    fallbackProvider: MarketDataProvider,
+    input: MarketDataInstrument,
+  ): string[] {
+    const yahooCandidates = primaryCandidates.filter((candidate) =>
+      candidate.startsWith(YAHOO_PREFIX),
+    );
+    const nativeCandidates = primaryCandidates.filter(
+      (candidate) => !candidate.startsWith(YAHOO_PREFIX),
+    );
+
+    try {
+      nativeCandidates.push(fallbackProvider.buildMarketSymbol(input));
+    } catch (error) {
+      if (!(error instanceof BadRequestException)) {
+        throw error;
+      }
+    }
+
+    return [...new Set([...nativeCandidates, ...yahooCandidates])];
   }
 }

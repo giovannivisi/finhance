@@ -46,6 +46,7 @@ describe('EodhdProvider', () => {
   it.each([
     ['United States', 'aapl', '', 'eodhd:AAPL.US'],
     ['Hamburg', 'vwce', '.hm', 'eodhd:VWCE.XETRA'],
+    ['Milan', 'csspx', '.mi', 'eodhd:SXR8.XETRA'],
     ['Australia', 'bhp', '.ax', 'eodhd:BHP.AU'],
   ])(
     'maps a %s listing to an exact EODHD symbol',

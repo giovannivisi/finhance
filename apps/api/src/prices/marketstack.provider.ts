@@ -375,7 +375,11 @@ export class MarketstackProvider implements MarketDataProvider {
     if (code.includes('limit') || code.includes('rate')) {
       return 429;
     }
-    if (code.includes('no_valid_symbols') || code.includes('not_found')) {
+    if (
+      code.includes('no_valid_symbols') ||
+      code.includes('no_valid_exchange') ||
+      code.includes('not_found')
+    ) {
       return 404;
     }
     if (responseStatus >= 400) {

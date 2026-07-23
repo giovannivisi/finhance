@@ -81,7 +81,7 @@ describe('HybridMarketDataProvider', () => {
     expect(provider.buildFxSymbol('USD', 'EUR')).toBe('yahoo:USDEUR=X');
   });
 
-  it('falls back to Yahoo only after a native listing cannot be resolved', () => {
+  it('tries a second native provider route before Yahoo when an exact alias exists', () => {
     expect(
       provider.getMarketSymbolCandidates({
         kind: AssetKind.STOCK,
@@ -90,6 +90,15 @@ describe('HybridMarketDataProvider', () => {
         quoteCurrency: 'EUR',
       }),
     ).toEqual(['eodhd:VWCE.XETRA', 'yahoo:VWCE.HM']);
+
+    expect(
+      provider.getMarketSymbolCandidates({
+        kind: AssetKind.STOCK,
+        ticker: 'CSSPX',
+        exchange: '.MI',
+        quoteCurrency: 'EUR',
+      }),
+    ).toEqual(['marketstack:CSSPX@XMIL', 'eodhd:SXR8.XETRA', 'yahoo:CSSPX.MI']);
   });
 
   it('uses independent request groups and provider names', () => {

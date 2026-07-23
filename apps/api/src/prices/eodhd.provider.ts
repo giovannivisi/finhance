@@ -89,6 +89,7 @@ const EODHD_EXCHANGE_BY_SUFFIX: Readonly<Record<string, string>> = {
  */
 const EODHD_LISTING_BY_INPUT_SYMBOL: Readonly<Record<string, string>> = {
   'VWCE.HM': 'VWCE.XETRA',
+  'CSSPX.MI': 'SXR8.XETRA',
 };
 
 const SERIES_LOOKBACK_DAYS: Record<BrokeragePerformanceRange, number> = {

@@ -577,6 +577,40 @@ describe('PricesService', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
+    it('uses EODHD before Yahoo when Marketstack lacks a supported listing', async () => {
+      const compositeService = new PricesService(
+        prisma as never,
+        new HybridMarketDataProvider({
+          eodhdApiToken: 'eodhd-token',
+          marketstackApiKey: 'marketstack-key',
+        }),
+      );
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse({
+            error: {
+              code: 'no_valid_exchange_provided',
+              message: 'No data is available for the requested symbol.',
+            },
+          }),
+        )
+        .mockResolvedValueOnce(jsonResponse(662.43));
+
+      const resolution = await compositeService.getMarketPriceResolution(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'CSSPX',
+          exchange: '.MI',
+          quoteCurrency: 'EUR',
+        },
+        { forceRefresh: true },
+      );
+
+      expect(resolution.marketSymbol).toBe('eodhd:SXR8.XETRA');
+      expect(resolution.result.price?.toString()).toBe('662.43');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
     it('does not present an expired cached quote as a successful refresh', async () => {
       let now = 0;
       jest.spyOn(Date, 'now').mockImplementation(() => now);

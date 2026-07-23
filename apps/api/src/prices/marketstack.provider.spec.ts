@@ -153,6 +153,25 @@ describe('MarketstackProvider', () => {
     expect(result.status).toBe(404);
   });
 
+  it('maps unavailable provider exchanges to HTTP 404 semantics', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        error: {
+          code: 'no_valid_exchange_provided',
+          message: 'No data is available for the requested symbol.',
+        },
+      }),
+    );
+
+    const result = await provider.fetchQuote('marketstack:CSSPX@XMIL', 3000);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('Expected a Marketstack provider failure.');
+    }
+    expect(result.status).toBe(404);
+  });
+
   it('parses and orders end-of-day series data', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({
