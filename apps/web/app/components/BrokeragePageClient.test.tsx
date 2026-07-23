@@ -381,6 +381,7 @@ describe("BrokeragePageClient", () => {
     vi.mocked(requestDashboardRefresh).mockResolvedValue({
       ok: true,
       refreshedAt: "2026-05-19T10:01:00.000Z",
+      warning: null,
     });
     vi.mocked(api).mockReset();
     vi.mocked(api).mockImplementation((path: string) => {
@@ -415,6 +416,50 @@ describe("BrokeragePageClient", () => {
     );
 
     expect(pushMock).toHaveBeenCalledWith("/brokerage/broker-2");
+  });
+
+  it("keeps the performance headline limited to invested positions after live valuation updates", async () => {
+    const workspace = buildWorkspace();
+    workspace.selectedBroker = {
+      ...workspace.selectedBroker,
+      totalValue: 1560,
+      investedValue: 660,
+      unrealisedGainLoss: 60,
+    };
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path.includes("/performance")) {
+        return Promise.resolve(buildPerformanceResponse());
+      }
+      if (path.includes("/assets/live-valuations")) {
+        return Promise.resolve({
+          ...buildLiveValuationsResponse(),
+          quotes: [
+            {
+              assetId: "asset-stock",
+              price: 56,
+              currency: "EUR",
+              value: 672,
+              valueInReporting: 672,
+              isStale: false,
+            },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`Unexpected api call: ${path}`));
+    });
+
+    render(
+      <BrokeragePageClient workspace={workspace} categories={categories} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(".brokerage-performance-value"),
+      ).toHaveTextContent("672,00");
+    });
+    expect(
+      document.querySelector(".brokerage-performance-value"),
+    ).not.toHaveTextContent("1.572,00");
   });
 
   it("records a dividend through the dedicated brokerage endpoint", async () => {
@@ -718,6 +763,7 @@ describe("BrokeragePageClient", () => {
               currency: "EUR",
               value: 732,
               valueInReporting: 732,
+              isStale: false,
             },
           ],
         });
@@ -746,6 +792,7 @@ describe("BrokeragePageClient", () => {
     vi.mocked(requestDashboardRefresh).mockResolvedValue({
       ok: true,
       refreshedAt: "2026-05-19T10:01:00.000Z",
+      warning: null,
     });
 
     const { rerender } = render(

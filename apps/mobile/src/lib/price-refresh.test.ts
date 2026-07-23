@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  AUTOMATIC_PRICE_REFRESH_RETRY_MS,
   createAutomaticPriceRefreshAttempt,
   formatPriceRefreshStatusText,
   getAutomaticPriceRefreshDelay,
@@ -109,7 +108,7 @@ describe("price refresh helpers", () => {
     ).toBeNull();
   });
 
-  it("retries an attempted stale snapshot after the refresh cooldown", () => {
+  it("does not repeatedly refresh the same stale snapshot", () => {
     const attempt = createAutomaticPriceRefreshAttempt({
       lastRefreshAt: "2026-06-13T08:00:00.000Z",
       nowMs: 1_000,
@@ -124,7 +123,7 @@ describe("price refresh helpers", () => {
         lastAttempt: attempt,
         nowMs: 31_000,
       }),
-    ).toBe(AUTOMATIC_PRICE_REFRESH_RETRY_MS - 30_000);
+    ).toBeNull();
 
     expect(
       getAutomaticPriceRefreshDelay({
@@ -135,7 +134,7 @@ describe("price refresh helpers", () => {
         lastAttempt: attempt,
         nowMs: 61_000,
       }),
-    ).toBe(0);
+    ).toBeNull();
   });
 
   it("treats the stored and returned refresh snapshots as the same automatic attempt", () => {
@@ -154,7 +153,7 @@ describe("price refresh helpers", () => {
         lastAttempt: attempt,
         nowMs: 2_000,
       }),
-    ).toBe(AUTOMATIC_PRICE_REFRESH_RETRY_MS - 1_000);
+    ).toBeNull();
 
     expect(
       getAutomaticPriceRefreshDelay({
@@ -165,6 +164,6 @@ describe("price refresh helpers", () => {
         lastAttempt: attempt,
         nowMs: 2_000,
       }),
-    ).toBe(AUTOMATIC_PRICE_REFRESH_RETRY_MS - 1_000);
+    ).toBeNull();
   });
 });

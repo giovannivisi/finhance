@@ -195,10 +195,18 @@ That means:
 - the user-facing reporting-currency choice is currently limited to the four
   curated options above
 
-### FX source
+### Market and FX sources
 
-- FX conversion uses Yahoo Finance, through the same quote service family used
-  for market prices
+- hosted exchange-listed security prices use a catalogue-wide hybrid router:
+  Marketstack handles exchanges in its published global coverage and EODHD
+  handles the complementary markets, including Hamburg
+- every conventional exchange accepted by the app has an explicit provider
+  code; the Milan and Hamburg listings from issue #90 are regression cases, not
+  special-case limits
+- FX conversion, crypto prices, and Tokyo listings use Yahoo Finance as a
+  separately isolated route
+- ordinary reads use persisted quotes; only a deliberate refresh contacts an
+  upstream provider, and failures keep the prior price while surfacing the cause
 - live FX can be used by default
 - manual FX overrides can be saved for manual transactions and cross-currency
   transfers

@@ -2,14 +2,19 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
 import { AccountsService } from '@accounts/accounts.service';
 import { CreateAssetDto } from '@assets/dto/create-asset.dto';
 import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
 import { PricesService } from '@prices/prices.service';
-import type { StoredFxRateSnapshot } from '@prices/prices.service';
+import type {
+  MarketPriceFailure,
+  StoredFxRateSnapshot,
+} from '@prices/prices.service';
 import {
   AccountType,
   Asset,
@@ -69,10 +74,17 @@ interface ValuationModel {
 
 type FxResolutionMap = Map<string, StoredFxRateSnapshot>;
 
+interface QuoteRefreshFailure {
+  symbol: string;
+  failure: MarketPriceFailure;
+}
+
 const ZERO = new Prisma.Decimal(0);
 const MARKET_FETCH_BATCH_SIZE = 1;
 @Injectable()
 export class AssetsService {
+  private readonly logger = new Logger(AssetsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricesService: PricesService,
@@ -163,11 +175,9 @@ export class AssetsService {
   }
 
   /**
-   * Returns live, read-only quotes for active market positions with a
-   * ticker. Unlike {@link refreshAssets}, this never writes to the
-   * database: market prices are fetched with a short `maxAgeMs` to allow
-   * a recently cached quote to be reused, and FX conversion uses only
-   * stored FX rates (no live FX calls).
+   * Returns the latest persisted quotes for active market positions. This
+   * compatibility endpoint is deliberately read-only: only refreshAssets may
+   * contact an upstream provider and advance a stored quote timestamp.
    */
   async getLiveValuations(ownerId: string): Promise<LiveValuationsResponse> {
     const now = new Date();
@@ -211,46 +221,46 @@ export class AssetsService {
       }),
     );
 
-    const quotes = (
-      await this.mapInBatches(
-        candidates,
-        MARKET_FETCH_BATCH_SIZE,
-        async (asset): Promise<LiveAssetValuationResponse | null> => {
-          const price = await this.pricesService.getMarketPrice(
-            {
-              kind: asset.kind!,
-              ticker: asset.ticker!,
-              exchange: asset.exchange,
-              quoteCurrency: asset.currency,
-            },
-            { maxAgeMs: 15000 },
-          );
+    const quotedCandidates = candidates.filter(
+      (asset) => asset.lastPrice !== null,
+    );
+    const quotes = quotedCandidates.map((asset): LiveAssetValuationResponse => {
+      const price = this.toDecimal(asset.lastPrice);
+      const quantity = this.toDecimal(asset.quantity);
+      const value = quantity.mul(price);
+      const fxRate =
+        asset.currency === reportingCurrency
+          ? new Prisma.Decimal(1)
+          : (fxSnapshots.get(asset.currency)?.rate ?? null);
+      const fxSnapshot = fxSnapshots.get(asset.currency) ?? null;
+      const valueInReporting = fxRate ? value.mul(fxRate) : null;
+      const priceAgeMs = asset.lastPriceAt
+        ? now.getTime() - asset.lastPriceAt.getTime()
+        : null;
+      const valuationAsOf = this.minDate([
+        asset.lastPriceAt,
+        asset.currency === reportingCurrency ? null : fxSnapshot?.updatedAt,
+      ]);
 
-          if (price === null) {
-            return null;
-          }
-
-          const quantity = this.toDecimal(asset.quantity);
-          const value = quantity.mul(price);
-          const fxRate =
-            asset.currency === reportingCurrency
-              ? new Prisma.Decimal(1)
-              : (fxSnapshots.get(asset.currency)?.rate ?? null);
-          const valueInReporting = fxRate ? value.mul(fxRate) : null;
-
-          return {
-            assetId: asset.id,
-            price: price.toNumber(),
-            currency: asset.currency,
-            value: value.toNumber(),
-            valueInReporting: valueInReporting?.toNumber() ?? null,
-          };
-        },
-      )
-    ).filter((quote): quote is LiveAssetValuationResponse => quote !== null);
+      return {
+        assetId: asset.id,
+        price: price.toNumber(),
+        currency: asset.currency,
+        value: value.toNumber(),
+        valueInReporting: valueInReporting?.toNumber() ?? null,
+        asOf: valuationAsOf?.toISOString() ?? null,
+        isStale:
+          this.isQuoteStale(asset, priceAgeMs, now) ||
+          (asset.currency !== reportingCurrency &&
+            fxSnapshot?.status !== 'EXACT'),
+      };
+    });
 
     return {
-      asOf: now.toISOString(),
+      asOf:
+        this.maxDate(
+          quotedCandidates.map((asset) => asset.lastPriceAt),
+        )?.toISOString() ?? now.toISOString(),
       reportingCurrency,
       quotes,
     };
@@ -291,20 +301,34 @@ export class AssetsService {
         );
 
         const quoteKeys = new Map<string, Asset>();
+        const quoteBuildFailures: QuoteRefreshFailure[] = [];
         const fxPairs = new Set<string>();
 
         for (const asset of assets) {
           if (this.isMarketAsset(asset)) {
             try {
-              const symbol = this.pricesService.buildMarketSymbol({
-                kind: asset.kind,
-                ticker: asset.ticker ?? '',
-                exchange: asset.exchange,
-                quoteCurrency: asset.currency,
-              });
+              const symbol =
+                asset.marketDataSymbol ??
+                this.pricesService.buildMarketSymbol({
+                  kind: asset.kind,
+                  ticker: asset.ticker ?? '',
+                  exchange: asset.exchange,
+                  quoteCurrency: asset.currency,
+                });
               quoteKeys.set(symbol, asset);
-            } catch {
-              continue;
+            } catch (error) {
+              const symbol = this.marketAssetLabel(asset);
+              this.logger.warn(
+                `Market price refresh skipped invalid symbol ${symbol}: ${(error as Error).message}`,
+              );
+              quoteBuildFailures.push({
+                symbol,
+                failure: {
+                  provider: 'Market data',
+                  reason: 'NOT_FOUND',
+                  status: 400,
+                },
+              });
             }
           }
 
@@ -320,7 +344,10 @@ export class AssetsService {
           }
         }
 
-        const quoteResults = new Map<string, Prisma.Decimal | null>();
+        const quoteResults = new Map<
+          string,
+          Awaited<ReturnType<PricesService['getMarketPriceResolution']>>
+        >();
         const fxResults = new Map<string, Prisma.Decimal | null>();
 
         await this.mapInBatches(
@@ -329,13 +356,12 @@ export class AssetsService {
           async (symbol) => {
             const sample = quoteKeys.get(symbol);
             if (!sample?.kind || !sample.ticker) {
-              quoteResults.set(symbol, null);
               return;
             }
 
             quoteResults.set(
               symbol,
-              await this.pricesService.getMarketPrice(
+              await this.pricesService.getMarketPriceResolution(
                 {
                   kind: sample.kind,
                   ticker: sample.ticker,
@@ -343,10 +369,42 @@ export class AssetsService {
                   quoteCurrency: sample.currency,
                 },
                 { forceRefresh: true },
+                sample.marketDataSymbol,
               ),
             );
           },
         );
+
+        const quoteFailures: QuoteRefreshFailure[] = [
+          ...quoteBuildFailures,
+          ...[...quoteKeys.entries()].flatMap(([symbol, asset]) => {
+            const result = quoteResults.get(symbol)?.result;
+            return result?.price !== null && result?.price !== undefined
+              ? []
+              : [
+                  {
+                    symbol: this.marketAssetLabel(asset),
+                    failure: result?.failure ?? {
+                      provider: 'Market data',
+                      reason: 'UNAVAILABLE' as const,
+                      status: null,
+                    },
+                  },
+                ];
+          }),
+        ];
+        const requestedQuoteCount = quoteKeys.size + quoteBuildFailures.length;
+        const refreshedQuoteCount = [...quoteResults.values()].filter(
+          ({ result }) => result.price !== null,
+        ).length;
+
+        if (requestedQuoteCount > 0 && refreshedQuoteCount === 0) {
+          const message = this.describeQuoteRefreshFailure(quoteFailures);
+          this.logger.warn(
+            `Market price refresh failed for every requested symbol: ${this.formatQuoteFailureLog(quoteFailures)}`,
+          );
+          throw new ServiceUnavailableException(message);
+        }
 
         await this.mapInBatches(
           [...fxPairs],
@@ -376,22 +434,32 @@ export class AssetsService {
 
           if (this.isMarketAsset(asset)) {
             try {
-              const symbol = this.pricesService.buildMarketSymbol({
-                kind: asset.kind,
-                ticker: asset.ticker ?? '',
-                exchange: asset.exchange,
-                quoteCurrency: asset.currency,
-              });
-              const price = quoteResults.get(symbol) ?? null;
+              const symbol =
+                asset.marketDataSymbol ??
+                this.pricesService.buildMarketSymbol({
+                  kind: asset.kind,
+                  ticker: asset.ticker ?? '',
+                  exchange: asset.exchange,
+                  quoteCurrency: asset.currency,
+                });
+              const quoteResult = quoteResults.get(symbol);
+              const price = quoteResult?.result.price ?? null;
               if (price) {
                 data.lastPrice = price;
                 data.lastPriceAt = refreshedAt;
                 shouldUpdate = true;
               }
+              if (
+                price &&
+                quoteResult?.marketSymbol &&
+                quoteResult.marketSymbol !== asset.marketDataSymbol
+              ) {
+                data.marketDataSymbol = quoteResult.marketSymbol;
+                shouldUpdate = true;
+              }
             } catch {
-              data.lastPrice = null;
-              data.lastPriceAt = null;
-              shouldUpdate = true;
+              // A malformed or unsupported symbol must not erase the last
+              // successfully stored valuation during an otherwise partial refresh.
             }
           } else if (asset.lastPrice !== null || asset.lastPriceAt !== null) {
             data.lastPrice = null;
@@ -437,6 +505,25 @@ export class AssetsService {
           refreshedAt: refreshedAt.toISOString(),
           updatedCount,
           staleCount,
+          priceRefresh: {
+            status:
+              requestedQuoteCount === 0
+                ? 'NOT_REQUESTED'
+                : quoteFailures.length > 0
+                  ? 'PARTIAL'
+                  : 'SUCCESS',
+            requestedCount: requestedQuoteCount,
+            refreshedCount: refreshedQuoteCount,
+            failedCount: quoteFailures.length,
+            message:
+              quoteFailures.length > 0
+                ? this.describePartialQuoteRefresh(
+                    refreshedQuoteCount,
+                    requestedQuoteCount,
+                    quoteFailures,
+                  )
+                : null,
+          },
         };
       },
     );
@@ -528,6 +615,7 @@ export class AssetsService {
           ? {
               lastPrice: null,
               lastPriceAt: null,
+              marketDataSymbol: null,
             }
           : {}),
         ...(shouldClearFx || prepared.currency === DEFAULT_REPORTING_CURRENCY
@@ -1042,7 +1130,10 @@ export class AssetsService {
     quoteAgeMs: number | null,
     now: Date,
   ): boolean {
-    if (quoteAgeMs === null || quoteAgeMs <= VALUATION_STALE_MS) {
+    if (quoteAgeMs === null) {
+      return true;
+    }
+    if (quoteAgeMs <= VALUATION_STALE_MS) {
       return false;
     }
     if (quoteAgeMs > MAX_QUOTE_AGE_MS) {
@@ -1133,6 +1224,67 @@ export class AssetsService {
 
   private fxPairKey(fromCurrency: string, toCurrency: string): string {
     return `${fromCurrency}:${toCurrency}`;
+  }
+
+  private marketAssetLabel(
+    asset: Pick<Asset, 'ticker' | 'exchange' | 'name'>,
+  ): string {
+    return asset.ticker ? `${asset.ticker}${asset.exchange ?? ''}` : asset.name;
+  }
+
+  private describeQuoteRefreshFailure(
+    failures: readonly QuoteRefreshFailure[],
+  ): string {
+    const providers = [
+      ...new Set(failures.map(({ failure }) => failure.provider)),
+    ];
+    const provider =
+      providers.length === 1 ? providers[0] : 'The market data provider';
+    const reasons = new Set(failures.map(({ failure }) => failure.reason));
+
+    if (reasons.size === 1 && reasons.has('RATE_LIMITED')) {
+      return `${provider} is rate-limiting price requests. Stored prices were kept; try again later.`;
+    }
+    if (reasons.has('AUTHENTICATION')) {
+      return `${provider} authentication failed. Stored prices were kept; the server configuration needs attention.`;
+    }
+    if (reasons.size === 1 && reasons.has('NOT_FOUND')) {
+      return `No current price was found for ${this.formatFailureSymbols(failures)}. Check the ticker and exchange. Stored prices were kept.`;
+    }
+    if (reasons.size === 1 && reasons.has('TIMEOUT')) {
+      return `${provider} timed out while updating prices. Stored prices were kept; try again.`;
+    }
+
+    return `${provider} could not update market prices. Stored prices were kept; try again later.`;
+  }
+
+  private describePartialQuoteRefresh(
+    refreshedCount: number,
+    requestedCount: number,
+    failures: readonly QuoteRefreshFailure[],
+  ): string {
+    return `Updated ${refreshedCount} of ${requestedCount} market prices. Could not refresh ${this.formatFailureSymbols(failures)}; stored prices were kept for those holdings.`;
+  }
+
+  private formatFailureSymbols(
+    failures: readonly QuoteRefreshFailure[],
+  ): string {
+    const symbols = [...new Set(failures.map(({ symbol }) => symbol))];
+    const visible = symbols.slice(0, 3).join(', ');
+    return symbols.length > 3
+      ? `${visible} and ${symbols.length - 3} more`
+      : visible;
+  }
+
+  private formatQuoteFailureLog(
+    failures: readonly QuoteRefreshFailure[],
+  ): string {
+    return failures
+      .map(
+        ({ symbol, failure }) =>
+          `${symbol} provider=${failure.provider} reason=${failure.reason} status=${failure.status ?? 'unknown'}`,
+      )
+      .join('; ');
   }
 
   private resolveReportingCurrency(

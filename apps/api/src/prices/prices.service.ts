@@ -24,6 +24,29 @@ interface ProviderBackoff {
   status: number;
 }
 
+export type MarketPriceFailureReason =
+  | 'AUTHENTICATION'
+  | 'NOT_FOUND'
+  | 'RATE_LIMITED'
+  | 'TIMEOUT'
+  | 'UNAVAILABLE';
+
+export interface MarketPriceFailure {
+  provider: string;
+  reason: MarketPriceFailureReason;
+  status: number | null;
+}
+
+export interface MarketPriceResult {
+  price: Prisma.Decimal | null;
+  failure: MarketPriceFailure | null;
+}
+
+export interface ResolvedMarketPriceResult {
+  marketSymbol: string | null;
+  result: MarketPriceResult;
+}
+
 export type StoredFxRateStatus = 'EXACT' | 'STALE' | 'MISSING';
 
 export interface StoredFxRateSnapshot {
@@ -72,13 +95,13 @@ const SERIES_TIMEOUT_MS: Record<BrokeragePerformanceRange, number> = {
 export class PricesService {
   private readonly logger = new Logger(PricesService.name);
   private readonly cache = new Map<string, CachedPrice>();
-  private readonly inFlight = new Map<string, Promise<Prisma.Decimal | null>>();
+  private readonly inFlight = new Map<string, Promise<MarketPriceResult>>();
   private readonly seriesCache = new Map<string, CachedSeries>();
   private readonly seriesInFlight = new Map<
     string,
     Promise<MarketSeries | null>
   >();
-  private providerBackoff: ProviderBackoff | null = null;
+  private readonly providerBackoffs = new Map<string, ProviderBackoff>();
   private readonly cacheTtlMs = 1000 * 60 * 5;
   private readonly requestTimeoutMs = 3000;
 
@@ -121,6 +144,21 @@ export class PricesService {
     });
   }
 
+  buildMarketSymbolCandidates(input: {
+    kind: AssetKind;
+    ticker: string;
+    exchange?: string | null;
+    quoteCurrency: string;
+  }): string[] {
+    const normalized = {
+      kind: input.kind,
+      ticker: this.normalizeTicker(input.ticker),
+      exchange: input.exchange,
+      quoteCurrency: this.normalizeCurrency(input.quoteCurrency),
+    };
+    return [...new Set(this.provider.getMarketSymbolCandidates(normalized))];
+  }
+
   async getMarketPrice(
     input: {
       kind: AssetKind;
@@ -130,8 +168,63 @@ export class PricesService {
     },
     opts?: { forceRefresh?: boolean; maxAgeMs?: number },
   ): Promise<Prisma.Decimal | null> {
-    const symbol = this.buildMarketSymbol(input);
-    return this.fetchQuote(symbol, opts);
+    return (await this.getMarketPriceResult(input, opts)).price;
+  }
+
+  async getMarketPriceResult(
+    input: {
+      kind: AssetKind;
+      ticker: string;
+      exchange?: string | null;
+      quoteCurrency: string;
+    },
+    opts?: { forceRefresh?: boolean; maxAgeMs?: number },
+  ): Promise<MarketPriceResult> {
+    return (await this.getMarketPriceResolution(input, opts)).result;
+  }
+
+  async getMarketPriceResolution(
+    input: {
+      kind: AssetKind;
+      ticker: string;
+      exchange?: string | null;
+      quoteCurrency: string;
+    },
+    opts?: { forceRefresh?: boolean; maxAgeMs?: number },
+    preferredMarketSymbol?: string | null,
+  ): Promise<ResolvedMarketPriceResult> {
+    const candidates = [
+      ...(preferredMarketSymbol ? [preferredMarketSymbol] : []),
+      ...this.buildMarketSymbolCandidates(input),
+    ];
+    const uniqueCandidates = [...new Set(candidates)];
+    let lastResult: MarketPriceResult | null = null;
+    let lastSymbol: string | null = null;
+
+    for (const symbol of uniqueCandidates) {
+      const result = await this.fetchQuote(symbol, opts);
+      if (result.price !== null) {
+        return { marketSymbol: symbol, result };
+      }
+
+      lastResult = result;
+      lastSymbol = symbol;
+      if (result.failure?.reason !== 'NOT_FOUND') {
+        return { marketSymbol: symbol, result };
+      }
+    }
+
+    return {
+      marketSymbol: lastSymbol,
+      result: lastResult ?? {
+        price: null,
+        failure: {
+          provider: 'Market data',
+          reason: 'NOT_FOUND',
+          status: 404,
+        },
+      },
+    };
   }
 
   /**
@@ -195,7 +288,7 @@ export class PricesService {
     }
 
     const symbol = this.provider.buildFxSymbol(from, to);
-    return this.fetchQuote(symbol, opts);
+    return (await this.fetchQuote(symbol, opts)).price;
   }
 
   async getStoredFxRate(
@@ -401,7 +494,7 @@ export class PricesService {
   private async fetchQuote(
     symbol: string,
     opts?: { forceRefresh?: boolean; maxAgeMs?: number },
-  ): Promise<Prisma.Decimal | null> {
+  ): Promise<MarketPriceResult> {
     const now = Date.now();
     const cached = this.cache.get(symbol);
     const effectiveTtlMs =
@@ -410,11 +503,19 @@ export class PricesService {
         : Math.min(this.cacheTtlMs, Math.max(opts.maxAgeMs, MIN_MAX_AGE_MS));
 
     if (!opts?.forceRefresh && cached && now - cached.ts < effectiveTtlMs) {
-      return cached.price;
+      return { price: cached.price, failure: null };
     }
 
-    if (this.isProviderCoolingDown(now)) {
-      return null;
+    const backoff = this.getActiveProviderBackoff(symbol, now);
+    if (backoff) {
+      return {
+        price: null,
+        failure: this.createMarketPriceFailure(
+          symbol,
+          backoff.status,
+          undefined,
+        ),
+      };
     }
 
     const inFlight = this.inFlight.get(symbol);
@@ -435,43 +536,66 @@ export class PricesService {
   private async requestQuote(
     symbol: string,
     now: number,
-  ): Promise<Prisma.Decimal | null> {
+  ): Promise<MarketPriceResult> {
     try {
       const result = await this.provider.fetchQuote(
         symbol,
         this.requestTimeoutMs,
       );
+      const providerName = this.provider.getDisplayName(symbol);
 
       if (!result.ok) {
         if (result.status === 429) {
-          this.startProviderBackoff(now, result.status);
+          this.startProviderBackoff(symbol, now, result.status);
         }
 
         if (result.error) {
           this.logger.error(
-            `${this.provider.displayName} quote fetch failed for ${symbol}`,
+            `${providerName} quote fetch failed for ${symbol}`,
             result.error as Error,
           );
         } else {
           this.logger.warn(
-            `${this.provider.displayName} quote failed for ${symbol}: ${
+            `${providerName} quote failed for ${symbol}: ${
               result.status ?? 'unknown'
             }`,
           );
         }
-        return null;
+        return {
+          price: null,
+          failure: this.createMarketPriceFailure(
+            symbol,
+            result.status,
+            result.error,
+          ),
+        };
       }
 
       if (result.data === null) {
-        return null;
+        this.logger.warn(`${providerName} returned no quote for ${symbol}.`);
+        return {
+          price: null,
+          failure: {
+            provider: providerName,
+            reason: 'NOT_FOUND',
+            status: 404,
+          },
+        };
       }
 
       const decimal = new Prisma.Decimal(result.data.toString());
       this.cache.set(symbol, { price: decimal, ts: now });
-      return decimal;
+      return { price: decimal, failure: null };
     } catch (error) {
-      this.logger.error(`Price fetch failed for ${symbol}`, error as Error);
-      return null;
+      const providerName = this.provider.getDisplayName(symbol);
+      this.logger.error(
+        `${providerName} price fetch failed for ${symbol}`,
+        error as Error,
+      );
+      return {
+        price: null,
+        failure: this.createMarketPriceFailure(symbol, null, error),
+      };
     }
   }
 
@@ -488,7 +612,7 @@ export class PricesService {
       return cached.series;
     }
 
-    if (this.isProviderCoolingDown(now)) {
+    if (this.getActiveProviderBackoff(symbol, now)) {
       return this.getStaleSeries(cacheKey);
     }
 
@@ -519,20 +643,21 @@ export class PricesService {
         range,
         SERIES_TIMEOUT_MS[range],
       );
+      const providerName = this.provider.getDisplayName(symbol);
 
       if (!result.ok) {
         if (result.status === 429) {
-          this.startProviderBackoff(now, result.status);
+          this.startProviderBackoff(symbol, now, result.status);
         }
 
         if (result.error) {
           this.logger.error(
-            `${this.provider.displayName} series fetch failed for ${symbol} (${range})`,
+            `${providerName} series fetch failed for ${symbol} (${range})`,
             result.error as Error,
           );
         } else {
           this.logger.warn(
-            `${this.provider.displayName} series failed for ${symbol} (${range}): ${
+            `${providerName} series failed for ${symbol} (${range}): ${
               result.status ?? 'unknown'
             }`,
           );
@@ -555,31 +680,68 @@ export class PricesService {
     }
   }
 
-  private isProviderCoolingDown(now: number): boolean {
-    if (!this.providerBackoff) {
-      return false;
+  private getActiveProviderBackoff(
+    symbol: string,
+    now: number,
+  ): ProviderBackoff | null {
+    const group = this.provider.getRequestGroup(symbol);
+    const backoff = this.providerBackoffs.get(group);
+    if (!backoff) {
+      return null;
     }
 
-    if (now >= this.providerBackoff.until) {
-      this.providerBackoff = null;
-      return false;
+    if (now >= backoff.until) {
+      this.providerBackoffs.delete(group);
+      return null;
     }
 
-    return true;
+    return backoff;
   }
 
-  private startProviderBackoff(now: number, status: number): void {
+  private startProviderBackoff(
+    symbol: string,
+    now: number,
+    status: number,
+  ): void {
+    const group = this.provider.getRequestGroup(symbol);
     const until = now + RATE_LIMIT_BACKOFF_MS;
-    if (this.providerBackoff && this.providerBackoff.until >= until) {
+    const existing = this.providerBackoffs.get(group);
+    if (existing && existing.until >= until) {
       return;
     }
 
-    this.providerBackoff = { until, status };
+    this.providerBackoffs.set(group, { until, status });
     this.logger.warn(
-      `${this.provider.displayName} requests paused for ${
+      `${this.provider.getDisplayName(symbol)} requests paused for ${
         RATE_LIMIT_BACKOFF_MS / 60_000
       } minutes after HTTP ${status}.`,
     );
+  }
+
+  private createMarketPriceFailure(
+    symbol: string,
+    status: number | null,
+    error?: unknown,
+  ): MarketPriceFailure {
+    let reason: MarketPriceFailureReason = 'UNAVAILABLE';
+    if (status === 401 || status === 403) {
+      reason = 'AUTHENTICATION';
+    } else if (status === 404) {
+      reason = 'NOT_FOUND';
+    } else if (status === 429) {
+      reason = 'RATE_LIMITED';
+    } else if (
+      error instanceof Error &&
+      (error.name === 'AbortError' || error.name === 'TimeoutError')
+    ) {
+      reason = 'TIMEOUT';
+    }
+
+    return {
+      provider: this.provider.getDisplayName(symbol),
+      reason,
+      status,
+    };
   }
 
   private getStaleSeries(cacheKey: string): MarketSeries | null {

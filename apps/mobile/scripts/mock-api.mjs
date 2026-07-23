@@ -1383,10 +1383,7 @@ function buildPerformanceSeries(range) {
   };
 }
 
-/**
- * Live asset valuations with a small +/-0.3% jitter applied on every call,
- * so the live UI visibly ticks while polling.
- */
+/** Latest persisted asset valuations returned without synthetic polling ticks. */
 const LIVE_VALUATION_BASE = [
   { assetId: "as-vwce", price: 112.4, currency: "EUR", quantity: 120 },
   { assetId: "as-btc", price: 61250, currency: "EUR", quantity: 0.12 },
@@ -1394,9 +1391,9 @@ const LIVE_VALUATION_BASE = [
 ];
 
 function buildLiveValuations() {
+  const asOf = new Date().toISOString();
   const quotes = LIVE_VALUATION_BASE.map((base) => {
-    const jitter = 1 + (Math.random() * 2 - 1) * 0.003; // +/-0.3%
-    const price = Math.round(base.price * jitter * 100) / 100;
+    const price = base.price;
     const value = Math.round(price * base.quantity * 100) / 100;
     const valueInReporting =
       base.currency === dashboard.reportingCurrency ? value : null;
@@ -1407,11 +1404,13 @@ function buildLiveValuations() {
       currency: base.currency,
       value,
       valueInReporting,
+      asOf,
+      isStale: false,
     };
   });
 
   return {
-    asOf: new Date().toISOString(),
+    asOf,
     reportingCurrency: dashboard.reportingCurrency,
     quotes,
   };
@@ -1559,7 +1558,9 @@ const server = createServer((req, res) => {
 
     if (path === "/api/mobile/sessions" && req.method === "DELETE") {
       if (req.headers.authorization !== `Bearer ${MOCK_MOBILE_TOKEN}`) {
-        return respond(401, { message: "Mobile session is invalid or expired." });
+        return respond(401, {
+          message: "Mobile session is invalid or expired.",
+        });
       }
 
       console.log(`${req.method} ${path} -> 204`);

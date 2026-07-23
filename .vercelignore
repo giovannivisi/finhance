@@ -35,3 +35,8 @@ tmp
 *.har
 *.mov
 *.mp4
+
+# Applications and test support outside the finhance-web deployment scope
+apps/api
+apps/mobile
+test-support

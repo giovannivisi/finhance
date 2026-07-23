@@ -63,6 +63,14 @@ export class YahooFinanceProvider implements MarketDataProvider {
   readonly id = 'yahoo';
   readonly displayName = 'Yahoo Finance';
 
+  getRequestGroup(): string {
+    return this.id;
+  }
+
+  getDisplayName(): string {
+    return this.displayName;
+  }
+
   buildMarketSymbol(input: MarketDataInstrument): string {
     const ticker = input.ticker.trim().toUpperCase();
     const exchange = (input.exchange ?? '').trim().toUpperCase();
@@ -74,6 +82,10 @@ export class YahooFinanceProvider implements MarketDataProvider {
 
     this.assertSymbol(symbol);
     return symbol;
+  }
+
+  getMarketSymbolCandidates(input: MarketDataInstrument): string[] {
+    return [this.buildMarketSymbol(input)];
   }
 
   buildFxSymbol(fromCurrency: string, toCurrency: string): string {

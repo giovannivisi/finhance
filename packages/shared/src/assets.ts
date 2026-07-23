@@ -123,6 +123,13 @@ export interface RefreshAssetsResponse {
   refreshedAt: string;
   updatedCount: number;
   staleCount: number;
+  priceRefresh: {
+    status: "NOT_REQUESTED" | "SUCCESS" | "PARTIAL";
+    requestedCount: number;
+    refreshedCount: number;
+    failedCount: number;
+    message: string | null;
+  };
 }
 
 export interface LiveAssetValuationResponse {
@@ -131,6 +138,8 @@ export interface LiveAssetValuationResponse {
   currency: string;
   value: number; // quantity x price, asset currency
   valueInReporting: number | null; // null when FX unavailable
+  asOf?: string | null; // persisted quote/FX timestamp (legacy-compatible)
+  isStale?: boolean; // omitted by older servers; clients must not assume fresh
 }
 
 export interface LiveValuationsResponse {

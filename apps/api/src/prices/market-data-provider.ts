@@ -40,7 +40,20 @@ export type MarketDataProviderResult<T> =
 export interface MarketDataProvider {
   readonly id: string;
   readonly displayName: string;
+  /**
+   * Identifies the upstream request pool used for circuit breaking. Composite
+   * providers must return different keys for independent upstream services so
+   * one rate limit does not disable every market-data source.
+   */
+  getRequestGroup(symbol: string): string;
+  getDisplayName(symbol: string): string;
   buildMarketSymbol(input: MarketDataInstrument): string;
+  /**
+   * Ordered native routes for an instrument. The first route is preferred;
+   * later routes are only used when the preferred provider confirms that it
+   * cannot identify the instrument.
+   */
+  getMarketSymbolCandidates(input: MarketDataInstrument): string[];
   buildFxSymbol(fromCurrency: string, toCurrency: string): string;
   fetchQuote(
     symbol: string,

@@ -123,7 +123,9 @@ function getLiveAdjustedPricingStatus({
 
   const liveAssetIds = new Set(
     quotes
-      .filter((quote) => quote.valueInReporting != null)
+      .filter(
+        (quote) => quote.valueInReporting != null && quote.isStale === false,
+      )
       .map((quote) => quote.assetId),
   );
   const hasUncoveredStaleQuotes = assets.some(
@@ -505,10 +507,12 @@ export default function DashboardClient({
   } = useAppPreferences();
   const allCategories = useMemo(() => Object.keys(grouped), [grouped]);
 
-  // Live valuations are display-only: they update the figures the user sees
-  // between data refreshes but never touch `grouped`/`summary`/
-  // `kindTotalsArray` (the server-provided baseline) or `lastDataRefreshMs`.
-  const { data: liveValuationsData } = useLiveValuations();
+  // The compatibility valuation snapshot is display-only and is keyed to the
+  // persisted refresh timestamp so an older response cannot override freshly
+  // re-rendered server data after a successful refresh.
+  const { data: liveValuationsData } = useLiveValuations(
+    lastRefreshAt ?? null,
+  );
   const liveQuotes = liveValuationsData?.quotes ?? EMPTY_LIVE_QUOTES;
 
   const flatAssets = useMemo(() => Object.values(grouped).flat(), [grouped]);
@@ -679,6 +683,7 @@ export default function DashboardClient({
           return { ok: false };
         }
 
+        setRefreshNotice(result.warning);
         router.refresh();
         return { ok: true, refreshedAt: result.refreshedAt };
       } finally {
@@ -808,7 +813,7 @@ export default function DashboardClient({
             ),
           )} min ago`;
   const liveStatusDetail =
-    liveQuotes.length > 0 ? "Live quotes updating every 15s" : null;
+    liveQuotes.length > 0 ? "Latest stored prices loaded" : null;
   const hasLivePricingOverride =
     displayPricingStatus.state === "FRESH" &&
     pricingStatus.state !== "FRESH" &&

@@ -54,6 +54,7 @@ function buildQuote(
     currency: "EUR",
     value: 560,
     valueInReporting: 560,
+    isStale: false,
     ...overrides,
   };
 }
@@ -136,6 +137,22 @@ test("mergeLivePositions preserves stale state when FX may still be stale", () =
   });
 
   assert.equal(merged[0].currentValue, 520);
+  assert.equal(merged[0].valuationSource, "LAST_QUOTE");
+  assert.equal(merged[0].isStale, true);
+});
+
+test("mergeLivePositions never promotes a persisted stale quote to live", () => {
+  const positions = [
+    buildPosition({ valuationSource: "LAST_QUOTE", isStale: true }),
+  ];
+  const quotes = [buildQuote({ isStale: true, valueInReporting: 575 })];
+
+  const merged = mergeLivePositions(positions, quotes, {
+    asOf: "2026-06-12T08:05:00.000Z",
+    reportingCurrency: "EUR",
+  });
+
+  assert.equal(merged[0].currentValue, 575);
   assert.equal(merged[0].valuationSource, "LAST_QUOTE");
   assert.equal(merged[0].isStale, true);
 });

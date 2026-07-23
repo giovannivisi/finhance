@@ -39,6 +39,40 @@ test("requestDashboardRefresh returns success for a successful refresh call", as
     assert.deepEqual(result, {
       ok: true,
       refreshedAt: "2026-06-19T16:45:00.000Z",
+      warning: null,
+    });
+  } finally {
+    restoreApiUrl();
+  }
+});
+
+test("requestDashboardRefresh surfaces a partial-refresh warning", async () => {
+  setApiUrlForTest();
+  try {
+    const result = await requestDashboardRefresh(
+      async () =>
+        new Response(
+          JSON.stringify({
+            refreshedAt: "2026-06-19T16:45:00.000Z",
+            priceRefresh: {
+              message:
+                "Updated 1 of 2 market prices. Could not refresh VWCE.HM; stored prices were kept for those holdings.",
+            },
+          }),
+          {
+            status: 201,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        ),
+    );
+
+    assert.deepEqual(result, {
+      ok: true,
+      refreshedAt: "2026-06-19T16:45:00.000Z",
+      warning:
+        "Updated 1 of 2 market prices. Could not refresh VWCE.HM; stored prices were kept for those holdings.",
     });
   } finally {
     restoreApiUrl();

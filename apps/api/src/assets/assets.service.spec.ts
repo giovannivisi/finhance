@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
 import { AssetsService } from '@assets/assets.service';
 import { OperationLockService } from '@/request-safety/operation-lock.service';
 import { AssetKind, AssetType, Prisma } from '@finhance/db';
@@ -24,6 +24,26 @@ type AssetUpdateCall = {
 function firstCallArg<T>(mockFn: jest.Mock): T {
   const calls = mockFn.mock.calls as unknown[][];
   return calls[0]?.[0] as T;
+}
+
+function marketResolution(
+  price: Prisma.Decimal | null,
+  failure: {
+    provider: string;
+    reason:
+      | 'AUTHENTICATION'
+      | 'NOT_FOUND'
+      | 'RATE_LIMITED'
+      | 'TIMEOUT'
+      | 'UNAVAILABLE';
+    status: number | null;
+  } | null,
+  marketDataSymbol = 'marketstack:AAPL@XNAS',
+) {
+  return {
+    marketSymbol: marketDataSymbol,
+    result: { price, failure },
+  };
 }
 
 function createAsset(overrides: Partial<Record<string, unknown>> = {}) {
@@ -82,6 +102,8 @@ describe('AssetsService', () => {
     normalizeTicker: jest.Mock;
     buildMarketSymbol: jest.Mock;
     getMarketPrice: jest.Mock;
+    getMarketPriceResult: jest.Mock;
+    getMarketPriceResolution: jest.Mock;
     getFxRate: jest.Mock;
     getStoredFxRateSnapshot: jest.Mock;
     getFxRateForDate: jest.Mock;
@@ -141,6 +163,8 @@ describe('AssetsService', () => {
           `${input.ticker}${input.exchange ?? ''}`,
       ),
       getMarketPrice: jest.fn(),
+      getMarketPriceResult: jest.fn(),
+      getMarketPriceResolution: jest.fn(),
       getFxRate: jest.fn(),
       getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
         rate: new Prisma.Decimal('0.9'),
@@ -388,6 +412,23 @@ describe('AssetsService', () => {
     });
   });
 
+  it('marks a stored quote without a timestamp as stale', async () => {
+    prisma.asset.findMany.mockResolvedValue([
+      createAsset({
+        currency: 'EUR',
+        lastPrice: new Prisma.Decimal('50'),
+        lastPriceAt: null,
+      }),
+    ]);
+
+    const dashboard = await service.getDashboard(OWNER_ID);
+
+    expect(dashboard.assets[0].currentValue).toBe(100);
+    expect(dashboard.assets[0].valuationSource).toBe('LAST_QUOTE');
+    expect(dashboard.assets[0].isStale).toBe(true);
+    expect(dashboard.pricingStatus.state).toBe('STALE');
+  });
+
   it('assigns non-market assets to validated accounts', async () => {
     const created = createAsset({
       accountId: 'account-1',
@@ -546,7 +587,9 @@ describe('AssetsService', () => {
         }),
       ]);
     prisma.asset.update.mockResolvedValue(createAsset());
-    prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
+    prices.getMarketPriceResolution.mockResolvedValue(
+      marketResolution(new Prisma.Decimal('50'), null),
+    );
     prices.getFxRateForDate.mockResolvedValue(new Prisma.Decimal('0.9'));
     prices.getStoredFxRateSnapshot.mockResolvedValue({
       rate: new Prisma.Decimal('0.9'),
@@ -570,29 +613,156 @@ describe('AssetsService', () => {
         where: { userId: OWNER_ID },
       }),
     );
-    expect(prices.getMarketPrice).toHaveBeenCalledTimes(1);
+    expect(prices.getMarketPriceResolution).toHaveBeenCalledTimes(1);
     expect(prices.getFxRateForDate).toHaveBeenCalledTimes(1);
     expect(prisma.asset.update).toHaveBeenCalledTimes(2);
+    expect(
+      firstCallArg<{ data: { marketDataSymbol: string } }>(prisma.asset.update)
+        .data.marketDataSymbol,
+    ).toBe('marketstack:AAPL@XNAS');
     expect(response.updatedCount).toBe(2);
     expect(response.staleCount).toBe(0);
+    expect(response.priceRefresh).toEqual({
+      status: 'SUCCESS',
+      requestedCount: 1,
+      refreshedCount: 1,
+      failedCount: 0,
+      message: null,
+    });
   });
 
-  it('does not advance stored quote timestamps when the provider refresh fails', async () => {
+  it('rejects a total provider failure without advancing stored quote timestamps', async () => {
     const lastPriceAt = new Date('2026-06-25T12:00:00.000Z');
     const asset = createAsset({
       currency: 'EUR',
       lastPrice: new Prisma.Decimal('50'),
       lastPriceAt,
     });
-    prisma.asset.findMany
-      .mockResolvedValueOnce([asset])
-      .mockResolvedValueOnce([asset]);
-    prices.getMarketPrice.mockResolvedValue(null);
+    prisma.asset.findMany.mockResolvedValueOnce([asset]);
+    prices.getMarketPriceResolution.mockResolvedValue(
+      marketResolution(null, {
+        provider: 'Marketstack',
+        reason: 'RATE_LIMITED',
+        status: 429,
+      }),
+    );
 
-    const response = await service.refreshAssets(OWNER_ID);
+    await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow(
+      new ServiceUnavailableException(
+        'Marketstack is rate-limiting price requests. Stored prices were kept; try again later.',
+      ),
+    );
 
     expect(prisma.asset.update).not.toHaveBeenCalled();
-    expect(response.updatedCount).toBe(0);
+  });
+
+  it('persists successful quotes and reports partial provider failures', async () => {
+    const apple = createAsset({
+      currency: 'EUR',
+      lastPrice: new Prisma.Decimal('45'),
+      lastPriceAt: new Date('2026-06-25T12:00:00.000Z'),
+    });
+    const tesla = createAsset({
+      id: 'asset-2',
+      name: 'Tesla',
+      ticker: 'TSLA',
+      currency: 'EUR',
+      lastPrice: new Prisma.Decimal('190'),
+      lastPriceAt: new Date('2026-06-25T12:00:00.000Z'),
+    });
+    prisma.asset.findMany
+      .mockResolvedValueOnce([apple, tesla])
+      .mockResolvedValueOnce([
+        createAsset({
+          currency: 'EUR',
+          lastPrice: new Prisma.Decimal('50'),
+          lastPriceAt: new Date(),
+        }),
+        tesla,
+      ]);
+    prices.getMarketPriceResolution
+      .mockResolvedValueOnce(marketResolution(new Prisma.Decimal('50'), null))
+      .mockResolvedValueOnce(
+        marketResolution(null, {
+          provider: 'Marketstack',
+          reason: 'NOT_FOUND',
+          status: 404,
+        }),
+      );
+
+    const response = await service.refreshAssets(OWNER_ID);
+    const updateCall = firstCallArg<{
+      where: { id: string };
+      data: { lastPrice: Prisma.Decimal };
+    }>(prisma.asset.update);
+
+    expect(prisma.asset.update).toHaveBeenCalledTimes(1);
+    expect(updateCall.where).toEqual({ id: 'asset-1' });
+    expect(updateCall.data.lastPrice).toEqual(new Prisma.Decimal('50'));
+    expect(response.priceRefresh).toEqual({
+      status: 'PARTIAL',
+      requestedCount: 2,
+      refreshedCount: 1,
+      failedCount: 1,
+      message:
+        'Updated 1 of 2 market prices. Could not refresh TSLA; stored prices were kept for those holdings.',
+    });
+  });
+
+  it('keeps a stored quote when another holding has an invalid provider symbol', async () => {
+    const apple = createAsset({
+      currency: 'EUR',
+      lastPrice: new Prisma.Decimal('45'),
+      lastPriceAt: new Date('2026-06-25T12:00:00.000Z'),
+    });
+    const unsupported = createAsset({
+      id: 'asset-2',
+      name: 'Unsupported listing',
+      ticker: 'UNKNOWN',
+      exchange: '.HM',
+      currency: 'EUR',
+      lastPrice: new Prisma.Decimal('190'),
+      lastPriceAt: new Date('2026-06-25T12:00:00.000Z'),
+    });
+    prisma.asset.findMany
+      .mockResolvedValueOnce([apple, unsupported])
+      .mockResolvedValueOnce([
+        createAsset({
+          currency: 'EUR',
+          lastPrice: new Prisma.Decimal('50'),
+          lastPriceAt: new Date(),
+        }),
+        unsupported,
+      ]);
+    prices.buildMarketSymbol.mockImplementation(
+      (input: { ticker: string; exchange?: string | null }) => {
+        if (input.ticker === 'UNKNOWN') {
+          throw new Error('Unsupported provider symbol.');
+        }
+        return `${input.ticker}${input.exchange ?? ''}`;
+      },
+    );
+    prices.getMarketPriceResolution.mockResolvedValue(
+      marketResolution(new Prisma.Decimal('50'), null),
+    );
+
+    const response = await service.refreshAssets(OWNER_ID);
+    const updateCall = firstCallArg<{
+      where: { id: string };
+      data: { lastPrice: Prisma.Decimal };
+    }>(prisma.asset.update);
+
+    expect(prisma.asset.update).toHaveBeenCalledTimes(1);
+    expect(updateCall.where).toEqual({ id: 'asset-1' });
+    expect(updateCall.data.lastPrice).toEqual(new Prisma.Decimal('50'));
+    expect(response.priceRefresh).toEqual({
+      status: 'PARTIAL',
+      requestedCount: 2,
+      refreshedCount: 1,
+      failedCount: 1,
+      message:
+        'Updated 1 of 2 market prices. Could not refresh UNKNOWN.HM; stored prices were kept for those holdings.',
+    });
   });
 
   it('rejects refreshes during the success-based cooldown window', async () => {
@@ -620,7 +790,7 @@ describe('AssetsService', () => {
   it('surfaces refresh work failures after claiming the shared operation lock', async () => {
     const asset = createAsset();
     prisma.asset.findMany.mockResolvedValueOnce([asset]);
-    prices.getMarketPrice.mockRejectedValue(new Error('quote down'));
+    prices.getMarketPriceResolution.mockRejectedValue(new Error('quote down'));
 
     await expect(service.refreshAssets(OWNER_ID)).rejects.toThrow('quote down');
     expect(operationLocks.runExclusive).toHaveBeenCalledTimes(1);
@@ -641,7 +811,9 @@ describe('AssetsService', () => {
         }),
       ]);
     prisma.asset.update.mockResolvedValue(createAsset());
-    prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('50'));
+    prices.getMarketPriceResolution.mockResolvedValue(
+      marketResolution(new Prisma.Decimal('50'), null),
+    );
     prices.getFxRateForDate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
     await service.refreshAssets(OWNER_ID);
@@ -697,16 +869,17 @@ describe('AssetsService', () => {
   });
 
   describe('getLiveValuations', () => {
-    it('returns live quotes converted to the reporting currency without writing to the database', async () => {
+    it('returns stored quotes converted to the reporting currency without contacting an upstream provider', async () => {
       prisma.asset.findMany.mockResolvedValue([
         createAsset({
           id: 'asset-1',
           accountId: 'account-1',
           currency: 'USD',
           quantity: new Prisma.Decimal('2'),
+          lastPrice: new Prisma.Decimal('150'),
+          lastPriceAt: new Date('2026-06-25T12:00:00.000Z'),
         }),
       ]);
-      prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('150'));
       prices.getStoredFxRateSnapshot.mockResolvedValue({
         rate: new Prisma.Decimal('0.9'),
         status: 'EXACT',
@@ -725,12 +898,13 @@ describe('AssetsService', () => {
           currency: 'USD',
           value: 300,
           valueInReporting: 270,
+          asOf: '2026-06-25T12:00:00.000Z',
+          isStale: true,
         },
       ]);
-      expect(prices.getMarketPrice).toHaveBeenCalledWith(
-        expect.objectContaining({ ticker: 'AAPL', quoteCurrency: 'USD' }),
-        { maxAgeMs: 15000 },
-      );
+      expect(prices.getMarketPrice).not.toHaveBeenCalled();
+      expect(prices.getMarketPriceResult).not.toHaveBeenCalled();
+      expect(prices.getMarketPriceResolution).not.toHaveBeenCalled();
       expect(prisma.asset.update).not.toHaveBeenCalled();
       expect(prisma.asset.create).not.toHaveBeenCalled();
     });
@@ -742,9 +916,10 @@ describe('AssetsService', () => {
           accountId: 'account-1',
           currency: 'USD',
           quantity: new Prisma.Decimal('1'),
+          lastPrice: new Prisma.Decimal('100'),
+          lastPriceAt: new Date('2026-06-25T12:00:00.000Z'),
         }),
       ]);
-      prices.getMarketPrice.mockResolvedValue(new Prisma.Decimal('100'));
       prices.getStoredFxRateSnapshot.mockResolvedValue({
         rate: new Prisma.Decimal('0.9'),
         status: 'EXACT',
@@ -765,7 +940,7 @@ describe('AssetsService', () => {
       expect(prices.getFxRateForDate).not.toHaveBeenCalled();
     });
 
-    it('omits positions whose live quote is unavailable', async () => {
+    it('omits positions whose stored quote is unavailable', async () => {
       prisma.asset.findMany.mockResolvedValue([
         createAsset({
           id: 'asset-1',
@@ -780,11 +955,10 @@ describe('AssetsService', () => {
           accountId: 'account-1',
           currency: 'USD',
           quantity: new Prisma.Decimal('1'),
+          lastPrice: new Prisma.Decimal('200'),
+          lastPriceAt: new Date('2026-06-25T12:00:00.000Z'),
         }),
       ]);
-      prices.getMarketPrice
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(new Prisma.Decimal('200'));
       prices.getStoredFxRateSnapshot.mockResolvedValue({
         rate: new Prisma.Decimal('0.9'),
         status: 'EXACT',

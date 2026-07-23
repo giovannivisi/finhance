@@ -12,7 +12,7 @@ export const SUPPORTED_REPORTING_CURRENCY_CODES = [
 const MARKET_KINDS: readonly AssetKind[] = [AssetKind.STOCK, AssetKind.BOND];
 const CRYPTO_ONLY: readonly AssetKind[] = [AssetKind.CRYPTO];
 
-const SUPPORTED_EXCHANGES: ReadonlyArray<{
+export const SUPPORTED_EXCHANGES: ReadonlyArray<{
   value: string;
   allowedKinds: readonly AssetKind[];
 }> = [
