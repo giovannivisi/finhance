@@ -95,9 +95,9 @@ describe('MarketstackProvider', () => {
     ).resolves.toEqual({ ok: true, data: 662.43 });
 
     const url = requestUrl(fetchMock.mock.calls[0][0]);
-    expect(url.pathname).toBe('/v1/eod/latest');
+    expect(url.pathname).toBe('/v1/exchanges/XMIL/eod/latest');
     expect(url.searchParams.get('symbols')).toBe('CSSPX');
-    expect(url.searchParams.get('exchange')).toBe('XMIL');
+    expect(url.searchParams.get('exchange')).toBeNull();
     expect(url.searchParams.get('access_key')).toBe('test-key');
   });
 
@@ -132,6 +132,25 @@ describe('MarketstackProvider', () => {
     }
     expect(result.status).toBe(429);
     expect(result.error).toBeInstanceOf(Error);
+  });
+
+  it('maps invalid provider symbols to HTTP 404 semantics', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        error: {
+          code: 'no_valid_symbols_provided',
+          message: 'At least one valid symbol must be provided.',
+        },
+      }),
+    );
+
+    const result = await provider.fetchQuote('marketstack:CSSPX@XMIL', 3000);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('Expected a Marketstack provider failure.');
+    }
+    expect(result.status).toBe(404);
   });
 
   it('parses and orders end-of-day series data', async () => {

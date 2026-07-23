@@ -202,6 +202,7 @@ model Asset {
   accountId     String?
   importSource  ImportSource?
   importKey     String?
+  marketDataSymbol String?     @map("market_data_symbol")
   user          User           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   account       Account?       @relation(fields: [accountId, userId], references: [id, userId])
   brokerageOperations BrokerageOperation[]

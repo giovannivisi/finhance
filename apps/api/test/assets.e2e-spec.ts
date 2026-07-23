@@ -60,6 +60,7 @@ function createAsset(overrides: Partial<Asset> = {}): Asset {
     updatedAt: now,
     lastPrice: null,
     lastPriceAt: null,
+    marketDataSymbol: null,
     lastFxRate: null,
     lastFxRateAt: null,
     ...overrides,

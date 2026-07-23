@@ -12,6 +12,8 @@ function jsonResponse(
     ok,
     status,
     json: () => Promise.resolve(body),
+    text: () =>
+      Promise.resolve(typeof body === 'string' ? body : JSON.stringify(body)),
   } as unknown as Response;
 }
 
@@ -541,6 +543,37 @@ describe('PricesService', () => {
 
       expect(milanPrice).toBeNull();
       expect(hamburgPrice?.toString()).toBe('164.1');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls back to Yahoo after EODHD confirms a listing is unavailable', async () => {
+      const compositeService = new PricesService(
+        prisma as never,
+        new HybridMarketDataProvider({
+          eodhdApiToken: 'eodhd-token',
+          marketstackApiKey: 'marketstack-key',
+        }),
+      );
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse('Ticker Not Found.'))
+        .mockResolvedValueOnce(
+          jsonResponse({
+            chart: { result: [{ meta: { regularMarketPrice: 166.2 } }] },
+          }),
+        );
+
+      const resolution = await compositeService.getMarketPriceResolution(
+        {
+          kind: AssetKind.STOCK,
+          ticker: 'VWCE',
+          exchange: '.HM',
+          quoteCurrency: 'EUR',
+        },
+        { forceRefresh: true },
+      );
+
+      expect(resolution.marketSymbol).toBe('yahoo:VWCE.HM');
+      expect(resolution.result.price?.toString()).toBe('166.2');
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 

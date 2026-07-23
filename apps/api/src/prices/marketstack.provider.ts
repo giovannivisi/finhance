@@ -145,6 +145,13 @@ export class MarketstackProvider implements MarketDataProvider {
     return `${MARKETSTACK_PREFIX}${ticker}@${providerExchange}`;
   }
 
+  getMarketSymbolCandidates(input: MarketDataInstrument): string[] {
+    return [
+      this.buildMarketSymbol(input),
+      `${YAHOO_PREFIX}${this.yahoo.buildMarketSymbol(input)}`,
+    ];
+  }
+
   buildFxSymbol(fromCurrency: string, toCurrency: string): string {
     return `${YAHOO_PREFIX}${this.yahoo.buildFxSymbol(fromCurrency, toCurrency)}`;
   }
@@ -160,10 +167,9 @@ export class MarketstackProvider implements MarketDataProvider {
 
     const listing = this.parseMarketstackListing(routed.symbol);
     const result = await this.fetchPage<MarketstackEodPrice>(
-      '/eod/latest',
+      `/exchanges/${encodeURIComponent(listing.exchange)}/eod/latest`,
       {
         symbols: listing.ticker,
-        exchange: listing.exchange,
         limit: '1',
       },
       timeoutMs,
@@ -201,10 +207,9 @@ export class MarketstackProvider implements MarketDataProvider {
 
     while (offset < total && rows.length < MAX_SERIES_POINTS) {
       const result = await this.fetchPage<MarketstackEodPrice>(
-        '/eod',
+        `/exchanges/${encodeURIComponent(listing.exchange)}/eod`,
         {
           symbols: listing.ticker,
-          exchange: listing.exchange,
           date_from: this.toIsoDate(start),
           date_to: this.toIsoDate(end),
           sort: 'ASC',
@@ -367,6 +372,9 @@ export class MarketstackProvider implements MarketDataProvider {
     }
     if (code.includes('limit') || code.includes('rate')) {
       return 429;
+    }
+    if (code.includes('no_valid_symbols') || code.includes('not_found')) {
+      return 404;
     }
     if (responseStatus >= 400) {
       return responseStatus;

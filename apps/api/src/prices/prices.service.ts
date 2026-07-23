@@ -42,6 +42,11 @@ export interface MarketPriceResult {
   failure: MarketPriceFailure | null;
 }
 
+export interface ResolvedMarketPriceResult {
+  marketSymbol: string | null;
+  result: MarketPriceResult;
+}
+
 export type StoredFxRateStatus = 'EXACT' | 'STALE' | 'MISSING';
 
 export interface StoredFxRateSnapshot {
@@ -139,6 +144,21 @@ export class PricesService {
     });
   }
 
+  buildMarketSymbolCandidates(input: {
+    kind: AssetKind;
+    ticker: string;
+    exchange?: string | null;
+    quoteCurrency: string;
+  }): string[] {
+    const normalized = {
+      kind: input.kind,
+      ticker: this.normalizeTicker(input.ticker),
+      exchange: input.exchange,
+      quoteCurrency: this.normalizeCurrency(input.quoteCurrency),
+    };
+    return [...new Set(this.provider.getMarketSymbolCandidates(normalized))];
+  }
+
   async getMarketPrice(
     input: {
       kind: AssetKind;
@@ -160,8 +180,51 @@ export class PricesService {
     },
     opts?: { forceRefresh?: boolean; maxAgeMs?: number },
   ): Promise<MarketPriceResult> {
-    const symbol = this.buildMarketSymbol(input);
-    return this.fetchQuote(symbol, opts);
+    return (await this.getMarketPriceResolution(input, opts)).result;
+  }
+
+  async getMarketPriceResolution(
+    input: {
+      kind: AssetKind;
+      ticker: string;
+      exchange?: string | null;
+      quoteCurrency: string;
+    },
+    opts?: { forceRefresh?: boolean; maxAgeMs?: number },
+    preferredMarketSymbol?: string | null,
+  ): Promise<ResolvedMarketPriceResult> {
+    const candidates = [
+      ...(preferredMarketSymbol ? [preferredMarketSymbol] : []),
+      ...this.buildMarketSymbolCandidates(input),
+    ];
+    const uniqueCandidates = [...new Set(candidates)];
+    let lastResult: MarketPriceResult | null = null;
+    let lastSymbol: string | null = null;
+
+    for (const symbol of uniqueCandidates) {
+      const result = await this.fetchQuote(symbol, opts);
+      if (result.price !== null) {
+        return { marketSymbol: symbol, result };
+      }
+
+      lastResult = result;
+      lastSymbol = symbol;
+      if (result.failure?.reason !== 'NOT_FOUND') {
+        return { marketSymbol: symbol, result };
+      }
+    }
+
+    return {
+      marketSymbol: lastSymbol,
+      result: lastResult ?? {
+        price: null,
+        failure: {
+          provider: 'Market data',
+          reason: 'NOT_FOUND',
+          status: 404,
+        },
+      },
+    };
   }
 
   /**

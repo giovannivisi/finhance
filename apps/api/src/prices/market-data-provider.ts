@@ -48,6 +48,12 @@ export interface MarketDataProvider {
   getRequestGroup(symbol: string): string;
   getDisplayName(symbol: string): string;
   buildMarketSymbol(input: MarketDataInstrument): string;
+  /**
+   * Ordered native routes for an instrument. The first route is preferred;
+   * later routes are only used when the preferred provider confirms that it
+   * cannot identify the instrument.
+   */
+  getMarketSymbolCandidates(input: MarketDataInstrument): string[];
   buildFxSymbol(fromCurrency: string, toCurrency: string): string;
   fetchQuote(
     symbol: string,

@@ -13,7 +13,6 @@ import { UpdateAssetDto } from '@assets/dto/update-asset.dto';
 import { PricesService } from '@prices/prices.service';
 import type {
   MarketPriceFailure,
-  MarketPriceResult,
   StoredFxRateSnapshot,
 } from '@prices/prices.service';
 import {
@@ -308,12 +307,14 @@ export class AssetsService {
         for (const asset of assets) {
           if (this.isMarketAsset(asset)) {
             try {
-              const symbol = this.pricesService.buildMarketSymbol({
-                kind: asset.kind,
-                ticker: asset.ticker ?? '',
-                exchange: asset.exchange,
-                quoteCurrency: asset.currency,
-              });
+              const symbol =
+                asset.marketDataSymbol ??
+                this.pricesService.buildMarketSymbol({
+                  kind: asset.kind,
+                  ticker: asset.ticker ?? '',
+                  exchange: asset.exchange,
+                  quoteCurrency: asset.currency,
+                });
               quoteKeys.set(symbol, asset);
             } catch (error) {
               const symbol = this.marketAssetLabel(asset);
@@ -343,7 +344,10 @@ export class AssetsService {
           }
         }
 
-        const quoteResults = new Map<string, MarketPriceResult>();
+        const quoteResults = new Map<
+          string,
+          Awaited<ReturnType<PricesService['getMarketPriceResolution']>>
+        >();
         const fxResults = new Map<string, Prisma.Decimal | null>();
 
         await this.mapInBatches(
@@ -357,7 +361,7 @@ export class AssetsService {
 
             quoteResults.set(
               symbol,
-              await this.pricesService.getMarketPriceResult(
+              await this.pricesService.getMarketPriceResolution(
                 {
                   kind: sample.kind,
                   ticker: sample.ticker,
@@ -365,6 +369,7 @@ export class AssetsService {
                   quoteCurrency: sample.currency,
                 },
                 { forceRefresh: true },
+                sample.marketDataSymbol,
               ),
             );
           },
@@ -373,7 +378,7 @@ export class AssetsService {
         const quoteFailures: QuoteRefreshFailure[] = [
           ...quoteBuildFailures,
           ...[...quoteKeys.entries()].flatMap(([symbol, asset]) => {
-            const result = quoteResults.get(symbol);
+            const result = quoteResults.get(symbol)?.result;
             return result?.price !== null && result?.price !== undefined
               ? []
               : [
@@ -390,7 +395,7 @@ export class AssetsService {
         ];
         const requestedQuoteCount = quoteKeys.size + quoteBuildFailures.length;
         const refreshedQuoteCount = [...quoteResults.values()].filter(
-          (result) => result.price !== null,
+          ({ result }) => result.price !== null,
         ).length;
 
         if (requestedQuoteCount > 0 && refreshedQuoteCount === 0) {
@@ -429,16 +434,27 @@ export class AssetsService {
 
           if (this.isMarketAsset(asset)) {
             try {
-              const symbol = this.pricesService.buildMarketSymbol({
-                kind: asset.kind,
-                ticker: asset.ticker ?? '',
-                exchange: asset.exchange,
-                quoteCurrency: asset.currency,
-              });
-              const price = quoteResults.get(symbol)?.price ?? null;
+              const symbol =
+                asset.marketDataSymbol ??
+                this.pricesService.buildMarketSymbol({
+                  kind: asset.kind,
+                  ticker: asset.ticker ?? '',
+                  exchange: asset.exchange,
+                  quoteCurrency: asset.currency,
+                });
+              const quoteResult = quoteResults.get(symbol);
+              const price = quoteResult?.result.price ?? null;
               if (price) {
                 data.lastPrice = price;
                 data.lastPriceAt = refreshedAt;
+                shouldUpdate = true;
+              }
+              if (
+                price &&
+                quoteResult?.marketSymbol &&
+                quoteResult.marketSymbol !== asset.marketDataSymbol
+              ) {
+                data.marketDataSymbol = quoteResult.marketSymbol;
                 shouldUpdate = true;
               }
             } catch {
@@ -599,6 +615,7 @@ export class AssetsService {
           ? {
               lastPrice: null,
               lastPriceAt: null,
+              marketDataSymbol: null,
             }
           : {}),
         ...(shouldClearFx || prepared.currency === DEFAULT_REPORTING_CURRENCY

@@ -81,6 +81,17 @@ describe('HybridMarketDataProvider', () => {
     expect(provider.buildFxSymbol('USD', 'EUR')).toBe('yahoo:USDEUR=X');
   });
 
+  it('falls back to Yahoo only after a native listing cannot be resolved', () => {
+    expect(
+      provider.getMarketSymbolCandidates({
+        kind: AssetKind.STOCK,
+        ticker: 'VWCE',
+        exchange: '.HM',
+        quoteCurrency: 'EUR',
+      }),
+    ).toEqual(['eodhd:VWCE.HM', 'yahoo:VWCE.HM']);
+  });
+
   it('uses independent request groups and provider names', () => {
     expect(provider.getRequestGroup('marketstack:CSSPX@XMIL')).toBe(
       'marketstack',

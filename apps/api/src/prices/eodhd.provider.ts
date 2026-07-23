@@ -136,6 +136,13 @@ export class EodhdProvider implements MarketDataProvider {
     return `${EODHD_PREFIX}${ticker}.${eodhdExchange}`;
   }
 
+  getMarketSymbolCandidates(input: MarketDataInstrument): string[] {
+    return [
+      this.buildMarketSymbol(input),
+      `${YAHOO_PREFIX}${this.yahoo.buildMarketSymbol(input)}`,
+    ];
+  }
+
   buildFxSymbol(fromCurrency: string, toCurrency: string): string {
     return `${YAHOO_PREFIX}${this.yahoo.buildFxSymbol(fromCurrency, toCurrency)}`;
   }
@@ -278,10 +285,23 @@ export class EodhdProvider implements MarketDataProvider {
         signal: AbortSignal.timeout(timeoutMs),
       });
 
+      const rawBody = await response.text();
       let body: unknown;
       try {
-        body = await response.json();
+        body = JSON.parse(rawBody) as unknown;
       } catch (error) {
+        const providerMessage = rawBody.trim();
+        if (providerMessage) {
+          return {
+            ok: false,
+            status: response.ok
+              ? this.resolveMessageStatus(providerMessage)
+              : response.status,
+            error: new Error(
+              `${this.displayName} request failed: ${providerMessage}`,
+            ),
+          };
+        }
         return {
           ok: false,
           status: response.status >= 400 ? response.status : null,

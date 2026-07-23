@@ -84,6 +84,10 @@ export class YahooFinanceProvider implements MarketDataProvider {
     return symbol;
   }
 
+  getMarketSymbolCandidates(input: MarketDataInstrument): string[] {
+    return [this.buildMarketSymbol(input)];
+  }
+
   buildFxSymbol(fromCurrency: string, toCurrency: string): string {
     const symbol = `${fromCurrency.trim().toUpperCase()}${toCurrency
       .trim()

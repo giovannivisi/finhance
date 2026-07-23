@@ -68,6 +68,17 @@ export class HybridMarketDataProvider implements MarketDataProvider {
     return this.eodhd.buildMarketSymbol(input);
   }
 
+  getMarketSymbolCandidates(input: MarketDataInstrument): string[] {
+    const exchange = (input.exchange ?? '').trim().toUpperCase();
+    if (
+      input.kind !== AssetKind.CRYPTO &&
+      this.marketstack.supportsExchange(exchange)
+    ) {
+      return this.marketstack.getMarketSymbolCandidates(input);
+    }
+    return this.eodhd.getMarketSymbolCandidates(input);
+  }
+
   buildFxSymbol(fromCurrency: string, toCurrency: string): string {
     return this.eodhd.buildFxSymbol(fromCurrency, toCurrency);
   }

@@ -10,6 +10,8 @@ function jsonResponse(
     ok,
     status,
     json: () => Promise.resolve(body),
+    text: () =>
+      Promise.resolve(typeof body === 'string' ? body : JSON.stringify(body)),
   } as unknown as Response;
 }
 
@@ -148,6 +150,19 @@ describe('EodhdProvider', () => {
     expect(result.error).toBeInstanceOf(Error);
   });
 
+  it('maps a plain-text missing ticker response to HTTP 404 semantics', async () => {
+    fetchMock.mockResolvedValue(jsonResponse('Ticker Not Found.'));
+
+    const result = await provider.fetchQuote('eodhd:VWCE.HM', 3000);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('Expected an EODHD provider failure.');
+    }
+    expect(result.status).toBe(404);
+    expect(result.error).toBeInstanceOf(Error);
+  });
+
   it('parses and orders end-of-day series data', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse([
@@ -192,7 +207,7 @@ describe('EodhdProvider', () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 429,
-      json: () => Promise.reject(new SyntaxError('Invalid JSON')),
+      text: () => Promise.resolve('Rate limit exceeded.'),
     } as unknown as Response);
 
     const result = await provider.fetchQuote('eodhd:VWCE.HM', 3000);
