@@ -37,7 +37,9 @@ type MarketstackPageResult<T> =
   | { ok: true; body: MarketstackPage<T> }
   | { ok: false; status: number | null; error?: unknown };
 
-const BASE_URL = 'https://api.marketstack.com/v1';
+// Marketstack's published OpenAPI v2 specification keeps the exchange-scoped
+// paths used below, but v1 no longer resolves its current ticker catalogue.
+const BASE_URL = 'https://api.marketstack.com/v2';
 const MARKETSTACK_PREFIX = 'marketstack:';
 const YAHOO_PREFIX = 'yahoo:';
 const MARKETSTACK_GROUP = 'marketstack';

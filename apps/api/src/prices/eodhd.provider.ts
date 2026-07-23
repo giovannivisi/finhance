@@ -82,6 +82,15 @@ const EODHD_EXCHANGE_BY_SUFFIX: Readonly<Record<string, string>> = {
   '.NZ': 'NZ',
 };
 
+/**
+ * A small number of securities use different codes across exchanges. These
+ * entries preserve the app's broker/Yahoo identifier while requesting the
+ * same EUR listing from EODHD's published exchange catalogue.
+ */
+const EODHD_LISTING_BY_INPUT_SYMBOL: Readonly<Record<string, string>> = {
+  'VWCE.HM': 'VWCE.XETRA',
+};
+
 const SERIES_LOOKBACK_DAYS: Record<BrokeragePerformanceRange, number> = {
   '1D': 8,
   '1W': 10,
@@ -125,6 +134,11 @@ export class EodhdProvider implements MarketDataProvider {
     }
 
     const ticker = input.ticker.trim().toUpperCase();
+    const inputSymbol = `${ticker}${exchange}`;
+    const providerListing = EODHD_LISTING_BY_INPUT_SYMBOL[inputSymbol];
+    if (providerListing) {
+      return `${EODHD_PREFIX}${providerListing}`;
+    }
     const eodhdExchange = EODHD_EXCHANGE_BY_SUFFIX[exchange];
 
     if (!EODHD_TICKER_PATTERN.test(ticker) || !eodhdExchange) {

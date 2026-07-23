@@ -24,7 +24,7 @@ describe('HybridMarketDataProvider', () => {
         exchange: '.HM',
         quoteCurrency: 'EUR',
       }),
-    ).toBe('eodhd:VWCE.HM');
+    ).toBe('eodhd:VWCE.XETRA');
   });
 
   it('has a route for every exchange in the application catalogue', () => {
@@ -89,19 +89,19 @@ describe('HybridMarketDataProvider', () => {
         exchange: '.HM',
         quoteCurrency: 'EUR',
       }),
-    ).toEqual(['eodhd:VWCE.HM', 'yahoo:VWCE.HM']);
+    ).toEqual(['eodhd:VWCE.XETRA', 'yahoo:VWCE.HM']);
   });
 
   it('uses independent request groups and provider names', () => {
     expect(provider.getRequestGroup('marketstack:CSSPX@XMIL')).toBe(
       'marketstack',
     );
-    expect(provider.getRequestGroup('eodhd:VWCE.HM')).toBe('eodhd');
+    expect(provider.getRequestGroup('eodhd:VWCE.XETRA')).toBe('eodhd');
     expect(provider.getRequestGroup('yahoo:USDEUR=X')).toBe('yahoo');
     expect(provider.getDisplayName('marketstack:CSSPX@XMIL')).toBe(
       'Marketstack',
     );
-    expect(provider.getDisplayName('eodhd:VWCE.HM')).toBe('EODHD');
+    expect(provider.getDisplayName('eodhd:VWCE.XETRA')).toBe('EODHD');
     expect(provider.getDisplayName('yahoo:USDEUR=X')).toBe('Yahoo Finance');
   });
 });

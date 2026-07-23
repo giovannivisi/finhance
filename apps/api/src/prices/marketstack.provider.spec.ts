@@ -95,7 +95,7 @@ describe('MarketstackProvider', () => {
     ).resolves.toEqual({ ok: true, data: 662.43 });
 
     const url = requestUrl(fetchMock.mock.calls[0][0]);
-    expect(url.pathname).toBe('/v1/exchanges/XMIL/eod/latest');
+    expect(url.pathname).toBe('/v2/exchanges/XMIL/eod/latest');
     expect(url.searchParams.get('symbols')).toBe('CSSPX');
     expect(url.searchParams.get('exchange')).toBeNull();
     expect(url.searchParams.get('access_key')).toBe('test-key');

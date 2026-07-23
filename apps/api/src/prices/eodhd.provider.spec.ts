@@ -45,7 +45,7 @@ describe('EodhdProvider', () => {
 
   it.each([
     ['United States', 'aapl', '', 'eodhd:AAPL.US'],
-    ['Hamburg', 'vwce', '.hm', 'eodhd:VWCE.HM'],
+    ['Hamburg', 'vwce', '.hm', 'eodhd:VWCE.XETRA'],
     ['Australia', 'bhp', '.ax', 'eodhd:BHP.AU'],
   ])(
     'maps a %s listing to an exact EODHD symbol',
@@ -80,19 +80,21 @@ describe('EodhdProvider', () => {
       }),
     ).toBe('yahoo:7203.T');
     expect(provider.getRequestGroup('yahoo:BTC-EUR')).toBe('yahoo');
-    expect(provider.getRequestGroup('eodhd:VWCE.HM')).toBe('eodhd');
+    expect(provider.getRequestGroup('eodhd:VWCE.XETRA')).toBe('eodhd');
   });
 
   it('parses the latest exact-listing close', async () => {
     fetchMock.mockResolvedValue(jsonResponse(164.1));
 
-    await expect(provider.fetchQuote('eodhd:VWCE.HM', 3000)).resolves.toEqual({
+    await expect(
+      provider.fetchQuote('eodhd:VWCE.XETRA', 3000),
+    ).resolves.toEqual({
       ok: true,
       data: 164.1,
     });
 
     const url = requestUrl(fetchMock.mock.calls[0][0]);
-    expect(url.pathname).toBe('/api/eod/VWCE.HM');
+    expect(url.pathname).toBe('/api/eod/VWCE.XETRA');
     expect(url.searchParams.get('filter')).toBe('last_close');
     expect(url.searchParams.get('fmt')).toBe('json');
     expect(url.searchParams.get('api_token')).toBe('test-token');
