@@ -124,6 +124,7 @@ describe('Asset routes (e2e)', () => {
     buildMarketSymbol: jest.Mock;
     getMarketPrice: jest.Mock;
     getMarketPriceResult: jest.Mock;
+    getMarketPriceResolution: jest.Mock;
     getFxRate: jest.Mock;
     getFxRateForDate: jest.Mock;
     getStoredFxRateSnapshot: jest.Mock;
@@ -188,6 +189,7 @@ describe('Asset routes (e2e)', () => {
       ),
       getMarketPrice: jest.fn(),
       getMarketPriceResult: jest.fn(),
+      getMarketPriceResolution: jest.fn(),
       getFxRate: jest.fn(),
       getFxRateForDate: jest.fn().mockResolvedValue(new Prisma.Decimal('0.9')),
       getStoredFxRateSnapshot: jest.fn().mockResolvedValue({
@@ -511,9 +513,12 @@ describe('Asset routes (e2e)', () => {
       }),
     ]);
     prisma.asset.update.mockResolvedValue(asset);
-    prices.getMarketPriceResult.mockResolvedValue({
-      price: new Prisma.Decimal('50'),
-      failure: null,
+    prices.getMarketPriceResolution.mockResolvedValue({
+      marketSymbol: 'marketstack:AAPL@XNAS',
+      result: {
+        price: new Prisma.Decimal('50'),
+        failure: null,
+      },
     });
     prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
@@ -561,18 +566,24 @@ describe('Asset routes (e2e)', () => {
         }),
       ]);
     prisma.asset.update.mockResolvedValue(asset);
-    prices.getMarketPriceResult
+    prices.getMarketPriceResolution
       .mockResolvedValueOnce({
-        price: null,
-        failure: {
-          provider: 'Marketstack',
-          reason: 'RATE_LIMITED',
-          status: 429,
+        marketSymbol: 'marketstack:AAPL@XNAS',
+        result: {
+          price: null,
+          failure: {
+            provider: 'Marketstack',
+            reason: 'RATE_LIMITED',
+            status: 429,
+          },
         },
       })
       .mockResolvedValueOnce({
-        price: new Prisma.Decimal('50'),
-        failure: null,
+        marketSymbol: 'marketstack:AAPL@XNAS',
+        result: {
+          price: new Prisma.Decimal('50'),
+          failure: null,
+        },
       });
     prices.getFxRate.mockResolvedValue(new Prisma.Decimal('0.9'));
 
