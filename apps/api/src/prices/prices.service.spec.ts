@@ -1,5 +1,6 @@
 import { AssetKind } from '@finhance/db';
 import { HybridMarketDataProvider } from '@prices/hybrid-market-data.provider';
+import { MarketDataRequestLimitExceededError } from '@prices/market-data-rate-limit.service';
 import { PricesService } from '@prices/prices.service';
 import { YahooFinanceProvider } from '@prices/yahoo-finance.provider';
 
@@ -474,6 +475,51 @@ describe('PricesService', () => {
           status: 429,
         },
       });
+    });
+
+    it('does not call the provider after the shared request budget is exhausted', async () => {
+      const rateLimit = {
+        reserve: jest
+          .fn()
+          .mockRejectedValue(new MarketDataRequestLimitExceededError()),
+      };
+      const limitedService = new PricesService(
+        prisma as never,
+        new YahooFinanceProvider(rateLimit),
+      );
+
+      const result = await limitedService.getMarketPriceResult(marketInput, {
+        forceRefresh: true,
+      });
+
+      expect(rateLimit.reserve).toHaveBeenCalledWith('yahoo');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        price: null,
+        failure: {
+          provider: 'Yahoo Finance',
+          reason: 'REQUEST_LIMITED',
+          status: null,
+        },
+      });
+    });
+
+    it('keeps cached series when the shared request budget is exhausted', async () => {
+      const rateLimit = {
+        reserve: jest
+          .fn()
+          .mockRejectedValue(new MarketDataRequestLimitExceededError()),
+      };
+      const limitedService = new PricesService(
+        prisma as never,
+        new YahooFinanceProvider(rateLimit),
+      );
+
+      const result = await limitedService.getMarketSeries(marketInput, '1M');
+
+      expect(rateLimit.reserve).toHaveBeenCalledWith('yahoo');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).toBeNull();
     });
 
     it('keeps Yahoo rate limits isolated from Marketstack stock requests', async () => {

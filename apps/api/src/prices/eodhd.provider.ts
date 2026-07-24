@@ -4,6 +4,7 @@ import type { BrokeragePerformanceRange } from '@finhance/shared';
 import type {
   MarketDataInstrument,
   MarketDataProvider,
+  MarketDataRequestLimiter,
   MarketDataProviderResult,
   MarketDataSeries,
   MarketDataSeriesPoint,
@@ -111,9 +112,14 @@ const YAHOO_LISTED_EXCHANGE_SUFFIXES = new Set(['.T']);
 export class EodhdProvider implements MarketDataProvider {
   readonly id = 'eodhd';
   readonly displayName = 'EODHD';
-  private readonly yahoo = new YahooFinanceProvider();
+  private readonly yahoo: YahooFinanceProvider;
 
-  constructor(private readonly apiToken: string) {}
+  constructor(
+    private readonly apiToken: string,
+    private readonly requestLimiter?: MarketDataRequestLimiter,
+  ) {
+    this.yahoo = new YahooFinanceProvider(requestLimiter);
+  }
 
   getRequestGroup(symbol: string): string {
     return symbol.startsWith(YAHOO_PREFIX) ? YAHOO_GROUP : EODHD_GROUP;
@@ -291,6 +297,7 @@ export class EodhdProvider implements MarketDataProvider {
     timeoutMs: number,
   ): Promise<EodhdFetchResult> {
     try {
+      await this.requestLimiter?.reserve(EODHD_GROUP);
       const search = new URLSearchParams({
         api_token: this.apiToken,
         ...params,
@@ -341,6 +348,12 @@ export class EodhdProvider implements MarketDataProvider {
 
       return { ok: true, body };
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === 'MarketDataRequestLimitExceededError'
+      ) {
+        throw error;
+      }
       return { ok: false, status: null, error };
     }
   }

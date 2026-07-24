@@ -22,6 +22,10 @@ export interface MarketDataSeries {
   isStale?: boolean;
 }
 
+export interface MarketDataRequestLimiter {
+  reserve(providerGroup: string): Promise<void>;
+}
+
 export type MarketDataProviderResult<T> =
   | {
       ok: true;

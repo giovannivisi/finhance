@@ -1245,6 +1245,9 @@ export class AssetsService {
     if (reasons.size === 1 && reasons.has('RATE_LIMITED')) {
       return `${provider} is rate-limiting price requests. Stored prices were kept; try again later.`;
     }
+    if (reasons.size === 1 && reasons.has('REQUEST_LIMITED')) {
+      return 'The market-data request limit has been reached. Stored prices were kept; try again later.';
+    }
     if (reasons.has('AUTHENTICATION')) {
       return `${provider} authentication failed. Stored prices were kept; the server configuration needs attention.`;
     }

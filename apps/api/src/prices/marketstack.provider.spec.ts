@@ -199,6 +199,30 @@ describe('MarketstackProvider', () => {
     });
   });
 
+  it('reserves one shared budget slot for every paginated upstream request', async () => {
+    const requestLimiter = { reserve: jest.fn().mockResolvedValue(undefined) };
+    const limitedProvider = new MarketstackProvider('test-key', requestLimiter);
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          pagination: { count: 1, total: 2 },
+          data: [{ close: 101, date: '2026-07-20T00:00:00+0000' }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          pagination: { count: 1, total: 2 },
+          data: [{ close: 102, date: '2026-07-21T00:00:00+0000' }],
+        }),
+      );
+
+    await limitedProvider.fetchSeries('marketstack:CSSPX@XMIL', '1M', 3000);
+
+    expect(requestLimiter.reserve).toHaveBeenCalledTimes(2);
+    expect(requestLimiter.reserve).toHaveBeenNthCalledWith(1, 'marketstack');
+    expect(requestLimiter.reserve).toHaveBeenNthCalledWith(2, 'marketstack');
+  });
+
   it('delegates routed FX quotes to Yahoo without exposing the route prefix', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({

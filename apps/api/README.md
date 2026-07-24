@@ -104,4 +104,6 @@ Hosted deployment selects `hybrid` in `render.yaml`. Do not expose provider
 credentials to web or mobile clients. Quote reads use persisted data; only
 `POST /assets/refresh` contacts providers and advances stored timestamps. A
 total provider failure returns HTTP 503, while partial refreshes identify the
-symbols whose previous stored prices were retained.
+symbols whose previous stored prices were retained. `MARKET_DATA_REQUEST_LIMIT_PER_MINUTE`
+caps combined uncached provider requests across all users and API instances;
+it defaults to 10 per provider.

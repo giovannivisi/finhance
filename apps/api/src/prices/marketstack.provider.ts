@@ -4,6 +4,7 @@ import type { BrokeragePerformanceRange } from '@finhance/shared';
 import type {
   MarketDataInstrument,
   MarketDataProvider,
+  MarketDataRequestLimiter,
   MarketDataProviderResult,
   MarketDataSeries,
   MarketDataSeriesPoint,
@@ -107,9 +108,14 @@ const SERIES_LOOKBACK_DAYS: Record<BrokeragePerformanceRange, number> = {
 export class MarketstackProvider implements MarketDataProvider {
   readonly id = 'marketstack';
   readonly displayName = 'Marketstack';
-  private readonly yahoo = new YahooFinanceProvider();
+  private readonly yahoo: YahooFinanceProvider;
 
-  constructor(private readonly apiKey: string) {}
+  constructor(
+    private readonly apiKey: string,
+    private readonly requestLimiter?: MarketDataRequestLimiter,
+  ) {
+    this.yahoo = new YahooFinanceProvider(requestLimiter);
+  }
 
   getRequestGroup(symbol: string): string {
     return symbol.startsWith(YAHOO_PREFIX) ? YAHOO_GROUP : MARKETSTACK_GROUP;
@@ -327,6 +333,7 @@ export class MarketstackProvider implements MarketDataProvider {
     timeoutMs: number,
   ): Promise<MarketstackPageResult<T>> {
     try {
+      await this.requestLimiter?.reserve(MARKETSTACK_GROUP);
       const search = new URLSearchParams({
         access_key: this.apiKey,
         ...params,
@@ -360,6 +367,12 @@ export class MarketstackProvider implements MarketDataProvider {
 
       return { ok: true, body };
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === 'MarketDataRequestLimitExceededError'
+      ) {
+        throw error;
+      }
       return { ok: false, status: null, error };
     }
   }

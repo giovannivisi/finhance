@@ -13,6 +13,7 @@ import {
   type MarketDataProvider,
   type MarketDataSeries,
 } from '@prices/market-data-provider';
+import { MarketDataRequestLimitExceededError } from '@prices/market-data-rate-limit.service';
 
 interface CachedPrice {
   price: Prisma.Decimal;
@@ -28,6 +29,7 @@ export type MarketPriceFailureReason =
   | 'AUTHENTICATION'
   | 'NOT_FOUND'
   | 'RATE_LIMITED'
+  | 'REQUEST_LIMITED'
   | 'TIMEOUT'
   | 'UNAVAILABLE';
 
@@ -588,6 +590,19 @@ export class PricesService {
       return { price: decimal, failure: null };
     } catch (error) {
       const providerName = this.provider.getDisplayName(symbol);
+      if (error instanceof MarketDataRequestLimitExceededError) {
+        this.logger.warn(
+          `Market-data request budget reached for ${providerName}; quote request skipped.`,
+        );
+        return {
+          price: null,
+          failure: {
+            provider: providerName,
+            reason: 'REQUEST_LIMITED',
+            status: null,
+          },
+        };
+      }
       this.logger.error(
         `${providerName} price fetch failed for ${symbol}`,
         error as Error,
@@ -672,6 +687,12 @@ export class PricesService {
       this.seriesCache.set(cacheKey, { series: result.data, ts: now });
       return result.data;
     } catch (error) {
+      if (error instanceof MarketDataRequestLimitExceededError) {
+        this.logger.warn(
+          `Market-data request budget reached for ${this.provider.getDisplayName(symbol)}; series request skipped.`,
+        );
+        return this.getStaleSeries(cacheKey);
+      }
       this.logger.error(
         `Series fetch failed for ${symbol} (${range})`,
         error as Error,

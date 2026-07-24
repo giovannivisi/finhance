@@ -34,6 +34,7 @@ function marketResolution(
       | 'AUTHENTICATION'
       | 'NOT_FOUND'
       | 'RATE_LIMITED'
+      | 'REQUEST_LIMITED'
       | 'TIMEOUT'
       | 'UNAVAILABLE';
     status: number | null;

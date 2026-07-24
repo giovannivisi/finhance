@@ -5,6 +5,7 @@ import { EodhdProvider } from '@prices/eodhd.provider';
 import type {
   MarketDataInstrument,
   MarketDataProvider,
+  MarketDataRequestLimiter,
   MarketDataProviderResult,
   MarketDataSeries,
 } from '@prices/market-data-provider';
@@ -26,9 +27,15 @@ export class HybridMarketDataProvider implements MarketDataProvider {
   private readonly eodhd: EodhdProvider;
   private readonly marketstack: MarketstackProvider;
 
-  constructor(input: { eodhdApiToken: string; marketstackApiKey: string }) {
-    this.eodhd = new EodhdProvider(input.eodhdApiToken);
-    this.marketstack = new MarketstackProvider(input.marketstackApiKey);
+  constructor(
+    input: { eodhdApiToken: string; marketstackApiKey: string },
+    requestLimiter?: MarketDataRequestLimiter,
+  ) {
+    this.eodhd = new EodhdProvider(input.eodhdApiToken, requestLimiter);
+    this.marketstack = new MarketstackProvider(
+      input.marketstackApiKey,
+      requestLimiter,
+    );
   }
 
   getRequestGroup(symbol: string): string {

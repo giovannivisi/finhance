@@ -4,6 +4,7 @@ import type { BrokeragePerformanceRange } from '@finhance/shared';
 import type {
   MarketDataInstrument,
   MarketDataProvider,
+  MarketDataRequestLimiter,
   MarketDataProviderResult,
   MarketDataSeries,
   MarketDataSeriesPoint,
@@ -63,6 +64,8 @@ export class YahooFinanceProvider implements MarketDataProvider {
   readonly id = 'yahoo';
   readonly displayName = 'Yahoo Finance';
 
+  constructor(private readonly requestLimiter?: MarketDataRequestLimiter) {}
+
   getRequestGroup(): string {
     return this.id;
   }
@@ -101,6 +104,7 @@ export class YahooFinanceProvider implements MarketDataProvider {
     timeoutMs: number,
   ): Promise<MarketDataProviderResult<number>> {
     try {
+      await this.requestLimiter?.reserve(this.id);
       const response = await fetch(
         `${BASE_QUOTE_URL}${encodeURIComponent(symbol)}`,
         {
@@ -122,6 +126,12 @@ export class YahooFinanceProvider implements MarketDataProvider {
           typeof price === 'number' && Number.isFinite(price) ? price : null,
       };
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === 'MarketDataRequestLimitExceededError'
+      ) {
+        throw error;
+      }
       return { ok: false, status: null, error };
     }
   }
@@ -132,6 +142,7 @@ export class YahooFinanceProvider implements MarketDataProvider {
     timeoutMs: number,
   ): Promise<MarketDataProviderResult<MarketDataSeries>> {
     try {
+      await this.requestLimiter?.reserve(this.id);
       const params = SERIES_RANGE_PARAMS[range];
       const url = `${BASE_QUOTE_URL}${encodeURIComponent(symbol)}?range=${params.range}&interval=${params.interval}`;
       const response = await fetch(url, {
@@ -177,6 +188,12 @@ export class YahooFinanceProvider implements MarketDataProvider {
         },
       };
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === 'MarketDataRequestLimitExceededError'
+      ) {
+        throw error;
+      }
       return { ok: false, status: null, error };
     }
   }

@@ -15,6 +15,8 @@ services:
         value: hosted
       - key: MARKET_DATA_PROVIDER
         value: hybrid
+      - key: MARKET_DATA_REQUEST_LIMIT_PER_MINUTE
+        value: "10"
       - key: EODHD_API_TOKEN
         sync: false
       - key: MARKETSTACK_API_KEY

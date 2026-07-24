@@ -2,6 +2,7 @@ import {
   IsEnum,
   IsNotEmpty,
   MaxLength,
+  Matches,
   IsNumber,
   IsOptional,
   IsString,
@@ -47,6 +48,7 @@ function uppercaseStringValue({ value }: TransformFnParams): unknown {
 
 const ASSET_NAME_MAX_LENGTH = 120;
 const ASSET_TICKER_MAX_LENGTH = 32;
+const MARKET_TICKER_PATTERN = /^[A-Z0-9.^-]+$/;
 const ASSET_EXCHANGE_MAX_LENGTH = 24;
 const ASSET_NOTES_MAX_LENGTH = 2_000;
 
@@ -96,6 +98,7 @@ export class CreateAssetDto implements UpsertAssetRequest {
   @IsString()
   @IsNotEmpty()
   @MaxLength(ASSET_TICKER_MAX_LENGTH)
+  @Matches(MARKET_TICKER_PATTERN)
   @Transform(uppercaseStringValue)
   ticker?: string | null;
 

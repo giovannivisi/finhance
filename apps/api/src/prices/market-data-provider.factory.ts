@@ -1,4 +1,7 @@
-import type { MarketDataProvider } from '@prices/market-data-provider';
+import type {
+  MarketDataProvider,
+  MarketDataRequestLimiter,
+} from '@prices/market-data-provider';
 import { HybridMarketDataProvider } from '@prices/hybrid-market-data.provider';
 import { YahooFinanceProvider } from '@prices/yahoo-finance.provider';
 
@@ -20,6 +23,7 @@ export function resolveMarketDataProviderName(
 
 export function createMarketDataProvider(
   env: NodeJS.ProcessEnv = process.env,
+  requestLimiter?: MarketDataRequestLimiter,
 ): MarketDataProvider {
   switch (resolveMarketDataProviderName(env)) {
     case 'hybrid': {
@@ -30,12 +34,15 @@ export function createMarketDataProvider(
           'EODHD_API_TOKEN and MARKETSTACK_API_KEY are required when MARKET_DATA_PROVIDER=hybrid.',
         );
       }
-      return new HybridMarketDataProvider({
-        eodhdApiToken,
-        marketstackApiKey,
-      });
+      return new HybridMarketDataProvider(
+        {
+          eodhdApiToken,
+          marketstackApiKey,
+        },
+        requestLimiter,
+      );
     }
     case 'yahoo':
-      return new YahooFinanceProvider();
+      return new YahooFinanceProvider(requestLimiter);
   }
 }
