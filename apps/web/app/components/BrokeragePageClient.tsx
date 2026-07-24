@@ -521,15 +521,11 @@ export default function BrokeragePageClient({
         : "Price snapshot is current.";
   const runAutoRefresh = useEffectEvent(
     (startedSnapshotKey: string, startedLastRefreshAt: string | null) => {
-      void handleRefreshPrices().then((result) => {
-        if (result.ok) {
-          autoRefreshAttemptedSnapshotRef.current = getPriceRefreshSnapshotKey(
-            result.refreshedAt ?? startedLastRefreshAt,
-          );
-          return;
-        }
-
-        if (autoRefreshAttemptedSnapshotRef.current === startedSnapshotKey) {
+      void handleRefreshPrices(startedLastRefreshAt).then((result) => {
+        if (
+          !result.ok &&
+          autoRefreshAttemptedSnapshotRef.current === startedSnapshotKey
+        ) {
           autoRefreshAttemptedSnapshotRef.current = null;
         }
       });
@@ -591,7 +587,9 @@ export default function BrokeragePageClient({
     workspace.lastRefreshAt,
   ]);
 
-  async function handleRefreshPrices(): Promise<
+  async function handleRefreshPrices(
+    previousRefreshAt: string | null = null,
+  ): Promise<
     { ok: true; refreshedAt: string | null } | { ok: false }
   > {
     setRefreshError(null);
@@ -613,6 +611,9 @@ export default function BrokeragePageClient({
       }
 
       setRefreshNotice(result.warning);
+      autoRefreshAttemptedSnapshotRef.current = getPriceRefreshSnapshotKey(
+        result.refreshedAt ?? previousRefreshAt,
+      );
       router.refresh();
       return { ok: true, refreshedAt: result.refreshedAt };
     } finally {

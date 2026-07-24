@@ -4,10 +4,10 @@ packages:
 
 overrides:
   "@babel/core": 7.29.6
-  "@nestjs/common": 11.1.18
-  "@nestjs/core": 11.1.18
-  "@nestjs/platform-express": 11.1.18
-  "@nestjs/testing": 11.1.18
+  "@nestjs/common": 11.1.28
+  "@nestjs/core": 11.1.28
+  "@nestjs/platform-express": 11.1.28
+  "@nestjs/testing": 11.1.28
   body-parser@2.2.0: 2.2.2
   brace-expansion@1.1.12: 1.1.16
   brace-expansion@2.1.0: 2.1.2

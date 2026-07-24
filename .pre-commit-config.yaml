@@ -22,10 +22,10 @@ repos:
 
       - id: prisma-format
         name: prisma format
-        entry: pnpm --filter api exec prisma format --schema prisma/schema.prisma
+        entry: pnpm --filter @finhance/db exec prisma format --schema prisma/schema.prisma
         language: system
         pass_filenames: false
-        files: '^apps/api/prisma/schema\.prisma$'
+        files: '^packages/db/prisma/schema\.prisma$'
 
       - id: api-lint
         name: api lint

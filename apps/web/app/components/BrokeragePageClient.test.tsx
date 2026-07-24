@@ -1,11 +1,12 @@
 import React from "react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrokerageWorkspaceResponse } from "@finhance/shared";
 import BrokeragePageClient from "@components/BrokeragePageClient";
 import { api, apiMutation } from "@lib/api";
 import { requestDashboardRefresh } from "@lib/dashboard-refresh";
+import type { DashboardRefreshResult } from "@lib/dashboard-refresh";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -789,29 +790,46 @@ describe("BrokeragePageClient", () => {
       hasStaleFx: false,
       hasMissingFx: false,
     };
-    vi.mocked(requestDashboardRefresh).mockResolvedValue({
-      ok: true,
-      refreshedAt: "2026-05-19T10:01:00.000Z",
-      warning: null,
-    });
+    let resolveRefresh: (result: DashboardRefreshResult) => void = () => {};
+    vi.mocked(requestDashboardRefresh).mockImplementation(
+      () =>
+        new Promise<DashboardRefreshResult>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
 
     const { rerender } = render(
       <BrokeragePageClient workspace={workspace} categories={categories} />,
     );
 
     await waitFor(() => {
-      expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Refreshing latest prices...")).toBeTruthy();
     });
 
-    rerender(
-      <BrokeragePageClient
-        workspace={{
-          ...workspace,
-          lastRefreshAt: "2026-05-19T10:01:00.000Z",
-        }}
-        categories={categories}
-      />,
-    );
+    await act(async () => {
+      resolveRefresh({
+        ok: true,
+        refreshedAt: "2026-05-19T10:01:00.000Z",
+        warning: null,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Refreshing latest prices...")).toBeNull();
+    });
+    expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rerender(
+        <BrokeragePageClient
+          workspace={{
+            ...workspace,
+            lastRefreshAt: "2026-05-19T10:01:00.000Z",
+          }}
+          categories={categories}
+        />,
+      );
+    });
 
     expect(requestDashboardRefresh).toHaveBeenCalledTimes(1);
   });

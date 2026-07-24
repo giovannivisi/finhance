@@ -159,25 +159,55 @@ export class TransactionsService {
     filters: TransactionFilters,
   ): Promise<LogicalTransactionEntry[]> {
     const normalizedFilters = this.normalizeTransactionFilters(filters);
-    const rows = await this.findRows(ownerId, normalizedFilters);
-    const entries = this.toLogicalEntries(rows)
-      .filter((entry) => this.matchesFilters(entry, normalizedFilters))
-      .sort((left, right) => this.compareEntriesDesc(left, right));
+    const offset = normalizedFilters.offset ?? DEFAULT_TRANSACTION_OFFSET;
+    const limit = normalizedFilters.limit ?? DEFAULT_TRANSACTION_LIMIT;
+    const requestedEntryCount = offset + limit;
+    const batchSize = Math.min(
+      MAX_TRANSACTION_LIMIT,
+      Math.max(50, requestedEntryCount * 2),
+    );
+    const entries: LogicalTransactionEntry[] = [];
+    const seenEntryKeys = new Set<string>();
+    let rawOffset = 0;
 
-    if (
-      normalizedFilters.limit === undefined &&
-      normalizedFilters.offset === undefined
-    ) {
-      return entries;
+    while (entries.length < requestedEntryCount) {
+      const rows = await this.findRows(ownerId, normalizedFilters, {
+        skip: rawOffset,
+        take: batchSize,
+      });
+
+      if (rows.length === 0) {
+        break;
+      }
+
+      rawOffset += rows.length;
+      const completeRows = await this.hydrateLogicalEntryRows(ownerId, rows);
+      const batchEntries = this.toLogicalEntries(completeRows)
+        .filter((entry) => this.matchesFilters(entry, normalizedFilters))
+        .sort((left, right) => this.compareEntriesDesc(left, right));
+
+      for (const entry of batchEntries) {
+        const entryKey = `${entry.entryType}:${this.getEntryId(entry)}`;
+        if (seenEntryKeys.has(entryKey)) {
+          continue;
+        }
+
+        seenEntryKeys.add(entryKey);
+        entries.push(entry);
+
+        if (entries.length === requestedEntryCount) {
+          break;
+        }
+      }
+
+      if (rows.length < batchSize) {
+        break;
+      }
     }
 
-    const offset = normalizedFilters.offset ?? DEFAULT_TRANSACTION_OFFSET;
-    const limit = normalizedFilters.limit;
-
-    return entries.slice(
-      offset,
-      limit === undefined ? undefined : offset + limit,
-    );
+    return entries
+      .sort((left, right) => this.compareEntriesDesc(left, right))
+      .slice(offset, offset + limit);
   }
 
   async findRecentByAccount(
@@ -1775,10 +1805,12 @@ export class TransactionsService {
   private async findRows(
     ownerId: string,
     filters: TransactionFilters,
+    pagination: { skip: number; take: number },
   ): Promise<TransactionRecord[]> {
     return this.prisma.transaction.findMany({
       where: {
         userId: ownerId,
+        ...(filters.accountId ? { accountId: filters.accountId } : {}),
         ...(filters.kind ? { kind: filters.kind } : {}),
         ...this.toCategoryWhere(filters),
         ...this.toPostedAtWhere(filters.from, filters.to),
@@ -1791,7 +1823,65 @@ export class TransactionsService {
           },
         },
       },
+      orderBy: [{ postedAt: 'desc' }, { updatedAt: 'desc' }, { id: 'desc' }],
+      ...pagination,
     });
+  }
+
+  private async hydrateLogicalEntryRows(
+    ownerId: string,
+    rows: TransactionRecord[],
+  ): Promise<TransactionRecord[]> {
+    const transferGroupIds = [
+      ...new Set(
+        rows
+          .filter(
+            (row) =>
+              row.kind === TransactionKind.TRANSFER &&
+              row.transferGroupId !== null,
+          )
+          .map((row) => row.transferGroupId as string),
+      ),
+    ];
+    const splitGroupIds = [
+      ...new Set(
+        rows
+          .filter((row) => row.splitGroupId !== null)
+          .map((row) => row.splitGroupId as string),
+      ),
+    ];
+
+    if (transferGroupIds.length === 0 && splitGroupIds.length === 0) {
+      return rows;
+    }
+
+    const relatedRows = await this.prisma.transaction.findMany({
+      where: {
+        userId: ownerId,
+        OR: [
+          ...(transferGroupIds.length > 0
+            ? [{ transferGroupId: { in: transferGroupIds } }]
+            : []),
+          ...(splitGroupIds.length > 0
+            ? [{ splitGroupId: { in: splitGroupIds } }]
+            : []),
+        ],
+      },
+      include: {
+        account: true,
+        category: {
+          include: {
+            parentCategory: true,
+          },
+        },
+      },
+    });
+
+    return [
+      ...new Map(
+        [...rows, ...relatedRows].map((row) => [row.id, row]),
+      ).values(),
+    ];
   }
 
   private async findTransferEntry(
@@ -2060,12 +2150,10 @@ export class TransactionsService {
       ...filters,
       from: range.from,
       to: range.to,
-      limit: paginationRequested
-        ? this.normalizeLimit(filters.limit)
-        : undefined,
+      limit: this.normalizeLimit(filters.limit),
       offset: paginationRequested
         ? this.normalizeOffset(filters.offset)
-        : undefined,
+        : DEFAULT_TRANSACTION_OFFSET,
     };
   }
 

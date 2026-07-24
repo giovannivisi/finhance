@@ -21,7 +21,12 @@
         "AUTH_API_JWT_KID",
         "AUTH_API_JWT_PRIVATE_KEY",
         "NEXT_PUBLIC_API_URL"
-      ],
+      ]
+    },
+    "api#build": {
+      "outputs": ["dist/**"]
+    },
+    "web#build": {
       "outputs": [".next/**", "!.next/cache/**"]
     },
     "lint": {

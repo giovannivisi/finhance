@@ -1126,7 +1126,7 @@ describe('TransactionsService', () => {
     });
   });
 
-  it('returns the full history when pagination is not requested', async () => {
+  it('bounds transaction history when pagination is not requested', async () => {
     prisma.transaction.findMany.mockResolvedValue(
       Array.from({ length: 205 }, (_, index) =>
         createTransactionRow({
@@ -1137,7 +1137,7 @@ describe('TransactionsService', () => {
 
     const result = await service.findAll(OWNER_ID, {});
 
-    expect(result).toHaveLength(205);
+    expect(result).toHaveLength(200);
     expect(
       nthCallArg<{ where: Record<string, unknown> }>(
         prisma.transaction.findMany,
@@ -1145,6 +1145,15 @@ describe('TransactionsService', () => {
       ).where,
     ).toEqual({
       userId: OWNER_ID,
+    });
+    expect(
+      nthCallArg<{ skip: number; take: number }>(
+        prisma.transaction.findMany,
+        0,
+      ),
+    ).toMatchObject({
+      skip: 0,
+      take: 400,
     });
   });
 
@@ -1368,6 +1377,7 @@ describe('TransactionsService', () => {
     const result = await service.findAll(OWNER_ID, {
       from: '2026-04-01',
       to: '2026-04-30',
+      accountId: 'account-1',
       kind: TransactionKind.INCOME,
       categoryId: 'category-1',
       limit: 1,
@@ -1388,8 +1398,18 @@ describe('TransactionsService', () => {
       ).where,
     ).toMatchObject({
       userId: OWNER_ID,
+      accountId: 'account-1',
       kind: TransactionKind.INCOME,
       categoryId: 'category-1',
+    });
+    expect(
+      nthCallArg<{ skip: number; take: number }>(
+        prisma.transaction.findMany,
+        0,
+      ),
+    ).toMatchObject({
+      skip: 0,
+      take: 50,
     });
   });
 
