@@ -2,7 +2,10 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # Unified diffs use a single leading space to represent unchanged blank
+      # lines, which must be preserved for pnpm dependency patches to apply.
       - id: trailing-whitespace
+        exclude: '^patches/.*\.patch$'
       - id: end-of-file-fixer
       - id: check-added-large-files
         args: ["--maxkb=5000"]

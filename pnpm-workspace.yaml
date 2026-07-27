@@ -11,7 +11,7 @@ overrides:
   body-parser@2.2.0: 2.2.2
   brace-expansion@1.1.12: 1.1.16
   brace-expansion@2.1.0: 2.1.2
-  brace-expansion@5.0.5: 5.0.7
+  brace-expansion@5.0.5: 5.0.8
   ajv@8.17.1: 8.18.0
   defu@6.1.4: 6.1.7
   diff: 4.0.4
@@ -27,7 +27,7 @@ overrides:
   path-to-regexp@8.3.0: 8.4.0
   picomatch@2.3.1: 2.3.2
   picomatch: 4.0.4
-  postcss: 8.5.10
+  postcss: 8.5.18
   qs@6.14.0: 6.15.2
   qs@6.15.1: 6.15.2
   serialize-javascript: 7.0.5
@@ -46,3 +46,14 @@ allowBuilds:
   prisma: true
   sharp: true
   unrs-resolver: true
+
+patchedDependencies:
+  brace-expansion@1.1.16: patches/brace-expansion@1.1.16.patch
+  brace-expansion@2.1.2: patches/brace-expansion@2.1.2.patch
+
+# pnpm's audit report identifies the installed package version, not its local
+# patch hash. The patched dependencies above backport this advisory's upstream
+# bounded-expansion fix, so only this otherwise false-positive report is ignored.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-mh99-v99m-4gvg
