@@ -81,9 +81,13 @@ export default function AnalyticsTrendChart({
             }
           />
           <Tooltip
-            formatter={(value: number, name: string) => [
-              formatSensitiveCurrency(value, currency, shouldHideMoney),
-              name,
+            formatter={(value, name) => [
+              formatSensitiveCurrency(
+                typeof value === "number" ? value : undefined,
+                currency,
+                shouldHideMoney,
+              ),
+              typeof name === "number" || typeof name === "string" ? name : "",
             ]}
             contentStyle={{
               borderRadius: "var(--radius-sm)",

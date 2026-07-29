@@ -57,8 +57,12 @@ export default function NetWorthHistoryChart({
             width={110}
           />
           <Tooltip
-            formatter={(value: number) =>
-              formatSensitiveCurrency(value, reportingCurrency, shouldHideMoney)
+            formatter={(value) =>
+              formatSensitiveCurrency(
+                typeof value === "number" ? value : undefined,
+                reportingCurrency,
+                shouldHideMoney,
+              )
             }
             labelFormatter={(label) => formatSnapshotDate(String(label))}
             contentStyle={{

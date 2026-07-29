@@ -168,8 +168,12 @@ export default function AnalyticsCategoryBarChart({
             interval={0}
           />
           <Tooltip
-            formatter={(value: number) =>
-              formatSensitiveCurrency(value, currency, shouldHideMoney)
+            formatter={(value) =>
+              formatSensitiveCurrency(
+                typeof value === "number" ? value : undefined,
+                currency,
+                shouldHideMoney,
+              )
             }
             contentStyle={{
               borderRadius: "var(--radius-sm)",
