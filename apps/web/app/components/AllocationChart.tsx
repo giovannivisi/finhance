@@ -67,9 +67,9 @@ export default function AllocationChart({
 
           {!isSingle ? (
             <Tooltip
-              formatter={(value: number) =>
+              formatter={(value) =>
                 formatSensitiveCurrency(
-                  value,
+                  typeof value === "number" ? value : undefined,
                   currency,
                   shouldHideMoney,
                   "Unavailable",
