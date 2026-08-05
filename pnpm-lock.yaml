@@ -85,8 +85,8 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
       groq-sdk:
-        specifier: ^1.4.1
-        version: 1.4.1
+        specifier: ^1.5.0
+        version: 1.5.0
       helmet:
         specifier: ^8.1.0
         version: 8.1.0
@@ -5257,8 +5257,8 @@ packages:
   graphmatch@1.1.1:
     resolution: {integrity: sha512-5ykVn/EXM1hF0XCaWh05VbYvEiOL2lY1kBxZtaYsyvjp7cmWOU1XsAdfQBwClraEofXDT197lFbXOEVMHpvQOg==}
 
-  groq-sdk@1.4.1:
-    resolution: {integrity: sha512-M/SmQdHy+nI4ZWyDgXK57p+jQHi9ojjzJVv3mlkDAL/vvxduUYoyAzib70dNvxsWmwsyZTSERMrXgaXR3B3KUA==}
+  groq-sdk@1.5.0:
+    resolution: {integrity: sha512-aa5yaMVd8kehBacU3Pp7roObOuPksZNau+nPW+GDDB7OV/8jybVzeeOv54lZj8owNNIc3a7Tu2eYI7/kIwtMNw==}
     hasBin: true
 
   handlebars@4.7.9:
@@ -14091,7 +14091,7 @@ snapshots:
 
   graphmatch@1.1.1: {}
 
-  groq-sdk@1.4.1: {}
+  groq-sdk@1.5.0: {}
 
   handlebars@4.7.9:
     dependencies:
