@@ -2,7 +2,10 @@ import React from "react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BrokerageWorkspaceResponse } from "@finhance/shared";
+import type {
+  BrokerageWorkspaceResponse,
+  InvestmentPlanResponse,
+} from "@finhance/shared";
 import BrokeragePageClient from "@components/BrokeragePageClient";
 import { api, apiMutation } from "@lib/api";
 import { requestDashboardRefresh } from "@lib/dashboard-refresh";
@@ -306,6 +309,30 @@ function buildWorkspaceWithoutPositions(): BrokerageWorkspaceResponse {
   };
 }
 
+function buildDueInvestmentPlan(): InvestmentPlanResponse {
+  return {
+    id: "plan-1",
+    account: { id: "broker-1", name: "IBKR", currency: "EUR" },
+    name: "VWCE monthly plan",
+    securityName: "Vanguard FTSE All-World",
+    securityKind: "STOCK",
+    securityTicker: "VWCE",
+    securityExchange: ".DE",
+    currency: "EUR",
+    contributionAmount: 250,
+    estimatedFeeAmount: 1,
+    cadence: "MONTHLY",
+    dayOfMonth: 1,
+    secondDayOfMonth: null,
+    nextScheduledDate: "2026-06-01",
+    isActive: true,
+    isDue: true,
+    notes: "Keep investing.",
+    createdAt: "2026-05-01T10:00:00.000Z",
+    updatedAt: "2026-05-01T10:00:00.000Z",
+  };
+}
+
 const categories = [
   {
     id: "income-dividend",
@@ -508,6 +535,95 @@ describe("BrokeragePageClient", () => {
     });
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
+
+  it("records a due plan through its confirmed-buy endpoint", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiMutation).mockResolvedValue(undefined);
+
+    render(
+      <BrokeragePageClient
+        workspace={buildWorkspace()}
+        categories={categories}
+        plans={[buildDueInvestmentPlan()]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Record buy" }));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Record VWCE monthly plan",
+    });
+    expect(within(dialog).getByLabelText("Name")).toBeDisabled();
+    expect(within(dialog).getByLabelText("Ticker")).toHaveValue("VWCE");
+
+    await user.type(within(dialog).getByLabelText("Quantity"), "2");
+    await user.type(within(dialog).getByLabelText("Price per unit"), "100");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Record buy" }),
+    );
+
+    await waitFor(() => expect(apiMutation).toHaveBeenCalledTimes(1));
+    const request = vi.mocked(apiMutation).mock.calls[0]!;
+    expect(request[0]).toBe("/investment-plans/plan-1/record-buy");
+    expect(request[1]?.method).toBe("POST");
+    expect(JSON.parse(request[1]?.body as string)).toMatchObject({
+      quantity: 2,
+      unitPrice: 100,
+      feeAmount: 1,
+      notes: "Keep investing.",
+    });
+    expect(JSON.parse(request[1]?.body as string)).not.toHaveProperty("name");
+  });
+
+  it("opens a due plan from the record-plan deep link", async () => {
+    render(
+      <BrokeragePageClient
+        workspace={buildWorkspace()}
+        categories={categories}
+        plans={[buildDueInvestmentPlan()]}
+        initialRecordPlanId="plan-1"
+      />,
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Record VWCE monthly plan",
+    });
+    expect(within(dialog).getByLabelText("Name")).toBeDisabled();
+    expect(within(dialog).getByLabelText("Ticker")).toHaveValue("VWCE");
+  });
+
+  it.each([
+    [
+      "is not due",
+      { ...buildDueInvestmentPlan(), isDue: false },
+      "plan-1",
+    ],
+    [
+      "belongs to a different brokerage account",
+      {
+        ...buildDueInvestmentPlan(),
+        id: "plan-2",
+        account: { id: "broker-2", name: "Degiro", currency: "EUR" },
+      },
+      "plan-2",
+    ],
+  ])(
+    "does not open the record-plan deep link when the plan %s",
+    (_, plan, initialRecordPlanId) => {
+      render(
+        <BrokeragePageClient
+          workspace={buildWorkspace()}
+          categories={categories}
+          plans={[plan]}
+          initialRecordPlanId={initialRecordPlanId}
+        />,
+      );
+
+      expect(
+        screen.queryByRole("dialog", { name: `Record ${plan.name}` }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("renders the operations menu with Cash activity and keeps Sell disabled when no holdings exist", async () => {
     const user = userEvent.setup();

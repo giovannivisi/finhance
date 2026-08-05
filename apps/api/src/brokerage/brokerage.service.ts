@@ -634,100 +634,108 @@ export class BrokerageService {
     input: CreateBrokerageBuyRequest,
   ): Promise<BrokerageOperationResponse> {
     return this.prisma.$transaction(
-      async (tx) => {
-        const account = await this.getRequiredBrokerAccount(
-          ownerId,
-          accountId,
-          tx,
-        );
-        const postedAt = this.parsePostedAt(input.postedAt);
-        this.accountsService.assertPostedAtAllowed(account, postedAt);
-        const quantity = this.toPositiveDecimal(
-          input.quantity,
-          'Quantity is required.',
-        );
-        const unitPrice = this.toPositiveDecimal(
-          input.unitPrice,
-          'Unit price is required.',
-        );
-        const feeAmount = this.toOptionalNonNegativeDecimal(input.feeAmount);
-        const grossAmount = quantity.mul(unitPrice);
-        const cashAmount = grossAmount.add(feeAmount);
-        const signedCashAmount = ZERO.sub(cashAmount);
-        const kind = this.requireMarketKind(input.kind);
-        const requestedCurrency = this.normalizeCurrency(input.currency);
-
-        const existingAsset = input.assetId
-          ? await this.getRequiredBrokerageAsset(
-              ownerId,
-              accountId,
-              input.assetId,
-              tx,
-            )
-          : await this.findExistingHoldingByIdentity(
-              ownerId,
-              accountId,
-              {
-                kind,
-                ticker: input.ticker ?? null,
-                exchange: input.exchange ?? null,
-              },
-              tx,
-            );
-        const operationCurrency = existingAsset?.currency ?? requestedCurrency;
-
-        await this.transactionsService.applyAccountCashMovement(
-          ownerId,
-          account.id,
-          cashAmount,
-          TransactionDirection.OUTFLOW,
-          tx,
-        );
-
-        let asset: Asset;
-        if (existingAsset) {
-          asset = await this.applyBuyToExistingAsset(
-            existingAsset,
-            quantity,
-            grossAmount,
-            feeAmount,
-            tx,
-          );
-        } else {
-          asset = await this.createNewHolding(
-            ownerId,
-            account,
-            input,
-            quantity,
-            grossAmount,
-            feeAmount,
-            tx,
-          );
-        }
-
-        const operation = await tx.brokerageOperation.create({
-          data: {
-            userId: ownerId,
-            accountId: account.id,
-            assetId: asset.id,
-            kind: BrokerageOperationKind.BUY,
-            postedAt,
-            currency: operationCurrency,
-            quantity,
-            unitPrice,
-            grossAmount,
-            feeAmount,
-            cashAmount: signedCashAmount,
-            realisedGainLoss: null,
-            notes: this.optionalText(input.notes),
-            mirroredTransactionId: null,
-          },
-        });
-
-        return this.toBrokerageOperationResponse(operation);
-      },
+      (tx) => this.createBuyInTransaction(ownerId, accountId, input, tx),
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+  }
+
+  /**
+   * Creates a confirmed buy as part of a wider financial transaction.
+   * Investment plans use this so advancing a plan can never be separated from
+   * the brokerage operation it confirms.
+   */
+  async createBuyInTransaction(
+    ownerId: string,
+    accountId: string,
+    input: CreateBrokerageBuyRequest,
+    tx: BrokerageWriteClient,
+  ): Promise<BrokerageOperationResponse> {
+    const account = await this.getRequiredBrokerAccount(ownerId, accountId, tx);
+    const postedAt = this.parsePostedAt(input.postedAt);
+    this.accountsService.assertPostedAtAllowed(account, postedAt);
+    const quantity = this.toPositiveDecimal(
+      input.quantity,
+      'Quantity is required.',
+    );
+    const unitPrice = this.toPositiveDecimal(
+      input.unitPrice,
+      'Unit price is required.',
+    );
+    const feeAmount = this.toOptionalNonNegativeDecimal(input.feeAmount);
+    const grossAmount = quantity.mul(unitPrice);
+    const cashAmount = grossAmount.add(feeAmount);
+    const signedCashAmount = ZERO.sub(cashAmount);
+    const kind = this.requireMarketKind(input.kind);
+    const requestedCurrency = this.normalizeCurrency(input.currency);
+
+    const existingAsset = input.assetId
+      ? await this.getRequiredBrokerageAsset(
+          ownerId,
+          accountId,
+          input.assetId,
+          tx,
+        )
+      : await this.findExistingHoldingByIdentity(
+          ownerId,
+          accountId,
+          {
+            kind,
+            ticker: input.ticker ?? null,
+            exchange: input.exchange ?? null,
+          },
+          tx,
+        );
+    const operationCurrency = existingAsset?.currency ?? requestedCurrency;
+
+    await this.transactionsService.applyAccountCashMovement(
+      ownerId,
+      account.id,
+      cashAmount,
+      TransactionDirection.OUTFLOW,
+      tx,
+    );
+
+    let asset: Asset;
+    if (existingAsset) {
+      asset = await this.applyBuyToExistingAsset(
+        existingAsset,
+        quantity,
+        grossAmount,
+        feeAmount,
+        tx,
+      );
+    } else {
+      asset = await this.createNewHolding(
+        ownerId,
+        account,
+        input,
+        quantity,
+        grossAmount,
+        feeAmount,
+        tx,
+      );
+    }
+
+    const operation = await tx.brokerageOperation.create({
+      data: {
+        userId: ownerId,
+        accountId: account.id,
+        assetId: asset.id,
+        kind: BrokerageOperationKind.BUY,
+        postedAt,
+        currency: operationCurrency,
+        quantity,
+        unitPrice,
+        grossAmount,
+        feeAmount,
+        cashAmount: signedCashAmount,
+        realisedGainLoss: null,
+        notes: this.optionalText(input.notes),
+        mirroredTransactionId: null,
+      },
+    });
+
+    return this.toBrokerageOperationResponse(operation);
   }
 
   async createSell(

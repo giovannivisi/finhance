@@ -3523,6 +3523,61 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   gap: 18px;
 }
 
+.investment-plans-section {
+  gap: 20px;
+}
+
+.investment-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.investment-plan-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px 20px;
+}
+
+.investment-plan-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.investment-plan-title-row + p {
+  margin: 8px 0 0;
+}
+
+.investment-plan-amount {
+  text-align: right;
+}
+
+.investment-plan-amount .detail-metric-label,
+.investment-plan-amount .detail-metric-value {
+  margin: 0;
+}
+
+.investment-plan-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.investment-plan-meta > span + span::before {
+  content: "·";
+  margin-right: 16px;
+  color: var(--text-tertiary);
+}
+
+.investment-plan-actions {
+  justify-content: flex-start;
+}
+
 .brokerage-position-head,
 .brokerage-activity-row {
   display: grid;
@@ -4010,6 +4065,14 @@ html[data-theme="light"] .brokerage-account-switcher::after {
   .brokerage-position-head,
   .brokerage-activity-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .investment-plan-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .investment-plan-amount {
+    text-align: left;
   }
 
   .brokerage-target-row {
