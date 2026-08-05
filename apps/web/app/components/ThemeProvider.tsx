@@ -34,7 +34,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       "data-theme",
     ) as Theme;
     if (currentTheme) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(currentTheme);
     }
 
