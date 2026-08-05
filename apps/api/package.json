@@ -85,6 +85,7 @@
       "^@budgets/(.*)$": "<rootDir>/budgets/$1",
       "^@recurring/(.*)$": "<rootDir>/recurring/$1",
       "^@imports/(.*)$": "<rootDir>/imports/$1",
+      "^@investment-plans/(.*)$": "<rootDir>/investment-plans/$1",
       "^@snapshots/(.*)$": "<rootDir>/snapshots/$1",
       "^@transactions/(.*)$": "<rootDir>/transactions/$1",
       "^@prices/(.*)$": "<rootDir>/prices/$1",

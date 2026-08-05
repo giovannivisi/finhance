@@ -11,6 +11,7 @@ import { RecurringModule } from '@recurring/recurring.module';
 import { ImportsModule } from '@imports/imports.module';
 import { DashboardModule } from '@/dashboard/dashboard.module';
 import { BrokerageModule } from '@brokerage/brokerage.module';
+import { InvestmentPlansModule } from '@investment-plans/investment-plans.module';
 import { SetupModule } from '@/setup/setup.module';
 import { SnapshotsModule } from '@snapshots/snapshots.module';
 import { TransactionsModule } from '@transactions/transactions.module';
@@ -38,6 +39,7 @@ import { AiModule } from '@/ai/ai.module';
     ImportsModule,
     DashboardModule,
     BrokerageModule,
+    InvestmentPlansModule,
     SetupModule,
     SnapshotsModule,
     TransactionsModule,

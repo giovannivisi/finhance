@@ -7,6 +7,7 @@ export * from "#currencies";
 export * from "#exchanges";
 export * from "#expense-validation";
 export * from "#imports";
+export * from "#investment-plans";
 export * from "#recurring";
 export * from "#setup";
 export * from "#snapshots";

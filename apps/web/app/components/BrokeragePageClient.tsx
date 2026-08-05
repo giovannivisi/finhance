@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import BrokeragePerformanceChart from "@components/BrokeragePerformanceChart";
+import InvestmentPlansSection from "@components/InvestmentPlansSection";
 import Modal from "@components/Modal";
 import MoneyValue from "@components/MoneyValue";
 import OverflowMenu from "@components/OverflowMenu";
@@ -35,6 +36,7 @@ import type {
   BrokeragePositionResponse,
   BrokerageWorkspaceResponse,
   CategoryResponse,
+  InvestmentPlanResponse,
   LiveAssetValuationResponse,
   PortfolioAllocationSnapshotItemResponse,
 } from "@finhance/shared";
@@ -208,6 +210,24 @@ function createEmptyBuyForm(
   };
 }
 
+function createInvestmentPlanBuyForm(
+  plan: InvestmentPlanResponse,
+  workspace: BrokerageWorkspaceResponse,
+  showTransactionTimes: boolean,
+): BuyFormState {
+  return {
+    ...createEmptyBuyForm(workspace, showTransactionTimes),
+    name: plan.securityName,
+    kind: plan.securityKind as BuyFormState["kind"],
+    ticker: plan.securityTicker,
+    exchange: plan.securityExchange ?? "",
+    currency: plan.currency,
+    feeAmount:
+      plan.estimatedFeeAmount === null ? "" : String(plan.estimatedFeeAmount),
+    notes: plan.notes ?? "",
+  };
+}
+
 function createEmptySellForm(
   positions: BrokeragePositionResponse[],
   showTransactionTimes: boolean,
@@ -314,21 +334,28 @@ function buildBrokerageActivityGroups(items: BrokerageActivityItemResponse[]) {
 export default function BrokeragePageClient({
   workspace,
   categories,
+  plans = [],
+  initialRecordPlanId = null,
   showTransactionTimes = true,
 }: {
   workspace: BrokerageWorkspaceResponse;
   categories: CategoryResponse[];
+  plans?: InvestmentPlanResponse[];
+  initialRecordPlanId?: string | null;
   showTransactionTimes?: boolean;
 }) {
   const router = useRouter();
   const { hideMoney, isHydrated } = useAppPreferences();
   const shouldHideMoney = !isHydrated || hideMoney;
   const autoRefreshAttemptedSnapshotRef = useRef<string | null>(null);
+  const handledInitialRecordPlanIdRef = useRef<string | null>(null);
   const [openModal, setOpenModal] = useState<OperationModalKind>(null);
   const [targetTab, setTargetTab] = useState<TargetTab>("assetClasses");
   const [buyForm, setBuyForm] = useState<BuyFormState>(() =>
     createEmptyBuyForm(workspace, showTransactionTimes),
   );
+  const [activeInvestmentPlan, setActiveInvestmentPlan] =
+    useState<InvestmentPlanResponse | null>(null);
   const [sellForm, setSellForm] = useState<SellFormState>(() =>
     createEmptySellForm(workspace.positions, showTransactionTimes),
   );
@@ -553,6 +580,40 @@ export default function BrokeragePageClient({
   }, [buyForm.kind]);
 
   useEffect(() => {
+    if (
+      !initialRecordPlanId ||
+      handledInitialRecordPlanIdRef.current === initialRecordPlanId
+    ) {
+      return;
+    }
+
+    const plan = plans.find(
+      (candidate) => candidate.id === initialRecordPlanId,
+    );
+    if (
+      !plan ||
+      !plan.isDue ||
+      plan.account.id !== workspace.selectedBroker.account.id
+    ) {
+      return;
+    }
+
+    handledInitialRecordPlanIdRef.current = initialRecordPlanId;
+    setFormError(null);
+    setActiveInvestmentPlan(plan);
+    setBuyForm(
+      createInvestmentPlanBuyForm(plan, workspace, showTransactionTimes),
+    );
+    setOpenModal("BUY");
+  }, [
+    initialRecordPlanId,
+    plans,
+    showTransactionTimes,
+    workspace,
+    workspace.selectedBroker.account.id,
+  ]);
+
+  useEffect(() => {
     for (const broker of workspace.brokers) {
       if (broker.account.id === brokerageAccountId) {
         continue;
@@ -623,6 +684,7 @@ export default function BrokeragePageClient({
 
   function resetOperationState(nextModal: OperationModalKind) {
     setFormError(null);
+    setActiveInvestmentPlan(null);
     if (nextModal === "BUY") {
       setBuyForm(createEmptyBuyForm(workspace, showTransactionTimes));
     }
@@ -650,6 +712,28 @@ export default function BrokeragePageClient({
     setOpenModal(nextModal);
   }
 
+  function openInvestmentPlanBuy(plan: InvestmentPlanResponse) {
+    if (plan.account.id !== brokerageAccountId) {
+      router.push(
+        `/brokerage/${plan.account.id}?recordPlan=${encodeURIComponent(plan.id)}`,
+      );
+      return;
+    }
+
+    setFormError(null);
+    setActiveInvestmentPlan(plan);
+    setBuyForm(
+      createInvestmentPlanBuyForm(plan, workspace, showTransactionTimes),
+    );
+    setOpenModal("BUY");
+  }
+
+  function closeBuyModal() {
+    setOpenModal(null);
+    setActiveInvestmentPlan(null);
+    setFormError(null);
+  }
+
   function clearActivityFilters() {
     setActivityFilters({
       month: "",
@@ -673,7 +757,11 @@ export default function BrokeragePageClient({
       return;
     }
 
-    if (!buyForm.assetId && (!buyForm.name.trim() || !buyForm.ticker.trim())) {
+    if (
+      !activeInvestmentPlan &&
+      !buyForm.assetId &&
+      (!buyForm.name.trim() || !buyForm.ticker.trim())
+    ) {
       setFormError("New holdings require a name and ticker.");
       return;
     }
@@ -691,23 +779,38 @@ export default function BrokeragePageClient({
     setFormError(null);
 
     try {
-      await apiMutation(`/brokerage/${brokerageAccountId}/buy`, {
-        method: "POST",
-        body: JSON.stringify({
-          assetId: buyForm.assetId || null,
-          name: buyForm.assetId ? null : buyForm.name,
-          kind: buyForm.kind,
-          ticker: buyForm.assetId ? null : buyForm.ticker,
-          exchange: buyForm.assetId ? null : buyForm.exchange || null,
-          currency: buyForm.currency,
-          quantity,
-          unitPrice,
-          feeAmount: feeAmount == null ? null : feeAmount,
-          postedAt,
-          notes: buyForm.notes || null,
-        }),
-      });
-      setOpenModal(null);
+      await apiMutation(
+        activeInvestmentPlan
+          ? `/investment-plans/${activeInvestmentPlan.id}/record-buy`
+          : `/brokerage/${brokerageAccountId}/buy`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            activeInvestmentPlan
+              ? {
+                  quantity,
+                  unitPrice,
+                  feeAmount: feeAmount == null ? null : feeAmount,
+                  postedAt,
+                  notes: buyForm.notes || null,
+                }
+              : {
+                  assetId: buyForm.assetId || null,
+                  name: buyForm.assetId ? null : buyForm.name,
+                  kind: buyForm.kind,
+                  ticker: buyForm.assetId ? null : buyForm.ticker,
+                  exchange: buyForm.assetId ? null : buyForm.exchange || null,
+                  currency: buyForm.currency,
+                  quantity,
+                  unitPrice,
+                  feeAmount: feeAmount == null ? null : feeAmount,
+                  postedAt,
+                  notes: buyForm.notes || null,
+                },
+          ),
+        },
+      );
+      closeBuyModal();
       router.refresh();
     } catch (error) {
       setFormError(
@@ -998,6 +1101,13 @@ export default function BrokeragePageClient({
             </div>
           </div>
         </div>
+
+        <InvestmentPlansSection
+          plans={plans}
+          accounts={workspace.brokers}
+          defaultAccountId={brokerageAccountId}
+          onRecordBuy={openInvestmentPlanBuy}
+        />
 
         <section className="page-section brokerage-section-card brokerage-workspace-card">
           <div className="brokerage-workspace-block">
@@ -1542,8 +1652,12 @@ export default function BrokeragePageClient({
 
       <Modal
         open={openModal === "BUY"}
-        onClose={() => setOpenModal(null)}
-        title="Buy investment"
+        onClose={closeBuyModal}
+        title={
+          activeInvestmentPlan
+            ? `Record ${activeInvestmentPlan.name}`
+            : "Buy investment"
+        }
         maxWidth={760}
       >
         {(() => {
@@ -1551,6 +1665,24 @@ export default function BrokeragePageClient({
 
           return (
             <div className="app-form-grid brokerage-form-grid">
+              {activeInvestmentPlan ? (
+                <div className="page-inline-notice surface-info app-form-field-span-2">
+                  <p className="font-medium">
+                    {activeInvestmentPlan.securityName} (
+                    {activeInvestmentPlan.securityTicker}
+                    {activeInvestmentPlan.securityExchange ?? ""})
+                  </p>
+                  <p className="mt-1 text-sm">
+                    Planned contribution:{" "}
+                    <MoneyValue
+                      value={activeInvestmentPlan.contributionAmount}
+                      currency={activeInvestmentPlan.currency}
+                    />
+                    . Confirm the actual quantity, price, fee, and execution
+                    date below.
+                  </p>
+                </div>
+              ) : null}
               <div className="app-form-field">
                 <label
                   htmlFor={`${fieldPrefix}-asset-id`}
@@ -1562,6 +1694,7 @@ export default function BrokeragePageClient({
                 <select
                   id={`${fieldPrefix}-asset-id`}
                   value={buyForm.assetId}
+                  disabled={activeInvestmentPlan !== null}
                   onChange={(event) =>
                     setBuyForm((current) => ({
                       ...current,
@@ -1586,6 +1719,7 @@ export default function BrokeragePageClient({
                     <input
                       id={`${fieldPrefix}-name`}
                       value={buyForm.name}
+                      disabled={activeInvestmentPlan !== null}
                       onChange={(event) =>
                         setBuyForm((current) => ({
                           ...current,
@@ -1601,6 +1735,7 @@ export default function BrokeragePageClient({
                     <select
                       id={`${fieldPrefix}-kind`}
                       value={buyForm.kind}
+                      disabled={activeInvestmentPlan !== null}
                       onChange={(event) =>
                         setBuyForm((current) => ({
                           ...current,
@@ -1620,6 +1755,7 @@ export default function BrokeragePageClient({
                     <input
                       id={`${fieldPrefix}-ticker`}
                       value={buyForm.ticker}
+                      disabled={activeInvestmentPlan !== null}
                       onChange={(event) =>
                         setBuyForm((current) => ({
                           ...current,
@@ -1646,6 +1782,7 @@ export default function BrokeragePageClient({
                         }))
                       }
                       options={buyExchangeOptions}
+                      disabled={activeInvestmentPlan !== null}
                       placeholder="Choose an exchange"
                       searchPlaceholder="Search exchanges…"
                     />
@@ -1664,6 +1801,7 @@ export default function BrokeragePageClient({
                         }))
                       }
                       options={currencyOptions}
+                      disabled={activeInvestmentPlan !== null}
                       placeholder="Choose a currency"
                       searchPlaceholder="Search currencies…"
                     />
@@ -1780,7 +1918,7 @@ export default function BrokeragePageClient({
           <button
             type="button"
             className="btn-secondary"
-            onClick={() => setOpenModal(null)}
+            onClick={closeBuyModal}
           >
             Cancel
           </button>

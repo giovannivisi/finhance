@@ -38,6 +38,8 @@ model User {
   recurringTransactionOccurrences RecurringTransactionOccurrence[]
   importBatches                   ImportBatch[]
   brokerageOperations             BrokerageOperation[]
+  investmentPlans                 InvestmentPlan[]
+  investmentPlanOccurrences       InvestmentPlanOccurrence[]
   portfolioAssetKindTargets       PortfolioAssetKindTarget[]
   portfolioSecurityTargets        PortfolioSecurityTarget[]
   fxRates                         FxRate[]
@@ -237,6 +239,7 @@ model Account {
   recurringTransferSources      RecurringTransactionRule[] @relation("TransferRecurringRuleSource")
   transactions                  Transaction[]
   brokerageOperations           BrokerageOperation[]
+  investmentPlans               InvestmentPlan[]           @relation("InvestmentPlanAccount")
 
   @@unique([id, userId])
   @@unique([userId, importSource, importKey])
@@ -467,11 +470,58 @@ model BrokerageOperation {
   account             Account               @relation(fields: [accountId, userId], references: [id, userId], onDelete: Cascade)
   asset               Asset?                @relation(fields: [assetId, userId], references: [id, userId], onDelete: Restrict)
   mirroredTransaction Transaction?          @relation(fields: [mirroredTransactionId, userId], references: [id, userId], onDelete: Restrict)
+  investmentPlanOccurrence InvestmentPlanOccurrence?
 
   @@index([userId, accountId, postedAt(sort: Desc)])
   @@index([userId, assetId, postedAt(sort: Desc)])
   @@unique([mirroredTransactionId, userId])
   @@unique([mirroredTransactionId])
+}
+
+model InvestmentPlan {
+  id                 String                     @id @default(cuid())
+  userId             String
+  accountId          String
+  name               String
+  securityName       String
+  securityKind       AssetKind
+  securityTicker     String
+  securityExchange   String?
+  currency           String
+  contributionAmount Decimal                    @db.Decimal(20, 10)
+  estimatedFeeAmount Decimal?                   @db.Decimal(20, 10)
+  cadence            InvestmentPlanCadence
+  dayOfMonth         Int
+  secondDayOfMonth   Int?
+  nextScheduledDate  DateTime                   @db.Date
+  isActive           Boolean                    @default(true)
+  notes              String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  account            Account                    @relation("InvestmentPlanAccount", fields: [accountId, userId], references: [id, userId], onDelete: Cascade, onUpdate: Cascade)
+  occurrences        InvestmentPlanOccurrence[]
+
+  @@index([userId, isActive, nextScheduledDate])
+  @@index([userId, accountId])
+}
+
+model InvestmentPlanOccurrence {
+  id                   String                         @id @default(cuid())
+  userId               String
+  investmentPlanId     String
+  scheduledFor         DateTime                       @db.Date
+  status               InvestmentPlanOccurrenceStatus
+  brokerageOperationId String?                        @unique
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  user                 User                           @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  investmentPlan       InvestmentPlan                 @relation(fields: [investmentPlanId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  brokerageOperation   BrokerageOperation?            @relation(fields: [brokerageOperationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([investmentPlanId, scheduledFor])
+  @@index([userId, scheduledFor])
+  @@index([userId, investmentPlanId, scheduledFor])
 }
 
 model PortfolioAssetKindTarget {
@@ -631,6 +681,16 @@ enum BrokerageOperationKind {
   SELL
   DIVIDEND
   FEE
+}
+
+enum InvestmentPlanCadence {
+  MONTHLY
+  TWICE_MONTHLY
+}
+
+enum InvestmentPlanOccurrenceStatus {
+  COMPLETED
+  SKIPPED
 }
 
 enum TransactionDirection {

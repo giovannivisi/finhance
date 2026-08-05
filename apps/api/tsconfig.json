@@ -23,6 +23,7 @@
       "@budgets/*": ["./src/budgets/*"],
       "@recurring/*": ["./src/recurring/*"],
       "@imports/*": ["./src/imports/*"],
+      "@investment-plans/*": ["./src/investment-plans/*"],
       "@snapshots/*": ["./src/snapshots/*"],
       "@transactions/*": ["./src/transactions/*"],
       "@prices/*": ["./src/prices/*"],

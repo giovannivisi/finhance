@@ -6,14 +6,23 @@ import type {
   BrokerageAccountSummaryResponse,
   BrokerageWorkspaceResponse,
   CategoryResponse,
+  InvestmentPlanResponse,
 } from "@finhance/shared";
 
 export const dynamic = "force-dynamic";
 
-export default async function BrokeragePage() {
+export default async function BrokeragePage({
+  searchParams = Promise.resolve({}),
+}: {
+  searchParams?: Promise<{ recordPlan?: string | string[] }>;
+} = {}) {
+  const query = await searchParams;
+  const initialRecordPlanId =
+    typeof query.recordPlan === "string" ? query.recordPlan : null;
   let brokers: BrokerageAccountSummaryResponse[] | null = null;
   let workspace: BrokerageWorkspaceResponse | null = null;
   let categories: CategoryResponse[] | null = null;
+  let plans: InvestmentPlanResponse[] = [];
   let showTransactionTimes = true;
   let errorMessage: string | null = null;
 
@@ -28,14 +37,19 @@ export default async function BrokeragePage() {
 
   if (brokers && brokers.length > 0) {
     try {
-      const [settings, nextWorkspace, nextCategories] = await Promise.all([
-        getUserSettingsOrDefaults(),
-        api<BrokerageWorkspaceResponse>(`/brokerage/${brokers[0].account.id}`),
-        api<CategoryResponse[]>("/categories?includeArchived=true"),
-      ]);
+      const [settings, nextWorkspace, nextCategories, nextPlans] =
+        await Promise.all([
+          getUserSettingsOrDefaults(),
+          api<BrokerageWorkspaceResponse>(
+            `/brokerage/${brokers[0].account.id}`,
+          ),
+          api<CategoryResponse[]>("/categories?includeArchived=true"),
+          api<InvestmentPlanResponse[]>("/investment-plans"),
+        ]);
       showTransactionTimes = settings.showTransactionTimes;
       workspace = nextWorkspace;
       categories = nextCategories;
+      plans = nextPlans;
     } catch (error) {
       errorMessage =
         error instanceof Error
@@ -77,6 +91,8 @@ export default async function BrokeragePage() {
         <BrokeragePageClient
           workspace={workspace}
           categories={categories}
+          plans={plans}
+          initialRecordPlanId={initialRecordPlanId}
           showTransactionTimes={showTransactionTimes}
         />
       ) : null}

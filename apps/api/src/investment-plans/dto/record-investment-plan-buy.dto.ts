@@ -1,0 +1,44 @@
+import { Transform } from 'class-transformer';
+import type { TransformFnParams } from 'class-transformer';
+import {
+  IsDateString,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import type { RecordInvestmentPlanBuyRequest } from '@finhance/shared';
+
+function trimOptionalStringValue({ value }: TransformFnParams): unknown {
+  return typeof value === 'string' ? value.trim() || undefined : value;
+}
+
+const NOTES_MAX_LENGTH = 2_000;
+
+export class RecordInvestmentPlanBuyDto
+  implements RecordInvestmentPlanBuyRequest
+{
+  @IsNumber()
+  @IsPositive()
+  quantity!: number;
+
+  @IsNumber()
+  @IsPositive()
+  unitPrice!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  feeAmount?: number | null;
+
+  @IsDateString()
+  postedAt!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(NOTES_MAX_LENGTH)
+  @Transform(trimOptionalStringValue)
+  notes?: string | null;
+}
