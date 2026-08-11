@@ -32,8 +32,8 @@
     "lucide-react": "^1.28.0",
     "next": "16.2.12",
     "next-auth": "5.0.0-beta.32",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "recharts": "^3.10.1",
     "tailwind-merge": "^3.6.0"
   },
