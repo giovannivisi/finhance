@@ -21,6 +21,7 @@ import {
 import {
   decodeStoredPasskeyBytes,
   toStoredPasskeyCredentialId,
+  toWebAuthnCredentialId,
 } from "./passkey-encoding";
 import { PASSKEY_PROVIDER, toPasskeyResponse } from "./passkeys";
 import { prisma } from "./prisma";
@@ -30,7 +31,7 @@ import { consumeOneShotKey } from "./request-rate-limit";
 // transitive @simplewebauthn/types package directly.
 type AuthenticationResponseJSON = VerifyAuthenticationResponseOpts["response"];
 type RegistrationResponseJSON = VerifyRegistrationResponseOpts["response"];
-type AuthenticatorDevice = VerifyAuthenticationResponseOpts["authenticator"];
+type WebAuthnCredential = VerifyAuthenticationResponseOpts["credential"];
 
 const DEFAULT_RP_ID = "finhance-web.vercel.app";
 
@@ -74,12 +75,12 @@ export interface MobilePasskeyRegistrationChallenge {
 
 function parseTransports(
   transports: string | null,
-): AuthenticatorDevice["transports"] {
+): WebAuthnCredential["transports"] {
   return transports
     ? (transports
         .split(",")
         .map((value) => value.trim())
-        .filter(Boolean) as AuthenticatorDevice["transports"])
+        .filter(Boolean) as WebAuthnCredential["transports"])
     : undefined;
 }
 
@@ -148,9 +149,9 @@ export async function verifyMobilePasskeyAuthentication(
     return null;
   }
 
-  const authenticator: AuthenticatorDevice = {
-    credentialID: decodeStoredPasskeyBytes(stored.credentialID),
-    credentialPublicKey: decodeStoredPasskeyBytes(stored.credentialPublicKey),
+  const credential: WebAuthnCredential = {
+    id: credentialId,
+    publicKey: decodeStoredPasskeyBytes(stored.credentialPublicKey),
     counter: stored.counter,
     transports: parseTransports(stored.transports),
   };
@@ -162,7 +163,7 @@ export async function verifyMobilePasskeyAuthentication(
       expectedChallenge,
       expectedOrigin: resolveExpectedOrigin(env),
       expectedRPID: resolveRpId(env),
-      authenticator,
+      credential,
       requireUserVerification: true,
     });
   } catch {
@@ -215,13 +216,12 @@ export async function createMobilePasskeyRegistration(
   const options = await generateRegistrationOptions({
     rpName: "finhance",
     rpID: resolveRpId(env),
-    userID: user.id,
+    userID: new TextEncoder().encode(user.id),
     userName: user.email ?? user.id,
     userDisplayName: user.email ?? "finhance user",
     attestationType: "none",
     excludeCredentials: existingAuthenticators.map((authenticator) => ({
-      id: decodeStoredPasskeyBytes(authenticator.credentialID),
-      type: "public-key",
+      id: toWebAuthnCredentialId(authenticator.credentialID),
       transports: parseTransports(authenticator.transports),
     })),
     authenticatorSelection: {
@@ -287,7 +287,9 @@ export async function verifyMobilePasskeyRegistration(
     return null;
   }
 
-  const credentialId = toStoredBytes(registrationInfo.credentialID);
+  const credentialId = toStoredPasskeyCredentialId(
+    registrationInfo.credential.id,
+  );
   const transports = Array.isArray(input.response.response.transports)
     ? input.response.response.transports.join(",")
     : null;
@@ -310,9 +312,9 @@ export async function verifyMobilePasskeyRegistration(
             providerAccountId: credentialId,
             credentialID: credentialId,
             credentialPublicKey: toStoredBytes(
-              registrationInfo.credentialPublicKey,
+              registrationInfo.credential.publicKey,
             ),
-            counter: registrationInfo.counter,
+            counter: registrationInfo.credential.counter,
             credentialDeviceType: registrationInfo.credentialDeviceType,
             credentialBackedUp: registrationInfo.credentialBackedUp,
             transports,
