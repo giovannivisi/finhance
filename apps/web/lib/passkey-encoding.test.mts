@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   decodeStoredPasskeyBytes,
   toStoredPasskeyCredentialId,
+  toWebAuthnCredentialId,
 } from "./passkey-encoding.ts";
 
 test("toStoredPasskeyCredentialId normalises base64url ids to stored base64", () => {
@@ -15,6 +16,7 @@ test("toStoredPasskeyCredentialId normalises base64url ids to stored base64", ()
     .replaceAll("=", "");
 
   assert.equal(toStoredPasskeyCredentialId(webAuthnBase64Url), storedBase64);
+  assert.equal(toWebAuthnCredentialId(storedBase64), webAuthnBase64Url);
 });
 
 test("decodeStoredPasskeyBytes decodes standard base64 authenticator fields", () => {
