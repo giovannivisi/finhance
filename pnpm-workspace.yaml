@@ -24,8 +24,8 @@ overrides:
   lodash: 4.18.0
   minimatch@3.1.2: 3.1.5
   multer: 2.2.0
-  nanoid@3.3.11: 3.3.17
-  nanoid@3.3.16: 3.3.17
+  nanoid@3.3.11: 3.3.18
+  nanoid@3.3.16: 3.3.18
   path-to-regexp@8.3.0: 8.4.0
   picomatch@2.3.1: 2.3.2
   picomatch: 4.0.4
@@ -51,7 +51,7 @@ allowBuilds:
 
 # Metro only processes repository-controlled image assets during development
 # and builds. Both advisories require image-size 2.0.3, which is not published
-# on npm as of 2026-08-11; remove these ignores once a patched release exists.
+# on npm as of 2026-08-17; remove these ignores once a patched release exists.
 auditConfig:
   ignoreGhsas:
     - GHSA-5p2g-fcmc-qvqq
