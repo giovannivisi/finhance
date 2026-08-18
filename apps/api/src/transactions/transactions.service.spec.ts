@@ -130,6 +130,11 @@ describe('TransactionsService', () => {
     account: {
       findFirst: jest.Mock;
     };
+    brokerageOperation: {
+      findFirst: jest.Mock;
+      update: jest.Mock;
+      delete: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
   let accounts: {
@@ -170,6 +175,11 @@ describe('TransactionsService', () => {
           name: 'Checking',
         }),
       },
+      brokerageOperation: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+        delete: jest.fn(),
+      },
       $transaction: jest.fn(),
     };
 
@@ -179,12 +189,14 @@ describe('TransactionsService', () => {
           transaction: typeof prisma.transaction;
           asset: typeof prisma.asset;
           account: typeof prisma.account;
+          brokerageOperation: typeof prisma.brokerageOperation;
         }) => Promise<unknown>,
       ) =>
         callback({
           transaction: prisma.transaction,
           asset: prisma.asset,
           account: prisma.account,
+          brokerageOperation: prisma.brokerageOperation,
         }),
     );
 
@@ -743,6 +755,81 @@ describe('TransactionsService', () => {
     ).rejects.toThrow('Insufficient cash balance');
 
     expect(prisma.transaction.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps a mirrored brokerage dividend in sync when its cash transaction is edited', async () => {
+    prisma.transaction.findFirst.mockResolvedValue(
+      createTransactionRow({
+        id: 'dividend-transaction',
+        kind: TransactionKind.INCOME,
+        direction: TransactionDirection.INFLOW,
+        amount: new Prisma.Decimal('20'),
+        categoryId: 'income-category',
+      }),
+    );
+    prisma.brokerageOperation.findFirst.mockResolvedValue({
+      id: 'dividend-operation',
+      accountId: 'account-1',
+    });
+    prisma.transaction.update.mockResolvedValue(
+      createTransactionRow({
+        id: 'dividend-transaction',
+        kind: TransactionKind.INCOME,
+        direction: TransactionDirection.INFLOW,
+        amount: new Prisma.Decimal('25'),
+        categoryId: 'income-category',
+        notes: 'Updated payment',
+      }),
+    );
+
+    await service.update(OWNER_ID, 'dividend-transaction', {
+      postedAt: '2026-04-18T09:00:00.000Z',
+      kind: TransactionKind.INCOME,
+      amount: 25,
+      description: 'Brokerage dividend',
+      accountId: 'account-1',
+      direction: TransactionDirection.INFLOW,
+      categoryId: 'income-category',
+      notes: 'Updated payment',
+      counterparty: null,
+    });
+
+    const brokerageUpdateCall = nthCallArg<{
+      data?: Record<string, unknown>;
+      where?: Record<string, unknown>;
+    }>(prisma.brokerageOperation.update, 0);
+
+    expect(brokerageUpdateCall).toMatchObject({
+      where: { id: 'dividend-operation' },
+      data: {
+        grossAmount: new Prisma.Decimal('25'),
+        cashAmount: new Prisma.Decimal('25'),
+        notes: 'Updated payment',
+      },
+    });
+  });
+
+  it('removes a mirrored brokerage operation when its cash transaction is deleted', async () => {
+    prisma.transaction.findFirst.mockResolvedValue(
+      createTransactionRow({
+        id: 'fee-transaction',
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        amount: new Prisma.Decimal('5'),
+      }),
+    );
+    prisma.brokerageOperation.findFirst.mockResolvedValue({
+      id: 'fee-operation',
+    });
+
+    await service.remove(OWNER_ID, 'fee-transaction');
+
+    expect(prisma.brokerageOperation.delete).toHaveBeenCalledWith({
+      where: { id: 'fee-operation' },
+    });
+    expect(prisma.transaction.delete).toHaveBeenCalledWith({
+      where: { id: 'fee-transaction' },
+    });
   });
 
   it('converts a standard expense into a split-funded expense on update', async () => {

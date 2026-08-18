@@ -14,6 +14,7 @@ import type {
   CreateBrokerageSellRequest,
   CreateCategoryBudgetRequest,
   UpdateCategoryBudgetRequest,
+  UpdateBrokerageTradeRequest,
   UpdatePortfolioAllocationTargetsRequest,
   UpdateUserSettingsRequest,
   UpsertAccountRequest,
@@ -183,11 +184,12 @@ const EXPENSE_VALIDATION_INVALIDATION_ROOTS = [
   "expense-validation",
 ] as const satisfies readonly QueryRoot[];
 
-export function useDashboard() {
+export function useDashboard(enabled = true) {
   const client = useApiClient();
   return useQuery({
     queryKey: queryKeys.dashboard,
     queryFn: () => api.dashboard.pageData(client),
+    enabled,
   });
 }
 
@@ -804,6 +806,31 @@ export function useBrokerageFee(accountId: string) {
   return useMutation({
     mutationFn: (body: CreateBrokerageFeeRequest) =>
       api.brokerage.fee(client, accountId, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdateBrokerageTrade(accountId: string) {
+  const client = useApiClient();
+  const invalidate = useInvalidateData(BROKERAGE_INVALIDATION_ROOTS);
+  return useMutation({
+    mutationFn: ({
+      operationId,
+      body,
+    }: {
+      operationId: string;
+      body: UpdateBrokerageTradeRequest;
+    }) => api.brokerage.updateTrade(client, accountId, operationId, body),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteBrokerageTrade(accountId: string) {
+  const client = useApiClient();
+  const invalidate = useInvalidateData(BROKERAGE_INVALIDATION_ROOTS);
+  return useMutation({
+    mutationFn: (operationId: string) =>
+      api.brokerage.removeTrade(client, accountId, operationId),
     onSuccess: invalidate,
   });
 }

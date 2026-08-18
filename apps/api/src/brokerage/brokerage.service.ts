@@ -45,6 +45,7 @@ import type {
   PortfolioAllocationSnapshotItemResponse,
   PortfolioAllocationSnapshotResponse,
   PortfolioAllocationTargetsResponse,
+  UpdateBrokerageTradeRequest,
   UpdatePortfolioAllocationTargetsRequest,
 } from '@finhance/shared';
 import {
@@ -110,6 +111,30 @@ interface PerformanceContributionFlow {
 interface AssetKindTargetModel {
   kind: AssetKind;
   targetPercent: Prisma.Decimal;
+}
+
+interface BrokerageTradeLedgerEntry {
+  id: string;
+  kind: BrokerageOperationKind;
+  postedAt: Date;
+  createdAt: Date;
+  quantity: Prisma.Decimal;
+  unitPrice: Prisma.Decimal;
+  grossAmount: Prisma.Decimal;
+  feeAmount: Prisma.Decimal;
+  cashAmount: Prisma.Decimal;
+  realisedGainLoss: Prisma.Decimal | null;
+  notes: string | null;
+}
+
+interface BrokeragePositionLedgerState {
+  quantity: Prisma.Decimal;
+  costBasis: Prisma.Decimal;
+}
+
+interface MutableBrokerageTrade extends BrokerageOperation {
+  asset: Asset;
+  investmentPlanOccurrence: { id: string } | null;
 }
 
 @Injectable()
@@ -857,6 +882,96 @@ export class BrokerageService {
     );
   }
 
+  async updateTrade(
+    ownerId: string,
+    accountId: string,
+    operationId: string,
+    input: UpdateBrokerageTradeRequest,
+  ): Promise<BrokerageOperationResponse> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const account = await this.getRequiredBrokerAccount(
+          ownerId,
+          accountId,
+          tx,
+        );
+        const operation = await this.getRequiredMutableTrade(
+          ownerId,
+          accountId,
+          operationId,
+          tx,
+        );
+        const postedAt = this.parsePostedAt(input.postedAt);
+        this.accountsService.assertPostedAtAllowed(account, postedAt);
+
+        const quantity = this.toPositiveDecimal(
+          input.quantity,
+          'Quantity is required.',
+        );
+        const unitPrice = this.toPositiveDecimal(
+          input.unitPrice,
+          'Unit price is required.',
+        );
+        const feeAmount = this.toOptionalNonNegativeDecimal(input.feeAmount);
+        const grossAmount = quantity.mul(unitPrice);
+        const cashAmount =
+          operation.kind === BrokerageOperationKind.BUY
+            ? ZERO.sub(grossAmount.add(feeAmount))
+            : grossAmount.sub(feeAmount);
+
+        const updated = await this.replayTradeLedger(
+          ownerId,
+          account,
+          operation,
+          {
+            postedAt,
+            quantity,
+            unitPrice,
+            grossAmount,
+            feeAmount,
+            cashAmount,
+            notes: this.optionalText(input.notes),
+          },
+          tx,
+        );
+
+        return this.toBrokerageOperationResponse(updated);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
+  async removeTrade(
+    ownerId: string,
+    accountId: string,
+    operationId: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(
+      async (tx) => {
+        const account = await this.getRequiredBrokerAccount(
+          ownerId,
+          accountId,
+          tx,
+        );
+        const operation = await this.getRequiredMutableTrade(
+          ownerId,
+          accountId,
+          operationId,
+          tx,
+        );
+
+        if (operation.investmentPlanOccurrence) {
+          throw new ConflictException(
+            'This trade was recorded by an investment plan and cannot be deleted. Correct its values instead.',
+          );
+        }
+
+        await this.replayTradeLedger(ownerId, account, operation, null, tx);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
   async updateAllocationTargets(
     ownerId: string,
     input: UpdatePortfolioAllocationTargetsRequest,
@@ -1418,6 +1533,342 @@ export class BrokerageService {
       feeAmount: null,
       transactionId: response.id,
     };
+  }
+
+  private async getRequiredMutableTrade(
+    ownerId: string,
+    accountId: string,
+    operationId: string,
+    tx: BrokerageWriteClient,
+  ): Promise<MutableBrokerageTrade> {
+    const operation = await tx.brokerageOperation.findFirst({
+      where: {
+        id: operationId,
+        userId: ownerId,
+        accountId,
+        kind: {
+          in: [BrokerageOperationKind.BUY, BrokerageOperationKind.SELL],
+        },
+      },
+      include: {
+        asset: true,
+        investmentPlanOccurrence: { select: { id: true } },
+      },
+    });
+
+    if (!operation) {
+      throw new NotFoundException(
+        `Brokerage trade ${operationId} was not found.`,
+      );
+    }
+
+    if (!operation.assetId || !operation.asset) {
+      throw new ConflictException(
+        'This brokerage trade no longer has a position to amend.',
+      );
+    }
+
+    return operation as MutableBrokerageTrade;
+  }
+
+  /**
+   * Replays one position from the state before its first recorded trade. The
+   * baseline is recovered by reversing the existing ledger, so amendments are
+   * safe even when newer buys or sells depend on the original trade.
+   */
+  private async replayTradeLedger(
+    ownerId: string,
+    account: Account,
+    target: MutableBrokerageTrade,
+    replacement: Omit<
+      BrokerageTradeLedgerEntry,
+      'id' | 'kind' | 'createdAt' | 'realisedGainLoss'
+    > | null,
+    tx: BrokerageWriteClient,
+  ): Promise<BrokerageOperation> {
+    const operations = await tx.brokerageOperation.findMany({
+      where: {
+        userId: ownerId,
+        accountId: account.id,
+        assetId: target.asset.id,
+        kind: {
+          in: [BrokerageOperationKind.BUY, BrokerageOperationKind.SELL],
+        },
+      },
+      orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    });
+    const existingTrades = operations.map((operation) =>
+      this.toTradeLedgerEntry(operation),
+    );
+    const existingTarget = existingTrades.find(
+      (operation) => operation.id === target.id,
+    );
+
+    if (!existingTarget) {
+      throw new NotFoundException(
+        `Brokerage trade ${target.id} was not found.`,
+      );
+    }
+
+    const baseline = this.reverseTradeLedger(target.asset, existingTrades);
+    const nextTrades = existingTrades.flatMap((operation) => {
+      if (operation.id !== target.id) {
+        return [operation];
+      }
+
+      if (!replacement) {
+        return [];
+      }
+
+      return [
+        {
+          ...operation,
+          ...replacement,
+          realisedGainLoss: null,
+        },
+      ];
+    });
+    const replayed = this.forwardTradeLedger(baseline, nextTrades);
+    const nextTarget = replayed.operations.find(
+      (operation) => operation.id === target.id,
+    );
+    const cashDelta = (nextTarget?.cashAmount ?? ZERO).sub(
+      existingTarget.cashAmount,
+    );
+
+    if (cashDelta.gt(ZERO)) {
+      await this.transactionsService.applyAccountCashMovement(
+        ownerId,
+        account.id,
+        cashDelta,
+        TransactionDirection.INFLOW,
+        tx,
+      );
+    } else if (cashDelta.lt(ZERO)) {
+      await this.transactionsService.applyAccountCashMovement(
+        ownerId,
+        account.id,
+        cashDelta.abs(),
+        TransactionDirection.OUTFLOW,
+        tx,
+      );
+    }
+
+    if (replacement) {
+      await tx.brokerageOperation.update({
+        where: { id: target.id },
+        data: {
+          postedAt: replacement.postedAt,
+          quantity: replacement.quantity,
+          unitPrice: replacement.unitPrice,
+          grossAmount: replacement.grossAmount,
+          feeAmount: replacement.feeAmount,
+          cashAmount: nextTarget!.cashAmount,
+          realisedGainLoss: nextTarget!.realisedGainLoss,
+          notes: replacement.notes,
+        },
+      });
+    } else {
+      await tx.brokerageOperation.delete({ where: { id: target.id } });
+    }
+
+    await Promise.all(
+      replayed.operations
+        .filter((operation) => operation.id !== target.id)
+        .map((operation) =>
+          tx.brokerageOperation.update({
+            where: { id: operation.id },
+            data: {
+              grossAmount: operation.grossAmount,
+              feeAmount: operation.feeAmount,
+              cashAmount: operation.cashAmount,
+              realisedGainLoss: operation.realisedGainLoss,
+            },
+          }),
+        ),
+    );
+
+    await tx.asset.update({
+      where: { id: target.asset.id },
+      data: {
+        quantity: replayed.position.quantity,
+        balance: replayed.position.costBasis,
+        unitPrice: replayed.position.quantity.eq(ZERO)
+          ? ZERO
+          : replayed.position.costBasis.div(replayed.position.quantity),
+      },
+    });
+
+    if (!replacement || !nextTarget) {
+      return target;
+    }
+
+    return {
+      ...target,
+      postedAt: nextTarget.postedAt,
+      quantity: nextTarget.quantity,
+      unitPrice: nextTarget.unitPrice,
+      grossAmount: nextTarget.grossAmount,
+      feeAmount: nextTarget.feeAmount,
+      cashAmount: nextTarget.cashAmount,
+      realisedGainLoss: nextTarget.realisedGainLoss,
+      notes: nextTarget.notes,
+    };
+  }
+
+  private toTradeLedgerEntry(
+    operation: BrokerageOperation,
+  ): BrokerageTradeLedgerEntry {
+    if (
+      (operation.kind !== BrokerageOperationKind.BUY &&
+        operation.kind !== BrokerageOperationKind.SELL) ||
+      !operation.quantity ||
+      !operation.unitPrice ||
+      !operation.grossAmount
+    ) {
+      throw new ConflictException(
+        'This brokerage trade has incomplete ledger data and cannot be amended.',
+      );
+    }
+
+    return {
+      id: operation.id,
+      kind: operation.kind,
+      postedAt: operation.postedAt,
+      createdAt: operation.createdAt,
+      quantity: operation.quantity,
+      unitPrice: operation.unitPrice,
+      grossAmount: operation.grossAmount,
+      feeAmount: operation.feeAmount ?? ZERO,
+      cashAmount: operation.cashAmount,
+      realisedGainLoss: operation.realisedGainLoss,
+      notes: operation.notes,
+    };
+  }
+
+  private reverseTradeLedger(
+    asset: Asset,
+    operations: BrokerageTradeLedgerEntry[],
+  ): BrokeragePositionLedgerState {
+    let state: BrokeragePositionLedgerState = {
+      quantity: this.toDecimal(asset.quantity),
+      costBasis: asset.balance,
+    };
+
+    for (const operation of [...operations].sort((left, right) =>
+      this.compareTrades(right, left),
+    )) {
+      if (operation.kind === BrokerageOperationKind.BUY) {
+        state = {
+          quantity: state.quantity.sub(operation.quantity),
+          costBasis: state.costBasis.sub(
+            operation.grossAmount.add(operation.feeAmount),
+          ),
+        };
+      } else if (state.quantity.eq(ZERO)) {
+        if (operation.realisedGainLoss === null) {
+          throw new ConflictException(
+            'This brokerage sale has no recorded cost basis and cannot be amended.',
+          );
+        }
+
+        state = {
+          quantity: operation.quantity,
+          costBasis: operation.cashAmount.sub(operation.realisedGainLoss),
+        };
+      } else {
+        const quantityBeforeSale = state.quantity.add(operation.quantity);
+        state = {
+          quantity: quantityBeforeSale,
+          costBasis: state.costBasis
+            .mul(quantityBeforeSale)
+            .div(state.quantity),
+        };
+      }
+
+      this.assertNonNegativeLedgerState(state);
+    }
+
+    return state;
+  }
+
+  private forwardTradeLedger(
+    baseline: BrokeragePositionLedgerState,
+    operations: BrokerageTradeLedgerEntry[],
+  ): {
+    position: BrokeragePositionLedgerState;
+    operations: BrokerageTradeLedgerEntry[];
+  } {
+    let position = { ...baseline };
+    const replayed: BrokerageTradeLedgerEntry[] = [];
+
+    for (const operation of [...operations].sort((left, right) =>
+      this.compareTrades(left, right),
+    )) {
+      const grossAmount = operation.quantity.mul(operation.unitPrice);
+
+      if (operation.kind === BrokerageOperationKind.BUY) {
+        position = {
+          quantity: position.quantity.add(operation.quantity),
+          costBasis: position.costBasis
+            .add(grossAmount)
+            .add(operation.feeAmount),
+        };
+        replayed.push({
+          ...operation,
+          grossAmount,
+          cashAmount: ZERO.sub(grossAmount.add(operation.feeAmount)),
+          realisedGainLoss: null,
+        });
+        continue;
+      }
+
+      if (position.quantity.lt(operation.quantity)) {
+        throw new ConflictException(
+          'This change would leave insufficient units for a later sell.',
+        );
+      }
+
+      const averageCost = position.quantity.eq(ZERO)
+        ? ZERO
+        : position.costBasis.div(position.quantity);
+      const soldCostBasis = operation.quantity.mul(averageCost);
+      const cashAmount = grossAmount.sub(operation.feeAmount);
+      const remainingQuantity = position.quantity.sub(operation.quantity);
+      position = {
+        quantity: remainingQuantity,
+        costBasis: remainingQuantity.mul(averageCost),
+      };
+      replayed.push({
+        ...operation,
+        grossAmount,
+        cashAmount,
+        realisedGainLoss: cashAmount.sub(soldCostBasis),
+      });
+    }
+
+    return { position, operations: replayed };
+  }
+
+  private compareTrades(
+    left: BrokerageTradeLedgerEntry,
+    right: BrokerageTradeLedgerEntry,
+  ): number {
+    return (
+      left.postedAt.getTime() - right.postedAt.getTime() ||
+      left.createdAt.getTime() - right.createdAt.getTime() ||
+      left.id.localeCompare(right.id)
+    );
+  }
+
+  private assertNonNegativeLedgerState(
+    state: BrokeragePositionLedgerState,
+  ): void {
+    if (state.quantity.lt(ZERO) || state.costBasis.lt(ZERO)) {
+      throw new ConflictException(
+        'This position no longer matches its trade history and cannot be amended safely.',
+      );
+    }
   }
 
   private async getRequiredBrokerAccount(
