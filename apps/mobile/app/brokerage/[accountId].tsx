@@ -5,6 +5,7 @@ import { Animated, View } from "react-native";
 import type {
   AggregatePricingStatus,
   AssetKind,
+  BrokerageActivityItemResponse,
   BrokeragePerformanceRange,
   BrokeragePositionResponse,
   BrokerageWorkspaceResponse,
@@ -22,8 +23,10 @@ import {
   useBrokerageSell,
   useBrokerageWorkspace,
   useCategories,
+  useDeleteBrokerageTrade,
   useLiveValuations,
   useRefreshAssets,
+  useUpdateBrokerageTrade,
   useUpdatePortfolioAllocationTargets,
 } from "@/api/queries";
 import {
@@ -490,9 +493,14 @@ export default function BrokerageWorkspaceScreen() {
   const sellMutation = useBrokerageSell(accountId);
   const dividendMutation = useBrokerageDividend(accountId);
   const feeMutation = useBrokerageFee(accountId);
+  const updateTradeMutation = useUpdateBrokerageTrade(accountId);
+  const deleteTradeMutation = useDeleteBrokerageTrade(accountId);
   const targetsMutation = useUpdatePortfolioAllocationTargets();
 
   const [operation, setOperation] = useState<OperationKind | null>(null);
+  const [editingTrade, setEditingTrade] =
+    useState<BrokerageActivityItemResponse | null>(null);
+  const [confirmTradeDelete, setConfirmTradeDelete] = useState(false);
   const [form, setForm] = useState<OperationFormState>(() =>
     emptyOperationForm("EUR"),
   );
@@ -731,7 +739,58 @@ export default function BrokerageWorkspaceScreen() {
   const openOperation = (kind: OperationKind) => {
     setForm(emptyOperationForm(accountCurrency));
     setFormError(null);
+    setEditingTrade(null);
     setOperation(kind);
+  };
+
+  const openTradeEditor = (item: BrokerageActivityItemResponse) => {
+    if (
+      (item.kind !== "BUY" && item.kind !== "SELL") ||
+      !item.assetId ||
+      item.quantity === null ||
+      item.unitPrice === null
+    ) {
+      return;
+    }
+
+    setForm({
+      ...emptyOperationForm(accountCurrency),
+      assetId: item.assetId,
+      name: item.assetName ?? "Position",
+      currency: item.currency,
+      quantity: String(item.quantity),
+      unitPrice: String(item.unitPrice),
+      fee: item.feeAmount === null ? "" : String(item.feeAmount),
+      date: localDateOf(item.postedAt),
+      notes: item.notes ?? "",
+    });
+    setFormError(null);
+    setEditingTrade(item);
+    setOperation(item.kind);
+  };
+
+  const openActivityEditor = (item: BrokerageActivityItemResponse) => {
+    if (item.source === "TRANSACTION" && item.transactionId) {
+      router.push({
+        pathname: "/transactions/upsert",
+        params: { id: item.transactionId },
+      });
+      return;
+    }
+
+    if (
+      item.source === "BROKERAGE_OPERATION" &&
+      (item.kind === "DIVIDEND" || item.kind === "FEE") &&
+      item.transactionId
+    ) {
+      router.push({
+        pathname: "/transactions/upsert",
+        params: { id: item.transactionId },
+      });
+      return;
+    }
+
+    openTradeEditor(item);
   };
 
   const openTargetEditor = () => {
@@ -804,12 +863,44 @@ export default function BrokerageWorkspaceScreen() {
     buyMutation.isPending ||
     sellMutation.isPending ||
     dividendMutation.isPending ||
-    feeMutation.isPending;
+    feeMutation.isPending ||
+    updateTradeMutation.isPending ||
+    deleteTradeMutation.isPending;
 
   const submitOperation = async () => {
     setFormError(null);
 
     try {
+      if (editingTrade) {
+        const quantity = parseAmountInput(form.quantity);
+        const unitPrice = parseAmountInput(form.unitPrice);
+        const fee = form.fee.trim() ? parseAmountInput(form.fee) : null;
+
+        if (
+          quantity === null ||
+          quantity <= 0 ||
+          unitPrice === null ||
+          unitPrice <= 0
+        ) {
+          setFormError("Quantity and unit price must be positive.");
+          return;
+        }
+
+        await updateTradeMutation.mutateAsync({
+          operationId: editingTrade.id,
+          body: {
+            quantity,
+            unitPrice,
+            feeAmount: fee,
+            postedAt: form.date,
+            notes: form.notes.trim() || null,
+          },
+        });
+        setEditingTrade(null);
+        setOperation(null);
+        return;
+      }
+
       if (operation === "BUY") {
         const quantity = parseAmountInput(form.quantity);
         const unitPrice = parseAmountInput(form.unitPrice);
@@ -912,6 +1003,23 @@ export default function BrokerageWorkspaceScreen() {
     }
   };
 
+  const deleteTrade = async () => {
+    if (!editingTrade) {
+      return;
+    }
+
+    setFormError(null);
+    try {
+      await deleteTradeMutation.mutateAsync(editingTrade.id);
+      setConfirmTradeDelete(false);
+      setEditingTrade(null);
+      setOperation(null);
+    } catch (error) {
+      setConfirmTradeDelete(false);
+      setFormError(describeError(error));
+    }
+  };
+
   if (workspaceQuery.isPending) {
     return (
       <Screen title="Brokerage" showBack>
@@ -965,8 +1073,11 @@ export default function BrokerageWorkspaceScreen() {
     performance?.pricingStatus ?? null,
     (performance?.points.length ?? 0) > 0,
   );
-  const operationTitle =
-    operation === "BUY"
+  const operationTitle = editingTrade
+    ? operation === "BUY"
+      ? "Edit buy"
+      : "Edit sell"
+    : operation === "BUY"
       ? "Record buy"
       : operation === "SELL"
         ? "Record sell"
@@ -1280,29 +1391,42 @@ export default function BrokerageWorkspaceScreen() {
             </AppText>
           </Card>
         ) : (
-          <Card style={{ paddingVertical: 4 }}>
-            {workspace.activity.slice(0, 25).map((item, index) => (
-              <ListRow
-                key={`${item.source}-${item.id}`}
-                title={item.title}
-                subtitle={`${format.date(localDateOf(item.postedAt))}${
-                  item.detail ? ` • ${item.detail}` : ""
-                }`}
-                showDivider={
-                  index < Math.min(workspace.activity.length, 25) - 1
-                }
-                right={
-                  <MoneyText
-                    amount={item.amount}
-                    currency={item.currency}
-                    variant="footnoteMedium"
-                    colorBySign
-                    signDisplay="exceptZero"
-                  />
-                }
-              />
-            ))}
-          </Card>
+          <View style={{ gap: spacing.sm }}>
+            <AppText variant="caption" tone="secondary">
+              Tap an item to edit or delete it.
+            </AppText>
+            <Card style={{ paddingVertical: 4 }}>
+              {workspace.activity.slice(0, 25).map((item, index) => (
+                <ListRow
+                  key={`${item.source}-${item.id}`}
+                  title={item.title}
+                  subtitle={`${format.date(localDateOf(item.postedAt))}${
+                    item.detail ? ` • ${item.detail}` : ""
+                  }`}
+                  showDivider={
+                    index < Math.min(workspace.activity.length, 25) - 1
+                  }
+                  onPress={() => openActivityEditor(item)}
+                  right={
+                    <View style={{ alignItems: "flex-end", gap: 3 }}>
+                      <MoneyText
+                        amount={item.amount}
+                        currency={item.currency}
+                        variant="footnoteMedium"
+                        colorBySign
+                        signDisplay="exceptZero"
+                      />
+                      <Ionicons
+                        name="create-outline"
+                        size={14}
+                        color={colors.textTertiary}
+                      />
+                    </View>
+                  }
+                />
+              ))}
+            </Card>
+          </View>
         )}
       </Section>
 
@@ -1401,19 +1525,32 @@ export default function BrokerageWorkspaceScreen() {
         <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
           {operation === "BUY" ? (
             <>
-              <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <Chip
-                  label="Existing position"
-                  selected={!form.newSecurity}
-                  onPress={() => setForm((f) => ({ ...f, newSecurity: false }))}
-                />
-                <Chip
-                  label="New security"
-                  selected={form.newSecurity}
-                  onPress={() => setForm((f) => ({ ...f, newSecurity: true }))}
-                />
-              </View>
-              {form.newSecurity ? (
+              {editingTrade ? (
+                <Card surface="muted">
+                  <AppText variant="footnoteMedium">{form.name}</AppText>
+                  <AppText variant="caption" tone="secondary">
+                    The position stays the same when correcting a trade.
+                  </AppText>
+                </Card>
+              ) : (
+                <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <Chip
+                    label="Existing position"
+                    selected={!form.newSecurity}
+                    onPress={() =>
+                      setForm((f) => ({ ...f, newSecurity: false }))
+                    }
+                  />
+                  <Chip
+                    label="New security"
+                    selected={form.newSecurity}
+                    onPress={() =>
+                      setForm((f) => ({ ...f, newSecurity: true }))
+                    }
+                  />
+                </View>
+              )}
+              {form.newSecurity && !editingTrade ? (
                 <>
                   <TextField
                     label="Name"
@@ -1459,14 +1596,14 @@ export default function BrokerageWorkspaceScreen() {
                     autoCapitalize="characters"
                   />
                 </>
-              ) : (
+              ) : !editingTrade ? (
                 <SelectField
                   label="Position"
                   options={positionOptions}
                   value={form.assetId}
                   onChange={(assetId) => setForm((f) => ({ ...f, assetId }))}
                 />
-              )}
+              ) : null}
               <AmountField
                 label="Quantity"
                 value={form.quantity}
@@ -1493,12 +1630,21 @@ export default function BrokerageWorkspaceScreen() {
 
           {operation === "SELL" ? (
             <>
-              <SelectField
-                label="Position"
-                options={positionOptions}
-                value={form.assetId}
-                onChange={(assetId) => setForm((f) => ({ ...f, assetId }))}
-              />
+              {editingTrade ? (
+                <Card surface="muted">
+                  <AppText variant="footnoteMedium">{form.name}</AppText>
+                  <AppText variant="caption" tone="secondary">
+                    The position stays the same when correcting a trade.
+                  </AppText>
+                </Card>
+              ) : (
+                <SelectField
+                  label="Position"
+                  options={positionOptions}
+                  value={form.assetId}
+                  onChange={(assetId) => setForm((f) => ({ ...f, assetId }))}
+                />
+              )}
               <AmountField
                 label="Quantity"
                 value={form.quantity}
@@ -1577,9 +1723,41 @@ export default function BrokerageWorkspaceScreen() {
           ) : null}
 
           <Button
-            label={operationTitle}
+            label={editingTrade ? "Save changes" : operationTitle}
             onPress={submitOperation}
             loading={operationPending}
+          />
+          {editingTrade ? (
+            <Button
+              label="Delete trade"
+              variant="danger"
+              onPress={() => setConfirmTradeDelete(true)}
+              disabled={operationPending}
+            />
+          ) : null}
+        </View>
+      </Sheet>
+
+      <Sheet
+        visible={confirmTradeDelete}
+        onClose={() => setConfirmTradeDelete(false)}
+        title="Delete trade?"
+      >
+        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+          <AppText variant="footnote" tone="secondary">
+            This permanently removes the {editingTrade?.kind.toLowerCase()} and
+            recalculates the position from its remaining trade history.
+          </AppText>
+          <Button
+            label="Delete trade"
+            variant="danger"
+            onPress={deleteTrade}
+            loading={deleteTradeMutation.isPending}
+          />
+          <Button
+            label="Keep it"
+            variant="secondary"
+            onPress={() => setConfirmTradeDelete(false)}
           />
         </View>
       </Sheet>

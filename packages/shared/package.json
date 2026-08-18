@@ -6,6 +6,11 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "scripts": {
+    "check-types": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint . --max-warnings 0",
+    "test": "node --test test/*.test.cjs"
+  },
   "imports": {
     "#ai": "./src/ai.ts",
     "#accounts": "./src/accounts.ts",
@@ -50,5 +55,10 @@
     "./users": "./src/users.ts"
   },
   "license": "MIT",
-  "author": "giovisi"
+  "author": "giovisi",
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "eslint": "^9.39.5",
+    "typescript": "5.9.2"
+  }
 }

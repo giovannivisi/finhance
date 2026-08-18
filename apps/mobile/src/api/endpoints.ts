@@ -39,6 +39,7 @@ import type {
   TransactionResponse,
   TransactionsPageDataResponse,
   UpdateCategoryBudgetRequest,
+  UpdateBrokerageTradeRequest,
   UpdatePortfolioAllocationTargetsRequest,
   UpdateUserSettingsRequest,
   UpsertAccountRequest,
@@ -415,6 +416,21 @@ export const api = {
       client.request<BrokerageOperationResponse>(
         `/brokerage/${accountId}/fee`,
         mutation("POST", body),
+      ),
+    updateTrade: (
+      client: ApiClient,
+      accountId: string,
+      operationId: string,
+      body: UpdateBrokerageTradeRequest,
+    ) =>
+      client.request<BrokerageOperationResponse>(
+        `/brokerage/${accountId}/operations/${operationId}`,
+        mutation("PUT", body),
+      ),
+    removeTrade: (client: ApiClient, accountId: string, operationId: string) =>
+      client.request<void>(
+        `/brokerage/${accountId}/operations/${operationId}`,
+        mutation("DELETE"),
       ),
     updateTargets: (
       client: ApiClient,

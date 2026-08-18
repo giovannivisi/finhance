@@ -139,7 +139,10 @@ describe('BrokerageService', () => {
     };
     brokerageOperation: {
       create: jest.Mock;
+      delete: jest.Mock;
+      findFirst: jest.Mock;
       findMany: jest.Mock;
+      update: jest.Mock;
     };
     portfolioAssetKindTarget: {
       deleteMany: jest.Mock;
@@ -184,7 +187,10 @@ describe('BrokerageService', () => {
       },
       brokerageOperation: {
         create: jest.fn(),
+        delete: jest.fn(),
+        findFirst: jest.fn(),
         findMany: jest.fn(),
+        update: jest.fn(),
       },
       portfolioAssetKindTarget: {
         deleteMany: jest.fn(),
@@ -243,6 +249,197 @@ describe('BrokerageService', () => {
     );
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('retries allocation replacement after a serialisation conflict', async () => {
+    const serialisationConflict = new Prisma.PrismaClientKnownRequestError(
+      'Transaction failed due to a write conflict or a deadlock. Please retry your transaction',
+      {
+        code: 'P2034',
+        clientVersion: '7.9.1',
+      },
+    );
+    prisma.$transaction.mockRejectedValueOnce(serialisationConflict);
+
+    await service.updateAllocationTargets('owner-1', {
+      assetKindTargets: [{ kind: AssetKind.STOCK, targetPercent: 100 }],
+      securityTargets: [],
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    const firstCall = prisma.$transaction.mock.calls[0] as
+      | unknown[]
+      | undefined;
+    expect(firstCall?.[1]).toEqual({
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
+
+  it('replays later sales when an earlier buy is corrected', () => {
+    const ledger = service as unknown as {
+      reverseTradeLedger: (
+        asset: ReturnType<typeof createAsset>,
+        operations: Array<Record<string, unknown>>,
+      ) => { quantity: Prisma.Decimal; costBasis: Prisma.Decimal };
+      forwardTradeLedger: (
+        baseline: { quantity: Prisma.Decimal; costBasis: Prisma.Decimal },
+        operations: Array<Record<string, unknown>>,
+      ) => {
+        position: { quantity: Prisma.Decimal; costBasis: Prisma.Decimal };
+        operations: Array<{
+          id: string;
+          realisedGainLoss: Prisma.Decimal | null;
+        }>;
+      };
+    };
+    const boughtAt100 = {
+      id: 'buy-1',
+      kind: BrokerageOperationKind.BUY,
+      postedAt: new Date('2026-05-01T00:00:00.000Z'),
+      createdAt: new Date('2026-05-01T01:00:00.000Z'),
+      quantity: new Prisma.Decimal('2'),
+      unitPrice: new Prisma.Decimal('100'),
+      grossAmount: new Prisma.Decimal('200'),
+      feeAmount: new Prisma.Decimal('0'),
+      cashAmount: new Prisma.Decimal('-200'),
+      realisedGainLoss: null,
+      notes: null,
+    };
+    const soldAt150 = {
+      id: 'sell-1',
+      kind: BrokerageOperationKind.SELL,
+      postedAt: new Date('2026-05-02T00:00:00.000Z'),
+      createdAt: new Date('2026-05-02T01:00:00.000Z'),
+      quantity: new Prisma.Decimal('1'),
+      unitPrice: new Prisma.Decimal('150'),
+      grossAmount: new Prisma.Decimal('150'),
+      feeAmount: new Prisma.Decimal('0'),
+      cashAmount: new Prisma.Decimal('150'),
+      realisedGainLoss: new Prisma.Decimal('50'),
+      notes: null,
+    };
+    const baseline = ledger.reverseTradeLedger(
+      createAsset({
+        quantity: new Prisma.Decimal('1'),
+        balance: new Prisma.Decimal('100'),
+        unitPrice: new Prisma.Decimal('100'),
+      }),
+      [boughtAt100, soldAt150],
+    );
+
+    const replayed = ledger.forwardTradeLedger(baseline, [
+      {
+        ...boughtAt100,
+        unitPrice: new Prisma.Decimal('120'),
+        grossAmount: new Prisma.Decimal('240'),
+        cashAmount: new Prisma.Decimal('-240'),
+      },
+      soldAt150,
+    ]);
+
+    expect(replayed.position.quantity.toString()).toBe('1');
+    expect(replayed.position.costBasis.toString()).toBe('120');
+    expect(
+      replayed.operations
+        .find((operation) => operation.id === 'sell-1')
+        ?.realisedGainLoss?.toString(),
+    ).toBe('30');
+  });
+
+  it('updates a trade, its position, and broker cash in one replay', async () => {
+    const asset = createAsset({
+      quantity: new Prisma.Decimal('1'),
+      balance: new Prisma.Decimal('100'),
+      unitPrice: new Prisma.Decimal('100'),
+    });
+    const buy = {
+      id: 'buy-1',
+      userId: OWNER_ID,
+      accountId: 'account-1',
+      assetId: 'asset-1',
+      kind: BrokerageOperationKind.BUY,
+      postedAt: new Date('2026-05-01T00:00:00.000Z'),
+      createdAt: new Date('2026-05-01T01:00:00.000Z'),
+      updatedAt: new Date('2026-05-01T01:00:00.000Z'),
+      currency: 'USD',
+      quantity: new Prisma.Decimal('2'),
+      unitPrice: new Prisma.Decimal('100'),
+      grossAmount: new Prisma.Decimal('200'),
+      feeAmount: new Prisma.Decimal('0'),
+      cashAmount: new Prisma.Decimal('-200'),
+      realisedGainLoss: null,
+      notes: null,
+      mirroredTransactionId: null,
+      asset,
+    };
+    const sell = {
+      ...buy,
+      id: 'sell-1',
+      kind: BrokerageOperationKind.SELL,
+      postedAt: new Date('2026-05-02T00:00:00.000Z'),
+      createdAt: new Date('2026-05-02T01:00:00.000Z'),
+      updatedAt: new Date('2026-05-02T01:00:00.000Z'),
+      quantity: new Prisma.Decimal('1'),
+      unitPrice: new Prisma.Decimal('150'),
+      grossAmount: new Prisma.Decimal('150'),
+      cashAmount: new Prisma.Decimal('150'),
+      realisedGainLoss: new Prisma.Decimal('50'),
+    };
+
+    prisma.account.findFirst.mockResolvedValue(createAccount());
+    prisma.brokerageOperation.findFirst.mockResolvedValue(buy);
+    prisma.brokerageOperation.findMany.mockResolvedValue([buy, sell]);
+
+    const result = await service.updateTrade(OWNER_ID, 'account-1', 'buy-1', {
+      quantity: 2,
+      unitPrice: 120,
+      feeAmount: 0,
+      postedAt: '2026-05-01T00:00:00.000Z',
+      notes: 'Corrected price',
+    });
+
+    expect(result.cashAmount).toBe(-240);
+    const assetUpdateCall = (
+      prisma.asset.update.mock.calls as unknown[][]
+    )[0]?.[0] as {
+      data?: Record<string, unknown>;
+      where?: Record<string, unknown>;
+    };
+    expect(assetUpdateCall).toMatchObject({
+      where: { id: 'asset-1' },
+      data: {
+        quantity: new Prisma.Decimal('1'),
+        balance: new Prisma.Decimal('120'),
+        unitPrice: new Prisma.Decimal('120'),
+      },
+    });
+    expect(transactions.applyAccountCashMovement).toHaveBeenCalledWith(
+      OWNER_ID,
+      'account-1',
+      new Prisma.Decimal('40'),
+      'OUTFLOW',
+      prisma,
+    );
+    expect(prisma.brokerageOperation.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps investment-plan trade history intact when a delete is requested', async () => {
+    prisma.account.findFirst.mockResolvedValue(createAccount());
+    prisma.brokerageOperation.findFirst.mockResolvedValue({
+      id: 'buy-1',
+      assetId: 'asset-1',
+      asset: createAsset(),
+      investmentPlanOccurrence: { id: 'occurrence-1' },
+    });
+
+    await expect(
+      service.removeTrade(OWNER_ID, 'account-1', 'buy-1'),
+    ).rejects.toThrow(
+      'This trade was recorded by an investment plan and cannot be deleted. Correct its values instead.',
+    );
+
+    expect(prisma.brokerageOperation.findMany).not.toHaveBeenCalled();
+    expect(prisma.brokerageOperation.delete).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate security targets after normalising ticker and exchange', async () => {

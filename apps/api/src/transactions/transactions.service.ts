@@ -563,6 +563,16 @@ export class TransactionsService {
   ): Promise<LogicalTransactionEntry> {
     const existing = await this.findOne(ownerId, id);
     this.assertEntryIsMutable(existing);
+    const mirroredBrokerageOperation =
+      existing.entryType === 'STANDARD'
+        ? await this.prisma.brokerageOperation.findFirst({
+            where: {
+              userId: ownerId,
+              mirroredTransactionId: existing.row.id,
+            },
+            select: { id: true, accountId: true },
+          })
+        : null;
 
     if (existing.entryType === 'TRANSFER') {
       if (dto.kind !== TransactionKind.TRANSFER) {
@@ -924,6 +934,16 @@ export class TransactionsService {
       categoryId: existing.row.categoryId,
     });
 
+    if (
+      mirroredBrokerageOperation &&
+      (prepared.accountId !== existing.row.accountId ||
+        prepared.direction !== existing.row.direction)
+    ) {
+      throw new ConflictException(
+        'A brokerage dividend or fee must remain in its original account and keep its cash direction.',
+      );
+    }
+
     const isAdjustment = prepared.kind === TransactionKind.ADJUSTMENT;
 
     const row = await this.runSerializableTransaction(async (tx) => {
@@ -979,6 +999,22 @@ export class TransactionsService {
         },
       });
 
+      if (mirroredBrokerageOperation) {
+        await tx.brokerageOperation.update({
+          where: { id: mirroredBrokerageOperation.id },
+          data: {
+            postedAt: prepared.postedAt,
+            currency: prepared.currency,
+            grossAmount: prepared.amount,
+            cashAmount:
+              prepared.direction === TransactionDirection.INFLOW
+                ? prepared.amount
+                : prepared.amount.neg(),
+            notes: prepared.notes,
+          },
+        });
+      }
+
       if (!isAdjustment) {
         await this.adjustAccountCashBalance(
           ownerId,
@@ -1001,6 +1037,16 @@ export class TransactionsService {
   async remove(ownerId: string, id: string): Promise<void> {
     const existing = await this.findOne(ownerId, id);
     this.assertEntryIsMutable(existing);
+    const mirroredBrokerageOperation =
+      existing.entryType === 'STANDARD'
+        ? await this.prisma.brokerageOperation.findFirst({
+            where: {
+              userId: ownerId,
+              mirroredTransactionId: existing.row.id,
+            },
+            select: { id: true },
+          })
+        : null;
 
     if (existing.entryType === 'TRANSFER') {
       await this.runSerializableTransaction(async (tx) => {
@@ -1071,6 +1117,12 @@ export class TransactionsService {
           tx,
           { skipValidation: true },
         );
+      }
+
+      if (mirroredBrokerageOperation) {
+        await tx.brokerageOperation.delete({
+          where: { id: mirroredBrokerageOperation.id },
+        });
       }
 
       await tx.transaction.delete({

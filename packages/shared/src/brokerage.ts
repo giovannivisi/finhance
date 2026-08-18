@@ -154,6 +154,18 @@ export interface CreateBrokerageFeeRequest {
   notes?: string | null;
 }
 
+/**
+ * A trade stays attached to its original position when amended. To move a
+ * trade to another security, remove it and record the correct trade instead.
+ */
+export interface UpdateBrokerageTradeRequest {
+  quantity: number;
+  unitPrice: number;
+  feeAmount?: number | null;
+  postedAt: string;
+  notes?: string | null;
+}
+
 export interface BrokerageOperationResponse {
   id: string;
   kind: BrokerageOperationKind;

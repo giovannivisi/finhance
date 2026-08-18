@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { BrokerageService } from '@brokerage/brokerage.service';
 import { BrokeragePerformanceQueryDto } from '@brokerage/dto/brokerage-performance-query.dto';
@@ -6,6 +16,7 @@ import { CreateBrokerageBuyDto } from '@brokerage/dto/create-brokerage-buy.dto';
 import { CreateBrokerageSellDto } from '@brokerage/dto/create-brokerage-sell.dto';
 import { CreateBrokerageDividendDto } from '@brokerage/dto/create-brokerage-dividend.dto';
 import { CreateBrokerageFeeDto } from '@brokerage/dto/create-brokerage-fee.dto';
+import { UpdateBrokerageTradeDto } from '@brokerage/dto/update-brokerage-trade.dto';
 import { UpdatePortfolioAllocationTargetsDto } from '@brokerage/dto/update-portfolio-allocation-targets.dto';
 import type {
   BrokerageAccountSummaryResponse,
@@ -95,6 +106,33 @@ export class BrokerageController {
       this.resolveOwnerId(),
       accountId,
       body,
+    );
+  }
+
+  @Put(':accountId/operations/:operationId')
+  async updateTrade(
+    @Param('accountId') accountId: string,
+    @Param('operationId') operationId: string,
+    @Body() body: UpdateBrokerageTradeDto,
+  ): Promise<BrokerageOperationResponse> {
+    return this.brokerageService.updateTrade(
+      this.resolveOwnerId(),
+      accountId,
+      operationId,
+      body,
+    );
+  }
+
+  @Delete(':accountId/operations/:operationId')
+  @HttpCode(204)
+  async removeTrade(
+    @Param('accountId') accountId: string,
+    @Param('operationId') operationId: string,
+  ): Promise<void> {
+    return this.brokerageService.removeTrade(
+      this.resolveOwnerId(),
+      accountId,
+      operationId,
     );
   }
 
