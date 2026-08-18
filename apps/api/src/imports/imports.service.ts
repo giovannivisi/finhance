@@ -16,7 +16,7 @@ import type {
   ImportPreviewResponse,
   ImportRowIssueResponse,
 } from '@finhance/shared';
-import { parseCsvTable, restoreSpreadsheetFormulaPrefix } from '@/common/csv';
+import { restoreSpreadsheetFormulaPrefix } from '@/common/csv';
 import {
   parseStoredImportIssues,
   parseStoredImportPayload,
@@ -26,9 +26,7 @@ import {
 import {
   buildImportExportArchive,
   buildImportTemplateArchive,
-  resolveTransferRowsForExport,
   type ExportArchiveResult,
-  type ExportState,
 } from '@imports/import-export';
 import { PricesService } from '@prices/prices.service';
 import {
@@ -59,10 +57,6 @@ import {
   TransactionKind,
 } from '@finhance/db';
 import { RecurringService } from '@recurring/recurring.service';
-import {
-  IMPORT_TEMPLATE_HEADERS,
-  IMPORT_TEMPLATE_OPTIONAL_HEADERS,
-} from '@imports/imports.types';
 import { normalizeExpenseValidationEntry } from '@transactions/category-hierarchy';
 import type {
   AccountImportRow,
@@ -81,13 +75,14 @@ import type {
   TransactionImportRow,
 } from '@imports/imports.types';
 import { isSupportedExchangeValue } from '@/common/catalogues';
+import { ImportCsvParser, type CsvRecord } from '@imports/imports-parser';
+import { ImportPreviewStore } from '@imports/import-preview-store';
+import { ImportExportStateService } from '@imports/import-export-state.service';
+export {
+  MAX_IMPORT_ROWS_PER_FILE,
+  MAX_IMPORT_TOTAL_ROWS,
+} from '@imports/imports-parser';
 type ImportDbClient = PrismaService | Prisma.TransactionClient;
-
-interface StoredPreviewPayload {
-  ownerId: string;
-  payload: ImportPayload;
-  expiresAt: number;
-}
 
 interface AccountImportRef {
   id: string;
@@ -116,13 +111,8 @@ interface BudgetImportRef {
 
 const CSV_IMPORT_SOURCE = ImportSource.CSV_TEMPLATE;
 const RECENT_BATCH_LIMIT = 20;
-const IMPORT_PREVIEW_TTL_MS = 15 * 60 * 1000;
-const IMPORT_PREVIEW_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const IMPORT_APPLY_TRANSACTION_MAX_WAIT_MS = 15_000;
 const IMPORT_APPLY_TRANSACTION_TIMEOUT_MS = 120_000;
-const MAX_UPLOAD_FILE_BYTES = 1024 * 1024;
-export const MAX_IMPORT_ROWS_PER_FILE = 5_000;
-export const MAX_IMPORT_TOTAL_ROWS = 20_000;
 export const MAX_IMPORT_PREVIEW_PAYLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_IMPORT_KEY_LENGTH = 128;
 const MAX_NAME_LENGTH = 120;
@@ -139,39 +129,49 @@ const MARKET_ASSET_KINDS = new Set<AssetKind>([
 const CSV_TRUE_VALUES = new Set(['true', '1', 'yes']);
 const CSV_FALSE_VALUES = new Set(['false', '0', 'no', '']);
 const ZERO = new Prisma.Decimal(0);
-type CsvRecord = Record<string, string>;
-
 @Injectable()
 export class ImportsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ImportsService.name);
-  private readonly previewPayloads = new Map<string, StoredPreviewPayload>();
-  private cleanupTimer: NodeJS.Timeout | null = null;
+  private readonly csvParser: ImportCsvParser;
+  private readonly previewStore: ImportPreviewStore;
+  private readonly exportStateService: ImportExportStateService;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricesService: PricesService,
     private readonly recurringService: RecurringService,
-  ) {}
+  ) {
+    this.previewStore = new ImportPreviewStore(this.prisma);
+    this.exportStateService = new ImportExportStateService();
+    this.csvParser = new ImportCsvParser({
+      issue: this.issue.bind(this),
+      describeError: this.describeError.bind(this),
+      rowParsers: {
+        accounts: this.parseAccountRow.bind(this),
+        categories: this.parseCategoryRow.bind(this),
+        assets: this.parseAssetRow.bind(this),
+        transactions: this.parseTransactionRow.bind(this),
+        recurringRules: this.parseRecurringRuleRow.bind(this),
+        recurringExceptions: this.parseRecurringExceptionRow.bind(this),
+        budgets: this.parseBudgetRow.bind(this),
+        budgetOverrides: this.parseBudgetOverrideRow.bind(this),
+        expenseCategoryHierarchy:
+          this.parseExpenseCategoryHierarchyRow.bind(this),
+        expenseValidationRules: this.parseExpenseValidationRuleRow.bind(this),
+      },
+    });
+  }
 
   onModuleInit(): void {
-    this.schedulePersistedPreviewCleanup();
-    this.cleanupTimer = setInterval(() => {
-      this.schedulePersistedPreviewCleanup();
-    }, IMPORT_PREVIEW_CLEANUP_INTERVAL_MS);
-    this.cleanupTimer.unref?.();
+    this.previewStore.start();
   }
 
   onModuleDestroy(): void {
-    if (!this.cleanupTimer) {
-      return;
-    }
-
-    clearInterval(this.cleanupTimer);
-    this.cleanupTimer = null;
+    this.previewStore.stop();
   }
 
   async listRecent(ownerId: string): Promise<ImportBatchResponse[]> {
-    await this.clearExpiredPersistedPreviewPayloads(ownerId);
+    await this.previewStore.clearExpiredPersisted(ownerId);
     const batches = await this.prisma.importBatch.findMany({
       where: { userId: ownerId },
       orderBy: [{ createdAt: 'desc' }],
@@ -185,7 +185,7 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     ownerId: string,
     batchId: string,
   ): Promise<ImportBatchResponse> {
-    await this.clearExpiredPersistedPreviewPayloads(ownerId);
+    await this.previewStore.clearExpiredPersisted(ownerId);
     const batch = await this.prisma.importBatch.findFirst({
       where: { id: batchId, userId: ownerId },
     });
@@ -201,10 +201,10 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     ownerId: string,
     files: Partial<Record<ImportFileType, ImportUploadFile>>,
   ): Promise<ImportPreviewResponse> {
-    this.pruneExpiredPreviewPayloads();
-    await this.clearExpiredPersistedPreviewPayloads(ownerId);
+    this.previewStore.pruneExpired();
+    await this.previewStore.clearExpiredPersisted(ownerId);
 
-    const parsed = this.parseUploadedFiles(files);
+    const parsed = this.csvParser.parse(files);
     this.enforcePreviewPayloadSize(parsed.payload, parsed.issues);
     const analysis = await this.analyzePayload(
       this.prisma,
@@ -231,13 +231,9 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (analysis.canApply) {
-      this.previewPayloads.set(batch.id, {
-        ownerId,
-        payload: parsed.payload,
-        expiresAt: Date.now() + IMPORT_PREVIEW_TTL_MS,
-      });
+      this.previewStore.remember(batch.id, ownerId, parsed.payload);
     } else {
-      this.previewPayloads.delete(batch.id);
+      this.previewStore.remove(batch.id);
     }
 
     return this.toImportPreviewResponse(batch, analysis.canApply);
@@ -247,8 +243,8 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     ownerId: string,
     batchId: string,
   ): Promise<ImportBatchResponse> {
-    this.pruneExpiredPreviewPayloads();
-    await this.clearExpiredPersistedPreviewPayloads(ownerId);
+    this.previewStore.pruneExpired();
+    await this.previewStore.clearExpiredPersisted(ownerId);
 
     const batch = await this.prisma.importBatch.findFirst({
       where: { id: batchId, userId: ownerId },
@@ -270,7 +266,7 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const preview = this.previewPayloads.get(batchId);
+    const preview = this.previewStore.get(batchId);
     const persistedPayload = parseStoredImportPayload(batch.payloadJson);
     const previewPayload =
       preview && preview.ownerId === ownerId
@@ -282,7 +278,7 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
         preview.ownerId === ownerId &&
         preview.expiresAt <= Date.now())
     ) {
-      this.previewPayloads.delete(batchId);
+      this.previewStore.remove(batchId);
       throw new ConflictException(
         'This import preview expired. Preview it again before applying.',
       );
@@ -308,7 +304,7 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      this.previewPayloads.delete(batchId);
+      this.previewStore.remove(batchId);
       return this.toImportBatchResponse(appliedBatch);
     } catch (error) {
       if (error instanceof ConflictException) {
@@ -331,7 +327,7 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
         void failedBatch;
       }
 
-      this.previewPayloads.delete(batchId);
+      this.previewStore.remove(batchId);
       throw error;
     }
   }
@@ -395,8 +391,8 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
 
   async exportCsvZip(ownerId: string): Promise<ExportArchiveResult> {
     const state = await this.prisma.$transaction(async (tx) => {
-      await this.backfillExportImportKeys(tx, ownerId);
-      return this.loadExportState(tx, ownerId);
+      await this.exportStateService.backfillExportImportKeys(tx, ownerId);
+      return this.exportStateService.loadExportState(tx, ownerId);
     });
 
     return buildImportExportArchive(state);
@@ -404,170 +400,6 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
 
   exportTemplateZip(): ExportArchiveResult {
     return buildImportTemplateArchive();
-  }
-
-  private parseUploadedFiles(
-    files: Partial<Record<ImportFileType, ImportUploadFile>>,
-  ): { payload: ImportPayload; issues: ImportRowIssueResponse[] } {
-    const payload: ImportPayload = {
-      providedFiles: [],
-      accounts: [],
-      categories: [],
-      assets: [],
-      transactions: [],
-      recurringRules: [],
-      recurringExceptions: [],
-      budgets: [],
-      budgetOverrides: [],
-      expenseCategoryHierarchy: [],
-      expenseValidationRules: [],
-    };
-    const issues: ImportRowIssueResponse[] = [];
-    let totalRows = 0;
-
-    for (const fileType of Object.keys(files) as ImportFileType[]) {
-      const file = files[fileType];
-      if (!file) {
-        continue;
-      }
-
-      payload.providedFiles.push(fileType);
-
-      if (file.buffer.length > MAX_UPLOAD_FILE_BYTES) {
-        issues.push(
-          this.issue(
-            fileType,
-            1,
-            null,
-            `${fileType}.csv exceeds the 1 MB size limit.`,
-          ),
-        );
-        continue;
-      }
-
-      let records: Array<{ rowNumber: number; values: CsvRecord }>;
-      try {
-        records = this.parseCsvFile(fileType, file.buffer.toString('utf8'));
-      } catch (error) {
-        issues.push(this.issue(fileType, 1, null, this.describeError(error)));
-        continue;
-      }
-
-      if (records.length > MAX_IMPORT_ROWS_PER_FILE) {
-        issues.push(
-          this.issue(
-            fileType,
-            1,
-            null,
-            `${fileType}.csv has ${records.length} rows, which exceeds the ${MAX_IMPORT_ROWS_PER_FILE} row limit per file.`,
-          ),
-        );
-        continue;
-      }
-
-      if (totalRows + records.length > MAX_IMPORT_TOTAL_ROWS) {
-        issues.push(
-          this.issue(
-            fileType,
-            1,
-            null,
-            `The CSV import has more than ${MAX_IMPORT_TOTAL_ROWS} rows across all files.`,
-          ),
-        );
-        continue;
-      }
-
-      totalRows += records.length;
-
-      switch (fileType) {
-        case 'accounts':
-          payload.accounts = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseAccountRow.bind(this),
-          );
-          break;
-        case 'categories':
-          payload.categories = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseCategoryRow.bind(this),
-          );
-          break;
-        case 'assets':
-          payload.assets = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseAssetRow.bind(this),
-          );
-          break;
-        case 'transactions':
-          payload.transactions = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseTransactionRow.bind(this),
-          );
-          break;
-        case 'recurringRules':
-          payload.recurringRules = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseRecurringRuleRow.bind(this),
-          );
-          break;
-        case 'recurringExceptions':
-          payload.recurringExceptions = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseRecurringExceptionRow.bind(this),
-          );
-          break;
-        case 'budgets':
-          payload.budgets = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseBudgetRow.bind(this),
-          );
-          break;
-        case 'budgetOverrides':
-          payload.budgetOverrides = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseBudgetOverrideRow.bind(this),
-          );
-          break;
-        case 'expenseCategoryHierarchy':
-          payload.expenseCategoryHierarchy = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseExpenseCategoryHierarchyRow.bind(this),
-          );
-          break;
-        case 'expenseValidationRules':
-          payload.expenseValidationRules = this.parseRows(
-            fileType,
-            records,
-            issues,
-            this.parseExpenseValidationRuleRow.bind(this),
-          );
-          break;
-      }
-    }
-
-    if (payload.providedFiles.length === 0) {
-      throw new BadRequestException('Upload at least one CSV file to preview.');
-    }
-
-    return { payload, issues };
   }
 
   private enforcePreviewPayloadSize(
@@ -589,63 +421,6 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
         `The import preview payload is ${payloadBytes} bytes, which exceeds the ${MAX_IMPORT_PREVIEW_PAYLOAD_BYTES} byte limit.`,
       ),
     );
-  }
-
-  private parseRows<T>(
-    file: ImportFileType,
-    records: Array<{ rowNumber: number; values: CsvRecord }>,
-    issues: ImportRowIssueResponse[],
-    parser: (rowNumber: number, values: CsvRecord) => T,
-  ): T[] {
-    const rows: T[] = [];
-
-    for (const record of records) {
-      try {
-        rows.push(parser(record.rowNumber, record.values));
-      } catch (error) {
-        issues.push(
-          this.issue(file, record.rowNumber, null, this.describeError(error)),
-        );
-      }
-    }
-
-    return rows;
-  }
-
-  private parseCsvFile(
-    file: ImportFileType,
-    rawText: string,
-  ): Array<{ rowNumber: number; values: CsvRecord }> {
-    const { headers, rows } = parseCsvTable(rawText, {
-      emptyMessage: `${file}.csv is empty.`,
-    });
-    const expectedHeaders = [...IMPORT_TEMPLATE_HEADERS[file]];
-    const optionalHeaders = IMPORT_TEMPLATE_OPTIONAL_HEADERS[file] ?? [];
-    const unknownHeaders = headers.filter(
-      (header) => !expectedHeaders.includes(header),
-    );
-    const missingHeaders = expectedHeaders.filter(
-      (header) =>
-        !headers.includes(header) && !optionalHeaders.includes(header),
-    );
-
-    if (unknownHeaders.length > 0 || missingHeaders.length > 0) {
-      const parts: string[] = [];
-
-      if (unknownHeaders.length > 0) {
-        parts.push(`Unknown headers: ${unknownHeaders.join(', ')}.`);
-      }
-
-      if (missingHeaders.length > 0) {
-        parts.push(`Missing headers: ${missingHeaders.join(', ')}.`);
-      }
-
-      throw new BadRequestException(
-        `${file}.csv does not match the finhance template. ${parts.join(' ')}`,
-      );
-    }
-
-    return rows;
   }
 
   private parseAccountRow(
@@ -4456,428 +4231,6 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async backfillExportImportKeys(
-    db: ImportDbClient,
-    ownerId: string,
-  ): Promise<void> {
-    await this.backfillAccountExportImportKeys(db, ownerId);
-    await this.backfillCategoryExportImportKeys(db, ownerId);
-    await this.backfillRecurringRuleExportImportKeys(db, ownerId);
-    await this.backfillBudgetExportImportKeys(db, ownerId);
-    await this.backfillAssetExportImportKeys(db, ownerId);
-    await this.backfillTransactionExportImportKeys(db, ownerId);
-  }
-
-  private isLegacyManualKey(key: string | null): boolean {
-    if (!key) return false;
-    return /^manual-(account|category|asset|recurring-rule|budget|transaction|transfer)-[a-z0-9]{20,}$/.test(
-      key,
-    );
-  }
-
-  private generateReadableImportKey(
-    prefix: string,
-    parts: string[],
-    usedKeys: Set<string>,
-  ): string {
-    const slug = parts
-      .join('-')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
-    const base = `${prefix}-${slug}`;
-    if (!usedKeys.has(base)) {
-      usedKeys.add(base);
-      return base;
-    }
-    let counter = 2;
-    while (usedKeys.has(`${base}-${counter}`)) {
-      counter++;
-    }
-    const key = `${base}-${counter}`;
-    usedKeys.add(key);
-    return key;
-  }
-
-  private async backfillAccountExportImportKeys(
-    db: ImportDbClient,
-    ownerId: string,
-  ): Promise<void> {
-    const rows = await db.account.findMany({
-      where: { userId: ownerId },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    const usedKeys = new Set<string>(
-      rows
-        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
-        .map((r) => r.importKey!),
-    );
-
-    for (const row of rows) {
-      if (
-        row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey &&
-        !this.isLegacyManualKey(row.importKey)
-      ) {
-        continue;
-      }
-      const importKey = this.generateReadableImportKey(
-        'account',
-        [row.name, row.currency],
-        usedKeys,
-      );
-
-      await db.account.update({
-        where: { id: row.id },
-        data: {
-          importSource: CSV_IMPORT_SOURCE,
-          importKey,
-        },
-      });
-    }
-  }
-
-  private async backfillCategoryExportImportKeys(
-    db: ImportDbClient,
-    ownerId: string,
-  ): Promise<void> {
-    const rows = await db.category.findMany({
-      where: { userId: ownerId },
-      orderBy: { createdAt: 'asc' },
-      include: { parentCategory: true },
-    });
-
-    const usedKeys = new Set<string>(
-      rows
-        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
-        .map((r) => r.importKey!),
-    );
-
-    for (const row of rows) {
-      if (
-        row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey &&
-        !this.isLegacyManualKey(row.importKey)
-      ) {
-        continue;
-      }
-      const parts = row.parentCategory
-        ? [row.type, row.parentCategory.name, row.name]
-        : [row.type, row.name];
-      const importKey = this.generateReadableImportKey(
-        'category',
-        parts,
-        usedKeys,
-      );
-
-      await db.category.update({
-        where: { id: row.id },
-        data: {
-          importSource: CSV_IMPORT_SOURCE,
-          importKey,
-        },
-      });
-    }
-  }
-
-  private async backfillAssetExportImportKeys(
-    db: ImportDbClient,
-    ownerId: string,
-  ): Promise<void> {
-    const rows = await db.asset.findMany({
-      where: { userId: ownerId },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    const usedKeys = new Set<string>(
-      rows
-        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
-        .map((r) => r.importKey!),
-    );
-
-    for (const row of rows) {
-      if (
-        row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey &&
-        !this.isLegacyManualKey(row.importKey)
-      ) {
-        continue;
-      }
-      const importKey = this.generateReadableImportKey(
-        'asset',
-        [row.name, row.currency],
-        usedKeys,
-      );
-
-      await db.asset.update({
-        where: { id: row.id },
-        data: {
-          importSource: CSV_IMPORT_SOURCE,
-          importKey,
-        },
-      });
-    }
-  }
-
-  private async backfillRecurringRuleExportImportKeys(
-    db: ImportDbClient,
-    ownerId: string,
-  ): Promise<void> {
-    const rows = await db.recurringTransactionRule.findMany({
-      where: { userId: ownerId },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    const usedKeys = new Set<string>(
-      rows
-        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
-        .map((r) => r.importKey!),
-    );
-
-    for (const row of rows) {
-      if (
-        row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey &&
-        !this.isLegacyManualKey(row.importKey)
-      ) {
-        continue;
-      }
-      const importKey = this.generateReadableImportKey(
-        'recurring',
-        [row.name],
-        usedKeys,
-      );
-
-      await db.recurringTransactionRule.update({
-        where: { id: row.id },
-        data: {
-          importSource: CSV_IMPORT_SOURCE,
-          importKey,
-        },
-      });
-    }
-  }
-
-  private async backfillBudgetExportImportKeys(
-    db: ImportDbClient,
-    ownerId: string,
-  ): Promise<void> {
-    const rows = await db.categoryBudget.findMany({
-      where: { userId: ownerId },
-      orderBy: { createdAt: 'asc' },
-      include: { category: true },
-    });
-
-    const usedKeys = new Set<string>(
-      rows
-        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
-        .map((r) => r.importKey!),
-    );
-
-    for (const row of rows) {
-      if (
-        row.importSource === CSV_IMPORT_SOURCE &&
-        row.importKey &&
-        !this.isLegacyManualKey(row.importKey)
-      ) {
-        continue;
-      }
-      const importKey = this.generateReadableImportKey(
-        'budget',
-        [row.category.name, row.currency],
-        usedKeys,
-      );
-
-      await db.categoryBudget.update({
-        where: { id: row.id },
-        data: {
-          importSource: CSV_IMPORT_SOURCE,
-          importKey,
-        },
-      });
-    }
-  }
-
-  private async backfillTransactionExportImportKeys(
-    db: ImportDbClient,
-    ownerId: string,
-  ): Promise<void> {
-    const rows = await db.transaction.findMany({
-      where: { userId: ownerId },
-      orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      include: { account: true },
-    });
-    const usedKeys = new Set<string>(
-      rows
-        .filter((r) => r.importKey && !this.isLegacyManualKey(r.importKey))
-        .map((r) => r.importKey!),
-    );
-    const transferGroups = new Map<string, (typeof rows)[number][]>();
-
-    for (const row of rows) {
-      if (row.kind !== TransactionKind.TRANSFER) {
-        if (
-          row.importSource === CSV_IMPORT_SOURCE &&
-          row.importKey &&
-          !this.isLegacyManualKey(row.importKey)
-        ) {
-          continue;
-        }
-        const dateStr = row.postedAt.toISOString().slice(0, 10);
-        const descSlug = row.description.slice(0, 30);
-        const importKey = this.generateReadableImportKey(
-          'tx',
-          [dateStr, descSlug, row.account.name],
-          usedKeys,
-        );
-
-        await db.transaction.update({
-          where: { id: row.id },
-          data: {
-            importSource: CSV_IMPORT_SOURCE,
-            importKey,
-          },
-        });
-        continue;
-      }
-
-      if (!row.transferGroupId) {
-        throw new ConflictException(
-          `Transfer ${row.id} is missing a transfer group id and cannot be exported.`,
-        );
-      }
-
-      const existing = transferGroups.get(row.transferGroupId) ?? [];
-      existing.push(row);
-      transferGroups.set(row.transferGroupId, existing);
-    }
-
-    for (const [transferGroupId, groupRows] of transferGroups.entries()) {
-      const allHaveReadableKeys = groupRows.every(
-        (r) =>
-          r.importSource === CSV_IMPORT_SOURCE &&
-          r.importKey &&
-          !this.isLegacyManualKey(r.importKey),
-      );
-      if (allHaveReadableKeys) continue;
-
-      const { outflow, importKey: existingKey } = resolveTransferRowsForExport(
-        transferGroupId,
-        groupRows,
-      );
-
-      let importKey = existingKey;
-      if (importKey.startsWith('manual-transfer-')) {
-        const dateStr = outflow.postedAt.toISOString().slice(0, 10);
-        const descSlug = outflow.description.slice(0, 30);
-        importKey = this.generateReadableImportKey(
-          'transfer',
-          [dateStr, descSlug],
-          usedKeys,
-        );
-      }
-
-      for (const row of groupRows) {
-        if (
-          row.importSource === CSV_IMPORT_SOURCE &&
-          row.importKey === importKey
-        ) {
-          continue;
-        }
-
-        await db.transaction.update({
-          where: { id: row.id },
-          data: {
-            importSource: CSV_IMPORT_SOURCE,
-            importKey,
-          },
-        });
-      }
-    }
-  }
-
-  private async loadExportState(
-    db: ImportDbClient,
-    ownerId: string,
-  ): Promise<ExportState> {
-    const [
-      accounts,
-      categories,
-      assets,
-      transactions,
-      recurringRules,
-      budgets,
-      expenseValidationRules,
-    ] = await Promise.all([
-      db.account.findMany({
-        where: { userId: ownerId },
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      }),
-      db.category.findMany({
-        where: { userId: ownerId },
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      }),
-      db.asset.findMany({
-        where: { userId: ownerId },
-        include: {
-          account: true,
-        },
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      }),
-      db.transaction.findMany({
-        where: { userId: ownerId },
-        include: {
-          account: true,
-          category: true,
-        },
-        orderBy: [{ postedAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      }),
-      db.recurringTransactionRule.findMany({
-        where: { userId: ownerId },
-        include: {
-          occurrences: {
-            orderBy: [{ occurrenceMonth: 'asc' }, { createdAt: 'asc' }],
-          },
-        },
-        orderBy: [{ dayOfMonth: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      }),
-      db.categoryBudget.findMany({
-        where: { userId: ownerId },
-        include: {
-          category: true,
-          overrides: {
-            orderBy: [{ month: 'asc' }, { createdAt: 'asc' }],
-          },
-        },
-        orderBy: [{ startMonth: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      }),
-      'expenseValidationRule' in db && db.expenseValidationRule
-        ? db.expenseValidationRule.findMany({
-            where: { userId: ownerId },
-            include: {
-              secondaryCategory: {
-                include: {
-                  parentCategory: true,
-                },
-              },
-            },
-            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-          })
-        : Promise.resolve([]),
-    ]);
-
-    return {
-      accounts,
-      categories,
-      assets,
-      transactions,
-      recurringRules,
-      budgets,
-      expenseValidationRules,
-    };
-  }
-
   private createEmptySummary(
     providedFiles: ImportFileType[],
   ): ImportBatchSummaryResponse {
@@ -5754,43 +5107,6 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
     exchange: string,
   ): string {
     return `${kind}:${ticker}:${exchange}`;
-  }
-
-  private pruneExpiredPreviewPayloads(): void {
-    const now = Date.now();
-
-    for (const [batchId, preview] of this.previewPayloads.entries()) {
-      if (preview.expiresAt <= now) {
-        this.previewPayloads.delete(batchId);
-      }
-    }
-  }
-
-  private async clearExpiredPersistedPreviewPayloads(
-    ownerId?: string,
-    now: Date = new Date(),
-  ): Promise<void> {
-    const previewCutoff = new Date(now.getTime() - IMPORT_PREVIEW_TTL_MS);
-
-    await this.prisma.importBatch.updateMany({
-      where: {
-        ...(ownerId ? { userId: ownerId } : {}),
-        status: ImportBatchStatus.PREVIEW,
-        createdAt: { lt: previewCutoff },
-        payloadJson: { not: Prisma.AnyNull },
-      },
-      data: {
-        payloadJson: Prisma.DbNull,
-      },
-    });
-  }
-
-  private schedulePersistedPreviewCleanup(): void {
-    void this.clearExpiredPersistedPreviewPayloads().catch((error) => {
-      this.logger.warn(
-        `Import preview cleanup failed: ${this.describeError(error)}`,
-      );
-    });
   }
 
   private toImportBatchResponse(batch: ImportBatch): ImportBatchResponse {

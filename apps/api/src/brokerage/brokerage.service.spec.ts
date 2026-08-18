@@ -251,6 +251,30 @@ describe('BrokerageService', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('retries allocation replacement after a serialisation conflict', async () => {
+    const serialisationConflict = new Prisma.PrismaClientKnownRequestError(
+      'Transaction failed due to a write conflict or a deadlock. Please retry your transaction',
+      {
+        code: 'P2034',
+        clientVersion: '7.9.1',
+      },
+    );
+    prisma.$transaction.mockRejectedValueOnce(serialisationConflict);
+
+    await service.updateAllocationTargets('owner-1', {
+      assetKindTargets: [{ kind: AssetKind.STOCK, targetPercent: 100 }],
+      securityTargets: [],
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    const firstCall = prisma.$transaction.mock.calls[0] as
+      | unknown[]
+      | undefined;
+    expect(firstCall?.[1]).toEqual({
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
+
   it('replays later sales when an earlier buy is corrected', () => {
     const ledger = service as unknown as {
       reverseTradeLedger: (

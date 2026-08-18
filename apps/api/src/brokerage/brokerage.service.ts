@@ -1001,37 +1001,42 @@ export class BrokerageService {
       securityTargets.map((entry) => entry.targetPercent),
     );
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.portfolioAssetKindTarget.deleteMany({
-        where: { userId: ownerId },
-      });
-      await tx.portfolioSecurityTarget.deleteMany({
-        where: { userId: ownerId },
-      });
+    await this.withSerializableRetry(() =>
+      this.prisma.$transaction(
+        async (tx) => {
+          await tx.portfolioAssetKindTarget.deleteMany({
+            where: { userId: ownerId },
+          });
+          await tx.portfolioSecurityTarget.deleteMany({
+            where: { userId: ownerId },
+          });
 
-      if (assetKindTargets.length > 0) {
-        await tx.portfolioAssetKindTarget.createMany({
-          data: assetKindTargets.map((entry) => ({
-            userId: ownerId,
-            kind: entry.kind,
-            targetPercent: entry.targetPercent,
-          })),
-        });
-      }
+          if (assetKindTargets.length > 0) {
+            await tx.portfolioAssetKindTarget.createMany({
+              data: assetKindTargets.map((entry) => ({
+                userId: ownerId,
+                kind: entry.kind,
+                targetPercent: entry.targetPercent,
+              })),
+            });
+          }
 
-      if (securityTargets.length > 0) {
-        await tx.portfolioSecurityTarget.createMany({
-          data: securityTargets.map((entry) => ({
-            userId: ownerId,
-            kind: entry.kind,
-            ticker: entry.ticker,
-            exchange: entry.exchange,
-            name: entry.name,
-            targetPercent: entry.targetPercent,
-          })),
-        });
-      }
-    });
+          if (securityTargets.length > 0) {
+            await tx.portfolioSecurityTarget.createMany({
+              data: securityTargets.map((entry) => ({
+                userId: ownerId,
+                kind: entry.kind,
+                ticker: entry.ticker,
+                exchange: entry.exchange,
+                name: entry.name,
+                targetPercent: entry.targetPercent,
+              })),
+            });
+          }
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      ),
+    );
 
     return {
       assetKindTargets: assetKindTargets.map((entry) => ({
@@ -2857,5 +2862,24 @@ export class BrokerageService {
         : null;
 
     return table === `public.${tableName}` || modelName === tableName;
+  }
+
+  private async withSerializableRetry<T>(
+    operation: () => Promise<T>,
+    attempt = 0,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (
+        attempt < 2 &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2034'
+      ) {
+        return this.withSerializableRetry(operation, attempt + 1);
+      }
+
+      throw error;
+    }
   }
 }
