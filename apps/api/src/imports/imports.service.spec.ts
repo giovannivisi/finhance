@@ -1,8 +1,6 @@
 import { ConflictException } from '@nestjs/common';
-import {
-  ImportsService,
-  MAX_IMPORT_ROWS_PER_FILE,
-} from '@imports/imports.service';
+import { ImportsService } from '@imports/imports.service';
+import { MAX_IMPORT_ROWS_PER_FILE } from '@imports/imports-parser';
 import { IMPORT_TEMPLATE_HEADERS } from '@imports/imports.types';
 import { PrismaService } from '@prisma/prisma.service';
 import { PricesService } from '@prices/prices.service';

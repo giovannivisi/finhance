@@ -78,10 +78,6 @@ import { isSupportedExchangeValue } from '@/common/catalogues';
 import { ImportCsvParser, type CsvRecord } from '@imports/imports-parser';
 import { ImportPreviewStore } from '@imports/import-preview-store';
 import { ImportExportStateService } from '@imports/import-export-state.service';
-export {
-  MAX_IMPORT_ROWS_PER_FILE,
-  MAX_IMPORT_TOTAL_ROWS,
-} from '@imports/imports-parser';
 type ImportDbClient = PrismaService | Prisma.TransactionClient;
 
 interface AccountImportRef {
