@@ -1784,7 +1784,7 @@ export class TransactionsService {
     let destinationAmount = this.toDecimal(dto.destinationAmount ?? dto.amount);
     const sourceCurrency = sourceAccount.currency;
     const destinationCurrency = destinationAccount.currency;
-    let fxRateUsed: Prisma.Decimal;
+    let fxRateUsed: Prisma.Decimal | null;
     let fxRateSource: FxRateSource | null;
 
     if (sourceCurrency !== destinationCurrency) {
