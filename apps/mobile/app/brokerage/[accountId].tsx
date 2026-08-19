@@ -1168,7 +1168,7 @@ export default function BrokerageWorkspaceScreen() {
                 points={performance?.points ?? []}
                 range={range}
                 baselineValue={performance?.baselineValue ?? null}
-                latestValue={performance?.latestValue ?? null}
+                latestValue={headerTotal}
                 currency={performance?.reportingCurrency ?? accountCurrency}
                 emptyMessage={
                   performance?.pricingStatus.state === "PARTIAL"

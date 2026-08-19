@@ -5,8 +5,10 @@ import {
   buildAxisTimeLabels,
   computePercentGridlines,
   formatAxisTimeLabel,
+  getPerformancePlotMetrics,
   isPerformancePositive,
   selectAxisTickIndices,
+  withLatestPerformanceValue,
 } from "./performance-chart";
 
 function point(t: number, value: number): BrokeragePerformancePointResponse {
@@ -92,6 +94,20 @@ describe("computePercentGridlines", () => {
     expect(gridlines[3]!.label).toBe("-0.25 %");
   });
 
+  it("keeps each percentage step the same size across the plot", () => {
+    const gridlines = computePercentGridlines(
+      [point(1, 100.05), point(2, 99.95)],
+      100,
+      4,
+    );
+    const steps = gridlines
+      .slice(1)
+      .map((gridline, index) => gridlines[index]!.percent - gridline.percent);
+
+    expect(steps[0]).toBeCloseTo(steps[1]!, 10);
+    expect(steps[1]).toBeCloseTo(steps[2]!, 10);
+  });
+
   it("returns an empty array when there is no baseline", () => {
     expect(computePercentGridlines([point(1, 100)], null)).toEqual([]);
   });
@@ -106,6 +122,41 @@ describe("computePercentGridlines", () => {
     expect(gridlines).toHaveLength(4);
     expect(gridlines[0]!.percent).toBeGreaterThan(0);
     expect(gridlines[3]!.percent).toBeLessThan(0);
+  });
+});
+
+describe("withLatestPerformanceValue", () => {
+  it("updates a stale final point without changing the historical curve", () => {
+    const points = [point(1, 100), point(2, 99.95), point(3, 99.8)];
+
+    expect(withLatestPerformanceValue(points, 100)).toEqual([
+      point(1, 100),
+      point(2, 99.95),
+      point(3, 100),
+    ]);
+  });
+
+  it("leaves points unchanged when the latest value is unavailable", () => {
+    const points = [point(1, 100), point(2, 99.95)];
+
+    expect(withLatestPerformanceValue(points, null)).toEqual(points);
+    expect(withLatestPerformanceValue([], 100)).toEqual([]);
+  });
+});
+
+describe("getPerformancePlotMetrics", () => {
+  it("insets the plot by half a label so edge labels stay aligned", () => {
+    expect(getPerformancePlotMetrics(218, 16)).toEqual({
+      topInset: 8,
+      plotHeight: 202,
+    });
+  });
+
+  it("keeps the plot non-negative for a very small chart", () => {
+    expect(getPerformancePlotMetrics(8, 16)).toEqual({
+      topInset: 4,
+      plotHeight: 0,
+    });
   });
 });
 
