@@ -4,6 +4,8 @@ import { validateSync, type ValidationError } from 'class-validator';
 import { AssetKind } from '@finhance/db';
 import { BrokeragePerformanceQueryDto } from '@brokerage/dto/brokerage-performance-query.dto';
 import { CreateBrokerageBuyDto } from '@brokerage/dto/create-brokerage-buy.dto';
+import { CreateBrokerageSellDto } from '@brokerage/dto/create-brokerage-sell.dto';
+import { UpdateBrokerageTradeDto } from '@brokerage/dto/update-brokerage-trade.dto';
 import { UpdatePortfolioAllocationTargetsDto } from '@brokerage/dto/update-portfolio-allocation-targets.dto';
 
 function collectConstraintMessages(errors: ValidationError[]): string[] {
@@ -32,6 +34,36 @@ describe('Brokerage DTO validation', () => {
         'exchange must be shorter than or equal to 24 characters',
       ]),
     );
+  });
+
+  it('allows zero fees on trade create and correction requests', () => {
+    const requests = [
+      plainToInstance(CreateBrokerageBuyDto, {
+        kind: AssetKind.STOCK,
+        currency: 'EUR',
+        quantity: 1,
+        unitPrice: 10,
+        feeAmount: 0,
+        postedAt: '2026-05-20T10:00:00.000Z',
+      }),
+      plainToInstance(CreateBrokerageSellDto, {
+        assetId: 'asset-1',
+        quantity: 1,
+        unitPrice: 10,
+        feeAmount: 0,
+        postedAt: '2026-05-20T10:00:00.000Z',
+      }),
+      plainToInstance(UpdateBrokerageTradeDto, {
+        quantity: 1,
+        unitPrice: 10,
+        feeAmount: 0,
+        postedAt: '2026-05-20T10:00:00.000Z',
+      }),
+    ];
+
+    for (const request of requests) {
+      expect(collectConstraintMessages(validateSync(request))).toEqual([]);
+    }
   });
 
   it('accepts a valid performance range', () => {

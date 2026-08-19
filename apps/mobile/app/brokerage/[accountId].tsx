@@ -800,6 +800,7 @@ export default function BrokerageWorkspaceScreen() {
   const openOperation = (kind: OperationKind) => {
     setForm(emptyOperationForm(accountCurrency));
     setFormError(null);
+    setConfirmTradeDelete(false);
     setEditingTrade(null);
     setOperation(kind);
   };
@@ -826,6 +827,7 @@ export default function BrokerageWorkspaceScreen() {
       notes: item.notes ?? "",
     });
     setFormError(null);
+    setConfirmTradeDelete(false);
     setEditingTrade(item);
     setOperation(item.kind);
   };
@@ -952,7 +954,9 @@ export default function BrokerageWorkspaceScreen() {
           body: {
             quantity,
             unitPrice,
-            feeAmount: fee,
+            // Treat a zero fee as absent so older hosted APIs that only accept
+            // positive fees can still amend an existing zero-fee trade.
+            feeAmount: fee === 0 ? null : fee,
             postedAt: form.date,
             notes: form.notes.trim() || null,
           },
@@ -1580,10 +1584,19 @@ export default function BrokerageWorkspaceScreen() {
 
       <Sheet
         visible={operation !== null}
-        onClose={() => setOperation(null)}
-        title={operationTitle}
+        onClose={() => {
+          setConfirmTradeDelete(false);
+          setOperation(null);
+        }}
+        title={confirmTradeDelete ? "Delete trade?" : operationTitle}
       >
-        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+        <View
+          style={{
+            gap: spacing.lg,
+            paddingBottom: spacing.lg,
+            display: confirmTradeDelete ? "none" : "flex",
+          }}
+        >
           {operation === "BUY" ? (
             <>
               {editingTrade ? (
@@ -1797,30 +1810,25 @@ export default function BrokerageWorkspaceScreen() {
             />
           ) : null}
         </View>
-      </Sheet>
-
-      <Sheet
-        visible={confirmTradeDelete}
-        onClose={() => setConfirmTradeDelete(false)}
-        title="Delete trade?"
-      >
-        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
-          <AppText variant="footnote" tone="secondary">
-            This permanently removes the {editingTrade?.kind.toLowerCase()} and
-            recalculates the position from its remaining trade history.
-          </AppText>
-          <Button
-            label="Delete trade"
-            variant="danger"
-            onPress={deleteTrade}
-            loading={deleteTradeMutation.isPending}
-          />
-          <Button
-            label="Keep it"
-            variant="secondary"
-            onPress={() => setConfirmTradeDelete(false)}
-          />
-        </View>
+        {confirmTradeDelete ? (
+          <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+            <AppText variant="footnote" tone="secondary">
+              This permanently removes the {editingTrade?.kind.toLowerCase()}{" "}
+              and recalculates the position from its remaining trade history.
+            </AppText>
+            <Button
+              label="Delete trade"
+              variant="danger"
+              onPress={deleteTrade}
+              loading={deleteTradeMutation.isPending}
+            />
+            <Button
+              label="Keep it"
+              variant="secondary"
+              onPress={() => setConfirmTradeDelete(false)}
+            />
+          </View>
+        ) : null}
       </Sheet>
     </Screen>
   );

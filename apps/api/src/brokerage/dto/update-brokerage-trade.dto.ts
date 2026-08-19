@@ -2,6 +2,7 @@ import { Transform } from 'class-transformer';
 import type { TransformFnParams } from 'class-transformer';
 import {
   IsDateString,
+  Min,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -27,7 +28,7 @@ export class UpdateBrokerageTradeDto implements UpdateBrokerageTradeRequest {
 
   @IsOptional()
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   feeAmount?: number | null;
 
   @IsDateString()
