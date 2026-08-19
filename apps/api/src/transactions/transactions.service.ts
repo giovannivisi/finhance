@@ -1650,25 +1650,23 @@ export class TransactionsService {
       );
     }
 
-    let categoryId: string | null = null;
-    if (dto.categoryId) {
-      const category = await this.categoriesService.getAssignableCategory(
-        ownerId,
-        dto.categoryId,
-        dto.kind,
-        current?.categoryId,
-      );
-      categoryId = category.id;
-    } else {
-      const matchedCategory =
-        await this.categoriesService.findMatchingExpenseSecondaryCategory(
-          ownerId,
-          dto.description
-            ? normalizeExpenseValidationEntry(dto.description)
-            : '',
-        );
-      categoryId = matchedCategory?.id ?? null;
-    }
+    const categoryId = dto.categoryId
+      ? (
+          await this.categoriesService.getAssignableCategory(
+            ownerId,
+            dto.categoryId,
+            dto.kind,
+            current?.categoryId,
+          )
+        ).id
+      : ((
+          await this.categoriesService.findMatchingExpenseSecondaryCategory(
+            ownerId,
+            dto.description
+              ? normalizeExpenseValidationEntry(dto.description)
+              : '',
+          )
+        )?.id ?? null);
 
     if (!categoryId) {
       throw new BadRequestException('Expense transactions require a category.');
@@ -1786,8 +1784,8 @@ export class TransactionsService {
     let destinationAmount = this.toDecimal(dto.destinationAmount ?? dto.amount);
     const sourceCurrency = sourceAccount.currency;
     const destinationCurrency = destinationAccount.currency;
-    let fxRateUsed: Prisma.Decimal | null = null;
-    let fxRateSource: FxRateSource | null = null;
+    let fxRateUsed: Prisma.Decimal | null;
+    let fxRateSource: FxRateSource | null;
 
     if (sourceCurrency !== destinationCurrency) {
       if (dto.fxRateUsed !== undefined && dto.fxRateUsed !== null) {
