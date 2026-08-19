@@ -2014,6 +2014,89 @@ describe('BrokerageService', () => {
       }
     });
 
+    it('keeps a failed short-range position neutral instead of using its cost basis', async () => {
+      const fixedNow = new Date('2026-06-14T10:00:00.000Z');
+      const rangeStart = Date.UTC(2026, 5, 13, 10, 0);
+      const latestPointAt = Date.UTC(2026, 5, 14, 9, 0);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR' }),
+        );
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-vwce',
+                ticker: 'VWCE',
+                currency: 'EUR',
+                quantity: 1,
+                currentValue: 497.23,
+                referenceValue: 436.23,
+              }),
+              createDashboardAsset({
+                id: 'asset-csspx',
+                ticker: 'CSSPX',
+                currency: 'EUR',
+                quantity: 1,
+                currentValue: 58.23,
+                referenceValue: 51.23,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-vwce',
+            ticker: 'VWCE',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('1'),
+            balance: new Prisma.Decimal('436.23'),
+            createdAt: new Date('2025-01-01T10:00:00.000Z'),
+          }),
+          createAsset({
+            id: 'asset-csspx',
+            ticker: 'CSSPX',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('1'),
+            balance: new Prisma.Decimal('51.23'),
+            createdAt: new Date('2025-01-01T10:00:00.000Z'),
+          }),
+        ]);
+        prices.getMarketSeries
+          .mockResolvedValueOnce({
+            points: [
+              { t: rangeStart, price: 496 },
+              { t: latestPointAt, price: 497.23 },
+            ],
+            previousClose: 496,
+            latestPrice: 497.23,
+          })
+          .mockResolvedValueOnce(null);
+        prisma.brokerageOperation.findMany.mockResolvedValue([]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          '1D',
+        );
+
+        // The failed CSSPX series contributes its current value for 1D, so
+        // its lifetime unrealised gain cannot be mistaken for today's return.
+        expect(result.pricingStatus.state).toBe('PARTIAL');
+        expect(result.baselineValue).toBe(554.23);
+        expect(result.latestValue).toBe(555.46);
+        expect(result.changeAbsolute).toBe(1.23);
+        expect(result.changePercent).toBe(0.22);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('returns an empty partial chart when every price series fails', async () => {
       prisma.account.findFirst.mockResolvedValue(
         createAccount({ currency: 'EUR' }),

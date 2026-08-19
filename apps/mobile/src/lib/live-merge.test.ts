@@ -424,6 +424,16 @@ describe("computeLiveValueDelta", () => {
       matchedCount: 0,
     });
   });
+
+  it("keeps legacy live deltas when snapshots do not include quantities", () => {
+    const previous = [quote({ valueInReporting: 1000 })];
+    const current = [quote({ valueInReporting: 1010 })];
+
+    expect(computeLiveValueDelta(previous, current)).toEqual({
+      totalValueDelta: 10,
+      matchedCount: 1,
+    });
+  });
 });
 
 describe("applyLiveDeltaToSummary", () => {

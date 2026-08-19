@@ -142,6 +142,12 @@ describe("withLatestPerformanceValue", () => {
     expect(withLatestPerformanceValue(points, null)).toEqual(points);
     expect(withLatestPerformanceValue([], 100)).toEqual([]);
   });
+
+  it("leaves the endpoint unchanged when it already matches the latest value", () => {
+    const points = [point(1, 100), point(2, 99.95)];
+
+    expect(withLatestPerformanceValue(points, 99.95)).toEqual(points);
+  });
 });
 
 describe("getPerformancePlotMetrics", () => {
