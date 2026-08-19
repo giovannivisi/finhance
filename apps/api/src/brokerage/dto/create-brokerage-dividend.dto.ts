@@ -30,7 +30,7 @@ export class CreateBrokerageDividendDto
   @IsPositive()
   amount!: number;
 
-  @IsDateString()
+  @IsDateString({ strict: true })
   postedAt!: string;
 
   @IsString()

@@ -85,7 +85,7 @@ export class CreateBrokerageBuyDto implements CreateBrokerageBuyRequest {
   @Min(0)
   feeAmount?: number | null;
 
-  @IsDateString()
+  @IsDateString({ strict: true })
   postedAt!: string;
 
   @IsOptional()

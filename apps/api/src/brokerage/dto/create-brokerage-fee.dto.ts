@@ -28,7 +28,7 @@ export class CreateBrokerageFeeDto implements CreateBrokerageFeeRequest {
   @IsPositive()
   amount!: number;
 
-  @IsDateString()
+  @IsDateString({ strict: true })
   postedAt!: string;
 
   @IsString()

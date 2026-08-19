@@ -59,7 +59,7 @@ import {
   categoryLabel,
   isAssignableTransactionCategory,
 } from "@/lib/categories";
-import { localDateOf, todayLocalDate } from "@/lib/dates";
+import { localDateOf, localDateToIso, todayLocalDate } from "@/lib/dates";
 import { ASSET_KIND_LABELS } from "@/lib/labels";
 import {
   applyLiveDeltaToSummary,
@@ -929,15 +929,40 @@ export default function BrokerageWorkspaceScreen() {
     feeMutation.isPending ||
     updateTradeMutation.isPending ||
     deleteTradeMutation.isPending;
+  const brokerageOpeningDate =
+    workspace?.selectedBroker.account.openingBalanceDate?.slice(0, 10) ?? null;
 
   const submitOperation = async () => {
     setFormError(null);
+
+    const postedAt = localDateToIso(form.date);
+    if (!postedAt) {
+      setFormError("Please choose a valid date.");
+      return;
+    }
+
+    if (brokerageOpeningDate && form.date < brokerageOpeningDate) {
+      setFormError(
+        `Date must be on or after ${format.date(brokerageOpeningDate)} for this account.`,
+      );
+      return;
+    }
+
+    const feeInput = form.fee.trim();
+    const fee = feeInput ? parseAmountInput(form.fee) : null;
+    if (
+      (editingTrade || operation === "BUY" || operation === "SELL") &&
+      feeInput &&
+      (fee === null || fee < 0)
+    ) {
+      setFormError("Fee must be a valid non-negative amount.");
+      return;
+    }
 
     try {
       if (editingTrade) {
         const quantity = parseAmountInput(form.quantity);
         const unitPrice = parseAmountInput(form.unitPrice);
-        const fee = form.fee.trim() ? parseAmountInput(form.fee) : null;
 
         if (
           quantity === null ||
@@ -957,7 +982,7 @@ export default function BrokerageWorkspaceScreen() {
             // Treat a zero fee as absent so older hosted APIs that only accept
             // positive fees can still amend an existing zero-fee trade.
             feeAmount: fee === 0 ? null : fee,
-            postedAt: form.date,
+            postedAt,
             notes: form.notes.trim() || null,
           },
         });
@@ -969,7 +994,6 @@ export default function BrokerageWorkspaceScreen() {
       if (operation === "BUY") {
         const quantity = parseAmountInput(form.quantity);
         const unitPrice = parseAmountInput(form.unitPrice);
-        const fee = form.fee.trim() ? parseAmountInput(form.fee) : null;
 
         if (!form.newSecurity && !form.assetId) {
           setFormError("Pick a position or switch to a new security.");
@@ -1002,14 +1026,13 @@ export default function BrokerageWorkspaceScreen() {
           currency: form.currency.trim().toUpperCase(),
           quantity,
           unitPrice,
-          feeAmount: fee,
-          postedAt: form.date,
+          feeAmount: fee === 0 ? null : fee,
+          postedAt,
           notes: form.notes.trim() || null,
         });
       } else if (operation === "SELL") {
         const quantity = parseAmountInput(form.quantity);
         const unitPrice = parseAmountInput(form.unitPrice);
-        const fee = form.fee.trim() ? parseAmountInput(form.fee) : null;
 
         if (!form.assetId) {
           setFormError("Pick the position to sell.");
@@ -1030,8 +1053,8 @@ export default function BrokerageWorkspaceScreen() {
           assetId: form.assetId,
           quantity,
           unitPrice,
-          feeAmount: fee,
-          postedAt: form.date,
+          feeAmount: fee === 0 ? null : fee,
+          postedAt,
           notes: form.notes.trim() || null,
         });
       } else if (operation === "DIVIDEND" || operation === "FEE") {
@@ -1050,7 +1073,7 @@ export default function BrokerageWorkspaceScreen() {
         const body = {
           assetId: form.assetId,
           amount,
-          postedAt: form.date,
+          postedAt,
           categoryId: form.categoryId,
           notes: form.notes.trim() || null,
         };
@@ -1781,6 +1804,11 @@ export default function BrokerageWorkspaceScreen() {
             label="Date"
             value={form.date}
             onChange={(date) => setForm((f) => ({ ...f, date }))}
+            hint={
+              brokerageOpeningDate
+                ? `On or after ${format.date(brokerageOpeningDate)}`
+                : undefined
+            }
           />
           <TextField
             label="Notes (optional)"

@@ -423,6 +423,17 @@ describe('BrokerageService', () => {
     expect(prisma.brokerageOperation.update).toHaveBeenCalledTimes(2);
   });
 
+  it('interprets date-only trade dates in the Rome timezone', () => {
+    const parsePostedAt = (
+      service as unknown as { parsePostedAt: (value: string) => Date }
+    ).parsePostedAt.bind(service);
+
+    expect(parsePostedAt('2026-01-02').toISOString()).toBe(
+      '2026-01-01T23:00:00.000Z',
+    );
+    expect(() => parsePostedAt('2026-02-31')).toThrow('postedAt is invalid.');
+  });
+
   it('keeps investment-plan trade history intact when a delete is requested', async () => {
     prisma.account.findFirst.mockResolvedValue(createAccount());
     prisma.brokerageOperation.findFirst.mockResolvedValue({

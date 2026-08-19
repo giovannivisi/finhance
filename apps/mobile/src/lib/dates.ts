@@ -62,6 +62,32 @@ export function isLocalDateString(value: string): boolean {
   return LOCAL_DATE_PATTERN.test(value);
 }
 
+/**
+ * Converts a date picked in the user's local timezone to an ISO timestamp.
+ * Noon avoids a date rollover around daylight-saving transitions while the
+ * API still receives an unambiguous value instead of a date-only string.
+ */
+export function localDateToIso(localDate: string): string | null {
+  if (!isLocalDateString(localDate)) {
+    return null;
+  }
+
+  const year = Number(localDate.slice(0, 4));
+  const month = Number(localDate.slice(5, 7));
+  const day = Number(localDate.slice(8, 10));
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
 export function currentMonth(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
