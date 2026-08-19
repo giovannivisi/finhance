@@ -359,10 +359,21 @@ export class BrokerageService {
         }
 
         hasFailedSeries = true;
+        // A failed market series cannot describe the path of this position.
+        // For MAX, its known cost basis is still a useful starting value;
+        // using the live value there would silently turn its unrealised gain
+        // into zero performance in a mixed chart. Shorter ranges stay neutral
+        // because a cost basis is not a valid daily/weekly baseline.
+        const fallbackPerformanceValue =
+          range === 'MAX'
+            ? (entry.asset.referenceValue ??
+              entry.asset.currentValue ??
+              entry.record.balance)
+            : (entry.asset.currentValue ??
+              entry.asset.referenceValue ??
+              entry.record.balance);
         constantTotal = constantTotal.plus(
-          this.toDecimal(
-            entry.asset.currentValue ?? entry.asset.referenceValue ?? 0,
-          ),
+          this.toDecimal(fallbackPerformanceValue),
         );
         return false;
       },

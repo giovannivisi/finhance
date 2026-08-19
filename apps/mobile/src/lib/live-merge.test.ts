@@ -414,6 +414,16 @@ describe("computeLiveValueDelta", () => {
 
     expect(result).toEqual({ totalValueDelta: 10, matchedCount: 1 });
   });
+
+  it("does not treat a quantity change as live price movement", () => {
+    const previous = [quote({ valueInReporting: 1000, quantity: 1 })];
+    const current = [quote({ valueInReporting: 1100, quantity: 2 })];
+
+    expect(computeLiveValueDelta(previous, current)).toEqual({
+      totalValueDelta: 0,
+      matchedCount: 0,
+    });
+  });
 });
 
 describe("applyLiveDeltaToSummary", () => {

@@ -537,12 +537,46 @@ export default function BrokerageWorkspaceScreen() {
       new Set(workspace?.positions.map((position) => position.assetId) ?? []),
     [workspace?.positions],
   );
+  const brokerageAssetIdsRef = useRef<ReadonlySet<string>>(new Set());
+  const previousPerformanceSignatureRef = useRef<string | null>(null);
+  const previousPositionQuantitySignatureRef = useRef<string | null>(null);
+  const quantityChangedSincePerformanceRef = useRef(false);
+  brokerageAssetIdsRef.current = brokerageAssetIds;
+  const positionQuantitySignature = useMemo(
+    () =>
+      (workspace?.positions ?? [])
+        .map((position) => `${position.assetId}:${position.quantity}`)
+        .sort()
+        .join("|"),
+    [workspace?.positions],
+  );
 
   // Reset the accumulated delta when navigating to a different account.
   useEffect(() => {
     previousQuotesRef.current = null;
+    previousPerformanceSignatureRef.current = null;
+    previousPositionQuantitySignatureRef.current = null;
+    quantityChangedSincePerformanceRef.current = false;
     setLiveValueDelta(0);
   }, [accountId]);
+
+  // A workspace refresh can change a holding's quantity before the performance
+  // query and live-valuations query finish refreshing. Start a new live
+  // baseline in that case so the capital contribution is never treated as a
+  // price movement, including with older API responses without quantities.
+  useEffect(() => {
+    const previousSignature = previousPositionQuantitySignatureRef.current;
+    if (
+      previousSignature !== null &&
+      previousSignature !== positionQuantitySignature
+    ) {
+      previousQuotesRef.current = null;
+      quantityChangedSincePerformanceRef.current = true;
+      setLiveValueDelta(0);
+    }
+
+    previousPositionQuantitySignatureRef.current = positionQuantitySignature;
+  }, [positionQuantitySignature]);
 
   useEffect(() => {
     if (!liveQuotes) {
@@ -552,7 +586,7 @@ export default function BrokerageWorkspaceScreen() {
     const { totalValueDelta, matchedCount } = computeLiveValueDelta(
       previousQuotesRef.current,
       liveQuotes,
-      brokerageAssetIds,
+      brokerageAssetIdsRef.current,
     );
 
     if (matchedCount > 0) {
@@ -560,7 +594,7 @@ export default function BrokerageWorkspaceScreen() {
     }
 
     previousQuotesRef.current = liveQuotes;
-  }, [brokerageAssetIds, liveQuotes]);
+  }, [liveQuotes]);
   const displayPricingStatus = useMemo(
     () =>
       workspace
@@ -617,6 +651,29 @@ export default function BrokerageWorkspaceScreen() {
   ]);
 
   const performance = performanceQuery.data;
+  const performanceSignature = performance
+    ? `${performance.asOf}:${performance.latestValue ?? ""}:${performance.baselineValue ?? ""}`
+    : null;
+
+  useEffect(() => {
+    const previousSignature = previousPerformanceSignatureRef.current;
+    if (previousSignature === null && performanceSignature !== null) {
+      quantityChangedSincePerformanceRef.current = false;
+    } else if (
+      previousSignature !== null &&
+      previousSignature !== performanceSignature
+    ) {
+      // The API response now includes the live total, so any accumulated
+      // quote delta belongs to the superseded response and must be discarded.
+      previousQuotesRef.current = quantityChangedSincePerformanceRef.current
+        ? null
+        : (liveQuotes ?? null);
+      quantityChangedSincePerformanceRef.current = false;
+      setLiveValueDelta(0);
+    }
+
+    previousPerformanceSignatureRef.current = performanceSignature;
+  }, [liveQuotes, performanceSignature]);
   const priceRefreshMessage = refreshAssets.isError
     ? describeError(refreshAssets.error)
     : !refreshAssets.isPending

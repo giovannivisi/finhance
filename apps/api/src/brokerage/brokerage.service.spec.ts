@@ -746,6 +746,92 @@ describe('BrokerageService', () => {
       expect(result.changePercent).toBe(10);
     });
 
+    it("keeps buys posted before a 1D range out of today's return", async () => {
+      const fixedNow = new Date('2026-06-14T10:00:00.000Z');
+      const rangeStart = Date.UTC(2026, 5, 13, 10, 0);
+      const firstBackdatedBuy = new Date('2026-02-01T10:00:00.000Z');
+      const secondBackdatedBuy = new Date('2026-04-01T10:00:00.000Z');
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR' }),
+        );
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-1',
+                currency: 'EUR',
+                quantity: 10,
+                currentValue: 1010,
+                referenceValue: 900,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-1',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('10'),
+            balance: new Prisma.Decimal('900'),
+            createdAt: new Date('2026-01-01T10:00:00.000Z'),
+          }),
+        ]);
+        prices.getMarketSeries.mockResolvedValue({
+          points: [
+            { t: rangeStart, price: 100 },
+            { t: Date.UTC(2026, 5, 14, 9, 0), price: 101 },
+          ],
+          previousClose: 100,
+          latestPrice: 101,
+        });
+        prisma.brokerageOperation.findMany.mockResolvedValue([
+          {
+            id: 'op-1',
+            assetId: 'asset-1',
+            kind: BrokerageOperationKind.BUY,
+            postedAt: firstBackdatedBuy,
+            quantity: new Prisma.Decimal('2'),
+            unitPrice: new Prisma.Decimal('50'),
+            grossAmount: new Prisma.Decimal('100'),
+            feeAmount: new Prisma.Decimal('0'),
+            currency: 'EUR',
+            cashAmount: new Prisma.Decimal('-100'),
+          },
+          {
+            id: 'op-2',
+            assetId: 'asset-1',
+            kind: BrokerageOperationKind.BUY,
+            postedAt: secondBackdatedBuy,
+            quantity: new Prisma.Decimal('3'),
+            unitPrice: new Prisma.Decimal('50'),
+            grossAmount: new Prisma.Decimal('150'),
+            feeAmount: new Prisma.Decimal('0'),
+            currency: 'EUR',
+            cashAmount: new Prisma.Decimal('-150'),
+          },
+        ]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          '1D',
+        );
+
+        expect(result.baselineValue).toBe(1000);
+        expect(result.latestValue).toBe(1010);
+        expect(result.changeAbsolute).toBe(10);
+        expect(result.changePercent).toBe(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('normalises long-range performance for buys inside the selected range', async () => {
       const fixedNow = new Date('2026-06-14T10:00:00.000Z');
       const tEarly = Date.UTC(2026, 4, 15, 10, 0);
@@ -1842,6 +1928,87 @@ describe('BrokerageService', () => {
         expect(result.changeAbsolute).toBeNull();
         expect(result.changePercent).toBeNull();
         expect(result.pricingStatus.state).toBe('PARTIAL');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("uses a failed position's cost basis in a mixed MAX chart", async () => {
+      const fixedNow = new Date('2026-06-14T10:00:00.000Z');
+      const firstPointAt = Date.UTC(2025, 0, 1, 10, 0);
+      const latestPointAt = Date.UTC(2026, 5, 13, 10, 0);
+
+      jest.useFakeTimers();
+      jest.setSystemTime(fixedNow);
+
+      try {
+        prisma.account.findFirst.mockResolvedValue(
+          createAccount({ currency: 'EUR' }),
+        );
+        assets.getDashboard.mockResolvedValue(
+          createDashboard({
+            reportingCurrency: 'EUR',
+            assets: [
+              createDashboardAsset({
+                id: 'asset-vwce',
+                ticker: 'VWCE',
+                currency: 'EUR',
+                quantity: 1,
+                currentValue: 497.23,
+                referenceValue: 436.23,
+              }),
+              createDashboardAsset({
+                id: 'asset-csspx',
+                ticker: 'CSSPX',
+                currency: 'EUR',
+                quantity: 1,
+                currentValue: 58.23,
+                referenceValue: 51.23,
+              }),
+            ],
+          }),
+        );
+        prisma.asset.findMany.mockResolvedValue([
+          createAsset({
+            id: 'asset-vwce',
+            ticker: 'VWCE',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('1'),
+            balance: new Prisma.Decimal('436.23'),
+            createdAt: new Date(firstPointAt),
+          }),
+          createAsset({
+            id: 'asset-csspx',
+            ticker: 'CSSPX',
+            currency: 'EUR',
+            quantity: new Prisma.Decimal('1'),
+            balance: new Prisma.Decimal('51.23'),
+            createdAt: new Date(firstPointAt),
+          }),
+        ]);
+        prices.getMarketSeries
+          .mockResolvedValueOnce({
+            points: [
+              { t: firstPointAt, price: 436.23 },
+              { t: latestPointAt, price: 497.23 },
+            ],
+            previousClose: null,
+            latestPrice: 497.23,
+          })
+          .mockResolvedValueOnce(null);
+        prisma.brokerageOperation.findMany.mockResolvedValue([]);
+
+        const result = await service.getPerformance(
+          OWNER_ID,
+          'account-1',
+          'MAX',
+        );
+
+        expect(result.pricingStatus.state).toBe('PARTIAL');
+        expect(result.baselineValue).toBe(487.46);
+        expect(result.latestValue).toBe(555.46);
+        expect(result.changeAbsolute).toBe(68);
+        expect(result.changePercent).toBe(13.95);
       } finally {
         jest.useRealTimers();
       }

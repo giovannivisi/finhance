@@ -244,6 +244,7 @@ export class AssetsService {
 
       return {
         assetId: asset.id,
+        quantity: quantity.toNumber(),
         price: price.toNumber(),
         currency: asset.currency,
         value: value.toNumber(),

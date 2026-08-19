@@ -134,6 +134,8 @@ export interface RefreshAssetsResponse {
 
 export interface LiveAssetValuationResponse {
   assetId: string;
+  /** Quantity used to calculate this snapshot; optional for older API builds. */
+  quantity?: number;
   price: number; // unit price in the asset's own currency
   currency: string;
   value: number; // quantity x price, asset currency

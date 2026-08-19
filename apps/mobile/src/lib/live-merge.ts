@@ -186,6 +186,17 @@ export function computeLiveValueDelta(
       continue;
     }
 
+    // A changed quantity is a capital contribution/withdrawal, not a live
+    // market move. Older API responses do not include quantity, so retain the
+    // legacy delta behaviour when either snapshot cannot provide it.
+    if (
+      previous.quantity !== undefined &&
+      current.quantity !== undefined &&
+      previous.quantity !== current.quantity
+    ) {
+      continue;
+    }
+
     totalValueDelta += current.valueInReporting - previous.valueInReporting;
     matchedCount += 1;
   }
