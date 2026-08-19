@@ -161,6 +161,7 @@ export interface LiveSummaryDeltas {
 export function computeLiveValueDelta(
   previousQuotes: readonly LiveAssetValuationResponse[] | null,
   currentQuotes: readonly LiveAssetValuationResponse[],
+  assetIds?: ReadonlySet<string>,
 ): LiveSummaryDeltas {
   if (!previousQuotes || previousQuotes.length === 0) {
     return { totalValueDelta: 0, matchedCount: 0 };
@@ -171,6 +172,10 @@ export function computeLiveValueDelta(
   let matchedCount = 0;
 
   for (const current of currentQuotes) {
+    if (assetIds && !assetIds.has(current.assetId)) {
+      continue;
+    }
+
     if (current.valueInReporting === null) {
       continue;
     }
@@ -186,6 +191,25 @@ export function computeLiveValueDelta(
   }
 
   return { totalValueDelta, matchedCount };
+}
+
+/**
+ * Resolves the current value used by the performance card. Unlike the broker
+ * account total, this deliberately starts from market positions only, keeping
+ * cash out of the performance series while still applying live quote movement.
+ */
+export function resolvePerformanceTotal(options: {
+  performanceLatestValue: number | null;
+  investedValue: number | null;
+  liveValueDelta?: number;
+}): number | null {
+  const baseValue =
+    options.performanceLatestValue ?? options.investedValue ?? null;
+  if (baseValue === null) {
+    return null;
+  }
+
+  return baseValue + (options.liveValueDelta ?? 0);
 }
 
 export interface BrokerageSummaryFigures {

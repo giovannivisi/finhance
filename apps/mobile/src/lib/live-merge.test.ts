@@ -12,6 +12,7 @@ import {
   mergePositionsWithLiveQuotes,
   recomputeChangeFromLiveTotal,
   resolveHeaderTotal,
+  resolvePerformanceTotal,
 } from "./live-merge";
 
 function position(
@@ -398,6 +399,21 @@ describe("computeLiveValueDelta", () => {
     const result = computeLiveValueDelta(null, [quote({})]);
     expect(result).toEqual({ totalValueDelta: 0, matchedCount: 0 });
   });
+
+  it("can scope deltas to the selected brokerage positions", () => {
+    const previous = [
+      quote({ assetId: "a", valueInReporting: 1000 }),
+      quote({ assetId: "b", valueInReporting: 500 }),
+    ];
+    const current = [
+      quote({ assetId: "a", valueInReporting: 1010 }),
+      quote({ assetId: "b", valueInReporting: 550 }),
+    ];
+
+    const result = computeLiveValueDelta(previous, current, new Set(["a"]));
+
+    expect(result).toEqual({ totalValueDelta: 10, matchedCount: 1 });
+  });
 });
 
 describe("applyLiveDeltaToSummary", () => {
@@ -477,5 +493,36 @@ describe("resolveHeaderTotal", () => {
     });
 
     expect(total).toBe(800);
+  });
+});
+
+describe("resolvePerformanceTotal", () => {
+  it("prefers the market-performance latest value and applies live movement", () => {
+    expect(
+      resolvePerformanceTotal({
+        performanceLatestValue: 458,
+        investedValue: 458,
+        liveValueDelta: 2.5,
+      }),
+    ).toBe(460.5);
+  });
+
+  it("falls back to invested value without pulling in cash", () => {
+    expect(
+      resolvePerformanceTotal({
+        performanceLatestValue: null,
+        investedValue: 458,
+        liveValueDelta: 2,
+      }),
+    ).toBe(460);
+  });
+
+  it("returns null when no market value is available", () => {
+    expect(
+      resolvePerformanceTotal({
+        performanceLatestValue: null,
+        investedValue: null,
+      }),
+    ).toBeNull();
   });
 });

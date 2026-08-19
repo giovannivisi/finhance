@@ -66,7 +66,7 @@ import {
   computeLiveValueDelta,
   mergePositionsWithLiveQuotes,
   recomputeChangeFromLiveTotal,
-  resolveHeaderTotal,
+  resolvePerformanceTotal,
 } from "@/lib/live-merge";
 import { parseAmountInput } from "@/lib/money";
 import {
@@ -529,6 +529,14 @@ export default function BrokerageWorkspaceScreen() {
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
+  const workspace: BrokerageWorkspaceResponse | undefined = workspaceQuery.data;
+  const broker = workspace?.selectedBroker;
+  const accountCurrency = broker?.account.currency ?? "EUR";
+  const brokerageAssetIds = useMemo(
+    () =>
+      new Set(workspace?.positions.map((position) => position.assetId) ?? []),
+    [workspace?.positions],
+  );
 
   // Reset the accumulated delta when navigating to a different account.
   useEffect(() => {
@@ -544,6 +552,7 @@ export default function BrokerageWorkspaceScreen() {
     const { totalValueDelta, matchedCount } = computeLiveValueDelta(
       previousQuotesRef.current,
       liveQuotes,
+      brokerageAssetIds,
     );
 
     if (matchedCount > 0) {
@@ -551,11 +560,7 @@ export default function BrokerageWorkspaceScreen() {
     }
 
     previousQuotesRef.current = liveQuotes;
-  }, [liveQuotes]);
-
-  const workspace: BrokerageWorkspaceResponse | undefined = workspaceQuery.data;
-  const broker = workspace?.selectedBroker;
-  const accountCurrency = broker?.account.currency ?? "EUR";
+  }, [brokerageAssetIds, liveQuotes]);
   const displayPricingStatus = useMemo(
     () =>
       workspace
@@ -618,24 +623,23 @@ export default function BrokerageWorkspaceScreen() {
       ? (refreshAssets.data?.priceRefresh.message ?? null)
       : null;
 
-  const liveTotal =
-    broker && liveValueDelta !== 0 ? broker.totalValue + liveValueDelta : null;
-
-  const headerTotal = broker
-    ? resolveHeaderTotal({
-        liveTotal,
-        performanceLatestValue: performance?.latestValue ?? null,
-        workspaceTotalValue: broker.totalValue,
-      })
-    : null;
+  const headerTotal = resolvePerformanceTotal({
+    performanceLatestValue: performance?.latestValue ?? null,
+    investedValue: broker?.investedValue ?? null,
+    liveValueDelta,
+  });
 
   const headerChange =
-    liveTotal !== null
+    performance &&
+    headerTotal !== null &&
+    performance?.baselineValue !== null &&
+    performance?.latestValue !== null &&
+    performance?.changeAbsolute !== null
       ? recomputeChangeFromLiveTotal(
-          liveTotal,
-          performance?.baselineValue ?? null,
-          performance?.latestValue ?? null,
-          performance?.changeAbsolute ?? null,
+          headerTotal,
+          performance.baselineValue,
+          performance.latestValue,
+          performance.changeAbsolute,
         )
       : performance &&
           performance.changeAbsolute !== null &&
@@ -1104,12 +1108,12 @@ export default function BrokerageWorkspaceScreen() {
               }}
             >
               <AppText variant="kicker" tone="tertiary">
-                Total value · {accountCurrency}
+                Invested value · {accountCurrency}
               </AppText>
             </View>
             <Animated.View style={{ opacity: headerAnim }}>
               <MoneyText
-                amount={headerTotal ?? broker.totalValue}
+                amount={headerTotal ?? broker.investedValue}
                 currency={accountCurrency}
                 variant="display"
               />
