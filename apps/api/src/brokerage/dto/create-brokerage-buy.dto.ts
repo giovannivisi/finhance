@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsPositive,
+  Min,
   IsString,
   Matches,
   MaxLength,
@@ -81,10 +82,10 @@ export class CreateBrokerageBuyDto implements CreateBrokerageBuyRequest {
 
   @IsOptional()
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   feeAmount?: number | null;
 
-  @IsDateString()
+  @IsDateString({ strict: true })
   postedAt!: string;
 
   @IsOptional()

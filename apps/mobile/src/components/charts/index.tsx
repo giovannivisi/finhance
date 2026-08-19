@@ -11,7 +11,9 @@ import {
   buildAxisTimeLabels,
   computePercentGridlines,
   formatAxisTimeLabel,
+  getPerformancePlotMetrics,
   isPerformancePositive,
+  withLatestPerformanceValue,
 } from "@/lib/performance-chart";
 import { useFormatters } from "@/prefs";
 import { spacing, useTheme } from "@/theme";
@@ -597,19 +599,25 @@ export function PerformanceChart({
 
   const labelGutter = 44; // reserved for right-edge percent labels
   const axisHeight = 22; // reserved for bottom time labels
+  const percentLabelHeight = 16;
   const chartWidth = Math.max(0, width - labelGutter);
   const chartHeight = height - axisHeight;
+  const { topInset: plotTop, plotHeight } = getPerformancePlotMetrics(
+    chartHeight,
+    percentLabelHeight,
+  );
 
-  const gridlines = computePercentGridlines(points, baselineValue);
-  const axisLabels = buildAxisTimeLabels(points, range);
+  const chartPoints = withLatestPerformanceValue(points, latestValue);
+  const gridlines = computePercentGridlines(chartPoints, baselineValue);
+  const axisLabels = buildAxisTimeLabels(chartPoints, range);
   const latestPerformanceValue =
-    points.length > 0
-      ? (points[points.length - 1]?.value ?? null)
+    chartPoints.length > 0
+      ? (chartPoints[chartPoints.length - 1]?.value ?? null)
       : latestValue;
   const positive = isPerformancePositive(latestPerformanceValue, baselineValue);
   const lineColor = positive ? colors.chartIncome : colors.chartExpense;
 
-  if (points.length === 0) {
+  if (chartPoints.length === 0) {
     return (
       <View
         style={{
@@ -625,30 +633,35 @@ export function PerformanceChart({
     );
   }
 
-  const values = points.map((point) => point.value);
+  const values = chartPoints.map((point) => point.value);
   const min = Math.min(...values, baselineValue ?? values[0]!);
   const max = Math.max(...values, baselineValue ?? values[0]!);
   const valueRange = max - min || 1;
 
   const xOf = (index: number) =>
-    points.length > 1 ? (index / (points.length - 1)) * chartWidth : 0;
+    chartPoints.length > 1
+      ? (index / (chartPoints.length - 1)) * chartWidth
+      : 0;
   const yOf = (value: number) =>
-    chartHeight - ((value - min) / valueRange) * chartHeight;
+    plotTop + plotHeight - ((value - min) / valueRange) * plotHeight;
+  const percentLabelTops = gridlines.map(
+    (gridline) => yOf(gridline.value) - percentLabelHeight / 2,
+  );
 
-  const linePath = points
+  const linePath = chartPoints
     .map(
       (point, index) =>
         `${index === 0 ? "M" : "L"}${xOf(index).toFixed(1)},${yOf(point.value).toFixed(1)}`,
     )
     .join(" ");
 
-  const selected = selectedIndex !== null ? points[selectedIndex] : null;
+  const selected = selectedIndex !== null ? chartPoints[selectedIndex] : null;
   const baselineY = baselineValue !== null ? yOf(baselineValue) : null;
 
   return (
     <View style={{ gap: spacing.xs }}>
       <View
-        style={{ height }}
+        style={{ height, position: "relative" }}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       >
         {width > 0 ? (
@@ -718,7 +731,7 @@ export function PerformanceChart({
               style={{
                 position: "absolute",
                 right: 2,
-                top: yOf(gridline.value) - 7,
+                top: percentLabelTops[index] ?? 0,
                 textAlign: "right",
               }}
             >
@@ -738,7 +751,7 @@ export function PerformanceChart({
             flexDirection: "row",
           }}
         >
-          {points.map((point, index) => (
+          {chartPoints.map((point, index) => (
             <Pressable
               key={point.t}
               accessibilityRole="button"
@@ -763,7 +776,7 @@ export function PerformanceChart({
         >
           {axisLabels.map(({ index, label }) => {
             const isFirst = index === 0;
-            const isLast = index === points.length - 1;
+            const isLast = index === chartPoints.length - 1;
             const x = xOf(index);
 
             return (

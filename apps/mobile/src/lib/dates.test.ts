@@ -9,6 +9,7 @@ import {
   formatMonthLabel,
   formatTimeLabel,
   localDateOf,
+  localDateToIso,
   monthBounds,
   monthRange,
   todayLocalDate,
@@ -82,5 +83,16 @@ describe("labels", () => {
   it("extracts the local date of a timestamp", () => {
     const timestamp = new Date(2026, 5, 10, 23, 30).toISOString();
     expect(localDateOf(timestamp)).toBe("2026-06-10");
+  });
+
+  it("converts valid local dates to unambiguous timestamps", () => {
+    expect(localDateToIso("2026-01-02")).toBe(
+      new Date(2026, 0, 2, 12).toISOString(),
+    );
+  });
+
+  it("rejects malformed and impossible local dates", () => {
+    expect(localDateToIso("2026-1-2")).toBeNull();
+    expect(localDateToIso("2026-02-31")).toBeNull();
   });
 });

@@ -895,6 +895,7 @@ describe('AssetsService', () => {
       expect(result.quotes).toEqual([
         {
           assetId: 'asset-1',
+          quantity: 2,
           price: 150,
           currency: 'USD',
           value: 300,

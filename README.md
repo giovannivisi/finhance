@@ -407,6 +407,8 @@ The repo currently uses multiple layers of tests:
 - web Playwright smoke coverage
 
 The top-level `pnpm test` runs the Turborepo `test` task across packages.
+Coverage gates and their scope are documented in
+[docs/testing/coverage.md](docs/testing/coverage.md).
 
 ## Import/export notes
 

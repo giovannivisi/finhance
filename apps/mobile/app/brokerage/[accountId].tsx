@@ -59,14 +59,14 @@ import {
   categoryLabel,
   isAssignableTransactionCategory,
 } from "@/lib/categories";
-import { localDateOf, todayLocalDate } from "@/lib/dates";
+import { localDateOf, localDateToIso, todayLocalDate } from "@/lib/dates";
 import { ASSET_KIND_LABELS } from "@/lib/labels";
 import {
   applyLiveDeltaToSummary,
   computeLiveValueDelta,
   mergePositionsWithLiveQuotes,
   recomputeChangeFromLiveTotal,
-  resolveHeaderTotal,
+  resolvePerformanceTotal,
 } from "@/lib/live-merge";
 import { parseAmountInput } from "@/lib/money";
 import {
@@ -529,12 +529,54 @@ export default function BrokerageWorkspaceScreen() {
   const [liveValueDelta, setLiveValueDelta] = useState(0);
 
   const liveQuotes = liveQuery.data?.quotes;
+  const workspace: BrokerageWorkspaceResponse | undefined = workspaceQuery.data;
+  const broker = workspace?.selectedBroker;
+  const accountCurrency = broker?.account.currency ?? "EUR";
+  const brokerageAssetIds = useMemo(
+    () =>
+      new Set(workspace?.positions.map((position) => position.assetId) ?? []),
+    [workspace?.positions],
+  );
+  const brokerageAssetIdsRef = useRef<ReadonlySet<string>>(new Set());
+  const previousPerformanceSignatureRef = useRef<string | null>(null);
+  const previousPositionQuantitySignatureRef = useRef<string | null>(null);
+  const quantityChangedSincePerformanceRef = useRef(false);
+  brokerageAssetIdsRef.current = brokerageAssetIds;
+  const positionQuantitySignature = useMemo(
+    () =>
+      (workspace?.positions ?? [])
+        .map((position) => `${position.assetId}:${position.quantity}`)
+        .sort()
+        .join("|"),
+    [workspace?.positions],
+  );
 
   // Reset the accumulated delta when navigating to a different account.
   useEffect(() => {
     previousQuotesRef.current = null;
+    previousPerformanceSignatureRef.current = null;
+    previousPositionQuantitySignatureRef.current = null;
+    quantityChangedSincePerformanceRef.current = false;
     setLiveValueDelta(0);
   }, [accountId]);
+
+  // A workspace refresh can change a holding's quantity before the performance
+  // query and live-valuations query finish refreshing. Start a new live
+  // baseline in that case so the capital contribution is never treated as a
+  // price movement, including with older API responses without quantities.
+  useEffect(() => {
+    const previousSignature = previousPositionQuantitySignatureRef.current;
+    if (
+      previousSignature !== null &&
+      previousSignature !== positionQuantitySignature
+    ) {
+      previousQuotesRef.current = null;
+      quantityChangedSincePerformanceRef.current = true;
+      setLiveValueDelta(0);
+    }
+
+    previousPositionQuantitySignatureRef.current = positionQuantitySignature;
+  }, [positionQuantitySignature]);
 
   useEffect(() => {
     if (!liveQuotes) {
@@ -544,6 +586,7 @@ export default function BrokerageWorkspaceScreen() {
     const { totalValueDelta, matchedCount } = computeLiveValueDelta(
       previousQuotesRef.current,
       liveQuotes,
+      brokerageAssetIdsRef.current,
     );
 
     if (matchedCount > 0) {
@@ -552,10 +595,6 @@ export default function BrokerageWorkspaceScreen() {
 
     previousQuotesRef.current = liveQuotes;
   }, [liveQuotes]);
-
-  const workspace: BrokerageWorkspaceResponse | undefined = workspaceQuery.data;
-  const broker = workspace?.selectedBroker;
-  const accountCurrency = broker?.account.currency ?? "EUR";
   const displayPricingStatus = useMemo(
     () =>
       workspace
@@ -612,30 +651,52 @@ export default function BrokerageWorkspaceScreen() {
   ]);
 
   const performance = performanceQuery.data;
+  const performanceSignature = performance
+    ? `${performance.asOf}:${performance.latestValue ?? ""}:${performance.baselineValue ?? ""}`
+    : null;
+
+  useEffect(() => {
+    const previousSignature = previousPerformanceSignatureRef.current;
+    if (previousSignature === null && performanceSignature !== null) {
+      quantityChangedSincePerformanceRef.current = false;
+    } else if (
+      previousSignature !== null &&
+      previousSignature !== performanceSignature
+    ) {
+      // The API response now includes the live total, so any accumulated
+      // quote delta belongs to the superseded response and must be discarded.
+      previousQuotesRef.current = quantityChangedSincePerformanceRef.current
+        ? null
+        : (liveQuotes ?? null);
+      quantityChangedSincePerformanceRef.current = false;
+      setLiveValueDelta(0);
+    }
+
+    previousPerformanceSignatureRef.current = performanceSignature;
+  }, [liveQuotes, performanceSignature]);
   const priceRefreshMessage = refreshAssets.isError
     ? describeError(refreshAssets.error)
     : !refreshAssets.isPending
       ? (refreshAssets.data?.priceRefresh.message ?? null)
       : null;
 
-  const liveTotal =
-    broker && liveValueDelta !== 0 ? broker.totalValue + liveValueDelta : null;
-
-  const headerTotal = broker
-    ? resolveHeaderTotal({
-        liveTotal,
-        performanceLatestValue: performance?.latestValue ?? null,
-        workspaceTotalValue: broker.totalValue,
-      })
-    : null;
+  const headerTotal = resolvePerformanceTotal({
+    performanceLatestValue: performance?.latestValue ?? null,
+    investedValue: broker?.investedValue ?? null,
+    liveValueDelta,
+  });
 
   const headerChange =
-    liveTotal !== null
+    performance &&
+    headerTotal !== null &&
+    performance?.baselineValue !== null &&
+    performance?.latestValue !== null &&
+    performance?.changeAbsolute !== null
       ? recomputeChangeFromLiveTotal(
-          liveTotal,
-          performance?.baselineValue ?? null,
-          performance?.latestValue ?? null,
-          performance?.changeAbsolute ?? null,
+          headerTotal,
+          performance.baselineValue,
+          performance.latestValue,
+          performance.changeAbsolute,
         )
       : performance &&
           performance.changeAbsolute !== null &&
@@ -739,6 +800,7 @@ export default function BrokerageWorkspaceScreen() {
   const openOperation = (kind: OperationKind) => {
     setForm(emptyOperationForm(accountCurrency));
     setFormError(null);
+    setConfirmTradeDelete(false);
     setEditingTrade(null);
     setOperation(kind);
   };
@@ -765,6 +827,7 @@ export default function BrokerageWorkspaceScreen() {
       notes: item.notes ?? "",
     });
     setFormError(null);
+    setConfirmTradeDelete(false);
     setEditingTrade(item);
     setOperation(item.kind);
   };
@@ -866,15 +929,40 @@ export default function BrokerageWorkspaceScreen() {
     feeMutation.isPending ||
     updateTradeMutation.isPending ||
     deleteTradeMutation.isPending;
+  const brokerageOpeningDate =
+    workspace?.selectedBroker.account.openingBalanceDate?.slice(0, 10) ?? null;
 
   const submitOperation = async () => {
     setFormError(null);
+
+    const postedAt = localDateToIso(form.date);
+    if (!postedAt) {
+      setFormError("Please choose a valid date.");
+      return;
+    }
+
+    if (brokerageOpeningDate && form.date < brokerageOpeningDate) {
+      setFormError(
+        `Date must be on or after ${format.date(brokerageOpeningDate)} for this account.`,
+      );
+      return;
+    }
+
+    const feeInput = form.fee.trim();
+    const fee = feeInput ? parseAmountInput(form.fee) : null;
+    if (
+      (editingTrade || operation === "BUY" || operation === "SELL") &&
+      feeInput &&
+      (fee === null || fee < 0)
+    ) {
+      setFormError("Fee must be a valid non-negative amount.");
+      return;
+    }
 
     try {
       if (editingTrade) {
         const quantity = parseAmountInput(form.quantity);
         const unitPrice = parseAmountInput(form.unitPrice);
-        const fee = form.fee.trim() ? parseAmountInput(form.fee) : null;
 
         if (
           quantity === null ||
@@ -891,8 +979,10 @@ export default function BrokerageWorkspaceScreen() {
           body: {
             quantity,
             unitPrice,
-            feeAmount: fee,
-            postedAt: form.date,
+            // Treat a zero fee as absent so older hosted APIs that only accept
+            // positive fees can still amend an existing zero-fee trade.
+            feeAmount: fee === 0 ? null : fee,
+            postedAt,
             notes: form.notes.trim() || null,
           },
         });
@@ -904,7 +994,6 @@ export default function BrokerageWorkspaceScreen() {
       if (operation === "BUY") {
         const quantity = parseAmountInput(form.quantity);
         const unitPrice = parseAmountInput(form.unitPrice);
-        const fee = form.fee.trim() ? parseAmountInput(form.fee) : null;
 
         if (!form.newSecurity && !form.assetId) {
           setFormError("Pick a position or switch to a new security.");
@@ -937,14 +1026,13 @@ export default function BrokerageWorkspaceScreen() {
           currency: form.currency.trim().toUpperCase(),
           quantity,
           unitPrice,
-          feeAmount: fee,
-          postedAt: form.date,
+          feeAmount: fee === 0 ? null : fee,
+          postedAt,
           notes: form.notes.trim() || null,
         });
       } else if (operation === "SELL") {
         const quantity = parseAmountInput(form.quantity);
         const unitPrice = parseAmountInput(form.unitPrice);
-        const fee = form.fee.trim() ? parseAmountInput(form.fee) : null;
 
         if (!form.assetId) {
           setFormError("Pick the position to sell.");
@@ -965,8 +1053,8 @@ export default function BrokerageWorkspaceScreen() {
           assetId: form.assetId,
           quantity,
           unitPrice,
-          feeAmount: fee,
-          postedAt: form.date,
+          feeAmount: fee === 0 ? null : fee,
+          postedAt,
           notes: form.notes.trim() || null,
         });
       } else if (operation === "DIVIDEND" || operation === "FEE") {
@@ -985,7 +1073,7 @@ export default function BrokerageWorkspaceScreen() {
         const body = {
           assetId: form.assetId,
           amount,
-          postedAt: form.date,
+          postedAt,
           categoryId: form.categoryId,
           notes: form.notes.trim() || null,
         };
@@ -1104,12 +1192,12 @@ export default function BrokerageWorkspaceScreen() {
               }}
             >
               <AppText variant="kicker" tone="tertiary">
-                Total value · {accountCurrency}
+                Invested value · {accountCurrency}
               </AppText>
             </View>
             <Animated.View style={{ opacity: headerAnim }}>
               <MoneyText
-                amount={headerTotal ?? broker.totalValue}
+                amount={headerTotal ?? broker.investedValue}
                 currency={accountCurrency}
                 variant="display"
               />
@@ -1168,7 +1256,7 @@ export default function BrokerageWorkspaceScreen() {
                 points={performance?.points ?? []}
                 range={range}
                 baselineValue={performance?.baselineValue ?? null}
-                latestValue={performance?.latestValue ?? null}
+                latestValue={headerTotal}
                 currency={performance?.reportingCurrency ?? accountCurrency}
                 emptyMessage={
                   performance?.pricingStatus.state === "PARTIAL"
@@ -1519,10 +1607,19 @@ export default function BrokerageWorkspaceScreen() {
 
       <Sheet
         visible={operation !== null}
-        onClose={() => setOperation(null)}
-        title={operationTitle}
+        onClose={() => {
+          setConfirmTradeDelete(false);
+          setOperation(null);
+        }}
+        title={confirmTradeDelete ? "Delete trade?" : operationTitle}
       >
-        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+        <View
+          style={{
+            gap: spacing.lg,
+            paddingBottom: spacing.lg,
+            display: confirmTradeDelete ? "none" : "flex",
+          }}
+        >
           {operation === "BUY" ? (
             <>
               {editingTrade ? (
@@ -1707,6 +1804,11 @@ export default function BrokerageWorkspaceScreen() {
             label="Date"
             value={form.date}
             onChange={(date) => setForm((f) => ({ ...f, date }))}
+            hint={
+              brokerageOpeningDate
+                ? `On or after ${format.date(brokerageOpeningDate)}`
+                : undefined
+            }
           />
           <TextField
             label="Notes (optional)"
@@ -1736,30 +1838,25 @@ export default function BrokerageWorkspaceScreen() {
             />
           ) : null}
         </View>
-      </Sheet>
-
-      <Sheet
-        visible={confirmTradeDelete}
-        onClose={() => setConfirmTradeDelete(false)}
-        title="Delete trade?"
-      >
-        <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
-          <AppText variant="footnote" tone="secondary">
-            This permanently removes the {editingTrade?.kind.toLowerCase()} and
-            recalculates the position from its remaining trade history.
-          </AppText>
-          <Button
-            label="Delete trade"
-            variant="danger"
-            onPress={deleteTrade}
-            loading={deleteTradeMutation.isPending}
-          />
-          <Button
-            label="Keep it"
-            variant="secondary"
-            onPress={() => setConfirmTradeDelete(false)}
-          />
-        </View>
+        {confirmTradeDelete ? (
+          <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+            <AppText variant="footnote" tone="secondary">
+              This permanently removes the {editingTrade?.kind.toLowerCase()}{" "}
+              and recalculates the position from its remaining trade history.
+            </AppText>
+            <Button
+              label="Delete trade"
+              variant="danger"
+              onPress={deleteTrade}
+              loading={deleteTradeMutation.isPending}
+            />
+            <Button
+              label="Keep it"
+              variant="secondary"
+              onPress={() => setConfirmTradeDelete(false)}
+            />
+          </View>
+        ) : null}
       </Sheet>
     </Screen>
   );

@@ -115,6 +115,51 @@ export interface PercentGridline {
   label: string;
 }
 
+/**
+ * Keeps the plotted endpoint aligned with the authoritative latest value.
+ *
+ * Live quote updates can arrive after the cached performance series, so the
+ * response's latest value may be newer than the final point in that series.
+ * Replacing only that endpoint preserves the historical curve while keeping
+ * the chart consistent with the value shown beside it.
+ */
+export function withLatestPerformanceValue(
+  points: readonly BrokeragePerformancePointResponse[],
+  latestValue: number | null,
+): BrokeragePerformancePointResponse[] {
+  if (
+    points.length === 0 ||
+    latestValue === null ||
+    !Number.isFinite(latestValue)
+  ) {
+    return [...points];
+  }
+
+  const lastIndex = points.length - 1;
+  const lastPoint = points[lastIndex];
+  if (!lastPoint || lastPoint.value === latestValue) {
+    return [...points];
+  }
+
+  return [...points.slice(0, lastIndex), { ...lastPoint, value: latestValue }];
+}
+
+/**
+ * Reserves equal vertical insets for the top and bottom percentage labels.
+ * Keeping the gridline centres inside these insets means labels can remain
+ * aligned to their lines without clipping or ad-hoc collision shifts.
+ */
+export function getPerformancePlotMetrics(
+  chartHeight: number,
+  labelHeight = 16,
+): { topInset: number; plotHeight: number } {
+  const topInset = Math.min(Math.max(0, chartHeight / 2), labelHeight / 2);
+  return {
+    topInset,
+    plotHeight: Math.max(0, chartHeight - topInset * 2),
+  };
+}
+
 function formatPercentLabel(percent: number): string {
   const rounded = Math.round(Math.abs(percent) * 100) / 100;
   // Trim trailing zeros but keep up to 2 decimal places.

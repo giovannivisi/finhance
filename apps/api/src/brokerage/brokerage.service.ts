@@ -15,6 +15,7 @@ import type { StoredFxRateSnapshot } from '@prices/prices.service';
 import { TransactionsService } from '@transactions/transactions.service';
 import type { LogicalTransactionEntry } from '@transactions/transactions.types';
 import { toTransactionResponse } from '@transactions/transactions.mapper';
+import { romeDateToUtcStart } from '@transactions/transactions.dates';
 import type { AccountDeletionState } from '@accounts/accounts.service';
 import {
   Account,
@@ -359,10 +360,21 @@ export class BrokerageService {
         }
 
         hasFailedSeries = true;
+        // A failed market series cannot describe the path of this position.
+        // For MAX, its known cost basis is still a useful starting value;
+        // using the live value there would silently turn its unrealised gain
+        // into zero performance in a mixed chart. Shorter ranges stay neutral
+        // because a cost basis is not a valid daily/weekly baseline.
+        const fallbackPerformanceValue =
+          range === 'MAX'
+            ? (entry.asset.referenceValue ??
+              entry.asset.currentValue ??
+              entry.record.balance)
+            : (entry.asset.currentValue ??
+              entry.asset.referenceValue ??
+              entry.record.balance);
         constantTotal = constantTotal.plus(
-          this.toDecimal(
-            entry.asset.currentValue ?? entry.asset.referenceValue ?? 0,
-          ),
+          this.toDecimal(fallbackPerformanceValue),
         );
         return false;
       },
@@ -1085,7 +1097,7 @@ export class BrokerageService {
         const transaction = await this.transactionsService.create(
           ownerId,
           {
-            postedAt: input.postedAt,
+            postedAt: postedAt.toISOString(),
             kind: transactionKind,
             amount: amount.toNumber(),
             description,
@@ -2693,6 +2705,24 @@ export class BrokerageService {
   }
 
   private parsePostedAt(value: string): Date {
+    const localDateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (localDateMatch) {
+      const [, year, month, day] = localDateMatch;
+      const calendarDate = new Date(
+        Date.UTC(Number(year), Number(month) - 1, Number(day)),
+      );
+
+      if (
+        calendarDate.getUTCFullYear() !== Number(year) ||
+        calendarDate.getUTCMonth() !== Number(month) - 1 ||
+        calendarDate.getUTCDate() !== Number(day)
+      ) {
+        throw new BadRequestException('postedAt is invalid.');
+      }
+
+      return romeDateToUtcStart(value);
+    }
+
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
       throw new BadRequestException('postedAt is invalid.');

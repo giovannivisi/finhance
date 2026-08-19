@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
+  KeyboardAvoidingView,
   Platform,
   RefreshControl,
   ScrollView,
@@ -188,10 +189,15 @@ export function Screen({
     return (
       <View style={containerStyle}>
         <ScreenGlow />
-        <View style={[innerPadding, { flex: 1 }, contentStyle]}>
-          {header}
-          {children}
-        </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
+        >
+          <View style={[innerPadding, { flex: 1 }, contentStyle]}>
+            {header}
+            {children}
+          </View>
+        </KeyboardAvoidingView>
       </View>
     );
   }
@@ -199,33 +205,39 @@ export function Screen({
   return (
     <View style={containerStyle}>
       <ScreenGlow />
-      <ScrollView
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
-        contentContainerStyle={[
-          innerPadding,
-          {
-            paddingBottom:
-              (withTabBarClearance ? TAB_BAR_CLEARANCE : spacing.xxl) +
-              insets.bottom,
-            gap: spacing.xl,
-          },
-          contentStyle,
-        ]}
-        refreshControl={
-          onRefresh ? (
-            <RefreshControl
-              refreshing={isPullRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.textSecondary}
-            />
-          ) : undefined
-        }
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
       >
-        {header}
-        {children}
-      </ScrollView>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={[
+            innerPadding,
+            {
+              paddingBottom:
+                (withTabBarClearance ? TAB_BAR_CLEARANCE : spacing.xxl) +
+                insets.bottom,
+              gap: spacing.xl,
+            },
+            contentStyle,
+          ]}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={isPullRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.textSecondary}
+              />
+            ) : undefined
+          }
+          automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {header}
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
