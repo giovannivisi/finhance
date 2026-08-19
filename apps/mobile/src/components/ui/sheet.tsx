@@ -108,8 +108,9 @@ export function Sheet({
               scheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(24,24,27,0.3)",
           }}
         />
-        <View
+        <KeyboardAvoidingView
           pointerEvents="box-none"
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={{ flex: 1, justifyContent: "flex-end" }}
         >
           <Animated.View
@@ -117,7 +118,8 @@ export function Sheet({
             style={{
               transform: [{ translateY }],
               width: "100%",
-              height: sheetHeight,
+              flex: 1,
+              maxHeight: sheetHeight,
             }}
           >
             <View
@@ -168,31 +170,27 @@ export function Sheet({
                   {title ?? ""}
                 </AppText>
               </View>
-              <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
+              <ScrollView
                 style={{ flex: 1 }}
+                contentContainerStyle={{
+                  paddingHorizontal: spacing.xl,
+                  paddingBottom: insets.bottom + spacing.xxl,
+                  gap: spacing.lg,
+                }}
+                automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
+                keyboardDismissMode="interactive"
+                keyboardShouldPersistTaps="handled"
+                onScroll={(event) => {
+                  scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+                }}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
               >
-                <ScrollView
-                  style={{ flex: 1 }}
-                  contentContainerStyle={{
-                    paddingHorizontal: spacing.xl,
-                    paddingBottom: insets.bottom + spacing.xxl,
-                    gap: spacing.lg,
-                  }}
-                  keyboardDismissMode="interactive"
-                  keyboardShouldPersistTaps="handled"
-                  onScroll={(event) => {
-                    scrollOffsetY.current = event.nativeEvent.contentOffset.y;
-                  }}
-                  scrollEventThrottle={16}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {children}
-                </ScrollView>
-              </KeyboardAvoidingView>
+                {children}
+              </ScrollView>
             </View>
           </Animated.View>
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );

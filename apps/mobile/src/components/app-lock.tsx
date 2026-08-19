@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
@@ -356,17 +357,22 @@ function GateForm({ children }: { children: ReactNode }) {
       ]}
     >
       <ScreenGlow />
-      <View
-        style={[
-          styles.formContent,
-          {
-            paddingTop: insets.top + spacing.xxl,
-            paddingBottom: Math.max(insets.bottom, spacing.xl),
-          },
-        ]}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
       >
-        {children}
-      </View>
+        <View
+          style={[
+            styles.formContent,
+            {
+              paddingTop: insets.top + spacing.xxl,
+              paddingBottom: Math.max(insets.bottom, spacing.xl),
+            },
+          ]}
+        >
+          {children}
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
