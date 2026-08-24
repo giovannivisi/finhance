@@ -1,8 +1,5 @@
 import type { NetWorthSnapshot, Prisma } from '@finhance/db';
-import type {
-  NetWorthSnapshotResponse,
-  SnapshotCaptureResponse,
-} from '@finhance/shared';
+import type { NetWorthSnapshotResponse } from '@finhance/shared';
 
 function decimalToNumber(
   value: Prisma.Decimal | null | undefined,
@@ -37,6 +34,4 @@ export function toNetWorthSnapshotResponse(
   };
 }
 
-export const toSnapshotCaptureResponse = toNetWorthSnapshotResponse as (
-  snapshot: NetWorthSnapshot,
-) => SnapshotCaptureResponse;
+export const toSnapshotCaptureResponse = toNetWorthSnapshotResponse;

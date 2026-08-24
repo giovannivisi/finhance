@@ -12,6 +12,10 @@ import { PrismaService } from '@prisma/prisma.service';
 const OWNER_ID = 'local-dev';
 const NOW = new Date('2026-08-05T10:00:00.000Z');
 
+function expectObjectContaining<T extends object>(value: Partial<T>): T {
+  return expect.objectContaining(value) as T;
+}
+
 function createPlan(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'plan-1',
@@ -59,10 +63,6 @@ function createOperation() {
     notes: null,
     mirroredTransactionId: null,
   };
-}
-
-function expectObjectContaining<T extends object>(value: Partial<T>): T {
-  return expect.objectContaining(value) as unknown as T;
 }
 
 describe('InvestmentPlansService', () => {

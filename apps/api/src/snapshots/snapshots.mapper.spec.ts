@@ -31,7 +31,7 @@ describe('toNetWorthSnapshotResponse', () => {
       createSnapshot({
         nativeAssetTotals: { EUR: 100, USD: 25 },
         nativeLiabilityTotals: { GBP: 10 },
-      }) as never,
+      }),
     );
 
     expect(response.reportingCurrency).toBe('EUR');
@@ -40,7 +40,7 @@ describe('toNetWorthSnapshotResponse', () => {
   });
 
   it('keeps legacy snapshots non-recomputable when native totals are missing', () => {
-    const response = toNetWorthSnapshotResponse(createSnapshot() as never);
+    const response = toNetWorthSnapshotResponse(createSnapshot());
 
     expect(response.reportingCurrency).toBe('EUR');
     expect(response.storedReportingCurrency).toBe('EUR');

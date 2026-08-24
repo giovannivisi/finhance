@@ -12,7 +12,7 @@ b1j86cNrWoAY2tPRUiANQweYphsPxMOAeBRARgh6/eDup2Mkv45IzNGcsQ==
 
 describe('bootstrap config', () => {
   it('uses loopback defaults when env is unset', () => {
-    expect(resolveBootstrapRuntimeConfig({} as NodeJS.ProcessEnv)).toEqual({
+    expect(resolveBootstrapRuntimeConfig({})).toEqual({
       authMode: 'local',
       host: '127.0.0.1',
       allowedOrigins: ['http://localhost:3001', 'http://127.0.0.1:3001'],
@@ -43,7 +43,7 @@ describe('bootstrap config', () => {
     expect(() =>
       resolveBootstrapRuntimeConfig({
         API_HOST: '0.0.0.0',
-      } as NodeJS.ProcessEnv),
+      }),
     ).toThrow(
       'Refusing to bind API_HOST=0.0.0.0 while authentication is disabled.',
     );
@@ -53,7 +53,7 @@ describe('bootstrap config', () => {
     expect(() =>
       resolveBootstrapRuntimeConfig({
         AUTH_MODE: 'hosted',
-      } as NodeJS.ProcessEnv),
+      }),
     ).toThrow('API_HOST must be configured in hosted auth mode.');
   });
 
@@ -68,7 +68,7 @@ describe('bootstrap config', () => {
         AUTH_API_JWT_AUDIENCE: 'finhance-api',
         AUTH_API_JWT_KID: 'test-key',
         AUTH_API_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY,
-      } as NodeJS.ProcessEnv),
+      }),
     ).toEqual({
       authMode: 'hosted',
       host: '0.0.0.0',
@@ -87,7 +87,7 @@ describe('bootstrap config', () => {
         AUTH_API_JWT_AUDIENCE: 'finhance-api',
         AUTH_API_JWT_KID: 'test-key',
         AUTH_API_JWT_PUBLIC_KEY: TEST_PUBLIC_KEY,
-      } as NodeJS.ProcessEnv),
+      }),
     ).toThrow('API_TRUST_PROXY must be configured in hosted auth mode.');
   });
 

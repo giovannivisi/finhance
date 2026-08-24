@@ -347,15 +347,15 @@ describe('BudgetsService', () => {
             secondaryCategoryName: 'Groceries',
             startMonth: '2026-04',
             endMonth: null,
-            override: {
+            override: expect.objectContaining({
               id: 'override-1',
               categoryBudgetId: 'budget-1',
               month: '2026-04',
               amount: 90,
               note: 'Carryover',
-              createdAt: expect.any(String) as unknown as string,
-              updatedAt: expect.any(String) as unknown as string,
-            },
+              createdAt: expect.any(String) as string,
+              updatedAt: expect.any(String) as string,
+            }) as object,
           },
         ],
         overBudgetHighlights: [
