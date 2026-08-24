@@ -17,9 +17,7 @@ function trimOptionalStringValue({ value }: TransformFnParams): unknown {
 
 const NOTES_MAX_LENGTH = 2_000;
 
-export class RecordInvestmentPlanBuyDto
-  implements RecordInvestmentPlanBuyRequest
-{
+export class RecordInvestmentPlanBuyDto implements RecordInvestmentPlanBuyRequest {
   @IsNumber()
   @IsPositive()
   quantity!: number;

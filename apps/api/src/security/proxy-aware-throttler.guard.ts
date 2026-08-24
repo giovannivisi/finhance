@@ -17,8 +17,7 @@ const THROTTLER_KEY_GENERATOR = 'THROTTLER:KEY_GENERATOR';
 const DEFAULT_THROTTLER_NAME = 'default';
 
 type ThrottleNumeric =
-  | number
-  | ((context: ExecutionContext) => number | Promise<number>);
+  number | ((context: ExecutionContext) => number | Promise<number>);
 
 // Hosted traffic reaches the API through the web proxy, so client IPs
 // collapse to the proxy's egress addresses. Keying on the authenticated

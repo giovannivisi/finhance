@@ -268,8 +268,7 @@ describe('BrokerageService', () => {
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
     const firstCall = prisma.$transaction.mock.calls[0] as
-      | unknown[]
-      | undefined;
+      unknown[] | undefined;
     expect(firstCall?.[1]).toEqual({
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });

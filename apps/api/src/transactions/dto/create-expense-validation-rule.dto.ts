@@ -7,9 +7,7 @@ function trimStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
 
-export class CreateExpenseValidationRuleDto
-  implements UpsertExpenseValidationRuleRequest
-{
+export class CreateExpenseValidationRuleDto implements UpsertExpenseValidationRuleRequest {
   @IsString()
   @IsNotEmpty()
   @Transform(trimStringValue)

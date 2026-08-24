@@ -2660,24 +2660,22 @@ export class TransactionsService {
     }
 
     return Array.from(currencies.values())
-      .map(
-        (currency): MonthlyCashflowCurrencyResponse => ({
-          currency: currency.currency,
-          averageMonthlyExpense:
-            monthKeys.length === 0
-              ? 0
-              : currency.totalExpense.toNumber() / monthKeys.length,
-          rangeExpenseCategories: this.sortMonthlyCategoryTotals(
-            currency.rangeExpenseCategories,
+      .map((currency): MonthlyCashflowCurrencyResponse => ({
+        currency: currency.currency,
+        averageMonthlyExpense:
+          monthKeys.length === 0
+            ? 0
+            : currency.totalExpense.toNumber() / monthKeys.length,
+        rangeExpenseCategories: this.sortMonthlyCategoryTotals(
+          currency.rangeExpenseCategories,
+        ),
+        months: monthKeys.map((month) =>
+          this.toMonthlyCashflowMonthResponse(
+            month,
+            currency.months.get(month) ?? createMonthAccumulator(),
           ),
-          months: monthKeys.map((month) =>
-            this.toMonthlyCashflowMonthResponse(
-              month,
-              currency.months.get(month) ?? createMonthAccumulator(),
-            ),
-          ),
-        }),
-      )
+        ),
+      }))
       .sort((left, right) => left.currency.localeCompare(right.currency));
   }
 
