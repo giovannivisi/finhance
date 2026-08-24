@@ -55,12 +55,12 @@
   },
   "devDependencies": {
     "@types/react": "19.2.2",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "4.1.11",
     "eslint": "^9.39.5",
     "eslint-config-expo": "^10.0.0",
     "eslint-config-prettier": "^10.1.8",
     "typescript": "5.9.2",
-    "vite": "8.2.1",
-    "vitest": "^4.1.10"
+    "vite": "8.2.2",
+    "vitest": "^4.1.11"
   }
 }
