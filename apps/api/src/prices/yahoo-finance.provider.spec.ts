@@ -22,7 +22,7 @@ describe('YahooFinanceProvider', () => {
   beforeEach(() => {
     originalFetch = global.fetch;
     fetchMock = jest.fn();
-    global.fetch = fetchMock as unknown as typeof global.fetch;
+    global.fetch = fetchMock;
   });
 
   afterEach(() => {

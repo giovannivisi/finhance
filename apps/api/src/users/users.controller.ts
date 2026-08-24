@@ -7,10 +7,7 @@ import {
   HttpStatus,
   Patch,
 } from '@nestjs/common';
-import type {
-  UpdateUserSettingsRequest,
-  UserSettingsResponse,
-} from '@finhance/shared';
+import type { UserSettingsResponse } from '@finhance/shared';
 import { RequestOwnerResolver } from '@/security/request-owner.resolver';
 import { DeleteUserAccountDto } from '@/users/dto/delete-user-account.dto';
 import { UpdateUserSettingsDto } from '@/users/dto/update-user-settings.dto';
@@ -36,10 +33,7 @@ export class UsersController {
   async updateSettings(
     @Body() dto: UpdateUserSettingsDto,
   ): Promise<UserSettingsResponse> {
-    return this.usersService.updateSettings(
-      this.resolveOwnerId(),
-      dto as UpdateUserSettingsRequest,
-    );
+    return this.usersService.updateSettings(this.resolveOwnerId(), dto);
   }
 
   @Delete()

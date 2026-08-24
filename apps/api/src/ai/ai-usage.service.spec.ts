@@ -59,7 +59,7 @@ describe('AiUsageService', () => {
     const configuration = { runtimeConfig };
     const service = new AiUsageService(
       prisma as unknown as ConstructorParameters<typeof AiUsageService>[0],
-      configuration as ConstructorParameters<typeof AiUsageService>[1],
+      configuration,
     );
 
     await expect(
@@ -92,7 +92,7 @@ describe('AiUsageService', () => {
     };
     const service = new AiUsageService(
       prisma as unknown as ConstructorParameters<typeof AiUsageService>[0],
-      configuration as ConstructorParameters<typeof AiUsageService>[1],
+      configuration,
     );
 
     await expect(
@@ -131,7 +131,7 @@ describe('AiUsageService', () => {
     };
     const service = new AiUsageService(
       prisma as unknown as ConstructorParameters<typeof AiUsageService>[0],
-      { runtimeConfig } as ConstructorParameters<typeof AiUsageService>[1],
+      { runtimeConfig },
     );
 
     await expect(
@@ -150,7 +150,7 @@ describe('AiUsageService', () => {
     };
     const service = new AiUsageService(
       prisma as unknown as ConstructorParameters<typeof AiUsageService>[0],
-      { runtimeConfig } as ConstructorParameters<typeof AiUsageService>[1],
+      { runtimeConfig },
     );
 
     await expect(service.hasActiveCloudParserConsent('user-1')).resolves.toBe(
@@ -193,7 +193,7 @@ describe('AiUsageService', () => {
     };
     const service = new AiUsageService(
       prisma as unknown as ConstructorParameters<typeof AiUsageService>[0],
-      { runtimeConfig } as ConstructorParameters<typeof AiUsageService>[1],
+      { runtimeConfig },
     );
 
     await expect(

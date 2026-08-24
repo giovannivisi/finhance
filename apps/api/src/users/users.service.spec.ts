@@ -107,7 +107,7 @@ describe('UsersService', () => {
           reportingCurrency: 'EUR',
           showTransactionTimes: false,
           startPage: 'BROKERAGE',
-        } as unknown as Prisma.InputJsonValue,
+        },
       },
       create: {
         id: 'local-dev',
@@ -117,7 +117,7 @@ describe('UsersService', () => {
           reportingCurrency: 'EUR',
           showTransactionTimes: false,
           startPage: 'BROKERAGE',
-        } as unknown as Prisma.InputJsonValue,
+        },
       },
       select: {
         id: true,

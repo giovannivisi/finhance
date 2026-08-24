@@ -52,7 +52,7 @@ describe('TransactionDraftService', () => {
       runtimeConfig: { ...runtimeConfig, ...overrides?.config },
     };
     const service = new TransactionDraftService(
-      configuration as ConstructorParameters<typeof TransactionDraftService>[0],
+      configuration,
       usage as unknown as ConstructorParameters<
         typeof TransactionDraftService
       >[1],

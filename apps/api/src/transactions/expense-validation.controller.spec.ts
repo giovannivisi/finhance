@@ -11,7 +11,10 @@ describe('ExpenseValidationController throttling', () => {
     'exportRules',
     'exportHierarchy',
   ] as const)('applies the imports throttle bucket to %s', (methodName) => {
-    const handler = ExpenseValidationController.prototype[methodName];
+    const handler = Object.getOwnPropertyDescriptor(
+      ExpenseValidationController.prototype,
+      methodName,
+    )?.value as object;
 
     expect(
       Reflect.getMetadata('THROTTLER:LIMITimports', handler),
@@ -22,7 +25,10 @@ describe('ExpenseValidationController throttling', () => {
   it.each(['importRules', 'importHierarchy'] as const)(
     'applies the local import guard to %s',
     (methodName) => {
-      const handler = ExpenseValidationController.prototype[methodName];
+      const handler = Object.getOwnPropertyDescriptor(
+        ExpenseValidationController.prototype,
+        methodName,
+      )?.value as object;
 
       expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toContain(
         LocalOnlyImportsGuard,
