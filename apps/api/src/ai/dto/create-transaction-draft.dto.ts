@@ -13,9 +13,7 @@ function trimStringValue({ value }: TransformFnParams): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
 
-export class CreateTransactionDraftDto
-  implements CreateAiTransactionDraftRequest
-{
+export class CreateTransactionDraftDto implements CreateAiTransactionDraftRequest {
   @IsString()
   @IsNotEmpty()
   @MaxLength(DEFAULT_AI_INPUT_LIMIT_CHARACTERS)

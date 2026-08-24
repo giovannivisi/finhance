@@ -37,9 +37,7 @@ const RULE_DESCRIPTION_MAX_LENGTH = 240;
 const RULE_COUNTERPARTY_MAX_LENGTH = 120;
 const RULE_NOTES_MAX_LENGTH = 2_000;
 
-export class CreateRecurringTransactionRuleDto
-  implements UpsertRecurringTransactionRuleRequest
-{
+export class CreateRecurringTransactionRuleDto implements UpsertRecurringTransactionRuleRequest {
   @IsString()
   @IsNotEmpty()
   @MaxLength(RULE_NAME_MAX_LENGTH)

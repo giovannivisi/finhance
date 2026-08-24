@@ -33,9 +33,7 @@ function trimOptionalStringValue({ value }: TransformFnParams): unknown {
 const EXCHANGE_MAX_LENGTH = 24;
 const EXCHANGE_PATTERN = /^[A-Z0-9.=-]+$/;
 
-class PortfolioAssetKindTargetInputDto
-  implements PortfolioAssetKindTargetInput
-{
+class PortfolioAssetKindTargetInputDto implements PortfolioAssetKindTargetInput {
   @IsEnum(PrismaAssetKind)
   kind!: AssetKind;
 
@@ -71,9 +69,7 @@ class PortfolioSecurityTargetInputDto implements PortfolioSecurityTargetInput {
   targetPercent!: number;
 }
 
-export class UpdatePortfolioAllocationTargetsDto
-  implements UpdatePortfolioAllocationTargetsRequest
-{
+export class UpdatePortfolioAllocationTargetsDto implements UpdatePortfolioAllocationTargetsRequest {
   @IsArray()
   @ArrayMaxSize(32)
   @ValidateNested({ each: true })

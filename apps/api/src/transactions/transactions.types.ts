@@ -30,9 +30,7 @@ export interface SplitTransactionEntry {
 }
 
 export type LogicalTransactionEntry =
-  | StandardTransactionEntry
-  | TransferTransactionEntry
-  | SplitTransactionEntry;
+  StandardTransactionEntry | TransferTransactionEntry | SplitTransactionEntry;
 
 export interface TransactionFilters {
   from?: string;

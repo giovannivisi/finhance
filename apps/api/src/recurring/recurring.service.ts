@@ -78,8 +78,7 @@ interface PreparedTransferRuleTargets {
 }
 
 type PreparedRuleTargets =
-  | PreparedStandardRuleTargets
-  | PreparedTransferRuleTargets;
+  PreparedStandardRuleTargets | PreparedTransferRuleTargets;
 
 interface PreparedRecurringRuleInput {
   userId: string;
@@ -171,8 +170,7 @@ interface TransferOccurrenceSpec {
 }
 
 type MaterializedOccurrenceSpec =
-  | StandardOccurrenceSpec
-  | TransferOccurrenceSpec;
+  StandardOccurrenceSpec | TransferOccurrenceSpec;
 
 interface OverriddenOccurrenceInput {
   status: 'OVERRIDDEN';
@@ -190,8 +188,7 @@ interface OverriddenOccurrenceInput {
 }
 
 type PreparedOccurrenceInput =
-  | SkippedOccurrenceInput
-  | OverriddenOccurrenceInput;
+  SkippedOccurrenceInput | OverriddenOccurrenceInput;
 
 interface RecurringMonthTransactionRow {
   recurringRuleId: string;

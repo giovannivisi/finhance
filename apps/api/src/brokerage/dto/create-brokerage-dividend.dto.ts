@@ -17,9 +17,7 @@ function trimOptionalStringValue({ value }: TransformFnParams): unknown {
 
 const NOTES_MAX_LENGTH = 2_000;
 
-export class CreateBrokerageDividendDto
-  implements CreateBrokerageDividendRequest
-{
+export class CreateBrokerageDividendDto implements CreateBrokerageDividendRequest {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
