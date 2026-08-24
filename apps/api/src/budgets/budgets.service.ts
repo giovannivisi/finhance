@@ -74,11 +74,10 @@ interface BudgetSummaryGroup {
   secondaries: MonthlyBudgetItemResponse[];
 }
 
-interface UnbudgetedCategoryAccumulator
-  extends Omit<
-    MonthlyBudgetUnbudgetedCategoryResponse,
-    'spentAmount' | 'previousMonthExpense' | 'averageExpenseLast3Months'
-  > {
+interface UnbudgetedCategoryAccumulator extends Omit<
+  MonthlyBudgetUnbudgetedCategoryResponse,
+  'spentAmount' | 'previousMonthExpense' | 'averageExpenseLast3Months'
+> {
   spentAmount: Prisma.Decimal;
   previousMonthExpense: Prisma.Decimal | null;
   averageExpenseLast3Months: Prisma.Decimal | null;
