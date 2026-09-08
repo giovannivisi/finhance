@@ -1442,19 +1442,26 @@ export class RecurringService {
             overrideCategoryIds,
           )
         : [];
-    const overrideById = new Map(
-      overrideCategories.map((category) => [category.id, category]),
+    const overrideById = new Map<string, HierarchicalCategoryRecord>(
+      overrideCategories.map<[string, HierarchicalCategoryRecord]>(
+        (category) => [category.id, category],
+      ),
     );
 
-    return occurrences.map((occurrence) => ({
-      ...occurrence,
-      resolvedCategory:
-        (occurrence.overrideCategoryId
-          ? (overrideById.get(occurrence.overrideCategoryId) ?? null)
-          : null) ??
+    return occurrences.map((occurrence) => {
+      const overrideCategory = occurrence.overrideCategoryId
+        ? overrideById.get(occurrence.overrideCategoryId)
+        : undefined;
+      const resolvedCategory =
+        overrideCategory ??
         occurrence.recurringRule.category ??
-        fallbackRuleCategory,
-    }));
+        fallbackRuleCategory;
+
+      return {
+        ...occurrence,
+        resolvedCategory,
+      };
+    });
   }
 
   private sortAndLimitAccountDrivers(
