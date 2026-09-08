@@ -74,6 +74,7 @@ describe("mobile query contracts", () => {
       serverUrl: "https://finhance.test",
       serverMode: "hosted",
       token: "access-token",
+      client,
       refreshHostedAccessToken,
     } as unknown as ReturnType<typeof useServerConnection>);
     vi.mocked(useQueryClient).mockReturnValue({
@@ -255,6 +256,19 @@ describe("mobile query contracts", () => {
     const valuations = asQuery(queries.useLiveValuations(false));
     expect(valuations.enabled).toBe(false);
     expect(valuations.staleTime).toBe(60_000);
+  });
+
+  it("does not require a server while the dashboard query is disabled", () => {
+    vi.mocked(useServerConnection).mockReturnValue({
+      serverUrl: "",
+      serverMode: "local",
+      token: null,
+      client: null,
+    } as unknown as ReturnType<typeof useServerConnection>);
+
+    const dashboard = asQuery(queries.useDashboard(false));
+
+    expect(dashboard.enabled).toBe(false);
   });
 
   it("routes every financial mutation and invalidates all dependent query roots", async () => {

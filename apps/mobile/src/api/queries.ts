@@ -185,11 +185,20 @@ const EXPENSE_VALIDATION_INVALIDATION_ROOTS = [
 ] as const satisfies readonly QueryRoot[];
 
 export function useDashboard(enabled = true) {
-  const client = useApiClient();
+  // The root layout renders before a server is configured so that a fresh
+  // install can show the setup screen. Keep the query disabled in that state
+  // instead of asking useApiClient() to throw during render.
+  const { client } = useServerConnection();
   return useQuery({
     queryKey: queryKeys.dashboard,
-    queryFn: () => api.dashboard.pageData(client),
-    enabled,
+    queryFn: () => {
+      if (!client) {
+        throw new Error("API client requested before a server was configured.");
+      }
+
+      return api.dashboard.pageData(client);
+    },
+    enabled: enabled && Boolean(client),
   });
 }
 
