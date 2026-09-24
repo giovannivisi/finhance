@@ -11,11 +11,17 @@ import type {
 
 export const dynamic = "force-dynamic";
 
+type BrokeragePageProps = {
+  searchParams?: Promise<{ recordPlan?: string | string[] }>;
+};
+
+export default async function BrokeragePage(): Promise<React.ReactNode>;
+export default async function BrokeragePage(
+  props: BrokeragePageProps,
+): Promise<React.ReactNode>;
 export default async function BrokeragePage({
   searchParams = Promise.resolve({}),
-}: {
-  searchParams?: Promise<{ recordPlan?: string | string[] }>;
-} = {}) {
+}: BrokeragePageProps = {}) {
   const query = await searchParams;
   const initialRecordPlanId =
     typeof query.recordPlan === "string" ? query.recordPlan : null;
