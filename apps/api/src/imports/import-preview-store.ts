@@ -1,10 +1,8 @@
-import { Logger } from '@nestjs/common';
 import { ImportBatchStatus, Prisma } from '@finhance/db';
 import type { ImportPayload } from '@imports/imports.types';
 import { PrismaService } from '@prisma/prisma.service';
 
 const IMPORT_PREVIEW_TTL_MS = 15 * 60 * 1000;
-const IMPORT_PREVIEW_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
 export interface StoredPreviewPayload {
   ownerId: string;
@@ -12,30 +10,14 @@ export interface StoredPreviewPayload {
   expiresAt: number;
 }
 
-/** Owns the short-lived in-memory and persisted preview lifecycle. */
+/**
+ * Owns the short-lived in-memory and persisted preview lifecycle.
+ * Persisted cleanup is request-driven so idle deployments can scale to zero.
+ */
 export class ImportPreviewStore {
-  private readonly logger = new Logger(ImportPreviewStore.name);
   private readonly payloads = new Map<string, StoredPreviewPayload>();
-  private cleanupTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
-
-  start(): void {
-    this.schedulePersistedCleanup();
-    this.cleanupTimer = setInterval(() => {
-      this.schedulePersistedCleanup();
-    }, IMPORT_PREVIEW_CLEANUP_INTERVAL_MS);
-    this.cleanupTimer.unref?.();
-  }
-
-  stop(): void {
-    if (!this.cleanupTimer) {
-      return;
-    }
-
-    clearInterval(this.cleanupTimer);
-    this.cleanupTimer = null;
-  }
 
   remember(batchId: string, ownerId: string, payload: ImportPayload): void {
     this.payloads.set(batchId, {
@@ -80,17 +62,5 @@ export class ImportPreviewStore {
         payloadJson: Prisma.DbNull,
       },
     });
-  }
-
-  private schedulePersistedCleanup(): void {
-    void this.clearExpiredPersisted().catch((error) => {
-      this.logger.warn(
-        `Import preview cleanup failed: ${this.describeError(error)}`,
-      );
-    });
-  }
-
-  private describeError(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
   }
 }

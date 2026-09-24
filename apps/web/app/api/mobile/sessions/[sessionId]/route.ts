@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
 
 type RouteContext = {
-  params: Promise<{ sessionId: string }> | { sessionId: string };
+  params: Promise<{ sessionId: string }>;
 };
 
 function isValidSessionId(value: string): boolean {

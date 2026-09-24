@@ -20,13 +20,9 @@ import {
 } from "@lib/server-api-cache";
 
 type RouteContext = {
-  params:
-    | Promise<{
-        path?: string[];
-      }>
-    | {
-        path?: string[];
-      };
+  params: Promise<{
+    path?: string[];
+  }>;
 };
 
 function invalidProxyPathResponse(): Response {

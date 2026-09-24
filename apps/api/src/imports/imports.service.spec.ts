@@ -447,30 +447,15 @@ describe('ImportsService', () => {
     );
   });
 
-  it('periodically clears expired persisted preview payloads', async () => {
+  it('does not schedule persisted preview cleanup while idle', async () => {
     jest.useFakeTimers();
 
     try {
       prisma.importBatch.updateMany.mockClear();
-      service.onModuleInit();
+      await jest.advanceTimersByTimeAsync(15 * 60 * 1000);
 
-      expect(prisma.importBatch.updateMany).toHaveBeenCalledTimes(1);
-
-      await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
-
-      expect(prisma.importBatch.updateMany).toHaveBeenCalledTimes(2);
-      const updateManyCall = nthCallArg<ImportBatchUpdateManyCall>(
-        prisma.importBatch.updateMany,
-        1,
-      );
-      expect(updateManyCall.where.userId).toBeUndefined();
-      expect(updateManyCall.where.status).toBe(ImportBatchStatus.PREVIEW);
-      expect(updateManyCall.where.createdAt.lt).toBeInstanceOf(Date);
-      expect(updateManyCall.data).toEqual({
-        payloadJson: Prisma.DbNull,
-      });
+      expect(prisma.importBatch.updateMany).not.toHaveBeenCalled();
     } finally {
-      service.onModuleDestroy();
       jest.useRealTimers();
     }
   });
