@@ -46,6 +46,9 @@ overrides:
   '@hono/node-server@1.19.11': 1.19.13
   tar@7.5.16: 7.5.21
 
+patchedDependencies:
+  '@expo/plist@0.8.1': 267fb4ec78a3f7506df08890bfab5345cf90efdfa330f9c2070db692a50e77ea
+
 importers:
 
   .:
@@ -9282,7 +9285,7 @@ snapshots:
       '@expo/metro-file-map': 57.0.3
       '@expo/osascript': 2.7.1
       '@expo/package-manager': 1.13.1
-      '@expo/plist': 0.8.1
+      '@expo/plist': 0.8.1(patch_hash=267fb4ec78a3f7506df08890bfab5345cf90efdfa330f9c2070db692a50e77ea)
       '@expo/prebuild-config': 57.0.16(typescript@6.0.3)
       '@expo/require-utils': 57.0.5(typescript@6.0.3)
       '@expo/router-server': 57.0.11(@expo/metro-runtime@57.0.16)(expo-constants@57.0.19)(expo-font@57.0.4)(expo-router@57.0.23)(expo-server@57.0.3)(expo@57.0.25)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -9352,7 +9355,7 @@ snapshots:
     dependencies:
       '@expo/config-types': 57.0.2
       '@expo/json-file': 11.0.1
-      '@expo/plist': 0.8.1
+      '@expo/plist': 0.8.1(patch_hash=267fb4ec78a3f7506df08890bfab5345cf90efdfa330f9c2070db692a50e77ea)
       '@expo/require-utils': 57.0.5(typescript@6.0.3)
       '@expo/sdk-runtime-versions': 1.0.0
       chalk: 4.1.2
@@ -9564,7 +9567,7 @@ snapshots:
       ora: 3.4.0
       resolve-workspace-root: 2.0.1
 
-  '@expo/plist@0.8.1':
+  '@expo/plist@0.8.1(patch_hash=267fb4ec78a3f7506df08890bfab5345cf90efdfa330f9c2070db692a50e77ea)':
     dependencies:
       '@xmldom/xmldom': 0.9.12
       base64-js: 1.5.1
