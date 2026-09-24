@@ -4,8 +4,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  OnModuleDestroy,
-  OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -126,7 +124,7 @@ const CSV_TRUE_VALUES = new Set(['true', '1', 'yes']);
 const CSV_FALSE_VALUES = new Set(['false', '0', 'no', '']);
 const ZERO = new Prisma.Decimal(0);
 @Injectable()
-export class ImportsService implements OnModuleInit, OnModuleDestroy {
+export class ImportsService {
   private readonly logger = new Logger(ImportsService.name);
   private readonly csvParser: ImportCsvParser;
   private readonly previewStore: ImportPreviewStore;
@@ -156,14 +154,6 @@ export class ImportsService implements OnModuleInit, OnModuleDestroy {
         expenseValidationRules: this.parseExpenseValidationRuleRow.bind(this),
       },
     });
-  }
-
-  onModuleInit(): void {
-    this.previewStore.start();
-  }
-
-  onModuleDestroy(): void {
-    this.previewStore.stop();
   }
 
   async listRecent(ownerId: string): Promise<ImportBatchResponse[]> {
