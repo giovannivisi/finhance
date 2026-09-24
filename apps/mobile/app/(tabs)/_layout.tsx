@@ -2,8 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { Tabs } from "expo-router";
-import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
+import type { BottomTabBarProps } from "expo-router/build/react-navigation/bottom-tabs";
 import { Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -34,24 +34,28 @@ function IosNativeTabs() {
   return (
     <NativeTabs tintColor={colors.primary} minimizeBehavior="onScrollDown">
       <NativeTabs.Trigger name="index">
-        <Label>Home</Label>
-        <Icon sf={{ default: "house", selected: "house.fill" }} />
+        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "house", selected: "house.fill" }}
+        />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="activity">
-        <Label>Activity</Label>
-        <Icon sf="arrow.up.arrow.down" />
+        <NativeTabs.Trigger.Label>Activity</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="arrow.up.arrow.down" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="wallets">
-        <Label>Wallets</Label>
-        <Icon sf={{ default: "wallet.pass", selected: "wallet.pass.fill" }} />
+        <NativeTabs.Trigger.Label>Wallets</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "wallet.pass", selected: "wallet.pass.fill" }}
+        />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="analytics">
-        <Label>Analytics</Label>
-        <Icon sf="chart.line.uptrend.xyaxis" />
+        <NativeTabs.Trigger.Label>Analytics</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="chart.line.uptrend.xyaxis" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="more">
-        <Label>More</Label>
-        <Icon
+        <NativeTabs.Trigger.Label>More</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
           sf={{ default: "square.grid.2x2", selected: "square.grid.2x2.fill" }}
         />
       </NativeTabs.Trigger>

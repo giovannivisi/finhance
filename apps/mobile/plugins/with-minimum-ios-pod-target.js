@@ -9,6 +9,12 @@ const GENERATED_PODFILE_BLOCK = `    installer.pods_project.targets.each do |tar
         build_config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
       end
     end`;
+const GENERATED_RN_POST_INSTALL_BLOCK = `    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      :ccache_enabled => ccache_enabled?(podfile_properties),
+    )`;
 const REPLACEMENT_PODFILE_BLOCK = `    installer.pods_project.targets.each do |target|
       target.build_configurations.each do |build_config|
         current_deployment_target = build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
@@ -43,6 +49,9 @@ const FMT_CONSTEVAL_WORKAROUND = `    # Xcode 26.4+ cannot compile React Native 
 const REPLACEMENT_PODFILE_BLOCK_WITH_FMT_WORKAROUND = `${FMT_CONSTEVAL_WORKAROUND}
 
 ${REPLACEMENT_PODFILE_BLOCK}`;
+const REPLACEMENT_RN_POST_INSTALL_BLOCK = `${GENERATED_RN_POST_INSTALL_BLOCK}
+
+${REPLACEMENT_PODFILE_BLOCK}`;
 
 /**
  * Xcode 26 warns for pods declaring obsolete iOS deployment targets (such as
@@ -55,6 +64,7 @@ module.exports = function withMinimumIosPodTarget(config) {
 
     if (
       contents.includes(REPLACEMENT_PODFILE_BLOCK_WITH_FMT_WORKAROUND) ||
+      contents.includes(REPLACEMENT_RN_POST_INSTALL_BLOCK) ||
       (contents.includes(FMT_CONSTEVAL_MARKER) &&
         contents.includes(REPLACEMENT_PODFILE_BLOCK))
     ) {
@@ -63,7 +73,12 @@ module.exports = function withMinimumIosPodTarget(config) {
 
     const targetBlock = contents.includes(REPLACEMENT_PODFILE_BLOCK)
       ? REPLACEMENT_PODFILE_BLOCK
-      : GENERATED_PODFILE_BLOCK;
+      : contents.includes(GENERATED_PODFILE_BLOCK)
+        ? GENERATED_PODFILE_BLOCK
+        : GENERATED_RN_POST_INSTALL_BLOCK;
+    const replacement = contents.includes(GENERATED_RN_POST_INSTALL_BLOCK)
+      ? REPLACEMENT_RN_POST_INSTALL_BLOCK
+      : REPLACEMENT_PODFILE_BLOCK_WITH_FMT_WORKAROUND;
 
     if (!contents.includes(targetBlock)) {
       throw new Error(
@@ -73,7 +88,7 @@ module.exports = function withMinimumIosPodTarget(config) {
 
     podfileConfig.modResults.contents = contents.replace(
       targetBlock,
-      REPLACEMENT_PODFILE_BLOCK_WITH_FMT_WORKAROUND,
+      replacement,
     );
     return podfileConfig;
   });

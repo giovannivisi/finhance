@@ -18,7 +18,9 @@ import { darkColors, lightColors, type ThemeColors } from "./tokens";
  */
 function applyNativeColorScheme(preference: ThemePreference) {
   try {
-    Appearance.setColorScheme(preference === "system" ? null : preference);
+    Appearance.setColorScheme(
+      preference === "system" ? "unspecified" : preference,
+    );
   } catch {
     // Older runtimes without setColorScheme can safely ignore this.
   }
