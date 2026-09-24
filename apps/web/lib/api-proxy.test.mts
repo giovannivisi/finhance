@@ -3,9 +3,46 @@ import test from "node:test";
 import {
   buildUpstreamRequest,
   resolveCrossOriginRejection,
+  resolveDedicatedRouteRejection,
   stripForwardedHeaders,
   toUpstreamResponse,
 } from "./api-proxy.ts";
+
+test("resolveDedicatedRouteRejection blocks account deletion through the generic proxy", async () => {
+  const rejection = resolveDedicatedRouteRejection("DELETE", "/users/me");
+
+  assert.ok(rejection);
+  assert.equal(rejection.status, 403);
+  assert.deepEqual(await rejection.json(), {
+    message: "Use the protected account deletion endpoint.",
+  });
+});
+
+test("resolveDedicatedRouteRejection blocks equivalent account deletion paths", () => {
+  for (const pathname of [
+    "/users/./me",
+    "/users/account/../me",
+    "/users/%6de",
+    "/USERS/ME/",
+  ]) {
+    assert.equal(
+      resolveDedicatedRouteRejection("delete", pathname)?.status,
+      403,
+      pathname,
+    );
+  }
+});
+
+test("resolveDedicatedRouteRejection preserves ordinary proxy operations", () => {
+  assert.equal(
+    resolveDedicatedRouteRejection("PATCH", "/users/me/settings"),
+    null,
+  );
+  assert.equal(
+    resolveDedicatedRouteRejection("DELETE", "/transactions/transaction-1"),
+    null,
+  );
+});
 
 test("stripForwardedHeaders removes hop-by-hop and credential headers", () => {
   const headers = stripForwardedHeaders(

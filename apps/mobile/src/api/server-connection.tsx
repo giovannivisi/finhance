@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import * as Linking from "expo-linking";
-import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import {
   get as passkeyGet,
@@ -32,10 +31,17 @@ import {
   normalizeServerUrl,
   type ApiClient,
 } from "./client";
+import {
+  isHostedSessionCredentials,
+  readHostedSessionCredentials,
+  writeHostedSessionCredentials,
+  type HostedSessionCredentials,
+} from "./hosted-credentials-store";
+
+export type { HostedSessionCredentials } from "./hosted-credentials-store";
 
 const SERVER_URL_KEY = "finhance.serverUrl";
 const SERVER_MODE_KEY = "finhance.serverMode";
-const MOBILE_TOKEN_KEY = "finhance.mobileToken";
 
 export type ServerMode = "local" | "hosted";
 export type HostedSignInProvider = "google" | "github";
@@ -47,13 +53,6 @@ export interface HostedSignInOptions {
    * the token belongs to the account currently signed in.
    */
   adoptSession?: boolean;
-}
-
-export interface HostedSessionCredentials {
-  /** Short-lived bearer used for proxy requests. */
-  token: string;
-  /** Opaque rotated credential kept only in SecureStore. */
-  refreshToken: string;
 }
 
 export interface ServerInspection {
@@ -132,41 +131,9 @@ function bytesToHex(bytes: Uint8Array): string {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function isHostedSessionCredentials(
-  value: unknown,
-): value is HostedSessionCredentials {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const { token, refreshToken } = value as {
-    token?: unknown;
-    refreshToken?: unknown;
-  };
-
-  return (
-    typeof token === "string" &&
-    Boolean(token.trim()) &&
-    typeof refreshToken === "string" &&
-    Boolean(refreshToken.trim())
-  );
-}
-
 async function readStoredCredentials(): Promise<HostedSessionCredentials | null> {
   try {
-    const stored = await SecureStore.getItemAsync(MOBILE_TOKEN_KEY);
-    if (!stored) {
-      return null;
-    }
-
-    try {
-      const parsed: unknown = JSON.parse(stored);
-      return isHostedSessionCredentials(parsed) ? parsed : null;
-    } catch {
-      // Legacy long-lived tokens cannot satisfy the new session binding. They
-      // are deliberately treated as signed out rather than silently reused.
-      return null;
-    }
+    return await readHostedSessionCredentials();
   } catch {
     return null;
   }
@@ -176,14 +143,7 @@ async function writeStoredCredentials(
   credentials: HostedSessionCredentials | null,
 ): Promise<void> {
   try {
-    if (credentials) {
-      await SecureStore.setItemAsync(
-        MOBILE_TOKEN_KEY,
-        JSON.stringify(credentials),
-      );
-    } else {
-      await SecureStore.deleteItemAsync(MOBILE_TOKEN_KEY);
-    }
+    await writeHostedSessionCredentials(credentials);
   } catch {
     throw new ApiError(
       "Secure storage is unavailable, so this device cannot safely keep you signed in.",

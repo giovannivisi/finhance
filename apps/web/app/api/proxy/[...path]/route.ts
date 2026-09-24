@@ -2,6 +2,7 @@ import { auth } from "@lib/auth";
 import {
   buildUpstreamRequest,
   resolveCrossOriginRejection,
+  resolveDedicatedRouteRejection,
   stripForwardedHeaders,
   toUpstreamResponse,
 } from "@lib/api-proxy";
@@ -36,7 +37,7 @@ function isMutationMethod(method: string): boolean {
 function buildProxiedPath(
   pathSegments: string[] | undefined,
   request: Request,
-) {
+): { pathname: string; target: string } {
   for (const segment of pathSegments ?? []) {
     if (!segment || segment.includes("/") || segment.includes("\\")) {
       throw new InvalidApiPathError();
@@ -45,7 +46,7 @@ function buildProxiedPath(
 
   const pathname = pathSegments?.length ? `/${pathSegments.join("/")}` : "/";
   const search = new URL(request.url).search;
-  return `${pathname}${search}`;
+  return { pathname, target: `${pathname}${search}` };
 }
 
 async function forwardRequest(
@@ -69,7 +70,16 @@ async function forwardRequest(
     }
 
     const params = await context.params;
-    const path = buildProxiedPath(params.path, request);
+    const { pathname, target } = buildProxiedPath(params.path, request);
+    const dedicatedRouteRejection = resolveDedicatedRouteRejection(
+      request.method,
+      pathname,
+    );
+
+    if (dedicatedRouteRejection) {
+      return dedicatedRouteRejection;
+    }
+
     const hostedAuthMode = isHostedAuthMode();
     const headers = stripForwardedHeaders(request.headers, {
       stripBrowserContext: hostedAuthMode,
@@ -119,7 +129,7 @@ async function forwardRequest(
     headers.set("Accept-Encoding", "identity");
 
     const upstreamRequest = await buildUpstreamRequest(request);
-    const upstreamResponse = await fetch(getDirectApiUrl(path), {
+    const upstreamResponse = await fetch(getDirectApiUrl(target), {
       method: request.method,
       headers,
       body: upstreamRequest.body,

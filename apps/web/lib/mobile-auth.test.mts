@@ -98,17 +98,35 @@ test("verification rejects garbage tokens", async () => {
   assert.equal(await verifyMobileSessionToken("not-a-jwt", AUTH_SECRET), null);
 });
 
-test("passkey challenge tokens round-trip the embedded challenge", async () => {
+test("passkey challenge tokens round-trip the challenge and unique token id", async () => {
   const challenge = "Zm9vYmFyLWNoYWxsZW5nZQ"; // base64url-ish value
   const token = await mintMobilePasskeyChallengeToken({
     challenge,
     authSecret: AUTH_SECRET,
   });
 
-  assert.equal(
-    await verifyMobilePasskeyChallengeToken(token, AUTH_SECRET),
-    challenge,
-  );
+  const claims = await verifyMobilePasskeyChallengeToken(token, AUTH_SECRET);
+
+  assert.equal(claims?.challenge, challenge);
+  assert.ok(claims?.jti && claims.jti.length > 0);
+});
+
+test("passkey challenge tokens carry unique jtis", async () => {
+  const mint = () =>
+    mintMobilePasskeyChallengeToken({
+      challenge: "authentication-challenge",
+      authSecret: AUTH_SECRET,
+    });
+
+  const [first, second] = await Promise.all([mint(), mint()]);
+  const [firstClaims, secondClaims] = await Promise.all([
+    verifyMobilePasskeyChallengeToken(first, AUTH_SECRET),
+    verifyMobilePasskeyChallengeToken(second, AUTH_SECRET),
+  ]);
+
+  assert.ok(firstClaims?.jti);
+  assert.ok(secondClaims?.jti);
+  assert.notEqual(firstClaims?.jti, secondClaims?.jti);
 });
 
 test("passkey challenge tokens reject the wrong secret and a session token", async () => {

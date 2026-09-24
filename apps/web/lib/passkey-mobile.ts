@@ -35,10 +35,11 @@ type WebAuthnCredential = VerifyAuthenticationResponseOpts["credential"];
 
 const DEFAULT_RP_ID = "finhance-web.vercel.app";
 
-// One-shot store for registration challenge jtis; the TTL matches
+// One-shot stores for challenge jtis; the TTL matches
 // MOBILE_PASSKEY_CHALLENGE_TTL so rows expire with the tokens they guard.
+const AUTH_CHALLENGE_JTI_SCOPE = "mobile-passkey-auth-jti";
 const REG_CHALLENGE_JTI_SCOPE = "mobile-passkey-reg-jti";
-const REG_CHALLENGE_JTI_TTL_MS = 5 * 60_000;
+const CHALLENGE_JTI_TTL_MS = 5 * 60_000;
 
 function resolveRpId(env: NodeJS.ProcessEnv): string {
   return env.AUTH_WEBAUTHN_RP_ID?.trim() || DEFAULT_RP_ID;
@@ -128,11 +129,11 @@ export async function verifyMobilePasskeyAuthentication(
 ): Promise<{ token: string; refreshToken: string } | null> {
   const authSecret = readAuthSecret(env);
 
-  const expectedChallenge = await verifyMobilePasskeyChallengeToken(
+  const challengeClaims = await verifyMobilePasskeyChallengeToken(
     input.challenge,
     authSecret,
   );
-  if (!expectedChallenge) {
+  if (!challengeClaims) {
     return null;
   }
 
@@ -160,7 +161,7 @@ export async function verifyMobilePasskeyAuthentication(
   try {
     verification = await verifyAuthenticationResponse({
       response: input.response,
-      expectedChallenge,
+      expectedChallenge: challengeClaims.challenge,
       expectedOrigin: resolveExpectedOrigin(env),
       expectedRPID: resolveRpId(env),
       credential,
@@ -171,6 +172,19 @@ export async function verifyMobilePasskeyAuthentication(
   }
 
   if (!verification.verified) {
+    return null;
+  }
+
+  // Consume only after cryptographic verification so malformed assertions
+  // cannot invalidate a legitimate challenge. The unique key also ensures
+  // concurrent replays cannot both mint sessions.
+  const consumed = await consumeOneShotKey(
+    AUTH_CHALLENGE_JTI_SCOPE,
+    challengeClaims.jti,
+    CHALLENGE_JTI_TTL_MS,
+  );
+
+  if (!consumed) {
     return null;
   }
 
@@ -262,7 +276,7 @@ export async function verifyMobilePasskeyRegistration(
   const consumed = await consumeOneShotKey(
     REG_CHALLENGE_JTI_SCOPE,
     challengeClaims.jti,
-    REG_CHALLENGE_JTI_TTL_MS,
+    CHALLENGE_JTI_TTL_MS,
   );
 
   if (!consumed) {

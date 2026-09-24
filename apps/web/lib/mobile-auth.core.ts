@@ -58,6 +58,12 @@ export interface MobilePasskeyRegistrationChallengeClaims {
   jti: string;
 }
 
+export interface MobilePasskeyAuthenticationChallengeClaims {
+  challenge: string;
+  /** Unique token id, consumed server-side so each challenge is single-use. */
+  jti: string;
+}
+
 export interface MobileTokenUserRecord {
   id: string;
   email: string | null;
@@ -297,7 +303,7 @@ export async function mintMobilePasskeyChallengeToken(input: {
 export async function verifyMobilePasskeyChallengeToken(
   token: string,
   authSecret: string,
-): Promise<string | null> {
+): Promise<MobilePasskeyAuthenticationChallengeClaims | null> {
   try {
     const result = await jwtVerify(token, toSecretKey(authSecret), {
       issuer: MOBILE_TOKEN_ISSUER,
@@ -306,9 +312,13 @@ export async function verifyMobilePasskeyChallengeToken(
     });
 
     const challenge = result.payload.challenge;
-    return typeof challenge === "string" && challenge.length > 0
-      ? challenge
-      : null;
+    const jti = result.payload.jti?.trim();
+
+    if (typeof challenge !== "string" || !challenge.trim() || !jti) {
+      return null;
+    }
+
+    return { challenge, jti };
   } catch {
     return null;
   }

@@ -2,6 +2,43 @@ function hasRequestBody(method: string): boolean {
   return method !== "GET" && method !== "HEAD";
 }
 
+const DEDICATED_SENSITIVE_ROUTES = new Set(["DELETE /users/me"]);
+const PROXY_PATH_RESOLUTION_ORIGIN = "https://finhance.invalid";
+
+function canonicalizeProxyPathname(pathname: string): string {
+  let canonical = new URL(pathname, PROXY_PATH_RESOLUTION_ORIGIN).pathname;
+
+  try {
+    canonical = decodeURIComponent(canonical);
+  } catch {
+    // Leave malformed escapes unchanged. The direct API path validation or
+    // upstream URL parser will reject them rather than reinterpret them.
+  }
+
+  if (canonical.length > 1) {
+    canonical = canonical.replace(/\/+$/, "");
+  }
+
+  // Nest uses Express's default case-insensitive, non-strict route matching.
+  return canonical.toLowerCase();
+}
+
+export function resolveDedicatedRouteRejection(
+  method: string,
+  pathname: string,
+): Response | null {
+  const routeKey = `${method.toUpperCase()} ${canonicalizeProxyPathname(pathname)}`;
+
+  if (!DEDICATED_SENSITIVE_ROUTES.has(routeKey)) {
+    return null;
+  }
+
+  return Response.json(
+    { message: "Use the protected account deletion endpoint." },
+    { status: 403 },
+  );
+}
+
 function resolveAllowedRequestOrigins(request: Request): Set<string> {
   const origins = new Set<string>();
 

@@ -9,6 +9,7 @@ overrides:
   "@nestjs/core": 11.1.28
   "@nestjs/platform-express": 11.1.28
   "@nestjs/testing": 11.1.28
+  "@humanfs/node": 0.16.8
   body-parser@2.2.0: 2.2.2
   brace-expansion@1.1.12: 1.1.18
   brace-expansion@2.1.0: 2.1.4
@@ -16,6 +17,7 @@ overrides:
   ajv@8.17.1: 8.18.0
   defu@6.1.4: 6.1.7
   deepmerge-ts@7.1.5: 8.0.0
+  decode-uri-component: 0.5.0
   diff: 4.0.4
   effect@3.18.4: 3.20.0
   fast-uri: 3.1.6
@@ -33,8 +35,7 @@ overrides:
   picomatch@2.3.1: 2.3.2
   picomatch: 4.0.4
   postcss: 8.5.23
-  qs@6.14.0: 6.15.2
-  qs@6.15.1: 6.15.2
+  qs: 6.16.0
   serialize-javascript: 7.0.5
   sharp: 0.35.4
   undici@6.26.0: 6.28.0
@@ -76,3 +77,4 @@ minimumReleaseAgeExclude:
 
 patchedDependencies:
   "@expo/plist@0.8.1": patches/@expo__plist@0.8.1.patch
+  "query-string@7.1.3": patches/query-string@7.1.3.patch
