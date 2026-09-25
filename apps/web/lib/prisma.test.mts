@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Prisma } from "@finhance/db";
-import { isRetryableConnectionError } from "./prisma-retry.ts";
+import {
+  isRetryableConnectionError,
+  shouldRetryPrismaOperation,
+} from "./prisma-retry.ts";
 
 test("treats database reachability initialization errors as retryable", () => {
   const error = new Prisma.PrismaClientInitializationError(
@@ -34,4 +37,22 @@ test("does not mark unrelated prisma errors as retryable", () => {
   );
 
   assert.equal(isRetryableConnectionError(error), false);
+});
+
+test("does not replay ambiguous engine responses for mutations", () => {
+  const error = new Prisma.PrismaClientUnknownRequestError(
+    "Response from the Engine was empty",
+    { clientVersion: "6.19.0" },
+  );
+
+  assert.equal(shouldRetryPrismaOperation("create", error), false);
+});
+
+test("replays ambiguous engine responses for reads", () => {
+  const error = new Prisma.PrismaClientUnknownRequestError(
+    "Response from the Engine was empty",
+    { clientVersion: "6.19.0" },
+  );
+
+  assert.equal(shouldRetryPrismaOperation("findMany", error), true);
 });

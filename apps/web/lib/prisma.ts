@@ -1,7 +1,10 @@
 import "server-only";
 
 import { PrismaClient } from "@finhance/db";
-import { isRetryableConnectionError } from "./prisma-retry.ts";
+import {
+  isRetryableConnectionError,
+  shouldRetryPrismaOperation,
+} from "./prisma-retry.ts";
 
 declare global {
   var __finhancePrisma__: PrismaClient | undefined;
@@ -66,11 +69,11 @@ function createPrismaClient() {
 
   return baseClient.$extends({
     query: {
-      async $allOperations({ args, query }) {
+      async $allOperations({ args, operation, query }) {
         try {
           return await query(args);
         } catch (error) {
-          if (!isRetryableConnectionError(error)) {
+          if (!shouldRetryPrismaOperation(operation, error)) {
             throw error;
           }
 

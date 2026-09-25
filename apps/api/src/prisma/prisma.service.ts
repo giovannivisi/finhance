@@ -66,6 +66,36 @@ export function isRetryableConnectionError(
   );
 }
 
+const READ_OPERATIONS = new Set([
+  'findUnique',
+  'findUniqueOrThrow',
+  'findFirst',
+  'findFirstOrThrow',
+  'findMany',
+  'aggregate',
+  'count',
+  'groupBy',
+]);
+
+export function shouldRetryPrismaOperation(
+  operation: string,
+  error: unknown,
+): boolean {
+  if (!isRetryableConnectionError(error)) {
+    return false;
+  }
+
+  // An empty engine response is ambiguous: a mutation may already have
+  // committed even though Prisma did not receive its result. Only replay
+  // reads for that error; connection acquisition/start errors are safe to
+  // retry because the query has not begun executing yet.
+  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    return READ_OPERATIONS.has(operation);
+  }
+
+  return true;
+}
+
 export function isRetryableClosedTransactionError(
   error: unknown,
 ): error is Prisma.PrismaClientKnownRequestError {
@@ -108,11 +138,13 @@ export async function runWithTransientRetry<T>({
   operationLabel,
   operation,
   reconnect,
+  shouldRetry = isRetryableConnectionError,
 }: {
   logger: Pick<Logger, 'warn'>;
   operationLabel: string;
   operation: () => Promise<T>;
   reconnect: () => Promise<void>;
+  shouldRetry?: (error: unknown) => boolean;
 }): Promise<T> {
   try {
     return await operation();
@@ -121,7 +153,7 @@ export async function runWithTransientRetry<T>({
       throw toActionableSchemaDriftError(error, operationLabel);
     }
 
-    if (!isRetryableConnectionError(error)) {
+    if (!shouldRetry(error)) {
       throw error;
     }
 
@@ -226,6 +258,8 @@ export class PrismaService
             operationLabel,
             operation: () => query(args) as Promise<unknown>,
             reconnect,
+            shouldRetry: (error) =>
+              shouldRetryPrismaOperation(operation, error),
           });
         },
       },

@@ -609,7 +609,7 @@ describe("BrokeragePageClient", () => {
     ],
   ])(
     "does not open the record-plan deep link when the plan %s",
-    (_, plan, initialRecordPlanId) => {
+    async (_, plan, initialRecordPlanId) => {
       render(
         <BrokeragePageClient
           workspace={buildWorkspace()}
@@ -622,6 +622,12 @@ describe("BrokeragePageClient", () => {
       expect(
         screen.queryByRole("dialog", { name: `Record ${plan.name}` }),
       ).not.toBeInTheDocument();
+
+      await waitFor(() => {
+        expect(vi.mocked(api)).toHaveBeenCalledWith(
+          "/brokerage/broker-1/performance?range=1D",
+        );
+      });
     },
   );
 

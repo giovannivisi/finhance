@@ -5,6 +5,7 @@ import {
   isSchemaDriftError,
   isRetryableConnectionError,
   runWithTransientRetry,
+  shouldRetryPrismaOperation,
 } from '@prisma/prisma.service';
 
 function createAsyncMock<T>(): jest.Mock<Promise<T>, []> {
@@ -113,6 +114,30 @@ describe('PrismaService helpers', () => {
       false,
     );
     expect(isSchemaDriftError(missingSplitGroupIdColumnError())).toBe(true);
+  });
+
+  it('does not replay an ambiguous engine response for mutations', () => {
+    expect(
+      shouldRetryPrismaOperation(
+        'create',
+        retryableUnknownEngineResponseError(),
+      ),
+    ).toBe(false);
+    expect(
+      shouldRetryPrismaOperation(
+        'update',
+        retryableUnknownEngineResponseError(),
+      ),
+    ).toBe(false);
+  });
+
+  it('retries an ambiguous engine response for reads', () => {
+    expect(
+      shouldRetryPrismaOperation(
+        'findMany',
+        retryableUnknownEngineResponseError(),
+      ),
+    ).toBe(true);
   });
 
   it('reconnects and retries once after a transient connection error', async () => {

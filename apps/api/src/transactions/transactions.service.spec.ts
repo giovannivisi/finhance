@@ -1449,6 +1449,33 @@ describe('TransactionsService', () => {
     );
   });
 
+  it('keeps fractional cashflow totals exact until the response boundary', async () => {
+    prisma.transaction.findMany.mockResolvedValue([
+      createTransactionRow({
+        id: 'fractional-income',
+        amount: new Prisma.Decimal('0.1'),
+      }),
+      createTransactionRow({
+        id: 'fractional-expense',
+        amount: new Prisma.Decimal('0.2'),
+        kind: TransactionKind.EXPENSE,
+        direction: TransactionDirection.OUTFLOW,
+        categoryId: null,
+        category: null,
+      }),
+    ]);
+
+    const summary = await service.getCashflowSummary(OWNER_ID, {});
+
+    expect(summary[0]).toEqual(
+      expect.objectContaining({
+        incomeTotal: 0.1,
+        expenseTotal: 0.2,
+        netCashflow: -0.1,
+      }),
+    );
+  });
+
   it('applies safe database filters and pagination to transaction history queries', async () => {
     prisma.transaction.findMany.mockResolvedValue([
       createTransactionRow({

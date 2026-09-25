@@ -2924,8 +2924,15 @@ export class TransactionsService {
       inflowTotal: Prisma.Decimal;
       outflowTotal: Prisma.Decimal;
     };
+    type CashflowSummaryTotals = {
+      currency: string;
+      incomeTotal: Prisma.Decimal;
+      expenseTotal: Prisma.Decimal;
+      adjustmentInTotal: Prisma.Decimal;
+      adjustmentOutTotal: Prisma.Decimal;
+    };
     type CashflowBucket = {
-      summary: CashflowCurrencySummaryResponse;
+      summary: CashflowSummaryTotals;
       categoryTotals: Map<string, CategoryCashflowTotal>;
       accountTotals: Map<string, AccountCashflowTotal>;
     };
@@ -2936,13 +2943,10 @@ export class TransactionsService {
       const bucket: CashflowBucket = buckets.get(row.currency) ?? {
         summary: {
           currency: row.currency,
-          incomeTotal: 0,
-          expenseTotal: 0,
-          adjustmentInTotal: 0,
-          adjustmentOutTotal: 0,
-          netCashflow: 0,
-          byCategory: [],
-          byAccount: [],
+          incomeTotal: this.toDecimal(0),
+          expenseTotal: this.toDecimal(0),
+          adjustmentInTotal: this.toDecimal(0),
+          adjustmentOutTotal: this.toDecimal(0),
         },
         categoryTotals: new Map<string, CategoryCashflowTotal>(),
         accountTotals: new Map<string, AccountCashflowTotal>(),
@@ -2965,13 +2969,15 @@ export class TransactionsService {
       bucket.accountTotals.set(row.accountId, accountTotal);
 
       if (row.kind === TransactionKind.INCOME) {
-        bucket.summary.incomeTotal += amount.toNumber();
+        bucket.summary.incomeTotal = bucket.summary.incomeTotal.plus(amount);
       } else if (row.kind === TransactionKind.EXPENSE) {
-        bucket.summary.expenseTotal += amount.toNumber();
+        bucket.summary.expenseTotal = bucket.summary.expenseTotal.plus(amount);
       } else if (row.direction === TransactionDirection.INFLOW) {
-        bucket.summary.adjustmentInTotal += amount.toNumber();
+        bucket.summary.adjustmentInTotal =
+          bucket.summary.adjustmentInTotal.plus(amount);
       } else {
-        bucket.summary.adjustmentOutTotal += amount.toNumber();
+        bucket.summary.adjustmentOutTotal =
+          bucket.summary.adjustmentOutTotal.plus(amount);
       }
 
       if (
@@ -3002,12 +3008,11 @@ export class TransactionsService {
 
     return Array.from(buckets.values())
       .map((bucket) => {
-        bucket.summary.netCashflow =
-          bucket.summary.incomeTotal +
-          bucket.summary.adjustmentInTotal -
-          bucket.summary.expenseTotal -
-          bucket.summary.adjustmentOutTotal;
-        bucket.summary.byCategory = Array.from(bucket.categoryTotals.values())
+        const netCashflow = bucket.summary.incomeTotal
+          .plus(bucket.summary.adjustmentInTotal)
+          .minus(bucket.summary.expenseTotal)
+          .minus(bucket.summary.adjustmentOutTotal);
+        const byCategory = Array.from(bucket.categoryTotals.values())
           .map((categoryTotal) => ({
             categoryId: categoryTotal.categoryId,
             name: categoryTotal.name,
@@ -3029,7 +3034,7 @@ export class TransactionsService {
 
             return left.name.localeCompare(right.name);
           });
-        bucket.summary.byAccount = Array.from(bucket.accountTotals.values())
+        const byAccount = Array.from(bucket.accountTotals.values())
           .map((accountTotal) => ({
             accountId: accountTotal.accountId,
             name: accountTotal.name,
@@ -3041,7 +3046,16 @@ export class TransactionsService {
           }))
           .sort((left, right) => left.name.localeCompare(right.name));
 
-        return bucket.summary;
+        return {
+          currency: bucket.summary.currency,
+          incomeTotal: bucket.summary.incomeTotal.toNumber(),
+          expenseTotal: bucket.summary.expenseTotal.toNumber(),
+          adjustmentInTotal: bucket.summary.adjustmentInTotal.toNumber(),
+          adjustmentOutTotal: bucket.summary.adjustmentOutTotal.toNumber(),
+          netCashflow: netCashflow.toNumber(),
+          byCategory,
+          byAccount,
+        } satisfies CashflowCurrencySummaryResponse;
       })
       .sort((left, right) => left.currency.localeCompare(right.currency));
   }
