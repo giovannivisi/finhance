@@ -15,6 +15,9 @@ export type PrivacyRetentionKey =
   | "snapshotHistory"
   | "requestSafety"
   | "cloudDraftProcessing"
+  | "authentication"
+  | "appLock"
+  | "backupsAndLogs"
   | "browserPreferences";
 
 export interface PrivacyContact {
@@ -43,6 +46,7 @@ export interface PrivacyProcessor {
 }
 
 export interface PrivacyTransfer {
+  provider?: string;
   destination: string;
   purpose: string;
   dataCategories: string[];
@@ -99,6 +103,7 @@ export interface PrivacyNoticeConfig {
   transfers: PrivacyTransfer[];
   retention: PrivacyRetentionEntry[];
   automatedDecisionMaking: string;
+  rightsStatements: string[];
   importSummary: ImportPrivacySummary;
 }
 
@@ -120,6 +125,7 @@ type PrivacyProcessorInput = {
 };
 
 type PrivacyTransferInput = {
+  provider?: string;
   destination: string;
   purpose: string;
   dataCategories: string[];
@@ -148,7 +154,7 @@ type CreatedContactResult = {
 };
 
 const PRIVACY_NOTICE_PATH = "/privacy";
-const DEFAULT_LAST_UPDATED = "2026-07-22";
+const DEFAULT_LAST_UPDATED = "2026-10-01";
 const DEFAULT_SUPERVISORY_AUTHORITY_URL =
   "https://www.edpb.europa.eu/about-edpb/about-edpb/members_en";
 
@@ -209,14 +215,17 @@ const PROCESSING_ACTIVITY_DEFINITIONS: Record<
     ],
   },
   securityAndReliability: {
-    title: "Protect write operations and keep the service reliable",
+    title: "Authenticate users, protect records, and keep the service reliable",
     purpose:
-      "To reject duplicate writes, throttle abuse, enforce local-only access while authentication is disabled, and keep short-lived operational state.",
+      "To sign users in, manage linked identities and passkeys, protect signed-in sessions, reject duplicate writes, throttle abuse, enforce local-only access while authentication is disabled, and protect the mobile app with an optional local app lock.",
     dataCategories: [
-      "Idempotency keys, hashed request fingerprints, response status codes, and request bodies cached for replay protection.",
+      "Idempotency keys, hashed request fingerprints, response status codes, and response bodies cached for replay protection; those responses may contain finance records.",
       "Loopback IP, host-header, origin, and referer checks used to enforce local-only access.",
       "Operational timestamps and short-lived process state used to coordinate imports, performance-series requests, or refresh jobs.",
       "For hosted mobile sign-in, hashed refresh credentials and generic device labels with session, expiry, and last-used timestamps used to secure and manage signed-in devices.",
+      "Hosted identity records, hashed web session tokens, passkey credential identifiers and public keys, signature counters, device type, backup status, transport information, and authentication timestamps.",
+      "IP-based rate-limit keys, request counts, and reset timestamps used to limit authentication abuse.",
+      "On mobile, a salted passcode verifier, app-lock preferences, failed-attempt and lockout state, and timestamps stored locally. Biometric checks are performed by the operating system; finhance does not receive biometric templates.",
     ],
   },
   browserPreferences: {
@@ -265,10 +274,14 @@ const CATEGORY_GROUPS: PrivacyCategoryGroup[] = [
       "Idempotency records, hashed request fingerprints, and short-lived operation state used to protect writes.",
       "Loopback access checks based on request metadata while authentication is disabled.",
       "Hosted sign-in provider metadata such as provider name, linked email address, email verification status, display name, and linked timestamp.",
+      "Profile information such as name, email address, verification status, and profile image, where supplied by your sign-in provider.",
+      "Hosted web session records and essential authentication cookies; passkey identifiers, public keys, counters, device and backup metadata, and timestamps. Passkey private keys are not stored by finhance.",
+      "IP-based authentication rate-limit records, counts, and reset timestamps.",
       "Browser-side theme, privacy-display, and session flags stored on the device you use to access the app.",
       "Mobile server connection details and hosted mobile access and refresh credentials stored on the device.",
       "For hosted sign-in, a server-side device-session record containing a hashed refresh credential, generic device label, and session timestamps.",
       "Cloud-parser consent events and AI usage metadata, excluding the transaction prompt and provider response body.",
+      "Local mobile app-lock passcode verifier, biometric preference, attempt counters, lockout state, and timestamps. Finhance does not collect biometric templates.",
     ],
   },
   {
@@ -303,7 +316,7 @@ const DEFAULT_LOCAL_LEGAL_BASES: Record<
     basis:
       "Art. 6(1)(a) GDPR — consent; where submitted text reveals special-category data, Art. 9(2)(a) explicit consent.",
     explanation:
-      "Used only after the user explicitly enables cloud-enhanced drafts and can be withdrawn without disabling private heuristic parsing.",
+      "Used only after the user explicitly enables cloud-enhanced drafts. You can withdraw consent at any time by turning off cloud-enhanced parsing in Settings; basic parsing remains available. Withdrawal does not affect the lawfulness of processing carried out before withdrawal.",
   },
   importsAndExports: {
     basis:
@@ -325,11 +338,11 @@ const DEFAULT_LOCAL_LEGAL_BASES: Record<
   },
   securityAndReliability: {
     basis:
-      "Art. 6(1)(f) GDPR — legitimate interests in protecting the service, preventing duplicate writes, and keeping the local API reliable.",
+      "Art. 6(1)(f) GDPR — legitimate interests in authenticating users, protecting accounts and records, preventing abuse and duplicate writes, and keeping the service reliable.",
     explanation:
-      "Used to prevent duplicate submissions, enforce the local-only trust boundary while authentication is disabled, and keep operational state consistent.",
+      "Used for hosted sign-in, linked identities, passkeys, session security, rate limiting, optional local app lock, duplicate-write protection, and local-only access while authentication is disabled.",
     legitimateInterests:
-      "Maintaining the integrity of the workspace, limiting accidental duplicate writes, and preventing requests from non-local origins while authentication is disabled.",
+      "Protecting users' accounts and financial records, preventing unauthorised access and abuse, and maintaining workspace integrity.",
   },
   browserPreferences: {
     basis:
@@ -394,6 +407,7 @@ const BUILTIN_PROCESSORS: PrivacyProcessor[] = [
 
 const BUILTIN_TRANSFERS: PrivacyTransfer[] = [
   {
+    provider: "Groq",
     destination: "Groq infrastructure in the United States",
     purpose:
       "Optional cloud-enhanced transaction draft generation after explicit user consent.",
@@ -401,9 +415,10 @@ const BUILTIN_TRANSFERS: PrivacyTransfer[] = [
       "Redacted free-form transaction text and technical request metadata.",
     ],
     safeguard:
-      "Requests use HTTPS and request provider-side storage to be disabled. Operators must confirm that their Groq agreement and transfer safeguards are appropriate before enabling the feature.",
+      "The operator has not specified a legal transfer mechanism in this notice. Contact the controller for the applicable adequacy decision or contractual safeguards and how to obtain a copy. HTTPS and requesting provider-side storage to be disabled are technical protections, not a legal transfer mechanism.",
   },
   {
+    provider: "EODHD",
     destination: "Provider-managed EODHD infrastructure",
     purpose:
       "Quote and historical-price requests for supported exchange-listed securities.",
@@ -412,9 +427,10 @@ const BUILTIN_TRANSFERS: PrivacyTransfer[] = [
       "Technical request metadata associated with the outbound API call.",
     ],
     safeguard:
-      "Requests use HTTPS and the credential stays on the API server. Operators should assess whether remote quote refresh is appropriate for their deployment and jurisdiction.",
+      "The operator has not specified the destination countries or legal transfer mechanism for this provider. Contact the controller for the applicable locations, safeguards and how to obtain a copy. HTTPS is a technical protection, not a legal transfer mechanism.",
   },
   {
+    provider: "Marketstack",
     destination: "Provider-managed Marketstack infrastructure",
     purpose:
       "Quote and historical-price requests for supported exchange-listed securities.",
@@ -423,9 +439,10 @@ const BUILTIN_TRANSFERS: PrivacyTransfer[] = [
       "Technical request metadata associated with the outbound API call.",
     ],
     safeguard:
-      "Requests use HTTPS and the credential stays on the API server. Operators should assess whether remote quote refresh is appropriate for their deployment and jurisdiction.",
+      "The operator has not specified the destination countries or legal transfer mechanism for this provider. Contact the controller for the applicable locations, safeguards and how to obtain a copy. HTTPS is a technical protection, not a legal transfer mechanism.",
   },
   {
+    provider: "Yahoo Finance public quote API",
     destination: "Provider-managed Yahoo Finance infrastructure",
     purpose:
       "FX, crypto, and Tokyo quote or historical-price requests for supported currencies and assets.",
@@ -434,7 +451,7 @@ const BUILTIN_TRANSFERS: PrivacyTransfer[] = [
       "Technical request metadata associated with the outbound API call.",
     ],
     safeguard:
-      "The request is sent over HTTPS, but this codebase does not embed a separate operator-specific transfer agreement or region lock for Yahoo Finance. Operators should assess whether remote quote refresh is appropriate for their deployment and jurisdiction.",
+      "The operator has not specified the destination countries or legal transfer mechanism for this provider. Contact the controller for the applicable locations, safeguards and how to obtain a copy. HTTPS is a technical protection, not a legal transfer mechanism.",
   },
 ];
 
@@ -456,9 +473,9 @@ const DEFAULT_RETENTION: Record<
   importPreviewPayloads: {
     title: "Import preview payloads and import batches",
     retention:
-      "Successful preview payloads are stripped after about 15 minutes. Import batch summaries and issue metadata remain until the underlying records are removed or the hosted account is deleted.",
+      "Successful previews expire after 15 minutes and can no longer be applied. Their stored payloads are cleared during a subsequent import operation for that workspace, so an idle workspace may retain an expired payload longer. Import batch summaries and issue metadata remain until removed or the hosted account is deleted.",
     detail:
-      "The current API clears expired preview payloads from storage after the preview TTL, but batch-level metadata is still retained for workflow history.",
+      "Expiry prevents applying a preview; it does not schedule deletion at the 15-minute boundary. Batch-level metadata is retained for workflow history.",
   },
   snapshotHistory: {
     title: "Net-worth snapshot history",
@@ -481,12 +498,33 @@ const DEFAULT_RETENTION: Record<
     detail:
       "Groq-side handling and retention are governed by the operator's Groq agreement. Requests ask the provider not to store the completion, but operators should verify the applicable provider terms before enabling cloud parsing.",
   },
+  authentication: {
+    title: "Hosted identity, passkey, and session records",
+    retention:
+      "Linked identity and passkey records remain until unlinked, removed, or the account is deleted. Web sessions become unusable at expiry and are removed on sign-out or account deletion; expiry alone does not guarantee immediate database deletion. Mobile sessions expire after 30 days by default, with expired records removed during subsequent mobile-session operations.",
+    detail:
+      "Consumed mobile refresh-token hashes remain with the corresponding session for replay protection. IP-based authentication rate-limit records expire at their reset time and are deleted during a subsequent request within the same rate-limit scope.",
+  },
+  appLock: {
+    title: "Local mobile app-lock records",
+    retention:
+      "Kept on this device until app lock is disabled or its secure-storage record is removed. On iOS, keychain records can survive uninstalling the app; reinstalling alone may not erase them.",
+    detail:
+      "The record includes a salted passcode verifier, biometric preference, failed-attempt and lockout state, and timestamps. It is stored in device-only secure storage and is not sent to the workspace server. Biometric templates remain under the operating system's control.",
+  },
+  backupsAndLogs: {
+    title: "Infrastructure backups and security logs",
+    retention:
+      "The operator has not supplied backup or infrastructure-log retention periods for this notice. Contact the controller for the applicable periods or criteria.",
+    detail:
+      "Account deletion removes live user-owned application records. Any copies in infrastructure backups or logs follow the hosting providers' separate retention and deletion procedures.",
+  },
   browserPreferences: {
     title: "Device preferences and mobile connection state",
     retention:
       "Stored on your device until you clear browser or app storage, change the setting, disconnect the mobile app, sign out, or end the current browser session where session storage is used. Hosted mobile-session records expire after 30 days by default and are removed during mobile-session operations once expired.",
     detail:
-      "Theme and hide-balances preferences live in browser local storage or mobile app storage. The dashboard refresh-attempt flag lives in browser session storage. The mobile server URL and mode live in app storage, while hosted mobile access and refresh credentials live in the device keychain.",
+      "Theme and hide-balances preferences live in browser local storage or mobile app storage. The dashboard refresh-attempt flag lives in browser session storage. The mobile server URL and mode live in app storage. Hosted mobile credentials use device-only keychain storage on iOS; keychain items can survive uninstalling the app. Disconnecting or signing out removes these credentials.",
   },
 };
 
@@ -757,7 +795,17 @@ function parseTransfers(
       );
     }
 
-    const { destination, purpose, dataCategories, safeguard } = entry;
+    const { provider, destination, purpose, dataCategories, safeguard } = entry;
+
+    if (
+      provider !== undefined &&
+      (typeof provider !== "string" ||
+        !BUILTIN_TRANSFERS.some((transfer) => transfer.provider === provider))
+    ) {
+      throw new Error(
+        `FINHANCE_PRIVACY_TRANSFERS_JSON[${index}].provider must name a built-in provider.`,
+      );
+    }
 
     if (
       typeof destination !== "string" ||
@@ -771,6 +819,7 @@ function parseTransfers(
     }
 
     return {
+      provider: provider as string | undefined,
       destination,
       purpose,
       dataCategories,
@@ -778,7 +827,15 @@ function parseTransfers(
     } satisfies PrivacyTransferInput;
   });
 
-  return [...configuredTransfers, ...BUILTIN_TRANSFERS];
+  const overriddenProviders = new Set(
+    configuredTransfers.map((transfer) => transfer.provider),
+  );
+  return [
+    ...configuredTransfers,
+    ...BUILTIN_TRANSFERS.filter(
+      (transfer) => !overriddenProviders.has(transfer.provider),
+    ),
+  ];
 }
 
 function parseRetention(env: EnvSource): PrivacyRetentionEntry[] {
@@ -859,22 +916,18 @@ function formatRightsLine(contact: PrivacyContact): string {
 function formatImportRecipientsSummary(input: {
   controllerName: string;
   processors: PrivacyProcessor[];
-  transfers: PrivacyTransfer[];
 }): string {
-  const processorNames = input.processors.map((processor) => processor.name);
+  const processorNames = input.processors
+    .filter(
+      (processor) =>
+        !BUILTIN_PROCESSORS.some((builtin) => builtin.name === processor.name),
+    )
+    .map((processor) => processor.name);
   const processorSummary =
     processorNames.length > 0
       ? `and the processors configured for this deployment, including ${joinList(processorNames)}`
       : "and the backing infrastructure configured for this deployment";
-  const transferDestinations = Array.from(
-    new Set(input.transfers.map((transfer) => transfer.destination)),
-  );
-  const transferSummary =
-    transferDestinations.length > 0
-      ? ` International transfers listed for this deployment include ${joinList(transferDestinations)}.`
-      : "";
-
-  return `Import files are handled by ${input.controllerName} ${processorSummary}.${transferSummary} The current import endpoints also reject non-loopback browser origins while authentication is disabled.`;
+  return `Import files are handled by ${input.controllerName} ${processorSummary}. CSV uploads are not sent to Groq or market-data providers by the import workflow. See the full notice for recipients and transfers for each processing purpose. The current import endpoints also reject non-loopback browser origins while authentication is disabled.`;
 }
 
 export function resolvePrivacyNoticeConfig(
@@ -923,15 +976,21 @@ export function resolvePrivacyNoticeConfig(
   const processors = parseProcessors(env, deploymentMode);
   const transfers = parseTransfers(env, deploymentMode);
   const retention = parseRetention(env);
-  const lastUpdated =
+  const configuredLastUpdated =
     readValue(env, "FINHANCE_PRIVACY_LAST_UPDATED") ??
     (isLocalMode ? DEFAULT_LAST_UPDATED : null);
 
-  if (!lastUpdated) {
+  if (!configuredLastUpdated) {
     throw new Error(
       "Missing required privacy configuration: FINHANCE_PRIVACY_LAST_UPDATED",
     );
   }
+
+  // A deployed operator date must not hide a newer product disclosure revision.
+  const lastUpdated =
+    configuredLastUpdated > DEFAULT_LAST_UPDATED
+      ? configuredLastUpdated
+      : DEFAULT_LAST_UPDATED;
 
   const supervisoryAuthorityName =
     readValue(env, "FINHANCE_PRIVACY_SUPERVISORY_AUTHORITY_NAME") ??
@@ -992,6 +1051,13 @@ export function resolvePrivacyNoticeConfig(
     retention,
     automatedDecisionMaking:
       "The current code reviewed for this notice does not use solely automated decision-making or profiling to make decisions with legal or similarly significant effects about a person.",
+    rightsStatements: [
+      "Depending on the law that applies to you, you may have rights of access, rectification, erasure, restriction, objection, portability, and complaint to a supervisory authority.",
+      formatRightsLine(rightsContact.contact!),
+      "Where processing relies on consent, you may withdraw it at any time without affecting the lawfulness of earlier processing. Turn off cloud-enhanced parsing in Settings to withdraw cloud-parser consent; basic parsing remains available.",
+      "Hosted users can permanently delete their account from Account settings, then Delete account. The flow requires recent authentication and an exact email confirmation. It immediately removes live user-owned application records, including snapshot history; the application retains no separate audit copy.",
+      "Infrastructure backups, security logs, or processor records, where present, follow separate retention and deletion procedures described in this notice. Contact the controller for requests concerning those copies.",
+    ],
     importSummary: {
       controller: `${controller.contact!.name} decides how the import flow is run for this deployment.`,
       purpose: importBasis.explanation,
@@ -1000,7 +1066,6 @@ export function resolvePrivacyNoticeConfig(
       recipients: formatImportRecipientsSummary({
         controllerName: controller.contact!.name,
         processors,
-        transfers,
       }),
       rights: formatRightsLine(rightsContact.contact!),
       fullNoticeHref: PRIVACY_NOTICE_PATH,

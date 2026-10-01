@@ -117,7 +117,7 @@ deployment should set explicit privacy variables before relying on that page.
 
 ```bash
 FINHANCE_PRIVACY_DEPLOYMENT_MODE=managed # or mixed
-FINHANCE_PRIVACY_LAST_UPDATED=2026-04-30
+FINHANCE_PRIVACY_LAST_UPDATED=2026-10-01
 
 FINHANCE_PRIVACY_CONTROLLER_NAME="Example Operator Ltd."
 FINHANCE_PRIVACY_CONTROLLER_EMAIL=privacy@example.com
@@ -151,12 +151,18 @@ must each expose at least one reachable contact channel:
 `*_INSTRUCTIONS` is supplemental routing text and does not count as the only
 contact route by itself.
 
+The displayed update date is the later of the operator's configured date and
+the built-in product disclosure revision (currently 2026-10-01). Updating the
+product disclosures does not verify the operator's contact details, contracts,
+provider locations, or retention policies.
+
 ### Structured JSON fields
 
 `FINHANCE_PRIVACY_LEGAL_BASES_JSON` must be a JSON object with one entry for
 each fixed processing purpose:
 
 - `workspaceRecords`
+- `cloudDrafts`
 - `importsAndExports`
 - `snapshotsAndReview`
 - `marketData`
@@ -177,6 +183,10 @@ FINHANCE_PRIVACY_LEGAL_BASES_JSON='{
     "basis": "Art. 6(1)(b) GDPR",
     "explanation": "To operate the main workspace records."
   },
+  "cloudDrafts": {
+    "basis": "Art. 6(1)(a) GDPR; Art. 9(2)(a) where applicable",
+    "explanation": "Optional cloud parsing after explicit consent, withdrawable in Settings without affecting earlier processing."
+  },
   "importsAndExports": {
     "basis": "Art. 6(1)(b) GDPR",
     "explanation": "To preview, merge, and export uploaded data."
@@ -191,8 +201,8 @@ FINHANCE_PRIVACY_LEGAL_BASES_JSON='{
   },
   "securityAndReliability": {
     "basis": "Art. 6(1)(f) GDPR",
-    "explanation": "To prevent duplicate writes and keep the service reliable.",
-    "legitimateInterests": "Service integrity and abuse prevention."
+    "explanation": "To authenticate users, protect sessions and records, prevent duplicate writes, and keep the service reliable.",
+    "legitimateInterests": "Account protection, service integrity and abuse prevention."
   },
   "browserPreferences": {
     "basis": "Art. 6(1)(f) GDPR",
@@ -232,6 +242,16 @@ FINHANCE_PRIVACY_PROCESSORS_JSON='[
 - `purpose`
 - `dataCategories`: array of strings
 - `safeguard`
+- `provider`: optional built-in provider name; replaces that provider's default
+  transfer entry instead of appending a contradictory second entry. Supported
+  names are `Groq`, `EODHD`, `Marketstack`, and `Yahoo Finance public quote API`.
+
+For each applicable international transfer, supply the actual destination,
+legal mechanism (such as an applicable adequacy decision or SCCs), and a way to
+obtain the safeguards. HTTPS and a provider's no-storage option are technical
+protections, not legal transfer mechanisms. Confirm these facts against the
+operator's agreements before publishing; do not copy an example as a statement
+of an agreement that has not been verified.
 
 Example:
 
@@ -255,9 +275,21 @@ text for these keys:
 - `importPreviewPayloads`
 - `snapshotHistory`
 - `requestSafety`
+- `cloudDraftProcessing`
+- `authentication`
+- `appLock`
+- `backupsAndLogs`
 - `browserPreferences`
 
 Each override can provide `title`, `retention`, and `detail`.
+
+Supply `backupsAndLogs` with the actual hosting backup and log periods or the
+criteria used to determine them, and explain what happens to deleted records
+in backups. The default explicitly says that these periods have not been
+provided. Authentication expiry and import-preview expiry are distinct from
+physical deletion: expired previews are cleared during a subsequent import
+operation, and idle workspaces can retain the stored payload longer than the
+15-minute period in which a preview can be applied.
 
 Example:
 
@@ -272,5 +304,12 @@ FINHANCE_PRIVACY_RETENTION_OVERRIDES_JSON='{
 
 The notice also appends code-owned facts automatically, including the built-in
 EODHD, Marketstack, and Yahoo Finance market-data provider entries, the
-15-minute import-preview payload TTL, the idempotency cleanup periods, and the
-browser-side preference storage notes.
+15-minute import-preview validity period and request-driven payload cleanup,
+the idempotency cleanup periods, authentication and local app-lock storage,
+consent withdrawal, and device preference storage notes. The native mobile
+privacy screen renders the full public notice with a fixed Back button;
+optional external links open in the device browser.
+
+Before publishing a substantive change, confirm the deployment-specific facts
+and communicate material changes to affected users. Changing the date alone
+does not complete this review.

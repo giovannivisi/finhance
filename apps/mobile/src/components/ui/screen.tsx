@@ -67,6 +67,8 @@ export interface ScreenProps {
   headerRight?: ReactNode;
   /** Shows a back button when not inside the tab shell. */
   showBack?: boolean;
+  /** Keeps the header and back button visible above scrolling content. */
+  fixedHeader?: boolean;
   children: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void | Promise<unknown>;
@@ -82,6 +84,7 @@ export function Screen({
   title,
   headerRight,
   showBack = false,
+  fixedHeader = false,
   children,
   refreshing,
   onRefresh,
@@ -209,10 +212,12 @@ export function Screen({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
+        {fixedHeader ? <View style={innerPadding}>{header}</View> : null}
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={[
             innerPadding,
+            fixedHeader ? { paddingTop: 0 } : null,
             {
               paddingBottom:
                 (withTabBarClearance ? TAB_BAR_CLEARANCE : spacing.xxl) +
@@ -234,7 +239,7 @@ export function Screen({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {header}
+          {fixedHeader ? null : header}
           {children}
         </ScrollView>
       </KeyboardAvoidingView>

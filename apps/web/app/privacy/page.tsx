@@ -384,29 +384,14 @@ export default function PrivacyPage() {
             <div className="privacy-note-stack">
               <div className="privacy-note-block surface-info">
                 <p className="privacy-meta-label text-blue-700">Your rights</p>
-                <p className="privacy-detail-copy text-blue-950">
-                  Depending on the law that applies to you, you may have rights
-                  of access, rectification, erasure, restriction, objection,
-                  portability, and complaint to a supervisory authority.
-                </p>
-                <p className="privacy-detail-copy text-blue-950">
-                  {notice.importSummary.rights}
-                </p>
-                <p className="privacy-detail-copy text-blue-950">
-                  Hosted users can permanently delete their account from the
-                  avatar menu under Account, then Delete account. The flow
-                  requires recent authentication and an exact email
-                  confirmation. It immediately removes all live user-owned
-                  application records, including snapshot history; the
-                  application retains no separate audit copy.
-                </p>
-                <p className="privacy-detail-copy text-blue-950">
-                  Infrastructure backups, security logs, or processor records,
-                  where configured by the deployment operator, follow the
-                  operator&apos;s and processor&apos;s separate retention
-                  schedules and are not selectively restored after account
-                  deletion.
-                </p>
+                {notice.rightsStatements.map((statement) => (
+                  <p
+                    key={statement}
+                    className="privacy-detail-copy text-blue-950"
+                  >
+                    {statement}
+                  </p>
+                ))}
               </div>
 
               <div className="privacy-note-block privacy-note-block--muted">
