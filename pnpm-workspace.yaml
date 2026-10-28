@@ -80,8 +80,6 @@ minimumReleaseAgeExclude:
   - expo-linking@57.0.11
   - expo-router@57.0.23
   - expo-build-properties@57.0.22
-  # Security fix published on 2026-10-27; remove once it passes the release-age gate.
-  - node-forge@1.4.2
 
 patchedDependencies:
   "@expo/plist@0.8.1": patches/@expo__plist@0.8.1.patch
