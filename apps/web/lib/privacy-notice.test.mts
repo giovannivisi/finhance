@@ -68,8 +68,11 @@ test("resolvePrivacyNoticeConfig provides local defaults for self-hosted mode", 
   assert.equal(config.isUsingDefaultLocalNotice, true);
   assert.match(config.importSummary.retention, /15 minutes/i);
   assert.match(config.importSummary.recipients, /loopback browser origins/i);
-  assert.match(config.importSummary.recipients, /Yahoo Finance/i);
-  assert.equal(config.lastUpdated, "2026-07-22");
+  assert.match(
+    config.importSummary.recipients,
+    /CSV uploads are not sent to Groq or market-data providers/i,
+  );
+  assert.equal(config.lastUpdated, "2026-10-01");
   assert.ok(
     config.categoryGroups.some((group) =>
       group.items.some((item) =>
@@ -149,7 +152,10 @@ test("resolvePrivacyNoticeConfig accepts mixed-deployment overrides", () => {
     ),
   );
   assert.match(config.importSummary.recipients, /Neon/i);
-  assert.match(config.importSummary.recipients, /United States/i);
+  assert.match(
+    config.importSummary.recipients,
+    /recipients and transfers for each processing purpose/i,
+  );
   assert.equal(config.isUsingDefaultLocalNotice, false);
 });
 
@@ -265,4 +271,103 @@ test("resolvePrivacyNoticeConfig includes postal and routing instructions in the
   );
   assert.match(config.importSummary.rights, /Via Example 1, Rome/i);
   assert.match(config.importSummary.rights, /Include the workspace name/i);
+});
+
+test("notice distinguishes preview expiry from request-driven deletion", () => {
+  const config = resolvePrivacyNoticeConfig({});
+  assert.match(config.importSummary.retention, /expire after 15 minutes/i);
+  assert.match(config.importSummary.retention, /subsequent import operation/i);
+  assert.match(config.importSummary.retention, /idle workspace/i);
+});
+
+test("notice includes authentication, app-lock storage, and consent withdrawal", () => {
+  const config = resolvePrivacyNoticeConfig({});
+  const categories = config.categoryGroups
+    .flatMap((group) => group.items)
+    .join(" ");
+  assert.match(categories, /passkey identifiers, public keys/i);
+  assert.match(categories, /passcode verifier/i);
+  assert.match(categories, /rate-limit/i);
+  assert.ok(config.retention.some((entry) => entry.key === "authentication"));
+  assert.ok(config.retention.some((entry) => entry.key === "appLock"));
+  assert.match(
+    config.rightsStatements.join(" "),
+    /without affecting the lawfulness of earlier processing/i,
+  );
+});
+
+test("operator transfer details replace the matching built-in disclosure", () => {
+  const config = resolvePrivacyNoticeConfig({
+    ...COMPLETE_ENV,
+    FINHANCE_PRIVACY_TRANSFERS_JSON: JSON.stringify([
+      {
+        provider: "Groq",
+        destination: "United States",
+        purpose: "Optional transaction drafts",
+        dataCategories: ["Redacted transaction text"],
+        safeguard:
+          "Example operator-confirmed safeguards; copies from the rights contact.",
+      },
+    ]),
+  });
+  const groq = config.transfers.filter((entry) => entry.provider === "Groq");
+  assert.equal(groq.length, 1);
+  assert.match(groq[0].safeguard, /operator-confirmed safeguards/i);
+  assert.equal(config.transfers.length, 4);
+  assert.throws(
+    () =>
+      resolvePrivacyNoticeConfig({
+        ...COMPLETE_ENV,
+        FINHANCE_PRIVACY_TRANSFERS_JSON: JSON.stringify([
+          {
+            provider: "Unknown provider",
+            destination: "United States",
+            purpose: "Drafts",
+            dataCategories: [],
+            safeguard: "Example",
+          },
+        ]),
+      }),
+    /provider must name a built-in provider/,
+  );
+});
+
+test("updated product disclosures advance the date without hiding newer operator revisions", () => {
+  assert.equal(
+    resolvePrivacyNoticeConfig(COMPLETE_ENV).lastUpdated,
+    "2026-10-01",
+  );
+  assert.equal(
+    resolvePrivacyNoticeConfig({
+      ...COMPLETE_ENV,
+      FINHANCE_PRIVACY_LAST_UPDATED: "2026-10-02",
+    }).lastUpdated,
+    "2026-10-02",
+  );
+});
+
+test("backup retention can be supplied without claiming unknown deployment periods", () => {
+  const config = resolvePrivacyNoticeConfig({
+    ...COMPLETE_ENV,
+    FINHANCE_PRIVACY_RETENTION_OVERRIDES_JSON: JSON.stringify({
+      backupsAndLogs: {
+        retention: "Example deployment: backups 7 days, logs 14 days.",
+        detail: "Deleted records age out with the backup rotation.",
+      },
+    }),
+  });
+  assert.match(
+    config.retention.find((entry) => entry.key === "backupsAndLogs")!.retention,
+    /7 days/,
+  );
+  assert.match(
+    resolvePrivacyNoticeConfig({}).retention.find(
+      (entry) => entry.key === "backupsAndLogs",
+    )!.retention,
+    /has not supplied/,
+  );
+  assert.match(
+    config.importSummary.recipients,
+    /CSV uploads are not sent to Groq or market-data providers/i,
+  );
 });

@@ -41,9 +41,10 @@ export class CategoriesService {
   async findAll(
     ownerId: string,
     options?: { includeArchived?: boolean },
+    client: CategoryReadClient = this.prisma,
   ): Promise<HierarchicalCategoryRecord[]> {
     const includeArchived = options?.includeArchived ?? false;
-    const categories = await this.prisma.category.findMany({
+    const categories = await client.category.findMany({
       where: {
         userId: ownerId,
         ...(includeArchived ? {} : { archivedAt: null }),
@@ -61,8 +62,9 @@ export class CategoriesService {
   async findOne(
     ownerId: string,
     id: string,
+    client: CategoryReadClient = this.prisma,
   ): Promise<HierarchicalCategoryRecord> {
-    const category = await this.prisma.category.findFirst({
+    const category = await client.category.findFirst({
       where: { id, userId: ownerId },
       include: {
         parentCategory: true,
@@ -531,6 +533,7 @@ export class CategoriesService {
     categoryId: string,
     transactionKind: TransactionKind,
     currentCategoryId?: string | null,
+    client: CategoryReadClient = this.prisma,
   ): Promise<HierarchicalCategoryRecord> {
     if (
       transactionKind !== TransactionKind.EXPENSE &&
@@ -544,7 +547,7 @@ export class CategoriesService {
     let category: HierarchicalCategoryRecord;
 
     try {
-      category = await this.findOne(ownerId, categoryId);
+      category = await this.findOne(ownerId, categoryId, client);
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw new BadRequestException(`Category ${categoryId} is invalid.`);

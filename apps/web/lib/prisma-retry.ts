@@ -29,3 +29,29 @@ export function isRetryableConnectionError(
         )))
   );
 }
+
+const READ_OPERATIONS = new Set([
+  "findUnique",
+  "findUniqueOrThrow",
+  "findFirst",
+  "findFirstOrThrow",
+  "findMany",
+  "aggregate",
+  "count",
+  "groupBy",
+]);
+
+export function shouldRetryPrismaOperation(
+  operation: string,
+  error: unknown,
+): boolean {
+  if (!isRetryableConnectionError(error)) {
+    return false;
+  }
+
+  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    return READ_OPERATIONS.has(operation);
+  }
+
+  return true;
+}

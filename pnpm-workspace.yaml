@@ -10,36 +10,42 @@ overrides:
   "@nestjs/platform-express": 11.1.28
   "@nestjs/testing": 11.1.28
   "@humanfs/node": 0.16.8
-  body-parser@2.2.0: 2.2.2
-  brace-expansion@1.1.12: 1.1.18
-  brace-expansion@2.1.0: 2.1.4
-  brace-expansion@5.0.5: 5.0.9
+  "body-parser@>=2.0.0 <2.4.0": 2.4.0
+  brace-expansion@1.1.12: 1.1.20
+  brace-expansion@2.1.0: 2.1.6
+  "brace-expansion@>=5.0.0 <5.0.11": 5.0.11
+  compression: 1.8.2
   ajv@8.17.1: 8.18.0
   defu@6.1.4: 6.1.7
   deepmerge-ts@7.1.5: 8.0.0
   decode-uri-component: 0.5.0
   diff: 4.0.4
   effect@3.18.4: 3.20.0
-  fast-uri: 3.1.6
+  fast-uri: 3.1.7
   flatted@3.3.3: 3.4.2
   form-data: 4.0.6
-  handlebars: 4.7.9
+  handlebars: 4.7.10
   js-yaml: 4.3.2
   lodash: 4.18.0
   minimatch@3.1.2: 3.1.5
   mysql2: 3.23.1
-  multer: 2.4.0
+  multer: 2.5.0
   nanoid@3.3.11: 3.3.18
   nanoid@3.3.16: 3.3.18
+  node-forge: 1.4.2
   path-to-regexp@8.3.0: 8.4.0
   picomatch@2.3.1: 2.3.2
   picomatch: 4.0.4
   postcss: 8.5.23
+  proxy-addr: 2.0.8
   qs: 6.16.0
   serialize-javascript: 7.0.5
-  sharp: 0.35.4
+  sharp: 0.35.5
+  shell-quote: 1.11.0
+  source-map-js: 1.2.2
   undici@6.26.0: 6.28.0
-  undici@7.25.0: 7.29.0
+  "undici@>=7.0.0 <7.30.1": 7.30.1
+  "zod@>=4.0.0 <4.6.6": 4.6.6
   webpack: 5.104.1
   uuid@7.0.3: 11.1.1
   "@hono/node-server@1.19.11": 1.19.13
@@ -74,6 +80,8 @@ minimumReleaseAgeExclude:
   - expo-linking@57.0.11
   - expo-router@57.0.23
   - expo-build-properties@57.0.22
+  # Security fix published on 2026-10-27; remove once it passes the release-age gate.
+  - node-forge@1.4.2
 
 patchedDependencies:
   "@expo/plist@0.8.1": patches/@expo__plist@0.8.1.patch

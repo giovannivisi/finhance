@@ -131,10 +131,9 @@ export function toTransactionResponse(
   return {
     id: entry.splitGroupId,
     postedAt: firstRow.postedAt.toISOString(),
-    amount: entry.rows.reduce(
-      (sum, row) => sum + decimalToRequiredNumber(row.amount),
-      0,
-    ),
+    amount: entry.rows
+      .reduce((sum, row) => sum.plus(row.amount), new Prisma.Decimal(0))
+      .toNumber(),
     currency: firstRow.currency,
     kind: firstRow.kind,
     accountId: null,

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { AccountsService } from '@accounts/accounts.service';
@@ -218,6 +219,7 @@ interface CachedRecurringPendingStatus {
 
 @Injectable()
 export class RecurringService {
+  private readonly logger = new Logger(RecurringService.name);
   private readonly pendingStatusCache = new Map<
     string,
     CachedRecurringPendingStatus
@@ -644,7 +646,10 @@ export class RecurringService {
               await this.clearMaterializationError(rule.id);
             } catch (error) {
               failedRuleCount += 1;
-              void error;
+              this.logger.error(
+                `Recurring materialization failed for rule ${rule.id}: ${this.describeError(error)}`,
+                error instanceof Error ? error.stack : undefined,
+              );
               await this.persistMaterializationError(rule.id);
             }
           }
@@ -2399,6 +2404,10 @@ export class RecurringService {
         lastMaterializationErrorAt: new Date(),
       },
     });
+  }
+
+  private describeError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private assertBackfillWindowAllowed(startDateKey: string): void {

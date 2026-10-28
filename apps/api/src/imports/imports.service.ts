@@ -31,6 +31,7 @@ import {
   isRetryableClosedTransactionError,
   PrismaService,
 } from '@prisma/prisma.service';
+import { runSerializableTransaction } from '@/prisma/serializable-transaction';
 import {
   Account,
   AccountType,
@@ -325,7 +326,8 @@ export class ImportsService {
     attempt = 0,
   ): Promise<ImportBatch> {
     try {
-      return await this.prisma.$transaction(
+      return await runSerializableTransaction(
+        this.prisma,
         async (tx) => {
           const analysis = await this.analyzePayload(
             tx,

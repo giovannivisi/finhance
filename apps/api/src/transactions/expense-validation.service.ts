@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@finhance/db';
 import { parseCsvTable, serializeCsv } from '@/common/csv';
 import { PrismaService } from '@prisma/prisma.service';
+import { runSerializableTransaction } from '@/prisma/serializable-transaction';
 import { normalizeExpenseValidationEntry } from '@transactions/category-hierarchy';
 import { CategoriesService } from '@transactions/categories.service';
 import type { CreateExpenseValidationRuleDto } from '@transactions/dto/create-expense-validation-rule.dto';
@@ -67,7 +68,7 @@ export class ExpenseValidationService {
     ownerId: string,
     dto: CreateExpenseValidationRuleDto,
   ): Promise<ExpenseValidationRuleRecord> {
-    return this.prisma.$transaction(async (tx) => {
+    return runSerializableTransaction(this.prisma, async (tx) => {
       return this.upsertRule(tx, ownerId, dto);
     });
   }
@@ -77,7 +78,7 @@ export class ExpenseValidationService {
     id: string,
     dto: UpdateExpenseValidationRuleDto,
   ): Promise<ExpenseValidationRuleRecord> {
-    return this.prisma.$transaction(async (tx) => {
+    return runSerializableTransaction(this.prisma, async (tx) => {
       const existing = await this.requireRule(tx, ownerId, id);
 
       return this.upsertRule(
@@ -94,9 +95,11 @@ export class ExpenseValidationService {
   }
 
   async remove(ownerId: string, id: string): Promise<void> {
-    await this.requireRule(this.prisma, ownerId, id);
-    await this.prisma.expenseValidationRule.delete({
-      where: { id },
+    await runSerializableTransaction(this.prisma, async (tx) => {
+      await this.requireRule(tx, ownerId, id);
+      await tx.expenseValidationRule.delete({
+        where: { id },
+      });
     });
   }
 
@@ -181,10 +184,12 @@ export class ExpenseValidationService {
   ): Promise<{ createdCount: number; updatedCount: number }> {
     const rows = this.parseRulesCsv(file.buffer.toString('utf8'));
 
-    return this.prisma.$transaction(async (tx) => {
-      const categories = await this.categoriesService.findAll(ownerId, {
-        includeArchived: true,
-      });
+    return runSerializableTransaction(this.prisma, async (tx) => {
+      const categories = await this.categoriesService.findAll(
+        ownerId,
+        { includeArchived: true },
+        tx,
+      );
       const secondaryByKey = new Map<string, string>();
 
       for (const category of categories) {
@@ -255,7 +260,7 @@ export class ExpenseValidationService {
   ): Promise<{ createdCount: number; updatedCount: number }> {
     const rows = this.parseHierarchyCsv(file.buffer.toString('utf8'));
 
-    return this.prisma.$transaction(async (tx) => {
+    return runSerializableTransaction(this.prisma, async (tx) => {
       const allCategories = await tx.category.findMany({
         where: {
           userId: ownerId,
@@ -345,6 +350,7 @@ export class ExpenseValidationService {
         ? (await this.requireRule(client, ownerId, excludeId))
             .secondaryCategoryId
         : undefined,
+      client,
     );
     if (!category.parentCategoryId) {
       throw new BadRequestException(

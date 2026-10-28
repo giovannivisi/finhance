@@ -100,6 +100,13 @@ vi.mock("@lib/privacy-notice", () => ({
           "Hosted account deletion removes snapshot history in the same database transaction.",
       },
     ],
+    rightsStatements: [
+      "You may request access, rectification, erasure, restriction, objection and portability.",
+      "Contact rights@finhance.test to exercise your rights.",
+      "Withdraw consent in Settings without affecting the lawfulness of earlier processing.",
+      "Hosted users can permanently delete their account from Account settings. The application retains no separate audit copy.",
+      "Infrastructure backups, security logs, or processor records follow the disclosed retention procedures.",
+    ],
     automatedDecisionMaking:
       "The current code reviewed for this notice does not use solely automated decision-making or profiling to make decisions with legal or similarly significant effects about a person.",
     importSummary: {
@@ -151,7 +158,7 @@ describe("PrivacyPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /hosted users can permanently delete their account from the avatar menu/i,
+        /hosted users can permanently delete their account from account settings/i,
       ),
     ).toBeInTheDocument();
     expect(
@@ -160,6 +167,11 @@ describe("PrivacyPage", () => {
     expect(
       screen.getByText(
         /infrastructure backups, security logs, or processor records/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /without affecting the lawfulness of earlier processing/i,
       ),
     ).toBeInTheDocument();
     expect(
