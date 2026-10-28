@@ -55,13 +55,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Test dependency audit policy
+        run: node --test scripts/audit-dependencies.test.mjs
+
       - name: Audit dependencies
-        # The legacy v1/v2 copies carry the upstream bounded-expansion fix via
-        # pnpm patches. Their documented audit exception lives in
-        # pnpm-workspace.yaml; all other high-severity advisories still fail.
-        run: >-
-          pnpm audit --audit-level high
-          --ignore-registry-errors
+        # The policy keeps the Expo CLI advisory visible and only accepts its
+        # documented paths until the review date. See docs/instructions/dependency-audit-exception.md.
+        run: node scripts/audit-dependencies.mjs
 
       - name: Lint
         run: pnpm lint
