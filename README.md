@@ -251,8 +251,8 @@ packages/
 
 ## Stack
 
-- Node.js 20.9+
-- pnpm 9
+- Node.js 24.15 or later in the 24.x LTS line
+- pnpm 11.7
 - TypeScript
 - Turborepo
 - NestJS
